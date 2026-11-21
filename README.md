@@ -59,7 +59,15 @@ obsolete object cleanup and Pi installation remain separate delivery gates.
 
 ## Installation
 
-Use Node.js 22.22.3+ within 22.x, or 24.20.0+. The published package is installed with:
+Use Node.js 22.22.3+ within 22.x, or 24.20.0+.
+
+Git source acquisition also requires the selected Git executable to support
+`--no-lazy-fetch`. Git 2.50.1 is verified; this is not a claimed minimum version.
+The CLI checks this capability before remote acquisition and reports
+`UPSTREAM_GIT_RUNTIME_UNSUPPORTED` for an unsupported executable. Select a supported
+Git on the invoking process's `PATH`; no global Git configuration is changed.
+
+The published package is installed with:
 
 ```sh
 npm install --global ntn-skills --registry https://registry.npmjs.org

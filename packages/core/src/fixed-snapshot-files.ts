@@ -43,6 +43,7 @@ function readSnapshotManifest(id: string) {
           "This selection is no longer cached. Read the current Skill again.",
           {
             snapshot_id: id,
+            reason: "manifest_missing",
             next: "reselect_current",
           },
         ),
@@ -66,7 +67,15 @@ function readSnapshotManifest(id: string) {
     if (snapshot.snapshot_id !== id || snapshot.files.some((f) => !/^[a-f0-9]{64}$/.test(f.sha256)))
       return yield* Effect.fail(fail("STATE_CORRUPT", "The snapshot manifest is invalid."))
     return snapshot
-  })
+  }).pipe(
+    Effect.mapError((error) =>
+      fail(error.code, error.message, {
+        phase: "fixed_manifest",
+        snapshot_id: id,
+        ...property(error.details),
+      }),
+    ),
+  )
 }
 
 /** Read the complete fixed directory without implying every object is local. */
@@ -103,6 +112,12 @@ export function openFixedSnapshotFiles(
     const accessDenied = yield* assertKnownSnapshotAccess(snapshot, options.offline)
     const paths = yield* checked(() => selectedPaths(snapshot, select))
     const store = yield* Store
+    const context = {
+      phase: "fixed_object",
+      snapshot_id: snapshot.snapshot_id,
+      scope: snapshot.scope,
+      target: snapshot.record.id,
+    }
     const objects = new Map<string, Uint8Array>()
     const missingObjects = new Set<string>()
     const bytesByPath = new Map<string, Uint8Array>()
@@ -115,7 +130,12 @@ export function openFixedSnapshotFiles(
       }
       let bytes = objects.get(file.sha256)
       if (bytes === undefined) {
-        const cached = yield* store.readBytes(`objects/${file.sha256}`).pipe(Effect.result)
+        const cached = yield* store.readBytes(`objects/${file.sha256}`).pipe(
+          Effect.mapError((error) =>
+            fail(error.code, error.message, { ...context, path, ...property(error.details) }),
+          ),
+          Effect.result,
+        )
         if (cached._tag === "Failure") {
           if (cached.failure.code !== "SNAPSHOT_MISSING") return yield* Effect.fail(cached.failure)
           missingObjects.add(file.sha256)
@@ -125,13 +145,22 @@ export function openFixedSnapshotFiles(
         bytes = cached.success
         if ((yield* sha256(bytes)) !== file.sha256)
           return yield* Effect.fail(
-            fail("STATE_CORRUPT", "A selected fixed file failed its checksum.", { path }),
+            fail("STATE_CORRUPT", "A selected fixed file failed its checksum.", {
+              ...context,
+              path,
+              expected_sha256: file.sha256,
+            }),
           )
         objects.set(file.sha256, bytes)
       }
       if (bytes.length !== file.bytes)
         return yield* Effect.fail(
-          fail("STATE_CORRUPT", "A selected fixed file has an incorrect byte length.", { path }),
+          fail("STATE_CORRUPT", "A selected fixed file has an incorrect byte length.", {
+            ...context,
+            path,
+            expected_bytes: file.bytes,
+            actual_bytes: bytes.length,
+          }),
         )
       bytesByPath.set(path, bytes)
     }
@@ -176,9 +205,9 @@ export function openFixedSnapshotFiles(
           "SNAPSHOT_MISSING",
           "Selected content is no longer available. Read the current Skill again.",
           {
-            snapshot_id: snapshot.snapshot_id,
+            ...context,
+            reason: "objects_missing",
             paths: stillMissing,
-            target: snapshot.record.id,
             next: "reselect_current",
           },
         ),

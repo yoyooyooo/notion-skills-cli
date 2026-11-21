@@ -1,11 +1,11 @@
 ---
 name: verify-ntn-skills
-description: "定位 ntn-skills 当前实现、公共 CLI 与独立安装的验证责任。最新态单轨收敛、四表清理和 Pro 日用从 current-convergence 有限旅程进入；按实际改动选择领域，不组合历史矩阵。"
+description: "定位 ntn-skills 当前实现、公共 CLI 与独立安装的验证责任。按 AH-1188 的合同和时间线选择独立领域；修改验证入口、回执或 CLI/SDK/Pi 交接时使用。"
 ---
 
 # ntn-skills 验证路由
 
-从 [current-convergence](features/current-convergence.md) 开始。它复用六组必要检查，不新建 runner、证明链或永久结果库。本入口不负责替代管理或消费实现，也不负责用受控测试证明真实 Notion、安装包或 Pi 已完成。
+从 [当前合同索引](../../../docs/verification-contracts.md) 选择 C01–C11/T01–T23，再按 [current-convergence](features/current-convergence.md) 进入已有执行配方。本入口不负责替代管理或消费实现，也不负责用受控测试证明真实 Notion、安装包或 Pi 已完成。
 
 当前合同是 Notion 长期 SSOT、最新内容、普通消费远端 0 写。git-only、mixed、native 共用严格 Content 描述符；保留当前 revision/hash、权限、完整树、请求预算及必要在途状态。
 
@@ -17,7 +17,7 @@ description: "定位 ntn-skills 当前实现、公共 CLI 与独立安装的验�
 | 当前权威和资源状态 | [资源状态](../verify-notion-resource-lifecycle/SKILL.md) | 可执行当前不变量；旧模型不继承 |
 | unknown、partial 和有限对账 | [操作恢复](../verify-notion-operation-recovery/SKILL.md) | Profile/resource 的当前边界；完整 writer 单列 |
 
-Broker 的 verify-notion-skills-integration 负责 CLI→SDK→Pi 的实际交接。第六组共用 AH-1063 的一次 Pro Pi 旅程。OMP/Tern 宿主适配延期，其目录中的 Skill 内容仍属 AH-516 的 Pro 盘点。
+Broker 的 verify-notion-skills-integration 负责 CLI→SDK→Pi 的实际交接；AH-1197 管两机持续同步，AH-637 管 Mini 独立验收，AH-1198 汇总当前真实时间线。AH-1063 只作其版本的历史 Pro 基线。OMP/Tern 沿 AH-272 延期。
 
 ## Launch
 
@@ -44,7 +44,7 @@ bun test packages/cli/test/verification-skill-map.test.ts packages/cli/test/buil
 
 ## Evidence
 
-保留一份结果，列组号、范围、passed / failed / blocked / not_run、剩余缺口及实际命令。配置、受控代码、安装包、真实 Notion、真实 Pi 分开声明。partial 不算完整通过。
+沿 [结果回执](../../../docs/verification-contracts.md#结果回执) 将合同、场景、run、命令、源码/加载字节和原件 hash 连起来。复用现有输出，标 passed / failed / blocked / not_run、剩余缺口及复验关系。模型、真实 Store、受控服务、安装、live 和 natural 分层；partial 不算完整通过。
 
 没有请求计数不报 0 HTTP；metadata 通过不报全文；目标通过不报全库清理。无需内容版本、多层签收或不可变证据链。
 
@@ -56,4 +56,4 @@ Trash 恢复按 [单条命令验收](features/current-convergence.md#单条命�
 
 复用 [harness Cleanup](references/harness.md#cleanup) 的自有范围与系统 Trash。当前未完成操作所需状态暂留，完成或明确放弃后有界回收。保留当前唯一字节；历史 pin 不成为永久保留根。
 
-六组在各自实际范围足够证明后停止扩验证。AH-500 交付有限入口与前五组结果，AH-1063 提供同一次第六组，AH-516 对账全 Pro 内容与曝光/更新边，AH-498 汇总最终完成。
+各域按本次合同停止，不把历史 Done 重计当前通过。AH-1188 是唯一当前主线；AH-498/500/516/1063 保留原版本及范围的历史证据。Skill 作者检查与独立冷启动使用分开，未执行后者记 instruction_evaluation:not_run。

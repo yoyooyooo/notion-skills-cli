@@ -11,7 +11,7 @@ on:
       - "bun.lock"
       - ".github/workflows/formal.yml"
   push:
-    branches: [main]
+    branches: [main, next]
     paths:
       - "packages/**"
       - "verification/**"
@@ -31,9 +31,13 @@ concurrency:
 
 jobs:
   models:
-    name: Formal request-engine
+    name: Formal ${{ matrix.suite }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [request-engine, current-lifecycle]
     env:
       PSTACK_STATECHART_ROOT: ${{ github.workspace }}/.formal-tools/pstack/pstack/skills/statechart
       TLA2TOOLS: ${{ github.workspace }}/.formal-tools/tla2tools-1.7.4.jar
@@ -63,19 +67,28 @@ jobs:
           curl --fail --location --retry 2 --output "$TLA2TOOLS" https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar
           printf '%s  %s\n' 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 "$TLA2TOOLS" | sha256sum --check
       - name: Reject incomplete and falsely green verification results
-        run: node --test scripts/formal-result-contract.test.mjs
+        run: node --test scripts/formal-result-contract.test.mjs scripts/formal-runner-contract.test.mjs verification/run-receipt.test.mjs
       - name: Check reviewed source, tool bytes, complete rule inventory and every case
-        run: node scripts/verify-request-engine.mjs --out "${{ runner.temp }}/formal-request-engine"
+        run: node scripts/verify-formal.mjs --suite "${{ matrix.suite }}" --out "${{ runner.temp }}/formal-${{ matrix.suite }}"
       - name: Replay the domain implementation regressions
         run: |
-          bun test packages/core/test/shared-read-coalescing.test.ts packages/core/test/shared-immutable-read.test.ts packages/core/test/notion.test.ts packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts packages/core/test/shared-current-invocation.test.ts --timeout 60000 > "${{ runner.temp }}/formal-request-engine/regressions.stdout" 2> "${{ runner.temp }}/formal-request-engine/regressions.stderr"
-          node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-immutable-read.node.test.ts > "${{ runner.temp }}/formal-request-engine/sdk-regressions.stdout" 2> "${{ runner.temp }}/formal-request-engine/sdk-regressions.stderr"
+          case "${{ matrix.suite }}" in
+            request-engine)
+              bun test packages/core/test/shared-read-coalescing.test.ts packages/core/test/shared-immutable-read.test.ts packages/core/test/notion.test.ts packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts packages/core/test/shared-current-invocation.test.ts --timeout 60000 > "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stderr"
+              node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-immutable-read.node.test.ts > "${{ runner.temp }}/formal-${{ matrix.suite }}/sdk-regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/sdk-regressions.stderr"
+              ;;
+            current-lifecycle)
+              bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-projection-write.test.ts --timeout 60000 > "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stderr"
+              ;;
+          esac
+      - name: Prove production guards detect the reviewed failures
+        run: python3 scripts/check-formal-mutations.py --suite "${{ matrix.suite }}" --out "${{ runner.temp }}/formal-${{ matrix.suite }}/guard-mutations"
       - name: Retain summaries, exact inputs, reports, TLC output and generated diagrams
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: formal-request-engine-${{ github.sha }}
-          path: ${{ runner.temp }}/formal-request-engine/
+          name: formal-${{ matrix.suite }}-${{ github.sha }}
+          path: ${{ runner.temp }}/formal-${{ matrix.suite }}/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14

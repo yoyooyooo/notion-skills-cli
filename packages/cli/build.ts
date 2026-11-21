@@ -2,7 +2,9 @@ import { chmod, cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises
 import { isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { buildDeclarations } from "./build-declarations.ts"
+import { buildInventory, cliBuildInputs } from "./build-identity.ts"
 const root = fileURLToPath(new URL("../../", import.meta.url))
+const sourceInputs = await buildInventory(root, cliBuildInputs)
 const args = process.argv.slice(2)
 if (args.length && (args.length !== 2 || args[0] !== "--outdir" || !isAbsolute(args[1]!)))
   throw new Error("Usage: bun packages/cli/build.ts [--outdir /new/absolute/package-directory]")
@@ -74,4 +76,28 @@ if (args.length) {
   delete manifest.devDependencies
   await writeFile(join(target, "package.json"), JSON.stringify(manifest, null, 2) + "\n")
 }
+if ((await buildInventory(root, cliBuildInputs)).sha256 !== sourceInputs.sha256)
+  throw new Error(
+    "Build inputs changed while building; rebuild the current checkout before delivery",
+  )
+await writeFile(
+  join(target, "dist/next-build.json"),
+  JSON.stringify(
+    {
+      version: 1,
+      kind: "cli-build",
+      input_roots: cliBuildInputs,
+      source: sourceInputs,
+      artifacts: await buildInventory(target, [
+        "dist/ntn-skills.js",
+        "dist/sdk.js",
+        "dist/types",
+        "skills",
+      ]),
+      toolchain: { bun: Bun.version, node: process.version },
+    },
+    null,
+    2,
+  ) + "\n",
+)
 console.log(`Built CLI, SDK and ${declarations} declaration files in ${target}`)

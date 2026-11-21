@@ -1,19 +1,19 @@
 # current-convergence：最新态收敛旅程
 
-主要入口：[verify-ntn-skills](../SKILL.md)。执行 [AH-500](https://linear.app/yoyooyooo/issue/AH-500) 的六组检查；[当前合同](../../../../docs/current-contract.md) 定义唯一当前协议。六组复用既有 fixture、命令和领域 Skill，不新建 runner、永久台账或证明链。
+主要入口：[verify-ntn-skills](../SKILL.md)。按 [AH-1188 当前合同/场景](../../../../docs/verification-contracts.md) 选择必要配方；[产品合同](../../../../docs/current-contract.md) 定义唯一当前协议。下列六组是既有执行配方，不是全部场景的通过结果。复用 fixture、命令和领域 Skill，不新增总 runner。
 
 ## 范围与顺序
 
 | 组 | 要证明的当前结果 | owner | 不能混同 |
 | --- | --- | --- | --- |
-| 1 | 日用内容、完整目录、消费及文本正文 | AH-499/504/516/501/1141 | exact bytes、Notion 全文、全库覆盖 |
-| 2 | 旧对象与关系实际清退 | AH-505/513 | 目标 inspect、完整 census、真实清理 |
-| 3 | 唯一当前路径与普通消费 0 写 | AH-499/504/617 | 源码、公开命令、安装产物 |
-| 4 | 当前管理意图有限恢复 | AH-504/507 | 受控整树恢复、partial 拒绝和真实业务恢复 |
+| 1 | 当前完整树、消费及独立文本投影 | AH-1190/1194；投影 AH-501/1141 | exact bytes、Notion 全文、全库覆盖 |
+| 2 | 本次必要的状态升级与有限清退 | AH-1194 | 目标 inspect、完整 census、真实清理 |
+| 3 | 唯一当前路径与普通消费 0 写 | AH-1190/1194 | 源码、公开命令、安装产物 |
+| 4 | 当前管理意图有限恢复 | AH-1194 | 受控整树恢复、partial 拒绝和真实业务恢复 |
 | 5 | HTTP、字节、分页与取消有界 | AH-503 | TTL 命中、metadata 复核、body 读取 |
-| 6 | 配对安装与真实 Pro Pi | AH-1063 | 准备、投递、模型实际使用 |
+| 6 | 两机配对安装、持续同步与真实 Pi | AH-1197/AH-637/AH-1198 | 准备、投递、模型实际使用 |
 
-AH-516 先对账日用集合：Source 日用的真实上游成员、Skill 日用与 Default Context 的并集。日用 Skill 主文与选中的阅读文档正文由 AH-501/AH-1141 验收；Source 默认仅 Markdown，排除测试、fixture、依赖和生成目录，完整 Git 消费树不受投影过滤影响。非日用内容与额外二进制呈现后置；不删除 agent-kit 主路径的 Skill。日用不等于全部进入 Default Context，OMP/Tern 宿主适配仍延期。
+本次涉及日用投影时，对账实际集合：Source 日用的真实上游成员、Skill 日用与 Default Context 的并集。日用 Skill 主文与选中的阅读文档正文由 AH-501/AH-1141 验收；Source 默认仅 Markdown，排除测试、fixture、依赖和生成目录，完整 Git 消费树不受投影过滤影响。非日用内容与额外二进制呈现后置；不删除 agent-kit 主路径的 Skill。日用不等于全部进入 Default Context，OMP/Tern 宿主适配仍延期。
 
 ## 开始前
 
@@ -105,9 +105,9 @@ daily、dry-run、operation、resume、cancel。自身 restore 与后续 project
 非 ready 的边界沿现有 fixtures 验证，不新增 runner。当前 Source 固定，不重新
 发现 HEAD。实库未执行时记 not_run，不能拿实现或受控通过填充真实结果。
 
-## 2. Notion 清理与关系
+## 2. 本次必要的升级、清退与关系
 
-先把对象分成保留当前、先移交唯一字节后退役、可直接退役。现有 Selected Version 的真实 property ID 不等于 display name；退字段前确认实际当前绑定，禁止按名称批删。
+仅在本次有实际旧状态或授权清退目标时执行本组；历史整库迁入不是普通消费的默认前置。先把对象分成保留当前、先移交唯一字节后退役、可直接退役。现有 Selected Version 的真实 property ID 不等于 display name；退字段前确认实际当前绑定，禁止按名称批删。
 
 目标观察沿现有入口：
 
@@ -151,7 +151,7 @@ Source remove 自带库内完整 Skills/Files 元数据反查，能找到缺 Ori
 
 需要改变目标时，停止原 writer 后显式 supersede 为完整新输入，验证有限交接的未知响应和最终清空；不新增确认台账或内容副本。Source 单文件动作不能把旧多目标动作抹掉。未知远端请求可能迟到，本地锁不提供跨机 fencing；只声明实际观察到的完成结果。
 
-旧 operation-recovery/resource-lifecycle 模型、coverage、专属脚本和旧图册已经退役。当前有限恢复使用实际 writer/HTTP 反例，保留的请求模型只证明其有限范围。无需新增模型平台。
+旧 ACK/event/永久 pin 模型及专属入口已退役。当前 writer/HTTP 反例由 operation-recovery 维护；resource-lifecycle 维护准确对应的当前生命周期模型。请求模型仍只证明请求范围；不恢复旧模型或新增平台。
 
 ## 5. 成本与完整性
 
@@ -161,24 +161,24 @@ bun test packages/core/test/request-budget.test.ts packages/core/test/request-en
 
 保持相同 scope、内容与 freshness：
 
-- 外层有效 TTL 命中为 0 HTTP。三 native fixture 冷读 6 请求，metadata 复核 3 请求/0 body；末尾 owner GET 保留。单 body 改动只追加必要 body，不能混成暖读 0 HTTP。
+- 外层有效 TTL 命中为 0 HTTP。三 native fixture 冷读 9 请求/3 body，metadata 复核 6 请求/0 body；前后 owner 和完整目录 fence 均保留。单 body 改动只追加必要 body，不能混成暖读 0 HTTP。
 - 目录读取 0 body；选中 one resource 只读它的当前 Record/原件，其他 lazy 文件不下载；每个目录仍完整。
 - 超 100 行完整分页，81 owners 分批查询；limit、page_size、attempts、bytes 与 deadline 分开，不截断假完成。
 - 子任务、重试与排队共享 invocation 预算；取消后无迟到派发。不同权限/scope 不借用共享请求。
 - 无变化写 0。未知或截断的 wire ledger 不填 0；不延 TTL、提预算或删文件来变绿。
 
-## 6. 同一次 Pro 日用
+## 6. 当前两机日用
 
-AH-1063 配对安装当前 CLI/SDK/Broker，复用现有 integration。离开开发 checkout，空 Store、新 Pi 会话、无 override 或旧包 fallback。
+AH-1197 配对当前 CLI/SDK/Broker 并核两机 next 的实际加载字节；AH-637 做 Mini 自身凭据与空状态的独立验收。独立包测试离开 checkout；worktree 日用另外记录。复用现有 integration，不用开发 override 或旧包兼容路径冒充。
 
 完成自然查找→选用→子文档读取，再按当前已具备的管理/单文件导出能力继续消费。检查实际模型输入、必要全文、去重和成本；mock、准备稿或 enqueue 不是投递。未接通的内容管理不能由 Profile 改动代称。
 
-AH-500 不重复提前跑 Pi。AH-516 批量核日用完整树及其真实更新来源；用必要样本验证实际 Pi 消费，不逐 Skill 重跑自然模型矩阵，也不以删除 agent-kit 主路径为门槛。
+AH-1198 执行 T01–T23 中必须真实运行的代表旅程：普通固定任务、主动最新、查看不采用、连续故障续聊、开关变化、本地充分负例与两机后续更新。AH-1196 负责自然任务和工具必要性；受控 provider 不充自然模型。无需逐 Skill 重跑全部矩阵。
 
 ## 结果与停止
 
 每组标实际范围、passed / failed / blocked / not_run、缺口和 owner。观测违约为 failed；缺实现/输入/访问为 blocked；没执行为 not_run。partial 不报完整通过。
 
-AH-500 的前五组、AH-1063 的同次 Pi、AH-516 的日用批次对账分别交付，AH-498 汇总。失败回功能 owner 修根因；不补兼容 adapter、特殊 fixture 或永久证据层。足够证明后停止。
+用 [当前回执](../../../../docs/verification-contracts.md#结果回执) 汇总准确候选和原件。AH-498/500/516/1063 只保留历史范围，AH-1188/AH-1198 收口本轮。范围内失败回所属 owner 修复并重验，不记成后续后宣布完成。
 
 沿 [harness Cleanup](../references/harness.md#cleanup) 回收自有派生物；当前未完成意图必要状态暂留，唯一内容先移交，本地移除进入系统 Trash。

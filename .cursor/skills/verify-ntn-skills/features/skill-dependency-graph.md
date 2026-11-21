@@ -39,4 +39,4 @@ bun test packages/core/test/graph-prepare.test.ts packages/core/test/shared-grap
 
 ## 文件与宿主边界
 
-相对读取、精确单文件与整包 export 沿 [当前消费](skill-consumption.md)；全文阅读页沿 [current-convergence](current-convergence.md) 第一组。准备成功只证明当前选择完整，实际 SDK 安装沿 [package check](portable-export-package-consumption.md)，真实 Pi 使用由 [Broker 交接](broker-consumption.md) 与 AH-1063 验证。OMP/Tern 延期，不保留其旧默认验收入口。
+相对读取、精确单文件与整包 export 沿 [当前消费](skill-consumption.md)；全文阅读页沿 [current-convergence](current-convergence.md) 第一组。准备成功只证明当前选择完整，实际 SDK 安装沿 [package check](portable-export-package-consumption.md)，真实 Pi 使用由 [Broker 交接](broker-consumption.md) 与 AH-1197/AH-637/AH-1198 验证。OMP/Tern 延期，不保留其旧默认验收入口。

@@ -173,6 +173,7 @@ function storageError(error: unknown): SkillsError {
   const primary = native === undefined ? undefined : native & 0xff
   const code = typeof cause.code === "string" ? cause.code : undefined
   const details = {
+    phase: "sqlite_state",
     error_tag: outer._tag,
     reason: reason._tag,
     operation: reason.operation,
@@ -559,11 +560,20 @@ export function sqliteState(
                   const fences = yield* sql<{
                     retired_through: number
                   }>`SELECT retired_through FROM cache_fences WHERE scope=${owner.scope} AND identity=${owner.record_identity}`
-                  if (owner.generation <= (fences[0]?.retired_through ?? 0))
+                  const retiredThrough = fences[0]?.retired_through ?? 0
+                  if (owner.generation <= retiredThrough)
                     return yield* Effect.fail(
                       fail(
                         "CACHE_INVALIDATED",
                         "An in-flight file observation was retired before publication.",
+                        {
+                          phase: "cache_publication",
+                          cache_key: key,
+                          scope: owner.scope,
+                          record_identity: owner.record_identity,
+                          generation: owner.generation,
+                          retired_through: retiredThrough,
+                        },
                       ),
                     )
                   const rows = yield* sql<{
@@ -774,14 +784,20 @@ export function sqliteState(
                 const fence = yield* sql<{
                   retired_through: number
                 }>`SELECT retired_through FROM cache_fences WHERE scope=${scope} AND identity=${identity}`
-                if (
-                  typeof v.generation !== "number" ||
-                  v.generation <= (fence[0]?.retired_through ?? 0)
-                )
+                const retiredThrough = fence[0]?.retired_through ?? 0
+                if (typeof v.generation !== "number" || v.generation <= retiredThrough)
                   return yield* Effect.fail(
                     fail(
                       "CACHE_INVALIDATED",
                       "An in-flight observation was retired before publication.",
+                      {
+                        phase: "cache_publication",
+                        cache_key: key,
+                        scope,
+                        record_identity: identity,
+                        generation: v.generation,
+                        retired_through: retiredThrough,
+                      },
                     ),
                   )
                 if (parts[1] === "latest") {

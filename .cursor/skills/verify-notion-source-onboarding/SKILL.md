@@ -35,6 +35,8 @@ bun test packages/core/test/shared-current-source.test.ts packages/core/test/sha
 
 ## Evidence
 
+按 [当前合同与回执](../../../docs/verification-contracts.md) 记录所属场景、准确候选、真实运行层和原件 hash；历史 Done 不填作当前通过。
+
 记录所选 Source/member 范围、完整目录、来源贡献、精确字节、当前权限与请求成本。不得用零 Files 的快速消费样本证明人类阅读已完成。受控 HTTP、实际包、真实 Notion 与 Pi 分开声明。
 
 ## Cleanup

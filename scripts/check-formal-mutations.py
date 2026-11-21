@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""Replay RequestEngine guard failures in a retained, isolated source/dependency fixture."""
+"""Replay current formal guards in retained, isolated source/dependency fixtures."""
 from pathlib import Path
 import argparse, hashlib, json, shutil, subprocess, sys, time
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--suite", choices=["request-engine", "current-lifecycle"], required=True)
 parser.add_argument("--out", type=Path, required=True)
 args = parser.parse_args()
 repo = Path(__file__).resolve().parents[1]
+assert args.out.is_absolute(), "--out must be an owned absolute path"
 out = args.out.resolve()
 out.mkdir(parents=True, exist_ok=False)
-coverage = json.loads((repo / "verification/models/request-engine/coverage.json").read_text())
-shutil.copy2(repo / "verification/models/request-engine/coverage.json", out / "coverage.json")
-shutil.copy2(Path(__file__), out / "check-request-engine-mutations.py")
+coverage_path = repo / "verification/models" / args.suite / "coverage.json"
+coverage = json.loads(coverage_path.read_text())
+shutil.copy2(coverage_path, out / "coverage.json")
+shutil.copy2(Path(__file__), out / "check-formal-mutations.py")
 sha = lambda value: hashlib.sha256(value).hexdigest()
 for name, expected in coverage["files"].items():
     assert sha((repo / name).read_bytes()) == expected, f"Review source correspondence first: {name}"
@@ -66,7 +69,7 @@ immutable_test = "packages/core/test/shared-immutable-read.test.ts"
 current_resource = "packages/core/src/shared-current-resource.ts"
 sdk_test = "packages/core/test/sdk-immutable-read.node.test.ts"
 
-cases = [
+request_cases = [
     ("surviving-waiter", cache,
      [("if (this.awaiters > 0 || this.fiber.pollUnsafe()) return effect.void;",
        "if (this.fiber.pollUnsafe()) return effect.void;")],
@@ -136,21 +139,45 @@ cases = [
      [("Effect.timeout(timeoutMs),", "(effect) => effect,")],
      contract_test, "FV07 a single HTTP", "AttemptDeadlineRespected"),
 ]
+operation = "packages/core/src/shared-current-operation.ts"
+operation_test = "packages/core/test/shared-current-operation.test.ts"
+lifecycle_cases = [
+    ("current-read-final-fence", "packages/core/src/shared-snapshot.ts",
+     [("if (consumptionFence(finalIndex, finalConsumption) !== consumptionFence(index, consumption))",
+       "if (false && consumptionFence(finalIndex, finalConsumption) !== consumptionFence(index, consumption))")],
+     "packages/core/test/shared-current-snapshot.test.ts",
+     "a writer starting or completing during body reads", "NoMixedCurrentPublication"),
+    ("non-content-owner-activation", operation,
+     [('const projection = "projection" in intent', 'const projection = false')],
+     operation_test, "generated bodies use one finite intent", "NonContentPreservesReadiness"),
+    ("unknown-product-action-replay", operation,
+     [('if (active !== null && (mode !== "resume" || action.replay === "never"))',
+       'if (active !== null && mode !== "resume")')],
+     operation_test, "unknown absent append is never replayed", "UnknownNonIdempotentNeverRepeated"),
+    ("non-content-completion-owner", operation,
+     [('if (preserveReadyOwner && state.state !== "ready")',
+       'if (false && preserveReadyOwner && state.state !== "ready")')],
+     operation_test, "an owner becoming unready during projection", "NonContentCompletionQualified"),
+]
+cases = request_cases if args.suite == "request-engine" else lifecycle_cases
 originals = out / "originals"
 originals.mkdir()
 results = []
 summary = {
-    "complete": False, "passed": False,
+    "complete": False, "passed": False, "suite": args.suite,
     "fixture": str(fixture), "source_commit": coverage["synchronized_commit"],
     "checkout_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
     "verifier_sha256": sha(Path(__file__).read_bytes()),
-    "coverage_sha256": sha((repo / "verification/models/request-engine/coverage.json").read_bytes()),
+    "coverage_sha256": sha(coverage_path.read_bytes()),
     "runtime": {"bun": subprocess.check_output(["bun", "--version"], text=True).strip(),
                 "node": subprocess.check_output(["node", "--version"], text=True).strip(),
                 "python": sys.version.split()[0]},
     "source_hashes": coverage["files"],
-    "dependency": {"effect": "4.0.5", "file": cache, "sha256": coverage["files"][cache]},
-    "scope": "Controlled public Notion service/coalescer/scheduler and SDK code. The immutable runtime case uses an owned local HTTP server, independent public SDK runtimes and a frozen fixture; no real credentials or remote Notion mutations.",
+    "dependency": ({"effect": "4.0.5", "file": cache, "sha256": coverage["files"][cache]}
+                   if args.suite == "request-engine" else None),
+    "scope": ("Controlled public Notion service/coalescer/scheduler and SDK code. The immutable runtime case uses an owned local HTTP server, independent public SDK runtimes and a frozen fixture; no real credentials or remote Notion mutations."
+              if args.suite == "request-engine" else
+              "Production current reader and finite operation kernel with controlled Notion service responses. Each guard is removed in an isolated source copy and checked by its existing behavioral assertion. No live Notion, Pi or provider claim."),
     "results": results,
 }
 def save():

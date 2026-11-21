@@ -9,14 +9,14 @@
 ```sh
 PSTACK_STATECHART_ROOT=/absolute/pinned-pstack/pstack/skills/statechart \
 TLA2TOOLS=/absolute/tla2tools-1.7.4.jar \
-node scripts/verify-request-engine.mjs --out /absolute/new-request-models
+node scripts/verify-formal.mjs --suite request-engine --out /absolute/new-request-models
 
-python3 scripts/check-request-engine-mutations.py --out /absolute/new-request-guards
+python3 scripts/check-formal-mutations.py --suite request-engine --out /absolute/new-request-guards
 bun test packages/core/test/request-engine-contract.test.ts packages/core/test/shared-immutable-read.test.ts packages/core/test/shared-current-invocation.test.ts --timeout 60000
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-immutable-read.node.test.ts
 ```
 
-按变更选择必要实现回归；受影响模型运行全部原正负配置。旧生命周期与 ACK 恢复套件已退役，没有 `--suite` 兼容路由。
+按变更选择必要实现回归；受影响模型运行全部原正负配置。旧 ACK/历史恢复套件已退役；current-lifecycle 是当前有限意图与消费读取的独立切片，不兼容旧套件。
 
 ## 对应边界
 

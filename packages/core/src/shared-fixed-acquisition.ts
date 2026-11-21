@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { authScope } from "./catalog.ts"
-import { fail, SkillsError, type Snapshot, type Source } from "./model.ts"
+import { fail, property, SkillsError, type Snapshot, type Source } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { sharedRecordFromPage } from "./shared-content.ts"
@@ -38,7 +38,7 @@ export function materializeSharedFixedAcquisition(
         fail(
           "SNAPSHOT_MISSING",
           "The selected fixed bytes are not local; offline reads cannot acquire them.",
-          { paths: routes.map((route) => route.path) },
+          { paths: routes.map((route) => route.path), reason: "offline", next: "retry_online" },
         ),
       )
     if ((yield* authScope) !== snapshot.scope || snapshot.record.locator.type !== "shared_skill")
@@ -159,6 +159,10 @@ export function materializeSharedFixedAcquisition(
           : fail("SHARED_ACQUISITION_SCOPE", "The current file bindings are invalid."),
     })
     const result: Array<{ readonly path: string; readonly bytes: Uint8Array }> = []
+    // The complete current descriptors admit this fixed acquisition here. Later
+    // management changes do not turn it into a latest read: only bytes matching
+    // the admitted revision/path/hash/mode may finish. A new acquisition checks
+    // current eligibility again.
     const sourceRoutes = routes.filter((route) => route.kind === "source")
     const sources = consumption.sources
     for (const source of sources.values()) {
@@ -249,5 +253,16 @@ export function materializeSharedFixedAcquisition(
       result.push({ path: route.path, bytes })
     }
     return result
-  })
+  }).pipe(
+    Effect.mapError((error) =>
+      fail(error.code, error.message, {
+        phase: "fixed_acquisition",
+        snapshot_id: snapshot.snapshot_id,
+        scope: snapshot.scope,
+        target: snapshot.record.id,
+        paths,
+        ...property(error.details),
+      }),
+    ),
+  )
 }

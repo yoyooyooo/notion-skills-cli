@@ -25,12 +25,12 @@
 
 list/read/use/files/resource/export 的语义远端写入为零。query POST 是读；创建 Record、修补投影、接管或恢复都是写。外层 TTL 命中、metadata 复核、必要 body 读取分别报告成本。任何 partial、权限缺口或未观察范围都不能变成完整结果。
 
-请求隔离、取消、共享和重试沿 [请求模型](../features/request-engine-formal.md) 及 [维护合同](../../../../docs/formal-verification-maintenance.md) 验证。保留的 `verify-request-engine.mjs` 只运行两项请求模型。当前资源状态和恢复由各自 Skill 选择实现测试，已取消的 ACK、历史恢复和独立接受模型不再有执行入口。
+请求隔离、取消、共享和重试沿 [请求模型](../features/request-engine-formal.md) 及 [维护合同](../../../../docs/formal-verification-maintenance.md) 验证。保留的 `verify-formal.mjs --suite request-engine` 只运行两项请求模型；`--suite current-lifecycle` 由资源状态 Skill 独立维护。当前资源状态和恢复由各自 Skill 选择实现测试，已取消的 ACK、历史恢复和独立接受模型不再有执行入口。
 
 ## 实际系统结果
 
 源码回归、受控 HTTP、独立安装包、真实 Notion 与 Pi 日用分别报告。管理成功后 Broker 只让对应目录失效；已经接受的任务内容不能被静默替换。单次试点不能证明全 Pro 迁移、全库清理或任意规模安全。
 
-AH-513 负责真实旧对象清退，AH-517 负责剩余实现和配方退役，AH-1063 负责配对安装与实际 Pi，AH-516 负责全部 Pro 本地内容及曝光/更新入口。OMP/Tern 宿主适配延期，其 Skill 内容仍在迁移范围。
+旧对象清退、实现退役与 Pro 内容迁移分别保留 AH-513/AH-517/AH-516 的原范围。当前配对安装、两机日用与持续同步沿 AH-1197/AH-637/AH-1198，AH-1063 仅为其版本的历史结果。OMP/Tern 宿主适配延期，其 Skill 内容仍在迁移范围。
 
 只执行任务已经授权的对象范围。未知写入不能盲目重发，未完成意图保留必要输入；完成后仅保留最新内容。验证选择受影响边界，不扩大成全矩阵或新增永久证据平台。

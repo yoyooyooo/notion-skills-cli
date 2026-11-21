@@ -22,7 +22,7 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 ## Drive
 
 1. 核对完整目录和 binding。Skills 主文唯一，Files 只含 supporting；所有来源共享相同当前 descriptor。目录完整与 Notion 全文投影分别验。
-2. native 冷读、无变化 metadata 复核、单文件直接编辑、缺本地正文及独立全文期限各走一次。三份 native 文件的固定 fixture 冷读为 6 请求：2 个 metadata query、3 个 body、最后一次 owner GET；无变化 metadata 复核为 3 请求、0 body。外层有效 TTL 直接命中才是 0 HTTP。
+2. native 冷读、无变化 metadata 复核、单文件直接编辑、缺本地正文及独立全文期限各走一次。三份 native 文件的固定 fixture 冷读为 9 请求、3 body；无变化 metadata 复核为 6 请求、0 body。前后 owner 与完整目录 fence 均计入；以 shared-current-snapshot.test.ts 的当前 oracle 为准，不推广为所有 live 请求数。外层有效 TTL 直接命中才是 0 HTTP。
 3. Name/Description 变化返回当前 metadata，但不改 bytes 或内容身份。原任务选择仍保留其 metadata。改路径或删当前行不被旧 cache 复活。
 4. 同任务内保持一份完整选定目录。缺 Source/resource bytes 只可使用仍相符的当前 owner/descriptor；缺 native 旧选择字节或当前声明变化要求重选，不恢复远端历史。
 5. 每文件 acquisition v5 支持多 Source、native 和 resource。检查 exact hash/bytes/mode、按需获取、offline 不发请求及权限拒绝；generated body 编辑不自动接管。
@@ -35,9 +35,11 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 bun test packages/core/test/shared-acquisition-contract.test.ts packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts packages/core/test/shared-read-coalescing.test.ts --timeout 60000
 ~~~
 
-安装层复用 [portable-export-package-consumption](../verify-ntn-skills/features/portable-export-package-consumption.md) 的实际包入口。旧远端恢复或已退出命令的步骤不可继承；包未切换记缺口。Pi 由 AH-1063 和 Broker integration 验，不扩 OMP/Tern。
+安装层复用 [portable-export-package-consumption](../verify-ntn-skills/features/portable-export-package-consumption.md) 的实际包入口。旧远端恢复或已退出命令的步骤不可继承；包未切换记缺口。Pi 由 Broker integration 沿 AH-1197/AH-637/AH-1198 验；AH-1063 仅为历史基线，不扩 OMP/Tern。
 
 ## Evidence
+
+按 [当前合同与回执](../../../docs/verification-contracts.md) 标 C01/C06/C07a/C09、具体时间线及实际层级；相同原件跨票引用不重复计数。
 
 记录当前范围、来源、完整字节比对、freshness、HTTP attempts/bytes 和语义写。相同输入/scope/freshness 才可比较成本；不省文件或延 TTL 制造下降。
 

@@ -9,7 +9,7 @@ import {
   type FixedGithubFile,
   type FixedGithubSource,
 } from "./shared-github-source.ts"
-import { runSourceGit } from "./upstream-source.ts"
+import { assertSourceGitRuntime, runSourceGit } from "./upstream-source.ts"
 import { sha256 } from "./store.ts"
 import { gitRemoteUrl } from "./shared-git-origin.ts"
 
@@ -123,6 +123,7 @@ export function readFixedGitObjects(input: Input) {
           }),
         ),
       )
+      yield* assertSourceGitRuntime(repo)
       yield* runSourceGit(repo, ["init", "--bare", "--template=", "."])
       yield* runSourceGit(repo, ["remote", "add", "origin", gitRemoteUrl(source.url)])
       yield* runSourceGit(repo, ["config", "remote.origin.promisor", "true"])

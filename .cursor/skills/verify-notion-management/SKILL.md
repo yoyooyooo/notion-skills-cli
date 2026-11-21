@@ -34,6 +34,8 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 
 ## Evidence
 
+按 [当前合同与回执](../../../docs/verification-contracts.md) 记录所属场景、准确候选、真实运行层和原件 hash；历史 Done 不填作当前通过。
+
 报告实际正文、原件、关系、清理 effects、HTTP 成本与剩余范围。局部受控 writer 不替代 AH-501 全量阅读或 AH-513 实库清退；没有执行就写 not_run。
 
 ## Cleanup

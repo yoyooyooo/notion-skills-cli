@@ -29,7 +29,7 @@ Source、resource、native 的每个 supporting 文件都需要 Files 身份与�
 
 当前 public CLI 使用完整本地树 `ctl library import` 与同一条 Source apply/refresh。按完整上游自动增删成员，同版本零写，保存声明可删后重建。混合接管及跨对象治理各按实际范围验收，不作日用迁入前置。
 
-独立安装沿 [package check](portable-export-package-consumption.md) 的同 archive CLI/SDK。只声明其实际覆盖的当前读取样本；没有执行的 Source 发布或真实 Notion 投影保持未验收。AH-516 先负责日用并集的完整树与更新来源，AH-1063 负责真实 Pi。
+独立安装沿 [package check](portable-export-package-consumption.md) 的同 archive CLI/SDK。只声明其实际覆盖的当前读取样本；没有执行的 Source 发布或真实 Notion 投影保持未验收。完整树与来源时序沿 AH-1190/1194；当前真实 Pi 沿 AH-1197/AH-637/AH-1198。
 
 ## 结果与清理
 

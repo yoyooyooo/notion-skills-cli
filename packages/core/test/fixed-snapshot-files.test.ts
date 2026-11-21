@@ -165,7 +165,12 @@ describe("fixed snapshot selected files", () => {
         Effect.flip(readSkill(f.ref("references/1.md"), { offline, output: "/memory/rejected" })),
       )
       expect(error.code).toBe("SNAPSHOT_MISSING")
-      expect(error.details).toMatchObject({ next: "reselect_current" })
+      expect(error.details).toMatchObject({
+        phase: "fixed_manifest",
+        reason: "manifest_missing",
+        snapshot_id: f.snapshot.snapshot_id,
+        next: "reselect_current",
+      })
       expect(f.outputs.size).toBe(0)
       expect(f.objectReads.size).toBe(0)
       expect(f.calls).toHaveLength(0)
@@ -423,6 +428,11 @@ describe("fixed snapshot selected files", () => {
     )
     expect(error.code).toBe("SNAPSHOT_MISSING")
     expect(error.details).toMatchObject({
+      phase: "fixed_object",
+      reason: "objects_missing",
+      snapshot_id: f.snapshot.snapshot_id,
+      scope: f.snapshot.scope,
+      target: f.snapshot.record.id,
       next: "reselect_current",
       paths: [f.snapshot.entrypoint],
     })
@@ -486,6 +496,7 @@ describe("fixed snapshot selected files", () => {
   test("missing or corrupt fixed main bytes never fall back to the current body", async () => {
     const missing = await fixture()
     missing.objects.delete("objects/" + missing.file(missing.snapshot.entrypoint).sha256)
+    missing.bodies.set(missing.main.id, "The changed current body is not the selected body.")
     for (const offline of [false, true]) {
       const error = await missing.run(
         Effect.flip(targetSnapshot(parseTarget(missing.ref()), { offline }, "entrypoint")),
@@ -502,6 +513,14 @@ describe("fixed snapshot selected files", () => {
       Effect.flip(targetSnapshot(parseTarget(corrupt.ref()), {}, "entrypoint")),
     )
     expect(error.code).toBe("STATE_CORRUPT")
+    expect(error.details).toMatchObject({
+      phase: "fixed_object",
+      snapshot_id: corrupt.snapshot.snapshot_id,
+      scope: corrupt.snapshot.scope,
+      target: corrupt.snapshot.record.id,
+      path: corrupt.snapshot.entrypoint,
+      expected_sha256: corrupt.file(corrupt.snapshot.entrypoint).sha256,
+    })
     expect(corrupt.calls).toHaveLength(0)
   })
 

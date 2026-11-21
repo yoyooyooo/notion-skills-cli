@@ -293,6 +293,48 @@ test("C4/C5 strong refresh sees reference-only changes; same version reuses immu
   expect(f.objects.size).toBe(objects)
 })
 
+test("current eligibility and the native body deadline do not advance a fixed selection", async () => {
+  const f = fixture()
+  const path = "references/guide.md"
+  const first = await f.run(readSkill(page, { path }))
+  const bodyObservation = () => {
+    const entry = [...f.json].find(([key]) => key.startsWith("cache/current-native-bodies/"))
+    const files = property(entry?.[1]).files
+    if (!Array.isArray(files)) throw new Error("Missing native body observation")
+    return property(files.find((file) => property(file).path === path))
+  }
+  expect(bodyObservation().body_verified_at).toBe(1_000_000)
+  f.change("Changed body with unchanged metadata.")
+  for (const [age, source] of [
+    [299_999, "local_cache"],
+    [300_000, "notion"],
+    [24 * 60 * 60 * 1000 - 1, "notion"],
+  ] as const) {
+    f.time(1_000_000 + age)
+    f.clearCalls()
+    const current = await f.run(readSkill(page, { path }))
+    expect(current.source).toBe(source)
+    expect(current.snapshot_id).toBe(first.snapshot_id)
+    expect("content" in current && current.content).toBe("Original reference.")
+    expect(bodyObservation().body_verified_at).toBe(1_000_000)
+    expect(f.bodyCalls()).toHaveLength(0)
+  }
+  f.time(1_000_000 + 24 * 60 * 60 * 1000)
+  const expired = await f.run(readSkill(page, { path }))
+  expect(expired.snapshot_id).not.toBe(first.snapshot_id)
+  expect("content" in expired && expired.content).toBe("Changed body with unchanged metadata.")
+  const pinned = await f.run(readSkill(first.ref))
+  expect(pinned.snapshot_id).toBe(first.snapshot_id)
+  expect("content" in pinned && pinned.content).toBe("Original reference.")
+  f.change("Explicit refresh observes this edit immediately.")
+  const refreshed = await f.run(readSkill(page, { path, refresh: true }))
+  expect(refreshed.snapshot_id).not.toBe(expired.snapshot_id)
+  expect("content" in refreshed && refreshed.content).toBe(
+    "Explicit refresh observes this edit immediately.",
+  )
+  expect(f.semanticWrites()).toHaveLength(0)
+})
+
 test("C6/C7 failed expiry has no stale fallback or timestamp reset; explicit offline remains an observation", async () => {
   const f = fixture()
   const first = await f.run(readSkill(page))
@@ -558,6 +600,38 @@ test("C11/C16 cache retirement preserves selected bytes and forces current disco
   await f.run(readSkill(page))
   expect(f.requests.length).toBeGreaterThan(before)
   expect(f.json.get("config.json")).toEqual({ sources: [], default_database: database })
+})
+
+test("target clear retains native body observations while all clear forces body revalidation without deleting pins", async () => {
+  const f = fixture()
+  const path = "references/guide.md"
+  const first = await f.run(readSkill(page, { path }))
+  const nativeKey = [...f.json.keys()].find((key) =>
+    key.startsWith("cache/current-native-bodies/"),
+  )!
+  const nativeObservation = structuredClone(f.json.get(nativeKey))
+  f.change("Changed after the initial fixed selection.")
+  const targetClear = await f.run(clearCache(page))
+  expect(targetClear.entries).not.toContain(nativeKey)
+  expect(f.json.get(nativeKey)).toEqual(nativeObservation)
+  f.clearCalls()
+  const afterTarget = await f.run(readSkill(page, { path }))
+  expect(afterTarget.source).toBe("notion")
+  expect(afterTarget.snapshot_id).toBe(first.snapshot_id)
+  expect(f.bodyCalls()).toHaveLength(0)
+  const allClear = await f.run(clearCache(undefined, { all: true }))
+  expect(allClear.entries).toContain(nativeKey)
+  expect(f.json.has(nativeKey)).toBe(false)
+  f.clearCalls()
+  const old = await f.run(readSkill(first.ref))
+  expect(old.snapshot_id).toBe(first.snapshot_id)
+  expect("content" in old && old.content).toBe("Original reference.")
+  expect(f.calls).toHaveLength(0)
+  const current = await f.run(readSkill(page, { path }))
+  expect(current.snapshot_id).not.toBe(first.snapshot_id)
+  expect("content" in current && current.content).toBe("Changed after the initial fixed selection.")
+  expect(f.bodyCalls().length).toBeGreaterThan(0)
+  expect(f.semanticWrites()).toHaveLength(0)
 })
 
 test("C12/C13 explicit refresh cannot inherit TTL and same-clock invalidation needs later validation", async () => {

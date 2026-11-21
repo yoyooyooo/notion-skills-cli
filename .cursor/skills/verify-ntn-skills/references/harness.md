@@ -62,7 +62,7 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl 
 NTN_SMOKE_EVIDENCE_ROOT="$RUN/scratch/installed-package" bun run package:check > "$RUN/evidence/package.json"
 ~~~
 
-它构建实际 archive，并从空的独立安装目录运行同一包的 Node CLI 与 SDK。检查范围见 [安装包消费](../features/portable-export-package-consumption.md)。这是受控 HTTP 验证；真实 Notion 和 AH-1063 的 Pi 日用分别执行。OMP/Tern 不进入本轮宿主验收。
+它构建实际 archive，并从空的独立安装目录运行同一包的 Node CLI 与 SDK。检查范围见 [安装包消费](../features/portable-export-package-consumption.md)。这是受控 HTTP 验证；真实 Notion、AH-1197/AH-637 的安装与 AH-1198 的 Pi 日用分别执行。OMP/Tern 不进入本轮宿主验收。
 
 CI 直接运行 check 和 package-check，不调用 controller。它始终上传实际报告和请求日志，排除 node_modules，保留七天。静态接线由 installed-package-ci.test.ts 验证；实际安装结果来自 package:check。
 
@@ -70,7 +70,7 @@ CI 直接运行 check 和 package-check，不调用 controller。它始终上传
 
 ## Evidence
 
-保留一份有界结果，列实际命令、范围、passed/failed/blocked/not_run 和剩余缺口。commands 下记录实际 argv、退出、超时与输出；原始 stderr 不保留，只记长度与 hash。需要具体诊断时使用现有报告，不能从 hash 推断正文或成功。
+按 [当前合同与回执](../../../../docs/verification-contracts.md#结果回执) 保留一份有界结果，列合同/场景/run、实际命令、源码与加载字节、原件 hash、passed/failed/blocked/not_run 和剩余缺口。commands 下记录实际 argv、退出、超时与输出；原始 stderr 不保留，只记长度与 hash。需要具体诊断时使用现有报告，不能从 hash 推断正文或成功。
 
 读取实际文件和请求记录。没有计数不填零；截断响应的已观察前缀不算完整 bytes。源码、实际安装、真实 Notion 和真实 Pi 分开记录。内容、页面 ID 和凭据可能涉及私有数据，结果放在自有运行目录，不提交到仓库。
 

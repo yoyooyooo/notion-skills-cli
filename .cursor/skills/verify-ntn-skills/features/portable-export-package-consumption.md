@@ -33,7 +33,7 @@ CI 接线由 `packages/cli/test/installed-package-ci.test.ts` 检查：每条矩
 
 受控安装态通过，不证明真实 Notion 已完成字段迁移、全部正文投影、全库残留清理或 Pi 日用。必要的真实 export 使用授权的目标与当前安装包；读取实际产物并核对每条声明路径的完整 bytes/mode。完整导入已由 [当前 import](import-create-recovery-dry-run.md) 提供；本次消费包检查不替代在授权实库执行导出、修改与再次导入，未执行的部分记 not_run。
 
-Broker 使用同一最终 CLI SDK v2 产物做交接，真实 Pi 日常旅程仍由 AH-1063 负责。OMP/Tern 宿主适配延期。达到本次变更的必要证明后停止扩大矩阵。
+Broker 使用同一最终 CLI SDK v2 产物做交接，当前真实两机 Pi 与持续同步由 AH-1197/AH-637/AH-1198 负责。OMP/Tern 宿主适配延期。达到本次变更的必要证明后停止扩大矩阵。
 
 ## Cleanup
 

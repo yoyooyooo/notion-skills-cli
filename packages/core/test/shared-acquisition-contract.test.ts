@@ -94,7 +94,7 @@ type Requirements =
   | Path.Path
   | HttpClient.HttpClient
 
-function fixture() {
+function fixture(input: { beforeProvider?: () => Effect.Effect<void> } = {}) {
   const skillIds = library.skills.property_ids
   const fileIds = library.files.property_ids
   const main = {
@@ -264,6 +264,7 @@ function fixture() {
   const http = HttpClient.make((request, url) =>
     Effect.gen(function* () {
       providerRequests.push(url.href)
+      if (input.beforeProvider !== undefined) yield* input.beforeProvider()
       const body = providerBodies.get(url.href)
       if (body === undefined)
         return yield* Effect.die(new Error("No provider access is authorized in this fixture"))
@@ -298,8 +299,8 @@ function fixture() {
   }
 }
 
-function sourceFixture() {
-  const f = fixture()
+function sourceFixture(input: { beforeProvider?: () => Effect.Effect<void> } = {}) {
+  const f = fixture(input)
   const sourcePath = "actual.md"
   const url = "https://raw.githubusercontent.com/example/current/fixed/actual.md"
   const content: CurrentSharedSourceContent = {
@@ -497,6 +498,15 @@ describe("current acquisition contract", () => {
       Effect.flip(materializeSharedFixedAcquisition(f.snapshot, [path], { offline: true })),
     )
     expect(error.code).toBe("SNAPSHOT_MISSING")
+    expect(error.details).toMatchObject({
+      phase: "fixed_acquisition",
+      reason: "offline",
+      snapshot_id: f.snapshot.snapshot_id,
+      scope: f.snapshot.scope,
+      target: f.snapshot.record.id,
+      paths: [path],
+      next: "retry_online",
+    })
     expect(f.calls).toEqual([])
   })
 
@@ -508,6 +518,57 @@ describe("current acquisition contract", () => {
     expect(f.calls).toHaveLength(5)
     expect(f.calls.some((request) => request.includes(library.records.data_source_id))).toBe(false)
   })
+
+  for (const changedBytes of [false, true])
+    test(`fixed Source admission precedes a later management change; changed bytes=${changedBytes}`, async () => {
+      let reached = () => {}
+      const admitted = new Promise<void>((resolve) => {
+        reached = resolve
+      })
+      let release = () => {}
+      const transfer = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const f = sourceFixture({
+        beforeProvider: () =>
+          Effect.promise(async () => {
+            reached()
+            await transfer
+          }),
+      })
+      const pending = f.run(
+        materializeSharedFixedAcquisition(f.snapshot, [path]).pipe(Effect.result),
+      )
+      await admitted
+      // This callback is reached only after current owner, Contributions and
+      // the full Source descriptor have admitted the selected fixed revision.
+      f.source.properties.enabled.checkbox = false
+      f.source.properties.revision = rich(
+        library.sources!.property_ids["Last Revision"]!,
+        "f".repeat(64),
+      )
+      if (changedBytes) f.providerBodies.set(f.url, "new!")
+      release()
+      const result = await pending
+      if (changedBytes) {
+        expect(result._tag).toBe("Failure")
+        if (result._tag !== "Failure") throw new Error("Changed bytes were accepted")
+        expect(result.failure.code).toBe("FIXED_RESOURCE_HASH_MISMATCH")
+        expect(f.objects.has(`objects/${hash("body")}`)).toBe(false)
+      } else {
+        expect(result).toMatchObject({
+          _tag: "Success",
+          success: [{ path, bytes: new TextEncoder().encode("body") }],
+        })
+        f.objects.clear()
+        const next = await f.run(Effect.flip(materializeSharedFixedAcquisition(f.snapshot, [path])))
+        expect(next.code).toBe("SOURCE_DISABLED")
+      }
+      expect(f.providerRequests).toEqual([f.url])
+      expect(f.calls.some((request) => request.includes(library.records.data_source_id))).toBe(
+        false,
+      )
+    })
 
   test("delayed local source acquisition keeps exact bytes and durable local restrictions", async () => {
     const f = sourceFixture()
@@ -625,6 +686,13 @@ describe("current acquisition contract", () => {
     f.main.properties.enabled.checkbox = false
     const error = await f.run(Effect.flip(materializeSharedFixedAcquisition(f.snapshot, [path])))
     expect(error.code).toBe("SKILL_DISABLED")
+    expect(error.details).toMatchObject({
+      phase: "fixed_acquisition",
+      snapshot_id: f.snapshot.snapshot_id,
+      scope: f.snapshot.scope,
+      target: f.snapshot.record.id,
+      paths: [path],
+    })
     expect(f.calls).toEqual([`v1/databases/${library.skills.database_id}`, `v1/pages/${skillPage}`])
   })
 

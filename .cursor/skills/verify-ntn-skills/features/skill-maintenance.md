@@ -65,6 +65,6 @@ trash 说成可自动恢复。
 
 独立候选包用实际 Node CLI 和同包 SDK；离开 checkout、无开发 override、空 Store。沿现有 package-smoke 的 current import 生命周期和 SDK 场景验证，实际执行了哪些结果就报告哪些。旧 controlled-authoring/Pi 配方不能沿固定历史 Broker/原 ACK 门禁宣布新包通过。
 
-实际 Notion 和 Pro Pi 共用 [current-convergence](current-convergence.md) 第六组与 AH-1063 旅程。源码测试、包安装、正文/投影、模型投递各自报告。旧 Git sibling/main-takeover HTTP tests 不再出现在本入口的执行清单。
+实际 Notion 和两机 Pi 沿 [current-convergence](current-convergence.md) 第六组与 AH-1197/AH-637/AH-1198。源码测试、包安装、正文/投影、模型投递各自报告。旧 Git sibling/main-takeover HTTP tests 不再出现在本入口的执行清单。
 
 只保留本次必要结果。未完成当前意图所需状态有界保留；其余自有临时物遵守 [系统 Trash 清理](../references/harness.md#cleanup)。不建设新维护验证平台。

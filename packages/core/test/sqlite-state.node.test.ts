@@ -311,24 +311,58 @@ test("a separate clearing process fences an observation still held by its origin
   const directory = await mkdtemp(join(tmpdir(), "ntn-sqlite-clear-"))
   const root = join(directory, "state")
   try {
-    const reserved = await child(root, "console.log(yield* state.reserve('scope','page'))")
-    expect(reserved.exit).toBe(0)
-    const generation = Number(reserved.stdout.trim())
-    expect(
-      (await child(root, "yield* state.retire(['cache/latest/scope/page/.fence'])")).exit,
-    ).toBe(0)
-    const late = await child(
-      root,
-      `yield* state.write('cache/latest/scope/page/late.json',{generation:${generation},validated_at:1})`,
-    )
-    expect(late.exit).not.toBe(0)
-    expect(late.stderr).toContain("retired before publication")
-    const observed = await child(
-      root,
-      "console.log(JSON.stringify(yield* state.list('cache/latest')))",
-    )
-    expect(observed.exit).toBe(0)
-    expect(JSON.parse(observed.stdout)).toEqual([])
+    for (const [identity, key, payload] of [
+      ["page", "cache/latest/scope/page/late.json", { validated_at: 1 }],
+      [
+        "shared_skill:library-current:current-skill",
+        `cache/current-native-bodies/${"a".repeat(64)}/latest.json`,
+        {
+          version: 1,
+          scope: "scope",
+          library_id: "library-current",
+          skill_id: "current-skill",
+          skill_page_id: "00000000-0000-4000-8000-000000000001",
+          files: [],
+        },
+      ],
+    ] as const) {
+      const reserved = await child(
+        root,
+        `console.log(yield* state.reserve('scope',${JSON.stringify(identity)}))`,
+      )
+      expect(reserved.exit).toBe(0)
+      const generation = Number(reserved.stdout.trim())
+      expect(
+        (
+          await child(
+            root,
+            `yield* state.retire([${JSON.stringify(`cache/latest/scope/${identity}/.fence`)}])`,
+          )
+        ).exit,
+      ).toBe(0)
+      const late = await child(
+        root,
+        `const error=yield* state.write(${JSON.stringify(key)},${JSON.stringify({ ...payload, generation })}).pipe(Effect.flip);console.log(JSON.stringify({code:error.code,details:error.details}))`,
+      )
+      expect(late.exit).toBe(0)
+      expect(JSON.parse(late.stdout)).toEqual({
+        code: "CACHE_INVALIDATED",
+        details: {
+          phase: "cache_publication",
+          cache_key: key,
+          scope: "scope",
+          record_identity: identity,
+          generation,
+          retired_through: generation,
+        },
+      })
+      const observed = await child(
+        root,
+        `console.log(JSON.stringify((yield* state.read(${JSON.stringify(key)}))??null))`,
+      )
+      expect(observed.exit).toBe(0)
+      expect(JSON.parse(observed.stdout)).toBeNull()
+    }
   } finally {
     if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
   }

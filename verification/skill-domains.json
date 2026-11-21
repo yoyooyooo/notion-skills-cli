@@ -1,5 +1,6 @@
 {
-  "version": 1,
+  "version": 2,
+  "main_issue": "AH-1188",
   "domains": [
     {
       "id": "verify-ntn-skills",
@@ -50,7 +51,7 @@
         "packages/core/test/shared-read-coalescing.test.ts"
       ],
       "installed_recipe": ".cursor/skills/verify-ntn-skills/features/portable-export-package-consumption.md",
-      "excludes": ["原作者写入权限", "实际Pi/自然模型通过"]
+      "excludes": ["原作者写入权限", "实际 Pi/自然模型通过"]
     },
     {
       "id": "verify-notion-source-onboarding",
@@ -63,6 +64,1135 @@
       ],
       "installed_recipe": ".cursor/skills/verify-ntn-skills/features/resource-sources.md",
       "excludes": ["已绑定正文自动更新", "部分报告替代全库分母"]
+    },
+    {
+      "id": "verify-notion-operation-recovery",
+      "skill": ".cursor/skills/verify-notion-operation-recovery/SKILL.md",
+      "features": [],
+      "regressions": [
+        "packages/core/test/shared-current-operation.test.ts",
+        "packages/core/test/shared-current-projection-write.test.ts",
+        "packages/core/test/shared-current-operation.node.test.ts"
+      ],
+      "installed_recipe": ".cursor/skills/verify-ntn-skills/features/current-convergence.md",
+      "excludes": ["请求层模型", "真实宿主投递"]
+    },
+    {
+      "id": "verify-notion-resource-lifecycle",
+      "skill": ".cursor/skills/verify-notion-resource-lifecycle/SKILL.md",
+      "features": [],
+      "regressions": [
+        "packages/core/test/shared-current-index.test.ts",
+        "packages/core/test/shared-current-snapshot.test.ts",
+        "packages/core/test/shared-current-resource.test.ts"
+      ],
+      "installed_recipe": ".cursor/skills/verify-ntn-skills/features/current-convergence.md",
+      "excludes": ["真实字节和完整分页", "真实 Pi 与自然模型"]
+    }
+  ],
+  "external_domains": [
+    {
+      "id": "verify-notion-consumer-state",
+      "repository": "broker",
+      "skill": ".agents/skills/verify-notion-consumer-state/SKILL.md"
+    },
+    {
+      "id": "verify-notion-skills-integration",
+      "repository": "broker",
+      "skill": ".agents/skills/verify-notion-skills-integration/SKILL.md"
+    },
+    {
+      "id": "verify-context-broker",
+      "repository": "broker",
+      "skill": ".agents/skills/verify-context-broker/SKILL.md"
+    }
+  ],
+  "contracts": [
+    {
+      "id": "C01",
+      "title": "任务版本稳定",
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1191",
+      "state_owners": ["session bindings", "selected graph"],
+      "events": ["remote edit", "TTL", "metadata refresh", "continue"],
+      "observation": "当前观察与任务固定选择分开",
+      "ordinary": "继续原主文与原 Requires",
+      "explicit": "采用最新才提交新选择",
+      "failure": "旧原件缺失不拿新 bytes 冒充",
+      "recovery": "按原 pin 精确恢复；不能恢复则降级能力",
+      "linearization": "固定图提交及每轮投递边界",
+      "not_proven": ["不是跨 owner 的 Notion 事务快照", "不承诺永久历史恢复"],
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/graph-prepare.test.ts --timeout 60000",
+          "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/native-read-session.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "C02",
+      "title": "显式最新和只读查看",
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1192",
+      "state_owners": ["current preparation", "selected/pending/active"],
+      "events": ["inspect latest", "adopt latest", "prepare failure", "provider failure"],
+      "observation": "准备、选择、发送、接受分阶段",
+      "ordinary": "普通 use/read 沿原绑定",
+      "explicit": "查看最新不激活；采用最新保持不受影响 roots 与共享依赖一致",
+      "failure": "准备失败保留旧可用选择；provider 失败不伪称已激活",
+      "recovery": "旧 fixed ref 经公开身份解析定位 current，不猜 opaque 字符串",
+      "linearization": "新图 commit；provider 接受分别确认",
+      "not_proven": ["成功工具返回不等于模型采用", "目录刷新不等于正文升级"],
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/notion-consumption-tools.test.ts packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/host-prepare.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "C03",
+      "title": "能力故障后仍可继续聊天",
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1191",
+      "state_owners": ["restoration", "degraded capabilities", "turn admission"],
+      "events": ["missing object", "missing manifest", "Store failure", "next user turn"],
+      "observation": "输入接受、provider 发送、响应各自记录",
+      "ordinary": "独立能力和普通对话继续",
+      "explicit": "刷新或 release 意图可进入模型",
+      "failure": "受影响技能闭包明确不可用，不反复中止整个聊天",
+      "recovery": "有界恢复；同一故障去重；第二、第三轮仍可回答",
+      "linearization": "每轮有效 context 到最终 provider 检查",
+      "not_proven": ["受控 host 通过不证明真实 TUI", "不保证外部 provider 永远响应"],
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/skill-context-session.test.ts packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/resource-read-host.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "C04",
+      "title": "本轮 mandatory closure 完整",
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1191",
+      "state_owners": ["effective context", "mandatory closure", "active history"],
+      "events": ["compact", "resume", "dependency loss", "delivery"],
+      "observation": "检查实际有效正文，不能只看 active 历史",
+      "ordinary": "原完整图继续",
+      "explicit": "显式换版后交付新完整图",
+      "failure": "Required 缺失不静默只交付 root",
+      "recovery": "按闭包降级该能力，其他任务可继续",
+      "linearization": "实际 provider 序列化之前",
+      "not_proven": ["active marker 不证明正文存在", "supporting 文件不是一律 mandatory"],
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/skill-context-session.test.ts packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/native-read-session.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "C05",
+      "title": "Default Context 与 Enabled 的观察边界",
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1193",
+      "state_owners": ["selected View membership", "precise qualification"],
+      "events": ["checkbox toggle", "metadata TTL", "fresh use", "compact"],
+      "observation": "Default Context 随实际 View 筛选；缺行不推导 KnownDisabled",
+      "ordinary": "DC 关闭不 release；已完整固定任务与新 current 区分",
+      "explicit": "新 current 服从新资格；可信 fresh use 或 metadata 可恢复 re-enabled",
+      "failure": "授权拒绝与业务 Disabled 分开；旧完整闭包不可被业务开关静默拆开",
+      "recovery": "受限恢复遵守 fixed acquisition；不能恢复则执行 C03/C04",
+      "linearization": "目录发布与精确观察各自线性化",
+      "not_proven": ["不承诺远端开关即时抹除已发送内容", "DC 不自动注入全文或授予权限"],
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/catalog.test.ts packages/core/test/views.test.ts packages/core/test/shared-acquisition-contract.test.ts --timeout 60000",
+          "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/notion-source-sdk.test.ts packages/context-broker/scripts/skill-context-session.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "C06",
+      "title": "当前权威与完整树",
+      "owner": "verify-notion-management",
+      "issue": "AH-1194",
+      "state_owners": ["Content authority", "owner readiness", "manifest", "projection intent"],
+      "events": ["writer", "Source update", "native takeover", "projection rebuild"],
+      "observation": "完整树及字节权威独立于人类阅读投影",
+      "ordinary": "普通消费零远端语义写",
+      "explicit": "显式管理命令才改变 authority/Source revision",
+      "failure": "非 ready 或前后 owner/descriptor 变化不得发布 current",
+      "recovery": "同一当前 writer 和有限意图恢复；不从投影反推权威",
+      "linearization": "current snapshot 最后身份/readiness fence",
+      "not_proven": ["不提供跨机 CAS", "阅读排除不等于 Contributions.exclude"],
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-consumption.test.ts packages/core/test/shared-current-projection-write.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "C07",
+      "title": "并发与恢复总合同",
+      "owner": "verify-notion-consumption",
+      "issue": "AH-1190",
+      "state_owners": ["C07a SDK", "C07b management", "C07c host"],
+      "events": ["clear", "cancel", "unknown mutation", "scope/fork"],
+      "observation": "各状态子合同保留独立 owner",
+      "ordinary": "不污染新状态或伪造 current",
+      "explicit": "明确恢复后按实际阶段推进",
+      "failure": "原错误 code/cause/phase 保留",
+      "recovery": "由 C07a/C07b/C07c 的既有入口执行",
+      "linearization": "按子合同的实际边界",
+      "not_proven": ["formal 不成为第二产品状态 owner"],
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/cache.test.ts packages/core/test/shared-current-operation.test.ts --timeout 60000",
+          "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/skill-context-session.test.ts packages/context-broker/scripts/session-active.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "C07a",
+      "title": "SDK generation 与迟到发布",
+      "owner": "verify-notion-consumption",
+      "issue": "AH-1190",
+      "state_owners": ["Store generation", "qualification cache"],
+      "events": ["reserve", "clear", "publish", "deny"],
+      "observation": "保留原验证时间；clear 退役 generation",
+      "ordinary": "已有精确固定 bytes 不等于 current grant",
+      "explicit": "新 current 重新验证",
+      "failure": "迟到结果不复活 retired generation，不冲掉较新 deny",
+      "recovery": "精确 current 合法时补 Source/resource 原 bytes",
+      "linearization": "Store 原子 generation/deny publication",
+      "not_proven": ["清 observations 不等于空 Store"],
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sqlite-state.node.test.ts",
+          "required_inputs": []
+        },
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/cache.test.ts packages/core/test/shared-acquisition-contract.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "C07b",
+      "title": "未知写与有限恢复",
+      "owner": "verify-notion-operation-recovery",
+      "issue": "AH-1194",
+      "state_owners": ["owner Operation", "independent projection intent", "pending"],
+      "events": ["accepted response lost", "resume", "cancel", "supersede", "upgrade"],
+      "observation": "原请求结果、当前观察与剩余动作分开",
+      "ordinary": "当前读取不触发 repair",
+      "explicit": "正式恢复命令核原意图，未知非幂等请求不盲重放",
+      "failure": "不靠清 pending 或写 ready 掩盖未知",
+      "recovery": "有限对账可停在带下一步的 attention；退出旧状态后单轨升级",
+      "linearization": "意图与物理 owner 校验；完成核对后 retire",
+      "not_proven": ["当前相等不证明原网络 ACK", "projection intent 不等于 owner Operation"],
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-projection-write.test.ts packages/core/test/shared-current-source-write.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "C07c",
+      "title": "host 代次与迟到交付",
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1191",
+      "state_owners": ["epoch", "scope", "fixed ref", "selected/pending/active"],
+      "events": ["fork", "rewind", "cancel", "scope switch", "late response"],
+      "observation": "每个异步结果核当前 owner/epoch/scope",
+      "ordinary": "原引用不能被重解释成新 scope",
+      "explicit": "新选择明确提交",
+      "failure": "旧请求不能在新会话发布或交付",
+      "recovery": "保留准确失败与当前可运行状态",
+      "linearization": "host commit 及最终 provider fence",
+      "not_proven": ["Store fencing 不证明 host 投递 fencing"],
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/host-prepare.test.ts packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/skill-context-session.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "C08",
+      "title": "自然任务工具选择",
+      "owner": "verify-context-broker",
+      "issue": "AH-1196",
+      "state_owners": ["task intent", "local/remote origin", "catalog guidance"],
+      "events": ["explicit local", "remote task", "natural refresh", "failure"],
+      "observation": "最终任务、实际正文、工具必要性分别判断",
+      "ordinary": "本地充分且远端可见时不必要 notion_use 为零",
+      "explicit": "确需另一远端能力时允许正确使用",
+      "failure": "失败调用也计入必要性；不能编造加载成功",
+      "recovery": "自然语言即可请求刷新或释放，不预给模型答案",
+      "linearization": "每次真实模型 tool trace 与最终 payload",
+      "not_proven": ["@local 不全局禁止远端工具", "一次样本不证明所有模型"],
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "pi -ns",
+          "required_inputs": [
+            "当前物理机器实际日用安装与 source/provider 配置；新进程、自有任务及已授权模型。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/completion.test.ts packages/context-broker/scripts/notion-consumption-tools.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "C09",
+      "title": "成本、共享与等待有界",
+      "owner": "verify-notion-consumption",
+      "issue": "AH-503",
+      "state_owners": ["invocation budget", "producer/waiters", "request admission"],
+      "events": ["cold/warm", "429", "partial page", "cancel"],
+      "observation": "真实尝试、已知 bytes、外部等待分开",
+      "ordinary": "目录零无关正文；同资格输入比较成本",
+      "explicit": "resume 是新 invocation，仍需原 unknown 对账",
+      "failure": "预算耗尽不另开无限额度或截断假成功",
+      "recovery": "有界降级，后续会话可继续",
+      "linearization": "admission/cancel 与同 invocation 的额度",
+      "not_proven": ["未知 HTTP/wire bytes 不填零", "NoDeadlock 不保证最终完成"],
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts packages/core/test/shared-read-coalescing.test.ts packages/core/test/shared-current-invocation.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "title": "双机实际运行当前 next",
+      "owner": "verify-notion-skills-integration",
+      "issue": "AH-1197",
+      "state_owners": ["worktree", "build/package", "loaded SDK/Broker", "physical machine"],
+      "events": ["next update", "install", "new Pi process", "machine offline"],
+      "observation": "每机核源码到实际加载 bytes；独立包与 worktree 日用分开",
+      "ordinary": "新进程使用当前已配对实现",
+      "explicit": "每次交付按影响面同步与实测",
+      "failure": "机器未同步必须阻塞双机完成",
+      "recovery": "修唯一正式入口；旧进程不假称热更新",
+      "linearization": "新 Pi 进程实际 loaded 路径/bytes 回执",
+      "not_proven": [
+        "分支名、symlink 和版本字符串不证明 bytes",
+        "Pro 不能替代 Mini",
+        "命令模板、plan/help 或项目级 candidate 不证明普通日用入口已执行",
+        "verify-pi-daily-candidate.mjs 是内部 import 模块，不是 CLI"
+      ],
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-next-worktrees.mjs --config /absolute/owned/current-pair.json",
+          "required_inputs": [
+            "本轮自有绝对 config 路径；worktrees.cli/broker 含实际 next worktree root 与精确 commit，cliRoot/brokerRoot 为对应 packages 路径；两仓 build 已完成。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs plan --config /absolute/owned/current-daily.json",
+          "required_inputs": [
+            "本轮自有 config.version:1；实际日用 Pi package/source 配置、当前配对 CLI/Broker roots、archive paths/hashes、embedded CLI/SDK hashes、CLI entry hash 与自有 evidenceRoot。",
+            "run 另需实际正常 PATH/包注册、expectedFindRecord 与适用的 namespace review；保留两机分别取得的实际加载回执。",
+            "plan 只生成准备信息，不执行日用验证。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs run --config /absolute/owned/current-daily.json",
+          "required_inputs": [
+            "本轮自有 config.version:1；实际日用 Pi package/source 配置、当前配对 CLI/Broker roots、archive paths/hashes、embedded CLI/SDK hashes、CLI entry hash 与自有 evidenceRoot。",
+            "run 另需实际正常 PATH/包注册、expectedFindRecord 与适用的 namespace review；保留两机分别取得的实际加载回执。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/current-candidate.json",
+          "required_inputs": [
+            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
+            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/current-candidate.json --live",
+          "required_inputs": [
+            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
+            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
+            "candidate-run 另需当前包/archive/SDK/entry hashes、oldBrokerRoot、localSkill path/name/hash、ownershipReceipt、artifactReceipt、自有 evidenceRoot、sourceId/database 及已授权凭据环境。",
+            "现有候选实现要求 model:magpie/group/flash、thinkingLevel:high；其项目级运行不能代替每机普通日用入口。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "title": "合同、运行与证据闭合",
+      "owner": "verify-ntn-skills",
+      "issue": "AH-1189",
+      "state_owners": ["verification routing", "run receipt", "evidence layer"],
+      "events": ["contract change", "candidate change", "run", "retest"],
+      "observation": "合同→场景→命令→候选/加载→原件 hash",
+      "ordinary": "已有独立模块复用同一结果，不重复计数",
+      "explicit": "候选变化后重跑受影响层",
+      "failure": "failed/blocked/not_run 不可聚合为通过",
+      "recovery": "保留首次失败与复验关系；旧 Done 只按准确范围引用",
+      "linearization": "实际执行与原始结果固定后评估",
+      "not_proven": ["fingerprint 不等于 refinement", "模型/fixture 不代真实 Notion/Pi/provider"],
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/cli/test/verification-skill-map.test.ts",
+          "required_inputs": []
+        },
+        {
+          "repository": "cli",
+          "command": "node --test verification/run-receipt.test.mjs",
+          "required_inputs": []
+        }
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "T01",
+      "title": "目录与current TTL边界遇到正文或元数据编辑",
+      "contracts": ["C01", "C02", "C05"],
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1191",
+      "precondition": "选A并记录catalog/eligibility/body三个观察时间。",
+      "events": [
+        "Notion改正文、名称或Requires；分别停在catalog TTL前后与read eligibility前后。",
+        "新会话普通选择、原会话重复use、显式refresh并行读取。"
+      ],
+      "oracle": [
+        "TTL内可复用A但必须准确标freshness；新会话不自动等于冷读。",
+        "eligibility到期若返回last_edited_time变更即拉该body，否则按独立body规则。",
+        "固定session pin仍A；不能一部分上下文A、一部分未声明地换B。"
+      ],
+      "minimum_layer": "sdk",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/graph-prepare.test.ts --timeout 60000",
+          "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/native-read-session.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T02",
+      "title": "正文实际变化但metadata键不变",
+      "contracts": ["C01", "C02"],
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1191",
+      "precondition": "缓存native A，保留其body_verified_at。",
+      "events": [
+        "fixture改变正文但保持owner/page/path/descriptor/last_edited_time完全相同。",
+        "多次跨eligibility metadata续期，在24h-1ms、24h、refresh与object missing分支读取。"
+      ],
+      "oracle": [
+        "metadata续期不得延后24h deadline。",
+        "deadline前允许旧A；到期或forceFull读取B；missing object的current读恢复当前B。",
+        "fixed旧native A丢失不以B冒充。"
+      ],
+      "minimum_layer": "sdk",
+      "live_required": false,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/graph-prepare.test.ts --timeout 60000",
+          "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/native-read-session.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T03",
+      "title": "长任务pin与Requires图变化",
+      "contracts": ["C01", "C02", "C04"],
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1191",
+      "precondition": "use root R得到R1+D1，并保留全部sessionBindings。",
+      "events": [
+        "管理端把Requires D换E、引入循环或禁用D；同时正文R变R2。",
+        "原会话再use R与refresh、恢复会话；另一个明确新selection按current读取。"
+      ],
+      "oracle": [
+        "原binding沿snapshot.required继续旧图，不重读新Requires；refresh不能暗换旧pin。",
+        "明确新selection在TTL/refresh合同下看到新图；cycle/disabled/missing required不能ready。",
+        "Members不得变必选；新图不可混入两个版本同identity。"
+      ],
+      "minimum_layer": "host",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/graph-prepare.test.ts --timeout 60000",
+          "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/native-read-session.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T04",
+      "title": "禁用、归档、删除遇到已选与未选",
+      "contracts": ["C05", "C06", "C07a"],
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1193",
+      "precondition": "同一Skill准备完整pin与仅main已物化的pin。",
+      "events": [
+        "管理端禁用Skill/Source或归档owner；缓存eligibility尚新和已过期各一组。",
+        "原pin读取已有文件、缺字节支持文件；新的current选择；显式offline再读。"
+      ],
+      "oracle": [
+        "current一旦观察到禁用/nonready/缺owner即拒绝，不能fallback偷偷继续current。",
+        "complete fixed pin可保留旧内容；缺字节要求current eligibility，不能拿已删除权威补历史。",
+        "区分内容禁用与权限deny，不能承诺远端编辑瞬间撤回已经交付内容。"
+      ],
+      "minimum_layer": "sdk",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/catalog.test.ts packages/core/test/views.test.ts packages/core/test/shared-acquisition-contract.test.ts --timeout 60000",
+          "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/notion-source-sdk.test.ts packages/context-broker/scripts/skill-context-session.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T05",
+      "title": "撤权、换凭证、换库与缓存清理",
+      "contracts": ["C07a", "C07c"],
+      "owner": "verify-notion-consumption",
+      "issue": "AH-1190",
+      "precondition": "scope A建立catalog、current、pin和缺字节路由。",
+      "events": [
+        "模拟401/403或换token B/library B；在A请求仍在途时切换。",
+        "clear cache后online读旧pin、offline读旧pin、B新选择。"
+      ],
+      "oracle": [
+        "已知deny不能被clear或迟到grant洗掉；B不能借A目录、对象权限观测或sessionBinding。",
+        "offline 不远端补取；已有字节仍服从已知授权否认与 exact scope，不能将离线当作绕过权限。",
+        "scope冲突必须结构化失败，不能让旧response进入新selection。"
+      ],
+      "minimum_layer": "sdk",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sqlite-state.node.test.ts",
+          "required_inputs": []
+        },
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/cache.test.ts packages/core/test/shared-acquisition-contract.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T06",
+      "title": "改名、改path、移动与物理重建",
+      "contracts": ["C06", "C07a"],
+      "owner": "verify-notion-management",
+      "issue": "AH-1194",
+      "precondition": "固定native/resource/Source混合Skill并保留子文件ref。",
+      "events": [
+        "分别仅改display name、改File path、删除重建support page、重建owner、只重建Source阅读投影。",
+        "比较旧ref/current新ref、pin/hash与missing-byte补取。"
+      ],
+      "oracle": [
+        "display metadata可更新而内容identity不变。",
+        "native/resource物理授权绑定重建产生新selection；旧缺字节路由不能借新page恢复。",
+        "Source阅读projection删改重建不改变完整Source tree identity；sameowner native Notion链接按current File绑定解释。"
+      ],
+      "minimum_layer": "sdk",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-consumption.test.ts packages/core/test/shared-current-projection-write.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T07",
+      "title": "Source refresh与稀疏阅读投影交错",
+      "contracts": ["C01", "C06"],
+      "owner": "verify-notion-management",
+      "issue": "AH-1194",
+      "precondition": "V1包含SKILL.md、scripts、tests、binary；Notion只投影Markdown且排除tests。",
+      "events": [
+        "V1长任务进行时管理refresh/apply V2，增加/删除/映射成员或修改mount/exclude。",
+        "旧完整pin、旧缺字节pin、新current、export同时读取；再改变阅读include/exclude。"
+      ],
+      "oracle": [
+        "阅读filter不裁剪消费tree；scripts/tests/binary精确可取。",
+        "完整V1保持V1；缺V1不能在V2当前声明下借同字节不同revision路由；新current获取完整V2。",
+        "native/resource override与明确exclusion保留，路径碰撞不得沉默覆盖。"
+      ],
+      "minimum_layer": "sdk",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-consumption.test.ts packages/core/test/shared-current-projection-write.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T08",
+      "title": "生成阅读正文编辑与native adoption竞争",
+      "contracts": ["C06", "C07b"],
+      "owner": "verify-notion-management",
+      "issue": "AH-1194",
+      "precondition": "准备Source projection plan但暂停提交。",
+      "events": [
+        "用户只改生成正文；对照组执行明确native takeover/adoption与Source exclude更新。",
+        "释放旧projection，并同时消费old/new selection。"
+      ],
+      "oracle": [
+        "仅改Source生成正文不改变消费bytes。",
+        "明确native takeover才切换authority；旧projection不能覆盖native或归档已转native页。",
+        "新树权威不允许同path双来源，旧pin保持原声明。"
+      ],
+      "minimum_layer": "sdk",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-consumption.test.ts packages/core/test/shared-current-projection-write.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T09",
+      "title": "权威内容writer中断与恢复",
+      "contracts": ["C06", "C07b", "C09"],
+      "owner": "verify-notion-operation-recovery",
+      "issue": "AH-1194",
+      "precondition": "先有完整A，然后管理writer设applying并只写部分B。",
+      "events": [
+        "让请求unknown accepted或失败attention，进程重启。",
+        "current读取、旧fixed已缓存读取、旧fixed缺字节读取同时进行；exact resume后ready。"
+      ],
+      "oracle": [
+        "current或需要current补取的路径不能把partial B宣布完整。",
+        "旧完整A的继续使用按pin合同，不视为partial泄漏。",
+        "resume绑定同intent，最终整树verify后才ready；Source parent pending也挡子节点acquisition。"
+      ],
+      "minimum_layer": "sdk",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-projection-write.test.ts packages/core/test/shared-current-source-write.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T10",
+      "title": "在途current读取与完成后又ready",
+      "contracts": ["C06", "C07a"],
+      "owner": "verify-notion-management",
+      "issue": "AH-1194",
+      "precondition": "current读开始取得owner/index A，暂停body/provider response。",
+      "events": [
+        "管理writer完整B并回ready，或直接改变file/Source descriptor。",
+        "释放A response；另一分支固定pin缺字节下载期间改变owner。"
+      ],
+      "oracle": [
+        "current读必须final consumption fence报CURRENT_TREE_CHANGED，不能因final ready而过关。",
+        "固定字节必须仍通过exact hash/bytes/mode；但下载后是否再次要求current ready尚未约定。",
+        "无论分支不执行管理repair。"
+      ],
+      "minimum_layer": "sdk",
+      "live_required": false,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-consumption.test.ts packages/core/test/shared-current-projection-write.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T11",
+      "title": "clear cache与迟到发布/迟到交付",
+      "contracts": ["C07a", "C07c"],
+      "owner": "verify-notion-consumption",
+      "issue": "AH-1190",
+      "precondition": "请求已reserve generation但未首次publish，暂停。",
+      "events": [
+        "另一进程clear target/all；对照组只发布更新generation、不clear。",
+        "释放旧response；另组让SDK已返回但Broker尚未交付时refresh/clear。"
+      ],
+      "oracle": [
+        "actual SQLite clear后的被退役generation写入必须CACHE_INVALIDATED且latest不回生。",
+        "仅新观测赢旧观测时旧caller可能返回自身结果，但不可回退shared cache；不能将此与clear等同。",
+        "Broker已失效epoch不能将排队旧结果注入新turn。"
+      ],
+      "minimum_layer": "store",
+      "live_required": false,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sqlite-state.node.test.ts",
+          "required_inputs": []
+        },
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/cache.test.ts packages/core/test/shared-acquisition-contract.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T12",
+      "title": "分层缓存丢失、完整冷启动和session继续",
+      "contracts": ["C01", "C03", "C10"],
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1191",
+      "precondition": "分别只退役observations、删单个native object、删Source/resource object、丢snapshot manifest、建立全新隔离config/state/cache根。",
+      "events": [
+        "保留旧Pi session并续聊；对照新pi -ns与普通pi local-only。",
+        "远端内容保持A和改B各执行一次。"
+      ],
+      "oracle": [
+        "cache clear不等于删objects/snapshots；仅删cacheRoot不等于cold Store。",
+        "current missing native取当前，fixed missing native/manifest要求reselect；Source/resource仅exact current路由补bytes。",
+        "@local只锁定所指skill的来源。负例明确任务仅需本地能力、无额外远程需求，断言该场景中不必要的notion_use调用为0；不能把所有@local任务中的notion_use判成非法。",
+        "另设正例：任务确需其他远程skill辅助，且相应能力可用并满足启用与授权条件，允许必要的notion_use；仍不得把@local所指skill替换为Notion同名来源。",
+        "new cold -ns必须端到端有scope/catalog/selection/delivery证据。"
+      ],
+      "minimum_layer": "host",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/skill-context-session.test.ts packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/resource-read-host.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T13",
+      "title": "会话恢复/分支/切scope时在途响应",
+      "contracts": ["C01", "C03", "C07c"],
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1191",
+      "precondition": "session S use旧graph并发取supporting资源。",
+      "events": [
+        "在response暂停时resume/fork/new session或更换选中library/scope，保留旧sr作为对照。",
+        "晚回包，重复use和read旧ref；加载cache缺失的恢复分支。"
+      ],
+      "oracle": [
+        "旧binding身份/scope必须验证，不能重新解释旧ref为新scope的current。",
+        "续会话恢复旧graph仅以旧binding为roots，不偷偷增新Requires；缺manifest给明确reselection。",
+        "旧任务晚回包不能污染新turn/payload。"
+      ],
+      "minimum_layer": "host",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/host-prepare.test.ts packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/skill-context-session.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T14",
+      "title": "多消费者、取消、限流与管理变更",
+      "contracts": ["C07a", "C09"],
+      "owner": "verify-notion-consumption",
+      "issue": "AH-503",
+      "precondition": "两个caller共享同source/request producer，暂停响应。",
+      "events": [
+        "取消一个或全部waiter；注入429、预算耗尽、分页中断、bytes缺损。",
+        "与此同时管理Source进入applying或refresh新revision，之后重试/新selection。"
+      ],
+      "oracle": [
+        "单caller取消不害存活caller；全取消不应晚发ready。",
+        "每次logical invocation预算涵盖reads/retries；partial provider结果不能当完整树。",
+        "request模型保证局部资源规则，不自动保证管理变化后graph/payload仍可交付。"
+      ],
+      "minimum_layer": "sdk",
+      "live_required": false,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts packages/core/test/shared-read-coalescing.test.ts packages/core/test/shared-current-invocation.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T15",
+      "title": "projection自动续跑、policy变化与跨版本pending",
+      "contracts": ["C06", "C07b"],
+      "owner": "verify-notion-operation-recovery",
+      "issue": "AH-1194",
+      "precondition": "daily projection第一个Skill unknown accepted，第二个未做；同命令重跑。",
+      "events": [
+        "分别改policy、当前authority/input、或产生unfinished content writer，再auto/resume/cancel。",
+        "升级前盘点真实 pending；用正式路径收敛或明确拒绝不支持的旧 shape，再升级当前格式。"
+      ],
+      "oracle": [
+        "同target/policy/fingerprint可续原intent并继续剩余Skill；accepted append不得重复。",
+        "unknown absent不重放；冲突保留旧intent；projection不改变owner ready+empty Operation，不接管content writer。",
+        "旧 intent 不得被新 shape 静默接管。已公开 cancel 的两个旧 pending 只按对应证据复用，不继续报为当前未解现场阻塞；不保留通用兼容 decoder。"
+      ],
+      "minimum_layer": "sdk",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-projection-write.test.ts packages/core/test/shared-current-source-write.test.ts --timeout 60000",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T16",
+      "title": "原会话主动采用最新",
+      "contracts": ["C01", "C02"],
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1192",
+      "precondition": "原会话完整采用 A；远端已修改为 B；当前 candidate-run 没有轮间暂停并等待远端编辑的编排，不能独立证明先采用 A、远端改 B、再续聊；完整时序仍需公开 Pi 人工驱动及原件，未做为 not_run",
+      "events": ["TTL 未到与到期分别说自然语言请求重新获取最新并继续"],
+      "oracle": ["无需 reload；采用完整 B，普通对话仍保 A，保留不受影响 roots"],
+      "minimum_layer": "natural",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/notion-consumption-tools.test.ts packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/host-prepare.test.ts",
+          "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/current-candidate.json",
+          "required_inputs": [
+            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
+            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
+            "冻结 turns[].prompt/bodies/proofs/requireUse 和对应 expectedBodies、localSkill、ownershipReceipt、artifactReceipt；提示不得预塞工具名、flag 或 opaque ref。",
+            "该入口只提供现有候选模型/正文观测。完整 T16/T17 必须另保留同会话远端编辑前后证据；没有轮间编排时不把候选结果当整个时间线通过。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/current-candidate.json --live",
+          "required_inputs": [
+            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
+            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
+            "candidate-run 另需当前包/archive/SDK/entry hashes、oldBrokerRoot、localSkill path/name/hash、ownershipReceipt、artifactReceipt、自有 evidenceRoot、sourceId/database 及已授权凭据环境。",
+            "现有候选实现要求 model:magpie/group/flash、thinkingLevel:high；其项目级运行不能代替每机普通日用入口。",
+            "冻结 turns[].prompt/bodies/proofs/requireUse 和对应 expectedBodies、localSkill、ownershipReceipt、artifactReceipt；提示不得预塞工具名、flag 或 opaque ref。",
+            "该入口只提供现有候选模型/正文观测。完整 T16/T17 必须另保留同会话远端编辑前后证据；没有轮间编排时不把候选结果当整个时间线通过。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T17",
+      "title": "只查看或比较最新",
+      "contracts": ["C02"],
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1192",
+      "precondition": "任务固定 A；current 为 B；当前 candidate-run 没有轮间暂停并等待远端编辑的编排，不能独立证明先采用 A、远端改 B、再续聊；完整时序仍需公开 Pi 人工驱动及原件，未做为 not_run",
+      "events": ["查看/比较 B，然后普通续聊，再明确采用 B"],
+      "oracle": ["inspect 不激活；采用后才切换完整图；阶段失败准确"],
+      "minimum_layer": "natural",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/notion-consumption-tools.test.ts packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/host-prepare.test.ts",
+          "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/current-candidate.json",
+          "required_inputs": [
+            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
+            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
+            "冻结 turns[].prompt/bodies/proofs/requireUse 和对应 expectedBodies、localSkill、ownershipReceipt、artifactReceipt；提示不得预塞工具名、flag 或 opaque ref。",
+            "该入口只提供现有候选模型/正文观测。完整 T16/T17 必须另保留同会话远端编辑前后证据；没有轮间编排时不把候选结果当整个时间线通过。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/current-candidate.json --live",
+          "required_inputs": [
+            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
+            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
+            "candidate-run 另需当前包/archive/SDK/entry hashes、oldBrokerRoot、localSkill path/name/hash、ownershipReceipt、artifactReceipt、自有 evidenceRoot、sourceId/database 及已授权凭据环境。",
+            "现有候选实现要求 model:magpie/group/flash、thinkingLevel:high；其项目级运行不能代替每机普通日用入口。",
+            "冻结 turns[].prompt/bodies/proofs/requireUse 和对应 expectedBodies、localSkill、ownershipReceipt、artifactReceipt；提示不得预塞工具名、flag 或 opaque ref。",
+            "该入口只提供现有候选模型/正文观测。完整 T16/T17 必须另保留同会话远端编辑前后证据；没有轮间编排时不把候选结果当整个时间线通过。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T18",
+      "title": "恢复失败后连续三轮",
+      "contracts": ["C03", "C04"],
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1191",
+      "precondition": "有效正文已离开 context，原 manifest/bytes 不能恢复",
+      "events": ["继续原任务、请求刷新、普通问题依次三轮；每轮结束后再发下一轮"],
+      "oracle": ["受影响闭包降级；输入/provider/响应分别成立，恢复意图不被旧失败挡在模型外"],
+      "minimum_layer": "host",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/skill-context-session.test.ts packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/resource-read-host.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T19",
+      "title": "管理开关四组合及 re-enable",
+      "contracts": ["C05"],
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1193",
+      "precondition": "记录两机实际 View/filter；准备 root 与 Required 的四组合",
+      "events": ["同会话开关变化；精确 Disabled 后重新启用；fresh use 与下一次可信 TTL 分开"],
+      "oracle": [
+        "DC 关不 release；目录缺行不猜 deny；新 current 按资格；旧完整固定闭包不拆；re-enable 两通路可用"
+      ],
+      "minimum_layer": "host",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/core/test/catalog.test.ts packages/core/test/views.test.ts packages/core/test/shared-acquisition-contract.test.ts --timeout 60000",
+          "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/notion-source-sdk.test.ts packages/context-broker/scripts/skill-context-session.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T20",
+      "title": "多 root 共享 Requires 的部分更新",
+      "contracts": ["C02", "C04"],
+      "owner": "verify-notion-consumer-state",
+      "issue": "AH-1192",
+      "precondition": "A、C 共享 B，selected/pending/active 已有明确阶段",
+      "events": ["仅更新 A；A 内容未变/变更与共享 B 冲突分别执行"],
+      "oracle": [
+        "更新范围不随内容偶然变化；不静默丢 C、不混同 identity 两版；provider 失败不伪造 active"
+      ],
+      "minimum_layer": "host",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/notion-consumption-tools.test.ts packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/host-prepare.test.ts",
+          "required_inputs": []
+        }
+      ]
+    },
+    {
+      "id": "T21",
+      "title": "两机 next 持续同步",
+      "contracts": ["C10", "C11"],
+      "owner": "verify-notion-skills-integration",
+      "issue": "AH-1197",
+      "precondition": "分别采 Pro/Mini 源码、包、SDK、loaded paths/bytes 和 runtime；先补齐 entrypoints.required_inputs，/absolute/owned 路径都是待替换占位，未执行保持 not_run",
+      "events": ["独立空状态安装；新 pi -ns；下一次提交/产物更新；一机暂时落后"],
+      "oracle": ["独立包和 worktree 日用分别有证据；两机目标一致；落后不能 passed"],
+      "minimum_layer": "installed",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-next-worktrees.mjs --config /absolute/owned/current-pair.json",
+          "required_inputs": [
+            "本轮自有绝对 config 路径；worktrees.cli/broker 含实际 next worktree root 与精确 commit，cliRoot/brokerRoot 为对应 packages 路径；两仓 build 已完成。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs plan --config /absolute/owned/current-daily.json",
+          "required_inputs": [
+            "本轮自有 config.version:1；实际日用 Pi package/source 配置、当前配对 CLI/Broker roots、archive paths/hashes、embedded CLI/SDK hashes、CLI entry hash 与自有 evidenceRoot。",
+            "run 另需实际正常 PATH/包注册、expectedFindRecord 与适用的 namespace review；保留两机分别取得的实际加载回执。",
+            "plan 只生成准备信息，不执行日用验证。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs run --config /absolute/owned/current-daily.json",
+          "required_inputs": [
+            "本轮自有 config.version:1；实际日用 Pi package/source 配置、当前配对 CLI/Broker roots、archive paths/hashes、embedded CLI/SDK hashes、CLI entry hash 与自有 evidenceRoot。",
+            "run 另需实际正常 PATH/包注册、expectedFindRecord 与适用的 namespace review；保留两机分别取得的实际加载回执。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/current-candidate.json",
+          "required_inputs": [
+            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
+            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/current-candidate.json --live",
+          "required_inputs": [
+            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
+            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
+            "candidate-run 另需当前包/archive/SDK/entry hashes、oldBrokerRoot、localSkill path/name/hash、ownershipReceipt、artifactReceipt、自有 evidenceRoot、sourceId/database 及已授权凭据环境。",
+            "现有候选实现要求 model:magpie/group/flash、thinkingLevel:high；其项目级运行不能代替每机普通日用入口。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T22",
+      "title": "远端可见的本地充分负例",
+      "contracts": ["C08"],
+      "owner": "verify-context-broker",
+      "issue": "AH-1196",
+      "precondition": "普通 Pi；本地 skill 足够；Notion source 与目录可见",
+      "events": ["自然任务使用显式 local；同名候选/宽泛 Description/URL；另跑确需远端正例"],
+      "oracle": [
+        "不必要 notion_use=0且计失败；local 不被同名远端替换；必要远端仍可用",
+        "独立人工逐条审核完整 tool_call/tool_result/provider trace，不必要 notion_use 必须为零，失败调用也计入；toolCallCount 是全部工具总数，不能替代此判据。"
+      ],
+      "minimum_layer": "natural",
+      "live_required": true,
+      "entrypoints": [
+        {
+          "repository": "broker",
+          "command": "pi",
+          "required_inputs": [
+            "普通 Pi 不带 -ns；本地 Skill 可用且足够；日用 Notion source 启用并可见；当前实际加载身份、自然任务及已授权 provider。",
+            "完整保留工具调用/结果含失败调用、provider payload 与模型回复，交独立人工审核工具必要性。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "bun test packages/context-broker/scripts/completion.test.ts packages/context-broker/scripts/notion-consumption-tools.test.ts",
+          "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/current-candidate.json",
+          "required_inputs": [
+            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
+            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
+            "冻结 turns[].prompt/bodies/proofs/requireUse 和对应 expectedBodies、localSkill、ownershipReceipt、artifactReceipt；提示不得预塞工具名、flag 或 opaque ref。",
+            "现有候选没有独立 unnecessary notion_use 计数规则，必须对完整 trace 作独立人工审核；不能用 toolCallCount 总数或 requireUse:false 证明零误调。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/current-candidate.json --live",
+          "required_inputs": [
+            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
+            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
+            "candidate-run 另需当前包/archive/SDK/entry hashes、oldBrokerRoot、localSkill path/name/hash、ownershipReceipt、artifactReceipt、自有 evidenceRoot、sourceId/database 及已授权凭据环境。",
+            "现有候选实现要求 model:magpie/group/flash、thinkingLevel:high；其项目级运行不能代替每机普通日用入口。",
+            "冻结 turns[].prompt/bodies/proofs/requireUse 和对应 expectedBodies、localSkill、ownershipReceipt、artifactReceipt；提示不得预塞工具名、flag 或 opaque ref。",
+            "现有候选没有独立 unnecessary notion_use 计数规则，必须对完整 trace 作独立人工审核；不能用 toolCallCount 总数或 requireUse:false 证明零误调。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T23",
+      "title": "结果分层与失败传播",
+      "contracts": ["C11"],
+      "owner": "verify-ntn-skills",
+      "issue": "AH-1189",
+      "precondition": "同一候选下准备 passed/failed/blocked/not_run 与不同层级回执",
+      "events": ["核字段/原件/hash；尝试将 fixture 冒充 live 或隐藏初次失败"],
+      "oracle": ["缺字段、错误层级、不支持的旧回执拒绝；失败或阻塞的必需结果不能汇总通过"],
+      "minimum_layer": "static",
+      "live_required": false,
+      "entrypoints": [
+        {
+          "repository": "cli",
+          "command": "bun test packages/cli/test/verification-skill-map.test.ts",
+          "required_inputs": []
+        },
+        {
+          "repository": "cli",
+          "command": "node --test verification/run-receipt.test.mjs",
+          "required_inputs": []
+        }
+      ]
     }
   ]
 }

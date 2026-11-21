@@ -251,6 +251,7 @@ function git(
           ChildProcess.make(
             "git",
             [
+              ...(observe.noLazyFetch ? ["--no-lazy-fetch"] : []),
               "-c",
               "core.hooksPath=/dev/null",
               "-c",
@@ -304,7 +305,7 @@ function git(
                 GIT_TRACE2_EVENT: "0",
                 GIT_TRACE2_PERF: "0",
                 GIT_NO_REPLACE_OBJECTS: "1",
-                GIT_NO_LAZY_FETCH: observe.noLazyFetch ? "1" : undefined,
+                GIT_NO_LAZY_FETCH: undefined,
                 GIT_DIR: undefined,
                 GIT_WORK_TREE: undefined,
                 GIT_INDEX_FILE: undefined,
@@ -347,6 +348,39 @@ function git(
 /** Shared no-checkout process boundary for exact commit/blob consumption.
  * Callers must validate their fixed origin and object selection before use. */
 export { git as runSourceGit }
+
+/** The exact local object probe and its runtime check use the same Git capability. */
+export function assertSourceGitRuntime(repo: string) {
+  return git(repo, ["--version"], 1024, { noLazyFetch: true }).pipe(
+    Effect.asVoid,
+    Effect.catch((error) => {
+      const details = error.details
+      if (
+        error.code !== "UPSTREAM_GIT_FAILED" ||
+        typeof details !== "object" ||
+        details === null ||
+        !("exit_code" in details) ||
+        details.exit_code !== 129
+      )
+        return Effect.fail(error)
+      return Effect.gen(function* () {
+        const version = yield* git(repo, ["--version"], 1024).pipe(Effect.option)
+        return yield* Effect.fail(
+          sourceError(
+            "GIT_RUNTIME_UNSUPPORTED",
+            "Exact Git source reads require --no-lazy-fetch support. Select a supported Git on this process's PATH; Git 2.50.1 is verified.",
+            {
+              required_capability: "--no-lazy-fetch",
+              ...(Option.isSome(version)
+                ? { observed_version: decoder.decode(version.value).trim() }
+                : {}),
+            },
+          ),
+        )
+      })
+    }),
+  )
+}
 function digest(bytes: Uint8Array) {
   return Effect.gen(function* () {
     const crypto = yield* Crypto.Crypto
@@ -762,6 +796,7 @@ function gitSnapshot(
             sourceError("TEMP_FAILED", "Could not create scoped Git repository."),
           ),
         )
+      yield* assertSourceGitRuntime(repo)
       yield* git(repo, ["init", "--bare", "--template=", "."])
       // One validated remote also services missing selected blobs. Negotiated
       // filtering avoids downloading unrelated repository assets just to find

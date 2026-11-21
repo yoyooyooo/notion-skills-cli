@@ -1,9 +1,21 @@
 import { createHash } from "node:crypto"
-import { mkdtemp, readFile, realpath } from "node:fs/promises"
+import { mkdtemp, readFile, realpath, rename } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, test, vi } from "vitest"
-import { readSkill, listSkill, readResources } from "../../cli/src/sdk.ts"
+import { ConfigProvider, Effect } from "effect"
+import {
+  consume,
+  decodeConsumeResult,
+  decodeResourceReadResult,
+  readSkill,
+  listSkill,
+  readResources,
+  SkillsError,
+} from "../../cli/src/sdk.ts"
+import { nodeRuntime } from "../../cli/src/runtime.ts"
+import { clearCache } from "../src/cache.ts"
+import { property } from "../src/model.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import {
   currentSnapshotFixture,
@@ -206,6 +218,137 @@ test("public SDK rebuilt selections give scalar and batch lazy resources new fix
           request.phase === "rebuilt" && request.path === `/v1/pages/${skillPage}`,
       ),
     ).toEqual([])
+    expect(
+      source.requests.filter(
+        (request: { method: string; path: string }) =>
+          request.method !== "GET" && !request.path.endsWith("/query"),
+      ),
+    ).toEqual([])
+  })
+})
+
+test("public SDK preserves fixed-object failure details without replacing the pin or blocking independent resources", async () => {
+  await setup(async ({ source, input, options }) => {
+    const directory = new URL(input.refs[0]!)
+    directory.pathname = "/"
+    directory.searchParams.delete("file_id")
+    const listing = await listSkill(directory.toString(), options)
+    const main = listing.files.find((file) => file.path === listing.entrypoint)
+    if (main === undefined) throw new Error("The public inventory lost its main")
+    const selected = await readSkill(main.ref, options)
+    const offline = await readResources(input, { ...options, offline: true })
+    expect(offline).toMatchObject({
+      status: "failed",
+      error: {
+        code: "SNAPSHOT_MISSING",
+        details: {
+          phase: "fixed_acquisition",
+          reason: "offline",
+          snapshot_id: selected.snapshot_id,
+          target: selected.record.id,
+          paths: ["scripts/read-only.sh"],
+          next: "retry_online",
+        },
+      },
+    })
+    expect(await decodeResourceReadResult(offline, input)).toEqual(offline)
+    const object = join(options.env.NTN_SKILLS_HOME, "objects", main.sha256)
+    await rename(object, `${object}.retained-by-test`)
+    source.notion.bodies[skillPage] =
+      "The newer current body must not replace this fixed selection."
+    const details = {
+      phase: "fixed_object",
+      reason: "objects_missing",
+      snapshot_id: selected.snapshot_id,
+      target: selected.record.id,
+      paths: [listing.entrypoint],
+      next: "reselect_current",
+      effects: { version: 1, remote_writes: "none", author_content: "unchanged" },
+    }
+    await expect(readSkill(main.ref, options)).rejects.toBeInstanceOf(SkillsError)
+    await expect(readSkill(main.ref, options)).rejects.toMatchObject({
+      code: "SNAPSHOT_MISSING",
+      details,
+    })
+    const prepared = await consume({ version: 1, targets: [main.ref], purpose: "inspect" }, options)
+    expect(prepared).toMatchObject({
+      status: "failed",
+      error: { code: "SNAPSHOT_MISSING", details },
+    })
+    expect(await decodeConsumeResult(prepared)).toEqual(prepared)
+    ready(await readResources(input, options))
+    await idle(source)
+    expect(
+      source.requests.filter(
+        (request: { phase: string; path: string }) =>
+          request.phase === "read" && request.path.endsWith("/markdown"),
+      ),
+    ).toEqual([])
+    expect(
+      source.requests.filter(
+        (request: { method: string; path: string }) =>
+          request.method !== "GET" && !request.path.endsWith("/query"),
+      ),
+    ).toEqual([])
+  })
+})
+
+test("public SDK reports the retired cache generation when clear races a current body read", async () => {
+  await setup(async ({ source, input, options }) => {
+    const listing = await listSkill(input.refs[0]!, options)
+    const hold = source.holdNext({ method: "GET", path: `/v1/pages/${skillPage}/markdown` })
+    const pending = consume(
+      {
+        version: 1,
+        targets: [skillPage],
+        purpose: "inspect",
+        freshness: { policy: "refresh" },
+      },
+      options,
+    )
+    await Promise.race([
+      hold.reached,
+      pending.then((result) => {
+        throw new Error(
+          `Current preparation ended before its body barrier: ${JSON.stringify(result)}`,
+        )
+      }),
+    ])
+    try {
+      const retired = await Effect.runPromise(
+        clearCache(undefined, { all: true }).pipe(
+          Effect.provide(nodeRuntime(process.cwd()).live),
+          Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(options.env))),
+          Effect.scoped,
+        ),
+      )
+      expect(retired.entries.some((key) => key.endsWith(`/${listing.record.id}/.fence`))).toBe(true)
+    } finally {
+      hold.release()
+    }
+    const result = await pending
+    expect(result).toMatchObject({
+      status: "failed",
+      error: {
+        code: "CACHE_INVALIDATED",
+        details: {
+          phase: "cache_publication",
+          record_identity: listing.record.id,
+          scope: expect.stringMatching(/^[a-f0-9]{64}$/u),
+          cache_key: expect.stringContaining("cache/current-native-bodies/"),
+          effects: { version: 1, remote_writes: "none", author_content: "unchanged" },
+        },
+      },
+    })
+    if (result.status !== "failed") throw new Error("Retired work was returned as ready")
+    expect(await decodeConsumeResult(result)).toEqual(result)
+    const details = property(result.error.details)
+    if (typeof details.generation !== "number" || typeof details.retired_through !== "number")
+      throw new Error("The SDK lost the causal cache fence")
+    expect(details.retired_through).toBeGreaterThanOrEqual(details.generation)
+    const current = await readSkill(skillPage, { ...options, refresh: true })
+    expect(current.source).toBe("notion")
+    await idle(source)
     expect(
       source.requests.filter(
         (request: { method: string; path: string }) =>

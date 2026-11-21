@@ -41,7 +41,7 @@ bun run package:check
 
 沿 [安装包消费](portable-export-package-consumption.md) 检查实际 Node CLI 与同 archive 的 SDK，默认执行全部当前用例。采用实际报告的合同、选择和失败数，不把退役 fixture 或历史用例数作为 gate。
 
-Broker 使用当前 SDK 交接；[Broker 消费](broker-consumption.md) 规定本层边界。真实 Pro Pi 只沿 AH-1063 的同一次旅程，检查实际模型输入与使用；受控 provider、安装包或源码通过不代替它。OMP/Tern 宿主适配延期。
+Broker 使用当前 SDK 交接；[Broker 消费](broker-consumption.md) 规定本层边界。真实 Pro/Mini Pi 沿 AH-1197/AH-637/AH-1198 的当前旅程，检查实际模型输入与使用；受控 provider、安装包或源码通过不代替它。OMP/Tern 宿主适配延期。
 
 ## Evidence
 

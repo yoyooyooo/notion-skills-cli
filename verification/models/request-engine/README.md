@@ -8,15 +8,15 @@
 
 ```bash
 bun install --frozen-lockfile
-node scripts/verify-request-engine.mjs \
+node scripts/verify-formal.mjs --suite request-engine \
   --statechart /absolute/pinned-pstack/pstack/skills/statechart \
   --jar /absolute/tla2tools.jar \
   --out /absolute/new-request-engine-run
 
-python3 scripts/check-request-engine-mutations.py --out /absolute/new-guard-run
+python3 scripts/check-formal-mutations.py --suite request-engine --out /absolute/new-guard-run
 ```
 
-`PSTACK_STATECHART_ROOT` 与 `TLA2TOOLS` 可分别替代 `--statechart` 与 `--jar`。本入口没有 `--suite`。已完成对应审阅的局部变更可用 `--model SharedProducer` 或 `--model RequestAdmission`；完整 CI 运行全部 21 个配置。
+`PSTACK_STATECHART_ROOT` 与 `TLA2TOOLS` 可分别替代 `--statechart` 与 `--jar`。`--suite request-engine` 明确选择本领域；current-lifecycle 独立运行。已完成对应审阅的局部变更可用 `--model SharedProducer` 或 `--model RequestAdmission`；完整 CI 运行全部 21 个配置。
 
 runner 先核对受保护源文件、工具字节和独立规则清单，再执行模型。正例必须完整探索且没有 broken；负例必须完整探索，broken 集合恰好等于该 case 的 `expected_broken`，并检查同一模型的全部规则。工具错误、截断、遗漏规则、额外失败和未执行都不算通过。源文件哈希检查失败发生在 TLC 之前，不能报告为模型反例。
 

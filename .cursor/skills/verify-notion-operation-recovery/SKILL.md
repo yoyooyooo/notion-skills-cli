@@ -5,7 +5,7 @@ description: "验证当前管理意图在响应丢失、partial、预算暂停�
 
 # 当前操作恢复验证
 
-执行 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 第 4 组。本入口不负责请求层模型，也不负责真实宿主投递。意图只保留当前输入、owner、在途动作；Source 父意图另有有限目标游标，全部完成后回收。
+执行 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 第 4 组。本入口不负责请求层模型，也不负责真实宿主投递；当前状态模型由 [resource lifecycle](../verify-notion-resource-lifecycle/SKILL.md) 维护，本入口拥有实际 writer/HTTP/SQLite 恢复回放。意图只保留当前输入、owner、在途动作；Source 父意图另有有限目标游标，全部完成后回收。
 
 ## Launch
 
@@ -20,7 +20,12 @@ bun test packages/core/test/shared-current-operation.test.ts packages/core/test/
 bun test packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts packages/core/test/shared-current-invocation.test.ts --timeout 60000
 ~~~
 
-需要验证本地持久化时，沿现有 Node runner 运行 `shared-current-operation.node.test.ts`，确认真正 SQLite 中 pending 原位更新和完成删除。
+需要验证本地持久化时，使用受支持的 Node 沿现有 runner 运行，确认真正 SQLite 中 pending 原位更新和完成删除：
+
+~~~sh
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-current-operation.node.test.ts
+bun test packages/core/test/shared-current-projection-write.test.ts --timeout 60000
+~~~
 
 ## Drive
 
@@ -69,6 +74,8 @@ append 中断。同一 --restore 命令应按当前事实恢复各阶段；准�
 分别报告。
 
 ## Evidence
+
+按 [当前合同与回执](../../../docs/verification-contracts.md) 记录 C07b 与所属场景、准确候选、真实运行层和原件 hash；历史 Done 不填作当前通过。
 
 报告原请求已知结果、当前观察、剩余动作、下一条实际可执行命令及成本。缺实现写 blocked，没执行写 not_run；partial append 的 fail-closed 通过不能说成自动恢复成功。AH-507 的真实业务验收仍独立。
 

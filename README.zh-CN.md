@@ -33,7 +33,14 @@
 
 ## 安装
 
-使用 Node.js 22.22.3+ 的 22.x，或 24.20.0+。已发布包的安装命令：
+使用 Node.js 22.22.3+ 的 22.x，或 24.20.0+。
+
+Git 来源获取还要求当前进程选中的 Git 支持 `--no-lazy-fetch`。本轮已验证 Git 2.50.1，
+不据此声明精确最低版本。CLI 在远端获取前检查该能力，不支持时返回
+`UPSTREAM_GIT_RUNTIME_UNSUPPORTED`。请在调用进程的 `PATH` 中选择受支持 Git；
+CLI 不修改全局 Git 配置。
+
+已发布包的安装命令：
 
 ```sh
 npm install --global ntn-skills --registry https://registry.npmjs.org

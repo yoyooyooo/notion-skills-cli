@@ -14,13 +14,11 @@ import {
 } from "./formal-result-contract.mjs"
 
 const repository = path.resolve(import.meta.dirname, "..")
-const suite = "request-engine"
-const lockFile = "verification/models/request-engine/tool-lock.json"
 const configExtension = ""
 const args = process.argv.slice(2)
 if (args.includes("--help")) {
   console.log(
-    "Usage: node scripts/verify-request-engine.mjs --out /absolute/new/output " +
+    "Usage: node scripts/verify-formal.mjs --suite request-engine|current-lifecycle --out /absolute/new/output " +
       "[--model Model] [--statechart PINNED_SKILL] [--jar TLC_JAR]",
   )
   process.exit(0)
@@ -28,7 +26,7 @@ if (args.includes("--help")) {
 const options = new Map()
 for (let i = 0; i < args.length; i += 2) {
   assert.ok(
-    ["--out", "--model", "--statechart", "--jar"].includes(args[i]),
+    ["--suite", "--out", "--model", "--statechart", "--jar"].includes(args[i]),
     "Unknown argument: " + args[i],
   )
   assert.ok(args[i + 1] && !args[i + 1].startsWith("--"), "Missing argument value: " + args[i])
@@ -37,7 +35,10 @@ for (let i = 0; i < args.length; i += 2) {
 }
 if (options.has("--out")) assert.ok(path.isAbsolute(options.get("--out")), "--out must be absolute")
 const selectedModel = options.get("--model")
-const root = path.join(repository, "verification/models/request-engine")
+const suite = options.get("--suite")
+assert.ok(["request-engine", "current-lifecycle"].includes(suite), "Select one current --suite")
+const lockFile = `verification/models/${suite}/tool-lock.json`
+const root = path.join(repository, "verification/models", suite)
 const out = options.has("--out")
   ? path.resolve(options.get("--out"))
   : fs.mkdtempSync(path.join(os.tmpdir(), "notion-formal-"))
