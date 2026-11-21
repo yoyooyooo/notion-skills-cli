@@ -62,8 +62,8 @@ ntn-skills list --default-view
 ```
 
 Views retain native API ordering and filters. Explicit View selection wins over
-Profile rules. Profiles and Views do not grant access. Change shared rules with
-the `notion/ntn-skills-sync` builtin.
+Profile rules. Profiles and Views do not grant access. Discover `ntn-skills-sync`
+in the connected library to change shared rules, then read its exact returned ref.
 
 ## Library inspection
 
@@ -77,7 +77,7 @@ and authority. Neither reads every body nor repairs the library. A missing
 current descriptor or pending current operation remains an explicit error.
 
 The current library family also provides `init`, `skill`, `import`, `projection`,
-`source` and singular `profile`. Use `notion/ntn-skills-maintain` for daily
+`source` and singular `profile`. Use `ntn-skills-maintain` for daily
 `skill create|update|register|remove`: native Markdown by default, partial updates,
 body-preserving page registration and managed deletion cleanup. The CLI supplies
 internal fields; repeated same-intent commands continue their own unfinished work.
@@ -85,9 +85,9 @@ That Skill also explains complete import and its explicit resume procedure.
 Portable Members/Requires round-trip through
 export and complete import; omitted fields preserve, [] clears, and lists replace
 the complete relation. Repeat --native PATH to select editable text during import.
-Use `notion/ntn-skills-sync` for explicit Git Source apply/refresh, contribution
+Use `ntn-skills-sync` for explicit Git Source apply/refresh, contribution
 mappings/exclusions and exact file takeover/restore-follow. Use
-`notion/ntn-skills-maintain` to generate missing daily Notion text through
+`ntn-skills-maintain` to generate missing daily Notion text through
 `ctl library projection`; ordinary consumption never writes those bodies.
 
 ## Local builtins
@@ -99,10 +99,15 @@ ntn-skills ctl builtin read notion/ntn-skills --path references/integration.md
 ntn-skills ctl builtin status
 ```
 
-Package reads work without a Notion library. In a supporting Broker, select the
-exact `@builtin` identity. Local install/update is a separate requested action;
-read its current help and preserve unrelated host roots. Installation exposes
-metadata but does not activate the Skill or configure a native URI adapter.
+Use these commands without a connected library or for explicit offline/package
+inspection. A connected library's projected copies use the ordinary scoped
+`list/read` commands above, including `read --from` for references. Keep failed or
+partial discovery visible; it does not prove that a projected workflow is absent.
+
+In a supporting Broker, an exact `@builtin` identity selects package content.
+Local install/update is a separate requested action. Read its current help and
+preserve unrelated host roots. Installing or upgrading a package does not refresh
+its Notion Source, project reading pages or replace an active selection.
 
 ## Errors
 

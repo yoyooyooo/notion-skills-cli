@@ -36,7 +36,7 @@ ntn-skills ctl library skill update TARGET --entry ENTRY --name 'New name' --ena
 Use --description for discovery text. Repeated --members TARGET or --requires
 TARGET replaces that relation set; a single empty string clears it. Omitted
 metadata and relationships stay unchanged. Fix links in authored files when
-removing their targets. Source-owned changes use notion/ntn-skills-sync.
+removing their targets. Source-owned changes use ntn-skills-sync.
 
 Native writes verify the complete Notion body for equivalent text, code, links
 and structure. Supported formatting normalization is reported; native does not
@@ -108,7 +108,8 @@ ntn-skills ctl library projection PAGE_ID --restore --entry ENTRY
 
 See [projection and recovery](references/operations.md#generate-notion-text) for
 filters and exact-page restore limits. Generated bodies never transfer authority.
-Use [setup](references/setup.md) for a library and notion/ntn-skills-sync for
-Source apply/refresh, takeover, lifecycle or Profile/View rules.
-Read a package reference with `ctl builtin read notion/ntn-skills-maintain --path
-RELATIVE_PATH`; do not search private cache directories for instructions.
+Use [setup](references/setup.md) for libraries and ntn-skills-sync for Source
+apply/refresh, takeover, lifecycle or Profile/View rules.
+Read references with `ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF`.
+For package-selected instructions, use `ctl builtin read notion/ntn-skills-maintain
+--path RELATIVE_PATH`.

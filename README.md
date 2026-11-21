@@ -300,10 +300,20 @@ CAS. Profiles and Views never grant permission.
 
 ## Agent integration
 
-Read `notion/ntn-skills` through the builtin catalog for consumption guidance.
-`notion/ntn-skills-maintain` covers native creation, partial edits, registration,
+In a connected library, discover `ntn-skills` and `ntn-skills-maintain` through
+the scoped Notion directory and read their exact returned refs with ordinary
+`read`. Read references from the same selection with `read --from`. The default
+View may omit a workflow; query its name within the connected library before
+concluding it is absent. Failed discovery is not absence.
+
+Without a connected library, or for explicit offline/package inspection, use the
+`ctl builtin` catalog or an exact host `@builtin` identity. Package and Notion
+copies can differ: installing a package does not refresh a Notion Source or its
+reading projection. Neither route silently replaces an active task selection.
+
+`ntn-skills-maintain` covers native creation, partial edits, registration,
 removal, setup, complete import and finite
-recovery. `notion/ntn-skills-sync` covers current Profile rules and explicit Git
+recovery. `ntn-skills-sync` covers current Profile rules and explicit Git
 Source apply/refresh, file authority changes and Source lifecycle management,
 including mixed-tree preservation.
 

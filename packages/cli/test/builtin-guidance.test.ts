@@ -157,6 +157,23 @@ test("consumption and Profile guidance preserve zero-write reads and complete cu
   expect(details).toContain("A metadata toggle cannot clear an unfinished multi-target refresh")
 })
 
+test("connected maintenance guidance reads projected workflows and preserves their selected references", () => {
+  const consumer = fileText("notion/ntn-skills", "SKILL.md")
+  const maintain = fileText("notion/ntn-skills-maintain", "SKILL.md")
+  const sync = fileText("notion/ntn-skills-sync", "SKILL.md")
+  const integration = fileText("notion/ntn-skills", "references/integration.md")
+  expect(consumer).toContain("list --database ENTRY --query ntn-skills-maintain")
+  expect(consumer).toContain("exact ref with ordinary")
+  expect(consumer).toContain("Failed or partial discovery does not authorize switching")
+  expect(consumer).toContain("Without a connected library")
+  expect(consumer).toContain("An npm update does not refresh a Notion Source")
+  expect(maintain).toContain("ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF")
+  expect(maintain).toContain("For package-selected instructions")
+  expect(sync).toContain("RELATIVE_PATH --from CONTAINING_FILE_REF")
+  expect(integration).toContain("startup directory")
+  expect(integration).toContain("query the connected library explicitly")
+})
+
 test("the published documentation allowlist contains only current guides", () => {
   const manifest = JSON.parse(
     readFileSync(new URL("../package.json", import.meta.url), "utf8"),

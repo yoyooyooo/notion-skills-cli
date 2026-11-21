@@ -21,13 +21,16 @@ Notion metadata. A remote page cannot claim trusted package identity.
 1. Select from the host's metadata. If it has none, discover without loading bodies:
 
    ```bash
-   ntn-skills list --query 'TASK_TERMS'
+   ntn-skills list --database ENTRY --query 'TASK_TERMS'
    ```
 
-   Use `--database ENTRY` for a known library. Results default to 50; continue
+   Use the connected library's ENTRY; omit it only for intentional cross-library
+   discovery. Results default to 50; continue
    with the unchanged `next_cursor` and same selection until `has_more` is false.
    Page size and filtered count do not prove complete source coverage. Failed
    sources or partial pagination cannot establish absence or name uniqueness.
+   Global Notion Search remains non-exhaustive even with no failed libraries;
+   resolve a bare name within an explicit database or use an exact returned ref.
 2. Inspect or summarize with `ntn-skills read 'EXACT_REF' --json`. Apply a workflow
    only when selected for the current task:
 
@@ -93,22 +96,29 @@ do not grant access or activate workflows.
 
 | Task | Route |
 | --- | --- |
-| Inspect or create a library layout | `notion/ntn-skills-maintain`, then its setup reference |
-| Inspect current ownership, missing content or an incomplete operation | `notion/ntn-skills-maintain` |
-| Create, edit, register or delete a Notion-native Skill or supporting file | `notion/ntn-skills-maintain`; use `ctl library skill` without manually filling internal fields |
-| Import or replace a complete local Skill tree | `notion/ntn-skills-maintain`; use its current import and resume procedure |
-| Change name, description, enablement, Members or Requires | `notion/ntn-skills-maintain`; update only the requested metadata or relationship set |
-| Git Source apply/refresh or contribution mapping/exclusion | `notion/ntn-skills-sync` |
-| Source takeover, restore-follow or removal | `notion/ntn-skills-sync` |
-| Complete installed/App tree replacement or native recovery | `notion/ntn-skills-maintain` |
-| Shared Profile/View/freshness rules | `notion/ntn-skills-sync` |
+| Inspect or create a library layout | `ntn-skills-maintain`, then its setup reference |
+| Inspect current ownership, missing content or an incomplete operation | `ntn-skills-maintain` |
+| Create, edit, register or delete a Notion-native Skill or supporting file | `ntn-skills-maintain`; use `ctl library skill` without manually filling internal fields |
+| Import or replace a complete local Skill tree | `ntn-skills-maintain`; use its current import and resume procedure |
+| Change name, description, enablement, Members or Requires | `ntn-skills-maintain`; update only the requested metadata or relationship set |
+| Git Source apply/refresh or contribution mapping/exclusion | `ntn-skills-sync` |
+| Source takeover, restore-follow or removal | `ntn-skills-sync` |
+| Complete installed/App tree replacement or native recovery | `ntn-skills-maintain` |
+| Shared Profile/View/freshness rules | `ntn-skills-sync` |
 | Package-supplied Skills | `ctl builtin list/read/status/install/update`; see [commands](references/commands.md#local-builtins) |
 | Discovery, authentication or resource failure | [Integration and diagnosis](references/integration.md#diagnose-discovery-and-loading) |
 
-When the host exposes builtins, use their exact `@builtin` identity, such as
-`$ntn-skills-maintain@builtin`. Otherwise read `ctl builtin read
-notion/ntn-skills-maintain` and a needed reference with `--path RELATIVE_PATH`.
-Package reads do not publish a Notion copy.
+In a connected library, discover these workflow names through the host's Notion
+directory or `list --database ENTRY --query ntn-skills-maintain`. Read the returned
+exact ref with ordinary `read`, then its references with `read --from` as above.
+The default View may omit a workflow; broaden discovery within the same library.
+Failed or partial discovery does not authorize switching to a same-name package.
+
+Without a connected library, or for explicit offline/package inspection, select
+the host's exact `$ntn-skills-maintain@builtin` or use `ctl builtin read
+notion/ntn-skills-maintain`. Package references use `--path RELATIVE_PATH`.
+Package and Notion identities remain distinct; never switch an active selection
+silently. An npm update does not refresh a Notion Source or its projection.
 
 Use the existing connection. Saved token configuration takes precedence over
 `NOTION_API_TOKEN`; `ctl config show` reports presence without exposing secrets.

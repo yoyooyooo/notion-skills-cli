@@ -38,6 +38,23 @@ The tests use controlled fixtures and must not depend on personal credentials or
 
 Use the existing verification entry and [verification review](docs/maintenance-verification-review.md) for a scoped implementation or migration check. A test definition is not a passing result. Report which actual command or user flow ran, its result and any remaining boundary. Keep live data conversion and daily Pi verification separate from the controlled package gate.
 
+After updating the authorized Notion Source for the distributed guidance, compare
+the selected installed package with the connected library:
+
+```sh
+node scripts/verify-projected-builtins.mjs --cli /absolute/ntn-skills --entry ENTRY_DATABASE_ID
+```
+
+This read-only check requires complete discovery, reads every packaged main and
+reference through ordinary Notion reads, and compares exact hashes and discovery
+Description with the package's parsed frontmatter. It emits JSON and exits
+nonzero for drift, missing content or incomplete discovery. Source refresh
+preserves existing author metadata; align an intended Description change
+explicitly rather than treating it as a file synchronization side effect.
+For a Source-owned Skill, edit the requested Name/Description author fields in
+Notion. `ctl library skill update` rejects current Source contributions even for
+metadata-only requests.
+
 The compact `packages/core/test/fixtures/router-original/.ntn-skills.json` is a byte-preservation fixture. Its whitespace and final newline are intentional. Builtin lifecycle tests use isolated application and agent directories; preserve that isolation when extending a test.
 
 ## Build a fresh consumer artifact
