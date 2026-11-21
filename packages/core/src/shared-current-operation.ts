@@ -19,6 +19,9 @@ import {
 } from "./shared-current-records.ts"
 import { CurrentSourceInputSchema } from "./shared-current-source-action.ts"
 import { CurrentProjectionPolicySchema } from "./shared-current-projection-policy.ts"
+import { CurrentSkillRegistrationInputSchema } from "./shared-current-skill-register-input.ts"
+import { CurrentSkillRemovalInputSchema } from "./shared-current-skill-remove-input.ts"
+import { CurrentSkillPatchScopeSchema } from "./shared-current-skill-patch-input.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
@@ -39,6 +42,16 @@ export const CurrentSourceIntentBindingSchema = Schema.Struct({
 })
 export type CurrentSourceIntentBinding = typeof CurrentSourceIntentBindingSchema.Type
 export const CurrentOperationIntentSchema = Schema.Union([
+  Schema.Struct({
+    operation_id: StableId,
+    input_sha256: Hash,
+    owner: Schema.Struct({ kind: Schema.Literal("skill"), id: StableId }),
+    skill_action: Schema.Union([
+      CurrentSkillRegistrationInputSchema,
+      CurrentSkillRemovalInputSchema,
+      Schema.Struct({ kind: Schema.Literal("update"), scope: CurrentSkillPatchScopeSchema }),
+    ]),
+  }),
   Schema.Struct({
     operation_id: StableId,
     input_sha256: Hash,
@@ -488,15 +501,19 @@ export function currentOperationFailure(
       ? "Repeat projection for the exact Skill page with --restore and the same frozen reading policy."
       : "projection" in intent
         ? "Repeat projection with the same current Skill and policy, or use --operation and --resume with the frozen policy. Keep its exact current file bindings."
-        : sourceInput === undefined
-          ? "Resupply the same prepared input; its exact fingerprint is required."
-          : sourceInput.kind === "declaration"
-            ? "Resupply the original Source declaration with --operation and --resume."
-            : sourceInput.kind === "file_authority"
-              ? "Repeat the same Source file action and exact file identity with --operation and --resume."
-              : sourceInput.kind === "enabled"
-                ? "Repeat the same Source enabled action and selected boolean with --operation and --resume."
-                : "Repeat Source removal for this exact Source with --operation and --resume."
+        : "skill_action" in intent
+          ? "Repeat the same skill " +
+            intent.skill_action.kind +
+            " command with the same exact target, selected files and author metadata. The CLI reconciles its frozen current intent."
+          : sourceInput === undefined
+            ? "Resupply the same prepared input; its exact fingerprint is required."
+            : sourceInput.kind === "declaration"
+              ? "Resupply the original Source declaration with --operation and --resume."
+              : sourceInput.kind === "file_authority"
+                ? "Repeat the same Source file action and exact file identity with --operation and --resume."
+                : sourceInput.kind === "enabled"
+                  ? "Repeat the same Source enabled action and selected boolean with --operation and --resume."
+                  : "Repeat Source removal for this exact Source with --operation and --resume."
   const previousOwner = property(details.owner)
   const sameOwner = previousOwner.kind === intent.owner.kind && previousOwner.id === intent.owner.id
   // An already confirmed original input wins over a later supplied hash for the
@@ -832,6 +849,23 @@ function runCurrentOperation<A, R>(
     const restore = "restore" in intent ? intent.restore : undefined
     const restorePage =
       restore === undefined ? undefined : yield* checked(() => uuid(restore.page_id))
+    const registration =
+      "skill_action" in intent && intent.skill_action.kind === "register"
+        ? intent.skill_action
+        : undefined
+    const registrationPage =
+      registration === undefined ? undefined : yield* checked(() => uuid(registration.page_id))
+    if (
+      registration !== undefined &&
+      (completion !== "ready" ||
+        (suppliedPage !== null && suppliedPage !== registrationPage) ||
+        supersededOperation !== undefined ||
+        input.supersedingSourceChild !== undefined ||
+        input.unstartedSourceChild !== undefined)
+    )
+      return yield* Effect.fail(
+        invalid("Registration requires its exact existing Skill without authority takeover."),
+      )
     const preserveReadyOwner = projection || restore !== undefined
     const cancelProjection = execution.kind === "cancel_projection"
     if (cancelProjection && !projection)
@@ -1760,14 +1794,21 @@ function runCurrentOperation<A, R>(
                 yield* checked(() => {
                   const body = property(request.body),
                     properties = property(body.properties)
-                  if (
-                    request.path !== "v1/pages" ||
-                    request.method !== "POST" ||
-                    property(body.parent).data_source_id !==
+                  const createsOwner =
+                    registrationPage === undefined &&
+                    request.path === "v1/pages" &&
+                    request.method === "POST" &&
+                    property(body.parent).data_source_id ===
                       ownerTable(library, intent.owner).data_source_id
-                  )
+                  const registersOwner =
+                    registrationPage !== undefined &&
+                    request.path === "v1/pages/" + registrationPage &&
+                    request.method === "PATCH" &&
+                    Object.keys(body).length === 1 &&
+                    "properties" in body
+                  if (!createsOwner && !registersOwner)
                     throw invalid(
-                      "Bind the created owner before writing its content or child targets.",
+                      "Bind the exact created or registered owner before writing its content or child targets.",
                     )
                   if (
                     text(
@@ -2090,6 +2131,10 @@ function runCurrentOperation<A, R>(
               if (restorePage !== undefined && selected !== restorePage)
                 return yield* Effect.fail(
                   invalid("Restoration cannot bind a different Skill page."),
+                )
+              if (registrationPage !== undefined && selected !== registrationPage)
+                return yield* Effect.fail(
+                  invalid("Registration cannot bind a different Skill page."),
                 )
               if (owner !== null && owner !== selected)
                 return yield* Effect.fail(

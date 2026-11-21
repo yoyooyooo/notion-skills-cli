@@ -16,7 +16,7 @@ reader and no old authoring or history fallback.
 | Output contracts, cache, request limits and local storage | [Protocol](protocol.md) |
 | Create/inspect a current layout | [Setup](../skills/notion/ntn-skills-maintain/references/setup.md) |
 | Agent consumption | [Entrypoint Skill](../skills/ntn-skills/SKILL.md) |
-| Current content inspection and authoring availability | [Maintenance Skill](../skills/notion/ntn-skills-maintain/SKILL.md) |
+| Native authoring, registration, deletion and complete import | [Maintenance Skill](../skills/notion/ntn-skills-maintain/SKILL.md) |
 | Current Profiles and Source boundaries | [Profile/Source Skill](../skills/notion/ntn-skills-sync/SKILL.md) |
 | Implemented behavior and bounded verification correspondence | [Maintenance verification](maintenance-verification-review.md) |
 | Build and contribute | [Contributing](../CONTRIBUTING.md) |

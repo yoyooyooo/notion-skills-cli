@@ -1,7 +1,8 @@
 # Maintain current Notion Skills
 
 This guide uses the current Skills, Files, Sources, and Records contract.
-The main file lives on its Skill page. Every supporting path has its own Files row.
+The main file lives on its Skill page. Notion-owned supporting files have Files
+rows; Source files use the complete manifest and selected reading rows.
 The [current library contract](current-contract.md) owns the field definitions and authority rules.
 
 ## Inspect or initialize a library
@@ -25,6 +26,110 @@ For an existing current entry, `ctl library init --entry LIBRARY_ENTRY` validate
 Keep registered database, data-source, and property identities intact.
 A similar table name does not make another table part of the library.
 Live table cleanup remains a separate cutover task.
+
+## Manage native Skills
+
+Use `ctl library skill` for daily authorship. Supply content and author decisions;
+the CLI manages identities, Content descriptors, owner relations and finite
+operation state. It does not require an Agent to construct internal Notion fields.
+
+### Create
+
+```bash
+ntn-skills ctl library skill create ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --dry-run
+ntn-skills ctl library skill create ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill
+```
+
+The complete input uses the existing directory/ZIP/single-Markdown admission.
+Files ending in `.md` or `.markdown` become native; other files become exact
+resources. No per-file --native selection is required. Native content is ready
+for direct Notion editing and consumption after successful verification.
+
+### Update selected content or metadata
+
+```bash
+ntn-skills ctl library skill update my-skill --entry LIBRARY_ENTRY --input ./SKILL.md
+ntn-skills ctl library skill update my-skill --entry LIBRARY_ENTRY --input ./guide.md --path references/guide.md
+ntn-skills ctl library skill update my-skill --entry LIBRARY_ENTRY --file references/new.md=./new.md --remove-file references/old.md
+ntn-skills ctl library skill update my-skill --entry LIBRARY_ENTRY --name 'Updated name' --description 'Current purpose' --enabled true --default-context false
+```
+
+TARGET may be an exact page ID, page URL or stable Skill ID in the selected
+library. A title is not an identity. Omitting --path selects the main; repeated
+--file and --remove-file declare supporting changes. Every unmentioned file
+retains its stable identity, authority and current body, including intervening
+Notion edits. Update does not replace the full tree from a stale local export.
+Keep authored links valid when removing their targets. Source-owned file changes
+use explicit Source management rather than changing authority through this route.
+
+Omitted metadata stays unchanged. Repeated --members TARGET or --requires TARGET
+replaces that complete same-library set; `--members ''` or `--requires ''` clears
+it. Empty and nonempty selections cannot be mixed. Current target eligibility,
+relation pagination, the 100-target write bound and Requires cycle checks still
+apply. Discovery Name/Description do not rewrite authored frontmatter; unrelated
+custom properties such as 日用 and 期望删除 are preserved.
+
+### Register an existing Notion author page
+
+```bash
+ntn-skills ctl library skill register SKILL_PAGE_ID --entry LIBRARY_ENTRY
+ntn-skills ctl library skill register SKILL_PAGE_ID --entry LIBRARY_ENTRY --name 'Workflow name' --description 'What the workflow does'
+```
+
+The page must already belong to the registered Skills data source. Register
+keeps the author body, including any frontmatter-looking text, and fills missing
+machine registration. It preserves valid native descriptors and identities;
+missing Content becomes native with empty stored frontmatter and mode 100644.
+It cannot convert resource or Source authority or move an arbitrary workspace page.
+
+Use current valid Name/Description or supply them explicitly; the CLI does not
+invent a business description. Missing Kind defaults to skill. Missing Skill ID
+defaults to `skill-` plus the original page UUID without hyphens; --skill-id may
+provide the desired identity. The CLI handles Main/File IDs. Newly registered
+pages default to Enabled true and Default Context false. Existing author policies
+remain unless an explicit option selects a change. Supporting native rows need
+explicit valid paths and one exact owner. Fully registered valid native content
+returns unchanged after verification.
+
+### Remove with managed cleanup
+
+```bash
+ntn-skills ctl library skill remove my-skill --entry LIBRARY_ENTRY --dry-run
+ntn-skills ctl library skill remove my-skill --entry LIBRARY_ENTRY
+```
+
+Dry-run reports the owner, supporting Files, unused owned resources and affected
+incoming Members/Requires. Apply removes only the selected target from those
+relation sets, preserves referencing Skills and other values, and moves owned
+objects to Trash. It completes this cleanup inside the finite operation; successful
+removal does not leave an Agent to sweep internal tables. Profile v2 has no Skill
+membership and is unchanged. Prose links, unrelated pages and Source declarations
+are outside this removal. Incomplete metadata, conflicts and unsupported relation
+replacement sizes stop before unsafe mutation.
+
+Source-owned content or contributions require Source management. A completed
+removal reports `removed` with `cleanup_verified: true`. An already trashed exact
+page with no pending removal returns `already_trashed`, zero writes and
+`cleanup_verified: false`; a missing stable ID returns `not_found` with cleanup
+unverified. Those results do not certify cleanup after a manual deletion.
+
+### Native verification and retries
+
+All native writes share [the native contract](current-contract.md#files-and-main-file-descriptors),
+including explicit native import and Source takeover. Normal LF/CRLF and terminal
+newlines are accepted for supported Markdown. The writer reads the full Notion
+body and compares text, code, links and structure; formatting-only changes are
+reported in `native.normalized_paths`. `native.verified` counts verified bodies.
+Unsupported shapes are rejected and actual content changes remain unfinished.
+The original input/hash, stored frontmatter and mode stay fixed. Read/export uses
+the current Notion body, so native does not promise original Markdown byte equality.
+
+All four daily actions support --dry-run and invocation budgets. Repeat the same
+command and intent after interruption; preserve original input, local state and
+credential scope. Equal current content makes zero semantic writes. Do not clear
+pending state or hide a competing edit. Direct Notion native edits need no
+projection; use `read PAGE_ID --database LIBRARY_ENTRY --refresh --json` to check
+the current body immediately. Source/resource reading projections remain separate.
 
 ## Prepare the entire replacement tree
 
@@ -106,20 +211,17 @@ ntn-skills ctl library import ./my-skill --entry LIBRARY_ENTRY --skill-id my-ski
 
 Native selection is explicit and enters the input fingerprint. Unknown, duplicate
 or noncanonical paths are rejected before network access. Select `SKILL.md` after
-the single-Markdown entrypoint rename. The body must be valid UTF-8 with LF line
-endings and must not end with LF. Native admits only the subset Notion can express
-exactly; stored frontmatter and regular executable mode remain exact. The terminal
-LF check follows repeated live Markdown v2 observations that omitted that byte.
-It does not predict every Markdown representation change. Invalid input is rejected
-before remote access, never silently trimmed or normalized. An actual complete
-round trip still precedes ready; a mismatch leaves the intent unfinished. Keep
-exact resources for byte formats the native body cannot preserve.
+the single-Markdown entrypoint rename. Native uses the same supported Markdown
+equivalence and reported normalization as daily authorship. Stored frontmatter
+and executable mode remain exact. Complete semantic readback precedes ready;
+a mismatch leaves the intent unfinished. Keep exact resources when original
+Markdown bytes, rather than editable Notion content, are the required representation.
 
-If an earlier native intent remains unfinished because Notion changed its text,
+If an earlier native intent remains unfinished because Notion changed its meaning,
 retain the original input and operation evidence. To adopt the observed text,
 prepare a separate complete input and use a distinct operation with
 `--supersede OLD_OPERATION_ID --operation NEW_OPERATION_ID`. This completes a new
-intent, not the original byte-preserving import. Do not change ready or clear
+intent; it does not complete the original authored meaning. Do not change ready or clear
 pending manually; complete imports have no general cancel command.
 
 Paths, original resource bytes, and executable modes remain part of file identity.
@@ -445,11 +547,12 @@ Unbinding leaves the shared Profile unchanged.
 ## Remaining management work
 
 The current reader supports native, resource, and selected Source descriptors.
-The CLI exposes complete resource/native imports, explicit Git Source apply/refresh
-and current Profile changes.
+The CLI exposes native create/update/register/remove, complete resource/native
+imports, explicit Git Source apply/refresh and current Profile changes.
 
-Source removal/disable, explicit takeover/restore-follow, Pro-wide local Skill
-census and batch migration, and cross-owner governance remain separate work.
+Source removal/disable and takeover/restore-follow use their explicit Source
+routes. Pro-wide local Skill census, batch migration and general cross-owner
+governance remain separate work; scoped Skill removal handles its own typed links.
 The selected-owner file index is not a global orphan census.
 The live Notion tables and Pro Pi runtime have not been certified as converted by these local checks.
 

@@ -93,6 +93,36 @@ For current content, choose at most one of `--refresh`, `--offline`, or `--max-a
 A returned fixed ref identifies a local selection. It does not accept refresh or max-age.
 If the selected bytes are no longer available, read the current Skill again.
 
+## Create, edit, register or remove a native Skill
+
+Use the current library entry and an exact page ID/URL or stable Skill ID:
+
+```bash
+ntn-skills ctl library skill create ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill
+ntn-skills ctl library skill update my-skill --entry LIBRARY_ENTRY --input ./SKILL.md
+ntn-skills ctl library skill update my-skill --entry LIBRARY_ENTRY --file references/guide.md=./guide.md
+ntn-skills ctl library skill register SKILL_PAGE_ID --entry LIBRARY_ENTRY
+ntn-skills ctl library skill remove my-skill --entry LIBRARY_ENTRY --dry-run
+ntn-skills ctl library skill remove my-skill --entry LIBRARY_ENTRY
+```
+
+Create makes Markdown native and other files exact resources. Update changes the
+main by default; use --path for another file, repeated --file PATH=LOCAL for
+supporting writes or --remove-file PATH for removal. Unmentioned files and current
+Notion edits remain intact. Name, description, enablement, default context and
+Members/Requires have explicit author options; see [daily authoring](shared-authoring.md#manage-native-skills).
+
+Register preserves a page already authored in this Skills table and fills missing
+machine registration. Supply --name/--description when valid business metadata
+is missing. Remove includes supporting Files, unused owned resources and incoming
+same-library Members/Requires cleanup; other Skills and relationships remain.
+No internal field editing or successful-operation cleanup is left to an Agent.
+
+All four actions support --dry-run and invocation budgets. Repeat the same intent
+after interruption. Native writes verify full Notion content and report supported
+format normalization; native read/export uses the current Notion body. Native
+edits do not need projection. Read with --refresh for immediate verification.
+
 ## Inspect the Notion file directory
 
 Use the management index when you need current owners, paths, descriptors, and operation state:

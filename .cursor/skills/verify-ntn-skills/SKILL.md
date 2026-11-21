@@ -11,7 +11,7 @@ description: "定位 ntn-skills 当前实现、公共 CLI 与独立安装的验�
 
 | 改变的行为 | 主要入口 | 实际证明范围 |
 | --- | --- | --- |
-| 当前内容、整树、Trash 恢复、关系与清理 | [管理](../verify-notion-management/SKILL.md) | 当前字段、同页恢复和 Profile；内容 writer、全库清理单列 |
+| 原生 CRUD、完整树、Trash 恢复、关系与清理 | [管理](../verify-notion-management/SKILL.md) | 作者命令、当前字段、同页恢复；全库治理单列 |
 | 当前读取、选择、缓存、导出 | [消费](../verify-notion-consumption/SKILL.md) | 字节、目录、权限和成本 |
 | 当前 Source、来源获取和阅读投影 | [来源](../verify-notion-source-onboarding/SKILL.md) | 精确来源；成员发布与投影单列 |
 | 当前权威和资源状态 | [资源状态](../verify-notion-resource-lifecycle/SKILL.md) | 可执行当前不变量；旧模型不继承 |
@@ -39,6 +39,10 @@ bun test packages/cli/test/verification-skill-map.test.ts packages/cli/test/buil
 按 [current-convergence](features/current-convergence.md) 选必要组。领域内只跑对应当前回归。当前入口和实现已经移除的行为，不为旧测试补回兼容或历史证明。
 
 安装检查复用 [portable-export-package-consumption](features/portable-export-package-consumption.md) 的当前 archive/bin/SDK 设施与全部当前用例。受控安装通过不能替代真实 Notion 清理或 Pi 日用。未执行的边界明确 blocked/not_run，只沿现有领域入口补必要检查。
+
+原生日常管理沿 [skill-maintenance](features/skill-maintenance.md#原生日常管理与实际-pi)
+覆盖公开四动作、语义规范化、局部更新与自动清理。真实 `pi -ne` 的 group/worker
+用自然任务调用已安装 builtin；不在提示里预填字段或命令来替代指引发现。
 
 [skill-domains.json](../../../verification/skill-domains.json) 记录当前 feature 的唯一主要 owner 与可执行回归。[feature map](features/README.md) 只路由现有能力及明确未实现边界，不保留已取消流程的执行说明。
 

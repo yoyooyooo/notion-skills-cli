@@ -18,7 +18,7 @@
 ## 开始前
 
 1. 确定已有授权的 exact entry、target、候选代码/包与实际范围。沿原授权推进；验证不扩大远端作用范围。
-2. 当前 reader、完整 import、Git Source apply/refresh 和同版本零写复用一条路径。同步后显式运行 projection，验证日用全文和重复零写；投影失败保持已就绪消费，不扩大为跨对象治理或非日用全库覆盖。源码功能、受控整合、实际安装与真实库分别报告。
+2. 当前 reader、原生 skill CRUD、完整 import 和 Git Source 管理使用当前协议。原生正文直接消费，更新无需 projection；Source/resource 同步后显式 projection 验证日用阅读与重复零写。源码、受控整合、实际安装与真实库分别报告，不扩大为非日用全库治理。
 3. 先用受控 current tests 核普通读语义 0 写，再读真实 current 库。缺 Content 或 state 非 ready 不是让旧 reader 顶上的理由。
 4. 从仓库根复用隔离设施：
 
@@ -118,6 +118,11 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN"
 
 Source remove 自带库内完整 Skills/Files 元数据反查，能找到缺 Origin 的语义 Content 引用；有引用先显式 takeover，再清退无引用 Source。它不等于已清完整个旧库。旧 audit/census/cleanup route 已退出；通用旧对象治理未接通的范围报告未完成，不另写临时清理内核或让旧接口补位。
 
+日常 `skill register` 是当前 Skills 表内作者正文的登记，不是旧协议猜测迁移。
+`skill remove` 自带所选 Skill 的 Files/自有资源和同库 Members/Requires 入链清理；
+成功后不留人工扫表。沿 [原生管理旅程](skill-maintenance.md#原生日常管理与实际-pi)
+核精确作用域、原 body/身份/策略、受管关系与未知响应。
+
 实库通过必须完整枚举 Skills/Files/Sources/必要 Records、反向关系、页/附件/导航及分页，解释权限缺口。移交唯一字节后真实清退，再独立枚举并重复治理 no-op。Trash/归档是退役；隐藏列、superseded 标签或平行旧库不是完成。
 
 旧数据首次接入需要冻结确切物理页、完整属性、Markdown v2 正文与真实原件，并在写入前复核。只有显式授权的这一批可以使用有限接入入口；正常 reader 和 refresh 只接当前协议，不猜版本或回退旧字段。未知写入先读回，未确认意图保留，不能靠清 Operation 或补 ready 掩盖。
@@ -172,6 +177,11 @@ bun test packages/core/test/request-budget.test.ts packages/core/test/request-en
 AH-1197 配对当前 CLI/SDK/Broker 并核两机 next 的实际加载字节；AH-637 做 Mini 自身凭据与空状态的独立验收。独立包测试离开 checkout；worktree 日用另外记录。复用现有 integration，不用开发 override 或旧包兼容路径冒充。
 
 完成自然查找→选用→子文档读取，再按当前已具备的管理/单文件导出能力继续消费。检查实际模型输入、必要全文、去重和成本；mock、准备稿或 enqueue 不是投递。未接通的内容管理不能由 Profile 改动代称。
+
+原生管理新增验收使用实际 `pi -ne` 与 group/worker，沿
+[skill-maintenance](skill-maintenance.md#原生日常管理与实际-pi) 跑自然作者任务。
+主 builtin 应发现并转入 maintain 的四动作；不能靠提示里塞命令、手填机器字段或
+外部 Agent 事后补写取得通过。独立安装加载字节和实际 Notion/Pi 回执都须留存。
 
 AH-1198 执行 T01–T23 中必须真实运行的代表旅程：普通固定任务、主动最新、查看不采用、连续故障续聊、开关变化、本地充分负例与两机后续更新。AH-1196 负责自然任务和工具必要性；受控 provider 不充自然模型。无需逐 Skill 重跑全部矩阵。
 

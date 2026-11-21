@@ -56,17 +56,20 @@ read does not prove every supporting byte was downloaded. Use `export` for the
 complete selected tree. An empty new library is a valid empty layout, not
 completed content onboarding.
 
-Import the approved complete local input with one stable Skill identity:
+Create a Notion-native Skill with one stable identity:
 
 ```sh
-ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
-ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID
+ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
+ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID
 ```
 
-Default import stores exact originals as Notion resources and writes full reading
-pages. It needs no artificial Source. Read the actual returned Skill and export its
-complete tree to confirm paths, bytes and modes. Current import does not convert
-an older library schema or prove that every local Skill has been migrated.
+Markdown becomes editable native content; other files use exact resources. No
+artificial Source or manually authored descriptor is needed. Read the returned
+Skill. Use `skill register PAGE_ID --entry ENTRY` for a page already authored in
+the current Skills table, and `skill update` for later changes. Complete-tree
+replacement remains `ctl library import`; it defaults to exact resources and
+requires explicit projection for generated reading text. None of these commands
+converts an older library schema or proves that every local Skill has migrated.
 
 ## Connect Pi
 

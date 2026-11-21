@@ -14,7 +14,7 @@ import {
   validateDisplayName,
 } from "./model.ts"
 import { Notion } from "./notion.ts"
-import { pageId } from "./ref.ts"
+import { normalizePath, pageId } from "./ref.ts"
 import { withCurrentInvocationBudget } from "./shared-current-invocation.ts"
 import { sharedRecordFromPage, sharedSkillId, sharedSkillTextProperty } from "./shared-content.ts"
 import {
@@ -26,6 +26,7 @@ import {
 import {
   currentOperationFailure,
   currentOperationOwnerState,
+  inspectCurrentOperation,
   readCurrentOperationIntent,
   withCurrentOperation,
   type CurrentOperationSession,
@@ -65,7 +66,12 @@ import {
   currentRelationsInfo,
   prepareCurrentRelations,
   verifyCurrentRelations,
+  validateCurrentWriteRelations,
 } from "./shared-current-relations.ts"
+import {
+  CurrentSkillPatchScopeSchema,
+  type CurrentSkillPatchScope,
+} from "./shared-current-skill-patch-input.ts"
 import {
   currentUploadActionPrefix,
   makeCurrentUploadScope,
@@ -84,6 +90,7 @@ import {
 } from "./shared-current-write-input.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { observeSharedBody } from "./shared-page-body.ts"
+import { compareNativeMarkdown, nativeMarkdownTransport } from "./shared-native-markdown.ts"
 import {
   compileSharedNativeReferences,
   type NativeReferenceSource,
@@ -319,12 +326,37 @@ export type PreparedCoordinatedSkillWrite = CoordinatedSkillBase &
         readonly files: readonly (PreparedCurrentWriteFile | PreparedPreservedFile)[]
       }
   )
-type CurrentWritePlan = PreparedCurrentSkillWrite | PreparedCoordinatedSkillWrite
+type PatchMetadata = Partial<
+  Pick<CurrentSkillWriteInput, "name" | "description" | "enabled" | "default_context" | "relations">
+>
+export type CurrentSkillPatchInput = {
+  readonly target: string
+  readonly metadata?: PatchMetadata
+  readonly files?: readonly (Omit<
+    CurrentSkillWriteInput["files"][number],
+    "file_id" | "authority"
+  > & { readonly authority?: { readonly kind: "native" | "resource" } })[]
+  readonly remove?: readonly string[]
+  readonly scope?: CurrentSkillPatchScope
+}
+export type PreparedCurrentSkillPatch = Omit<PreparedCurrentSkillWrite, "files"> & {
+  readonly contract: "notion-patch"
+  readonly scope: CurrentSkillPatchScope
+  readonly metadata: PatchMetadata
+  readonly remove: readonly string[]
+  readonly files: readonly (PreparedCurrentWriteFile | PreparedPreservedFile)[]
+}
+type CurrentWritePlan =
+  | PreparedCurrentSkillWrite
+  | PreparedCoordinatedSkillWrite
+  | PreparedCurrentSkillPatch
 type CurrentPlanFile = PreparedCurrentWriteFile | PreparedPreservedFile
 const writablePlanFiles = (files: readonly CurrentPlanFile[]) =>
   files.filter((file): file is PreparedCurrentWriteFile => file.kind !== "preserve")
 const isCoordinated = (plan: CurrentWritePlan): plan is PreparedCoordinatedSkillWrite =>
   "source" in plan
+const isPatch = (plan: CurrentWritePlan): plan is PreparedCurrentSkillPatch =>
+  "contract" in plan && plan.contract === "notion-patch"
 function preservedBinding(binding: PreservedBinding): PreservedBinding {
   return {
     file_id: currentWriteIdentity(binding.file_id, "File ID"),
@@ -333,6 +365,262 @@ function preservedBinding(binding: PreservedBinding): PreservedBinding {
     path: binding.path,
     content: decodeCurrentFileContent(structuredClone(binding.content)),
   }
+}
+function patchScope(input: unknown): CurrentSkillPatchScope {
+  const scope = Schema.decodeUnknownSync(CurrentSkillPatchScopeSchema)(input, {
+    onExcessProperty: "error",
+  })
+  const bindings = scope.bindings.map(preservedBinding)
+  const main = entrypointFor(scope.kind)
+  if (bindings.some((file) => file.content.kind === "source"))
+    throw fail(
+      "CURRENT_SOURCE_MANAGEMENT_REQUIRED",
+      "A Notion-owned patch cannot replace or remove Source content.",
+    )
+  if (
+    bindings.filter((file) => file.page_id === scope.page_id && file.path === main).length !== 1 ||
+    bindings.some((file) => file.skill_page_id !== scope.page_id) ||
+    new Set(bindings.map((file) => file.page_id)).size !== bindings.length ||
+    new Set(bindings.map((file) => file.file_id)).size !== bindings.length
+  )
+    throw invalid(
+      "A Notion-owned patch needs one exact main and distinct native/resource bindings.",
+    )
+  planSharedFiles({ base: bindings, mounts: [], overrides: [], entrypoint: main })
+  return { ...scope, bindings }
+}
+function patchMetadata(input: PatchMetadata, scope: CurrentSkillPatchScope): PatchMetadata {
+  const unknown = Object.keys(input).filter(
+    (key) => !["name", "description", "enabled", "default_context", "relations"].includes(key),
+  )
+  if (unknown.length) throw invalid("Unknown patch metadata.", { fields: unknown })
+  if (
+    (input.enabled !== undefined && typeof input.enabled !== "boolean") ||
+    (input.default_context !== undefined && typeof input.default_context !== "boolean")
+  )
+    throw invalid("Patch flags must be booleans.")
+  return {
+    ...(input.name === undefined ? {} : { name: validateDisplayName(input.name) }),
+    ...(input.description === undefined
+      ? {}
+      : { description: validateDescription(input.description) }),
+    ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+    ...(input.default_context === undefined ? {} : { default_context: input.default_context }),
+    ...(input.relations === undefined
+      ? {}
+      : { relations: validateCurrentWriteRelations(input.relations, scope.kind, scope.skill_id) }),
+  }
+}
+function patchFingerprint(plan: Omit<PreparedCurrentSkillPatch, "input_sha256">) {
+  return {
+    contract: plan.contract,
+    scope: plan.scope,
+    metadata: plan.metadata,
+    remove: plan.remove,
+    files: plan.files.map((file) =>
+      file.kind === "preserve"
+        ? { kind: "preserve", binding: file.binding }
+        : { kind: "write", file: currentWriteFileFingerprint(file) },
+    ),
+  }
+}
+function validatePatchTree(plan: Omit<PreparedCurrentSkillPatch, "input_sha256">): void {
+  if (
+    plan.contract !== "notion-patch" ||
+    "source" in plan ||
+    plan.scope.skill_id !== plan.skill_id ||
+    plan.scope.kind !== plan.kind ||
+    plan.main !== entrypointFor(plan.kind)
+  )
+    throw invalid("The patch changed its exact Skill identity or kind.")
+  validateDisplayName(plan.name)
+  validateDescription(plan.description)
+  if (
+    canonicalSharedJson(patchMetadata(plan.metadata, plan.scope)) !==
+    canonicalSharedJson(plan.metadata)
+  )
+    throw invalid("Patch metadata changed after preparation.")
+  for (const field of ["enabled", "default_context", "relations"] as const)
+    if (
+      canonicalSharedJson(plan[field] ?? null) !== canonicalSharedJson(plan.metadata[field] ?? null)
+    )
+      throw invalid("The patch changed an unselected management field.", { field })
+  if (
+    (plan.metadata.name !== undefined && plan.name !== plan.metadata.name) ||
+    (plan.metadata.description !== undefined && plan.description !== plan.metadata.description)
+  )
+    throw invalid("Patch display metadata changed after preparation.")
+  if (
+    new Set(plan.remove).size !== plan.remove.length ||
+    plan.remove.some((path) => !path || path === plan.main || normalizePath(path) !== path)
+  )
+    throw invalid("Select distinct canonical supporting paths for removal.")
+  planSharedFiles({ base: plan.files, mounts: [], overrides: [], entrypoint: plan.main })
+  if (
+    plan.files.length > 10000 ||
+    writablePlanFiles(plan.files).reduce((size, file) => size + file.bytes.byteLength, 0) >
+      128 * 1024 * 1024
+  )
+    throw invalid("The complete patch exceeds its file or byte limit.")
+  const ids = new Set<string>()
+  for (const file of plan.files) {
+    if (
+      file.content.kind === "source" ||
+      file.file_id === undefined ||
+      ids.has(file.file_id) ||
+      plan.remove.includes(file.path)
+    )
+      throw invalid("A patch cannot change Source authority or repeat a selected identity.")
+    ids.add(currentWriteIdentity(file.file_id, "File ID"))
+    const old = plan.scope.bindings.find((binding) => binding.path === file.path)
+    if (old !== undefined && old.file_id !== file.file_id)
+      throw invalid("A patch preserves existing File identities.")
+    if (
+      file.kind === "preserve" &&
+      (old === undefined ||
+        canonicalSharedJson(file.binding) !== canonicalSharedJson(old) ||
+        file.path !== old.path ||
+        canonicalSharedJson(file.content) !== canonicalSharedJson(old.content))
+    )
+      throw invalid("The preserved patch binding changed.")
+  }
+  for (const old of plan.scope.bindings)
+    if (!plan.remove.includes(old.path) && !plan.files.some((file) => file.path === old.path))
+      throw invalid("An unselected File cannot disappear from a patch.", { path: old.path })
+  assertSelectedSharedFileReferences(
+    writablePlanFiles(plan.files),
+    plan.files.map((file) => file.path),
+  )
+}
+function assertPatchTarget(plan: PreparedCurrentSkillPatch, current: Target | undefined): void {
+  if (
+    current === undefined ||
+    current.index.page_id !== plan.scope.page_id ||
+    current.index.skill_id !== plan.skill_id ||
+    current.index.kind !== plan.kind
+  )
+    throw invalid("The patch requires its exact existing Skill.")
+  const allowed = new Map(plan.scope.bindings.map((file) => [file.file_id, file]))
+  const writes = new Map(writablePlanFiles(plan.files).map((file) => [file.file_id, file]))
+  for (const file of [current.index.main, ...current.index.files]) {
+    const old = allowed.get(file.file_id),
+      selected = writes.get(file.file_id)
+    if (file.content.kind === "source")
+      throw fail(
+        "CURRENT_SOURCE_MANAGEMENT_REQUIRED",
+        "A Notion-owned patch cannot replace or remove Source content.",
+        { path: file.path },
+      )
+    if (
+      (old === undefined &&
+        (selected === undefined ||
+          selected.path !== file.path ||
+          canonicalSharedJson(selected.content) !== canonicalSharedJson(file.content))) ||
+      (old !== undefined && old.page_id !== file.page_id)
+    )
+      throw invalid("The complete patch directory changed outside its selected work.", {
+        path: file.path,
+        file_id: file.file_id,
+      })
+  }
+}
+
+/** Prepare only explicitly selected edits; untouched native bodies remain live. */
+export function prepareCurrentSkillPatch(library: SharedLibrary, input: CurrentSkillPatchInput) {
+  return Effect.gen(function* () {
+    const target = yield* checked(() => exactId(input.target))
+    const current = yield* loadCurrentTarget(
+      library,
+      yield* (yield* Notion).request(`v1/pages/${target}`),
+    )
+    if (current === undefined)
+      return yield* Effect.fail(invalid("The patch target is unavailable."))
+    const scope = yield* checked(() =>
+      patchScope(
+        input.scope ?? {
+          page_id: current.index.page_id,
+          skill_id: current.index.skill_id,
+          kind: current.index.kind,
+          bindings: [current.index.main, ...current.index.files].map(preservedBinding),
+        },
+      ),
+    )
+    const metadata = yield* checked(() => patchMetadata(input.metadata ?? {}, scope))
+    const remove = yield* checked(() => [...(input.remove ?? [])].sort())
+    const files: CurrentPlanFile[] = []
+    const selected = new Set<string>()
+    for (const file of input.files ?? []) {
+      if (
+        selected.has(file.path) ||
+        (file.authority !== undefined && !["native", "resource"].includes(file.authority.kind))
+      )
+        return yield* Effect.fail(invalid("Select each native/resource patch path once."))
+      selected.add(file.path)
+      const old = scope.bindings.find((binding) => binding.path === file.path)
+      files.push(
+        yield* prepareCurrentWriteFile({
+          path: file.path,
+          bytes: file.bytes,
+          mode: file.mode ?? old?.content.mode,
+          file_id:
+            old?.file_id ??
+            "file-" + (yield* sha256(canonicalSharedJson([scope.skill_id, file.path]))),
+          authority: file.authority ?? { kind: "native" },
+        }),
+      )
+    }
+    for (const binding of scope.bindings) {
+      if (selected.has(binding.path) || remove.includes(binding.path)) continue
+      files.push({
+        kind: "preserve",
+        path: binding.path,
+        file_id: binding.file_id,
+        content: binding.content,
+        binding,
+      })
+    }
+    files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+    const plan = {
+      contract: "notion-patch" as const,
+      scope,
+      metadata,
+      remove,
+      skill_id: scope.skill_id,
+      kind: scope.kind,
+      name: metadata.name ?? current.index.name,
+      description: metadata.description ?? current.index.description,
+      ...metadata,
+      main: entrypointFor(scope.kind),
+      files,
+    }
+    yield* checked(() => validatePatchTree(plan))
+    const prepared = {
+      ...plan,
+      input_sha256: yield* sha256(canonicalSharedJson(patchFingerprint(plan))),
+    }
+    yield* checked(() => assertPatchTarget(prepared, current))
+    return prepared satisfies PreparedCurrentSkillPatch
+  })
+}
+function copyCurrentSkillPatch(input: PreparedCurrentSkillPatch) {
+  return Effect.gen(function* () {
+    const plan = yield* checked(() => structuredClone(input))
+    yield* checked(() => patchScope(plan.scope))
+    const files = yield* Effect.forEach(
+      plan.files,
+      (file): Effect.Effect<CurrentPlanFile, SkillsError, Crypto.Crypto> =>
+        file.kind === "preserve"
+          ? checked(() => ({ ...file, binding: preservedBinding(file.binding) }))
+          : copyValidatedCurrentWriteFile(file),
+    )
+    const copied = { ...plan, files }
+    yield* checked(() => validatePatchTree(copied))
+    if ((yield* sha256(canonicalSharedJson(patchFingerprint(copied)))) !== plan.input_sha256)
+      return yield* Effect.fail(
+        invalid("The prepared patch changed. Prepare the selected edits again."),
+      )
+    return copied
+  })
 }
 function coordinatedFingerprint(plan: Omit<PreparedCoordinatedSkillWrite, "input_sha256">) {
   return {
@@ -1010,7 +1298,7 @@ function validatePreservedCoordinatedReferences(
   suppliedSources?: ReadonlyMap<string, CurrentSharedSource>,
 ) {
   return Effect.gen(function* () {
-    if (!isCoordinated(plan) || current === undefined) return
+    if ((!isCoordinated(plan) && !isPatch(plan)) || current === undefined) return
     const before = [current.index.main, ...current.index.files]
     const topologyChanged = before.some((old) => {
       const next = resolved.find((file) => file.page_id === old.page_id)
@@ -1027,13 +1315,15 @@ function validatePreservedCoordinatedReferences(
             : [],
         ),
       }))
-    const completePaths = plan.consumption_paths
+    const completePaths = isCoordinated(plan)
+      ? plan.consumption_paths
+      : plan.files.map((file) => file.path)
     const bodies: { path: string; bytes: Uint8Array }[] = []
     const native: NativeReferenceSource[] = []
     for (const file of plan.files) {
       if (
         file.kind !== "preserve" ||
-        !/\.(?:md|markdown)$/iu.test(file.path) ||
+        (file.content.kind !== "native" && !/\.(?:md|markdown)$/iu.test(file.path)) ||
         (file.content.kind === "source" && !topologyChanged)
       )
         continue
@@ -1077,7 +1367,7 @@ function validatePreservedCoordinatedReferences(
     }
     yield* checked(() => assertSelectedSharedFileReferences(bodies, completePaths))
     const removedPages = new Set(
-      before
+      (isPatch(plan) ? plan.scope.bindings : before)
         .filter((old) => !resolved.some((file) => file.page_id === old.page_id))
         .map((file) => file.page_id),
     )
@@ -1121,11 +1411,19 @@ function validatePreservedCoordinatedReferences(
 
 /** Read-only preparation. Body drift is checked by the same writer immediately
  * before mutation; metadata alone is never advertised as a complete no-op. */
-export function inspectCurrentSkillWrite(library: SharedLibrary, plan: PreparedCurrentSkillWrite) {
+function inspectPreparedCurrentSkillWrite(
+  library: SharedLibrary,
+  plan: PreparedCurrentSkillWrite | PreparedCurrentSkillPatch,
+) {
   return Effect.gen(function* () {
-    plan = yield* copyValidatedCurrentSkillWrite(plan)
+    plan = yield* isPatch(plan) ? copyCurrentSkillPatch(plan) : copyValidatedCurrentSkillWrite(plan)
     const current = yield* loadCurrentTarget(library, yield* queryOwner(library, plan.skill_id)),
       selected = yield* resolveFiles(plan, current)
+    if (isPatch(plan)) {
+      const patch = plan
+      yield* checked(() => assertPatchTarget(patch, current))
+      yield* validatePreservedCoordinatedReferences(library, patch, current, selected)
+    }
     if (current !== undefined && current.index.kind !== plan.kind)
       return yield* Effect.fail(
         invalid(
@@ -1154,7 +1452,8 @@ export function inspectCurrentSkillWrite(library: SharedLibrary, plan: PreparedC
       skill_id: plan.skill_id,
       page_id: current?.index.page_id ?? null,
       input_sha256: plan.input_sha256,
-      replaces_complete_tree: true,
+      replaces_complete_tree: !isPatch(plan),
+      ...(isPatch(plan) ? { preserves_unselected_files: true } : {}),
       remote_writes: 0,
       metadata: {
         name: plan.name,
@@ -1174,7 +1473,12 @@ export function inspectCurrentSkillWrite(library: SharedLibrary, plan: PreparedC
           (current === undefined ? [] : [current.index.main, ...current.index.files]).find(
             (row) => row.page_id === file.page_id,
           )?.content.kind ?? null,
-        action: file.page_id === undefined ? "create" : "verify_or_replace",
+        action:
+          file.input.kind === "preserve"
+            ? "preserve"
+            : file.page_id === undefined
+              ? "create"
+              : "verify_or_replace",
       })),
       remove:
         current?.index.files
@@ -1188,6 +1492,12 @@ export function inspectCurrentSkillWrite(library: SharedLibrary, plan: PreparedC
     withCurrentInvocationBudget,
     Effect.map(({ result }) => result),
   )
+}
+export function inspectCurrentSkillWrite(library: SharedLibrary, plan: PreparedCurrentSkillWrite) {
+  return inspectPreparedCurrentSkillWrite(library, plan)
+}
+export function inspectCurrentSkillPatch(library: SharedLibrary, plan: PreparedCurrentSkillPatch) {
+  return inspectPreparedCurrentSkillWrite(library, plan)
 }
 
 export function inspectCoordinatedSkillWrite(
@@ -1402,6 +1712,7 @@ type CurrentWriteRequest = {
   readonly plan: PreparedCurrentSkillWrite
   readonly operation_id: string
   readonly mode?: CurrentWriteMode
+  readonly create_only?: true
 }
 type InternalWriteRequest = Omit<CurrentWriteRequest, "plan"> & {
   readonly plan: CurrentWritePlan
@@ -1416,6 +1727,20 @@ type InternalWriteRequest = Omit<CurrentWriteRequest, "plan"> & {
 export function writeCurrentSkill(library: SharedLibrary, input: CurrentWriteRequest) {
   return Effect.gen(function* () {
     const plan = yield* copyValidatedCurrentSkillWrite(input.plan)
+    return yield* executeCurrentSkillWrite(library, { ...input, plan })
+  }).pipe(
+    withCurrentInvocationBudget,
+    Effect.map(({ result }) => result),
+  )
+}
+export function writeCurrentSkillPatch(
+  library: SharedLibrary,
+  input: Omit<CurrentWriteRequest, "plan" | "create_only"> & {
+    readonly plan: PreparedCurrentSkillPatch
+  },
+) {
+  return Effect.gen(function* () {
+    const plan = yield* copyCurrentSkillPatch(input.plan)
     return yield* executeCurrentSkillWrite(library, { ...input, plan })
   }).pipe(
     withCurrentInvocationBudget,
@@ -1547,6 +1872,7 @@ function executeCurrentSkillWrite(library: SharedLibrary, input: InternalWriteRe
       operation_id: input.operation_id,
       owner: { kind: "skill" as const, id: plan.skill_id },
       input_sha256: plan.input_sha256,
+      ...(isPatch(plan) ? { skill_action: { kind: "update" as const, scope: plan.scope } } : {}),
       ...(input.authorization === undefined ? {} : { source: input.authorization.source_intent }),
     }
     const unfinishedOwner = yield* checked(() => {
@@ -1587,6 +1913,33 @@ function applyPreparedCurrentSkillWrite(
   return Effect.gen(function* () {
     const plan = input.plan
     const current = yield* loadCurrentTarget(library, raw)
+    if (isPatch(plan)) yield* checked(() => assertPatchTarget(plan, current))
+    if (input.create_only === true && current !== undefined) {
+      const pending =
+        input.mode === "resume"
+          ? yield* inspectCurrentOperation(library, { kind: "skill", id: plan.skill_id })
+          : undefined
+      // An accepted CREATE can exist before its ACK binds the physical owner.
+      // The unique page must still carry the original in-flight creation marker.
+      const unboundCreation =
+        pending?.owner_page_id === null &&
+        pending.in_flight?.key === "skill:create" &&
+        current.index.state.state === "applying" &&
+        current.index.state.operation_id === input.operation_id
+      if (
+        pending === undefined ||
+        pending.intent.operation_id !== input.operation_id ||
+        pending.intent.input_sha256 !== plan.input_sha256 ||
+        (pending.owner_page_id !== current.index.page_id && !unboundCreation)
+      )
+        return yield* Effect.fail(
+          fail(
+            "CURRENT_SKILL_EXISTS",
+            "This stable Skill already exists. Use an explicit update to change its content.",
+            { skill_id: plan.skill_id, page_id: current.index.page_id },
+          ),
+        )
+    }
     const resolved = yield* resolveFiles(plan, current)
     if (input.completedNativeTransfer) {
       const transfer = isCoordinated(plan) ? plan.authority_transfer : null
@@ -1667,8 +2020,8 @@ function applyPreparedCurrentSkillWrite(
       otherSources,
     )
     const assertCoordinatedScope = Effect.gen(function* () {
-      if (input.authorization === undefined) return
-      yield* input.authorization.assertCurrent
+      if (input.authorization === undefined && !isPatch(plan)) return
+      if (input.authorization !== undefined) yield* input.authorization.assertCurrent
       const fresh = yield* loadCurrentTarget(library, yield* queryOwner(library, plan.skill_id))
       const footprint = (target: Target | undefined) =>
         target === undefined
@@ -1690,6 +2043,7 @@ function applyPreparedCurrentSkillWrite(
     })
     let changed = false,
       cacheInvalidated = false
+    const nativeVerified = new Map<string, "exact" | "normalized" | "current">()
     const invalidate = Effect.gen(function* () {
       if (cacheInvalidated) return
       const scope = yield* authScope
@@ -1701,11 +2055,21 @@ function applyPreparedCurrentSkillWrite(
     const fieldsForSkill = (creating: boolean): Record<string, unknown> => ({
       ...(creating || !isCoordinated(plan)
         ? {
-            [binding(library, "skills", "Name")]: { title: currentRecordText(plan.name) },
-            [binding(library, "skills", "Description")]: {
-              rich_text: currentRecordText(plan.description),
-            },
-            [binding(library, "skills", "Kind")]: { select: { name: plan.kind } },
+            ...(!isPatch(plan) || plan.metadata.name !== undefined
+              ? {
+                  [binding(library, "skills", "Name")]: { title: currentRecordText(plan.name) },
+                }
+              : {}),
+            ...(!isPatch(plan) || plan.metadata.description !== undefined
+              ? {
+                  [binding(library, "skills", "Description")]: {
+                    rich_text: currentRecordText(plan.description),
+                  },
+                }
+              : {}),
+            ...(!isPatch(plan)
+              ? { [binding(library, "skills", "Kind")]: { select: { name: plan.kind } } }
+              : {}),
             ...(creating || plan.enabled !== undefined
               ? { [binding(library, "skills", "Enabled")]: { checkbox: plan.enabled ?? true } }
               : {}),
@@ -1739,9 +2103,13 @@ function applyPreparedCurrentSkillWrite(
               rich_text: currentRecordText(canonicalSharedJson(main.input.content)),
             },
           }),
-      [binding(library, "skills", "Origin")]: {
-        relation: [...sources.values()].map((source) => ({ id: source.page_id })),
-      },
+      ...(!isPatch(plan)
+        ? {
+            [binding(library, "skills", "Origin")]: {
+              relation: [...sources.values()].map((source) => ({ id: source.page_id })),
+            },
+          }
+        : {}),
       ...(creating
         ? {
             [binding(library, "skills", "Current State")]: { select: { name: "applying" } },
@@ -1791,10 +2159,12 @@ function applyPreparedCurrentSkillWrite(
         operation_id: input.operation_id,
         owner: { kind: "skill" as const, id: plan.skill_id },
         input_sha256: plan.input_sha256,
+        ...(isPatch(plan) ? { skill_action: { kind: "update" as const, scope: plan.scope } } : {}),
         ...(input.authorization === undefined ? {} : { source: input.authorization.source_intent }),
       },
       ownerPageId: current?.index.page_id ?? null,
       mode: input.mode,
+      ...(isPatch(plan) ? { assertScope: assertCoordinatedScope } : {}),
       ...(input.supersedingSourceChild === undefined
         ? {}
         : {
@@ -1909,9 +2279,9 @@ function applyPreparedCurrentSkillWrite(
               return yield* Effect.fail(invalid("The current write no longer owns its Skill."))
             ownerRaw = row
           })
-          // This guard is only for the parent-authorized Source contribution.
-          // It runs after a missing observation, immediately before destructive
-          // or replacing actions, so a newly observed native authority survives.
+          // Coordinated and partial writes recheck the selected binding after a
+          // missing observation, immediately before destructive or replacing
+          // actions, so an unrelated authority change survives.
           const assertCoordinatedBinding = (
             page: string,
             wanted?: ResolvedFile,
@@ -1919,7 +2289,7 @@ function applyPreparedCurrentSkillWrite(
             actionKey?: string,
           ) =>
             Effect.gen(function* () {
-              if (input.authorization === undefined) return
+              if (input.authorization === undefined && !isPatch(plan)) return
               const raw =
                 page === created
                   ? yield* session.assertCurrent()
@@ -1940,7 +2310,7 @@ function applyPreparedCurrentSkillWrite(
                     index.state.operation_id !== session.operation_id)
                 )
                   return yield* Effect.fail(
-                    invalid("The current Skill no longer belongs to this Source child."),
+                    invalid("The current Skill no longer belongs to this selected write."),
                   )
                 observed = index.main
               } else {
@@ -1955,6 +2325,51 @@ function applyPreparedCurrentSkillWrite(
                 yield* session.assertCurrent()
               }
               const baseline = baselineBindings.get(page)
+              if (isPatch(plan)) {
+                const original = plan.scope.bindings.find((file) => file.page_id === page)
+                const staged = `.ntn-current-${yield* sha256(canonicalSharedJson([input.operation_id, observed.file_id]))}.pending`
+                const candidates = [
+                  ...(original === undefined ? [] : [original]),
+                  ...(wanted === undefined
+                    ? []
+                    : [
+                        {
+                          file_id: wanted.file_id,
+                          path: wanted.input.path,
+                          content: wanted.input.content,
+                        },
+                      ]),
+                ]
+                if (
+                  observed.content.kind === "source" ||
+                  (retiring && (original === undefined || !plan.remove.includes(original.path))) ||
+                  !candidates.some(
+                    (expected) =>
+                      expected.file_id === observed.file_id &&
+                      (expected.path === observed.path ||
+                        (page !== created && observed.path === staged)) &&
+                      canonicalSharedJson(expected.content) ===
+                        canonicalSharedJson(observed.content),
+                  )
+                )
+                  return yield* Effect.fail(
+                    invalid("The selected patch File identity or authority changed.", {
+                      page_id: page,
+                      file_id: observed.file_id,
+                    }),
+                  )
+                if (
+                  wanted?.input.kind === "preserve" &&
+                  canonicalSharedJson(preservedBinding(observed)) !==
+                    canonicalSharedJson(wanted.input.binding)
+                )
+                  return yield* Effect.fail(invalid("The preserved patch File binding changed."))
+                return
+              }
+              if (input.authorization === undefined)
+                return yield* Effect.fail(
+                  invalid("A coordinated File needs its Source authorization."),
+                )
               const transfer = isCoordinated(plan) ? plan.authority_transfer : null
               if (transfer !== null && page === transfer.target.page_id) {
                 if (
@@ -2061,7 +2476,7 @@ function applyPreparedCurrentSkillWrite(
                     ),
               })
           const assertCoordinatedResourceRetirement = Effect.gen(function* () {
-            if (input.authorization === undefined) return
+            if (input.authorization === undefined && !isPatch(plan)) return
             const raw = yield* session.assertCurrent(),
               latestFiles = yield* queryFilePages(library, created)
             const latest = yield* queryCurrentSkillIndex(
@@ -2073,7 +2488,7 @@ function applyPreparedCurrentSkillWrite(
             yield* checked(() =>
               assertCurrentDirectory(latest, raw, filePages, session.operation_id),
             )
-            yield* input.authorization.assertCurrent
+            if (input.authorization !== undefined) yield* input.authorization.assertCurrent
           })
           const resources = new Map(
             (yield* listCurrentOwnedResourceRecords(library, owner)).map((row) => [
@@ -2392,13 +2807,16 @@ function applyPreparedCurrentSkillWrite(
             const page = filePages.get(file.path)!
             if (file.kind === "native") {
               const observe = () =>
-                observeSharedBody(page).pipe(
-                  Effect.map((body) =>
-                    body.markdown === file.markdown || input.completedNativeTransfer === true
-                      ? ({ status: "complete", value: undefined } as const)
-                      : ({ status: "missing" } as const),
-                  ),
-                )
+                Effect.gen(function* () {
+                  const body = yield* observeSharedBody(page)
+                  const comparison = yield* checked(() =>
+                    compareNativeMarkdown({ expected: file.markdown, observed: body.markdown }),
+                  )
+                  if (comparison === "different" && input.completedNativeTransfer !== true)
+                    return { status: "missing" } as const
+                  nativeVerified.set(file.path, comparison === "different" ? "current" : comparison)
+                  return { status: "complete", value: undefined } as const
+                })
               yield* coordinatedDispatch(
                 resolved.find((selected) => selected.input.path === file.path)!,
                 page,
@@ -2410,7 +2828,7 @@ function applyPreparedCurrentSkillWrite(
                   body: {
                     markdown_version: "v2",
                     type: "replace_content",
-                    replace_content: { new_str: file.markdown },
+                    replace_content: { new_str: nativeMarkdownTransport(file.markdown) },
                   },
                   options: { method: "PATCH" },
                 },
@@ -2426,7 +2844,7 @@ function applyPreparedCurrentSkillWrite(
                       return yield* Effect.fail(
                         fail(
                           "CURRENT_NATIVE_ROUNDTRIP",
-                          "Notion changed this native Markdown representation. The current intent remains pending; retain an exact resource when this format cannot round-trip.",
+                          "The complete Notion body differs from the intended native Markdown structure, text, code or links. The current intent remains pending.",
                           { path: file.path },
                         ),
                       )
@@ -2562,9 +2980,9 @@ function applyPreparedCurrentSkillWrite(
           )
           yield* checked(() => assertCurrentDirectory(final, raw, finalPages, session.operation_id))
           yield* verifyCurrentRelations(library, relations, value.page_id, raw)
-          if (input.authorization !== undefined) {
+          if (input.authorization !== undefined || isPatch(plan)) {
             yield* validatePreservedReferences
-            yield* input.authorization.assertCurrent
+            if (input.authorization !== undefined) yield* input.authorization.assertCurrent
           }
         }),
     }
@@ -2590,6 +3008,13 @@ function applyPreparedCurrentSkillWrite(
       page_id: result.page_id,
       input_sha256: plan.input_sha256,
       files: result.files,
+      native: {
+        verified: [...nativeVerified.values()].filter((comparison) => comparison !== "current")
+          .length,
+        normalized_paths: [...nativeVerified]
+          .filter(([, comparison]) => comparison === "normalized")
+          .map(([path]) => path),
+      },
       relations: currentRelationsInfo(relations),
       state: "ready",
       request_metrics: api.requestMetrics?.(),

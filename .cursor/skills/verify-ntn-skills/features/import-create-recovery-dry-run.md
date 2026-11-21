@@ -35,7 +35,7 @@ ntn-skills export "$PAGE_ID" --database "$CURRENT_ENTRY" --output "$EXPORT_DIR"
 ntn-skills ctl library import "$INPUT" --entry "$CURRENT_ENTRY" --skill-id "$SKILL_ID"
 ~~~
 
-使用实际返回的 PAGE_ID 和后续文件 refs。比对所有导出路径、bytes、hash、mode；从 Notion 的 Skills→Files 检查每类全文和下载。第二次写入即使使用新的 operation，也应语义 0 写，active Operation 为零。
+使用实际返回的 PAGE_ID 和后续文件 refs。Source/resource 比对导出路径、bytes、hash、mode；native 比对完整读回的内容结构及实际当前正文+frontmatter/mode，不把格式规范化说成原字节保真。从 Skills→Files 检查全文和下载。第二次写入即使使用新的 operation，也应语义 0 写，active Operation 为零。
 
 本地完整导入默认 resource authority，原件保存在当前 Records；不支持直接上传的类型使用只含该原件的 ZIP。导入后显式运行 `ctl library projection PAGE_ID --entry DB`，验证 main 与全部文本 Files 的实际全文，再重复核零写。Native 正文只读验证，非文本报告 skipped；不得把 import 成功代称投影已完成。
 
