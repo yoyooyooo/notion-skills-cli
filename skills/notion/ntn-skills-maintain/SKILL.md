@@ -15,9 +15,15 @@ Read only inspects. To apply, use this source's exact ref via `notion_use(ref)`
 or CLI `use REF` with Requires unless already prepared. Report unavailable adoption.
 Inspect edited targets; local/package workflows stay native.
 
-This main explains ordinary creation in an existing library. Read references
-only as needed; setup is for new connections. Report progress before writes
-and during long verification.
+## Choose the route
+
+A supplied Notion library or successful discovery selects an existing library.
+For a basic how-to, explain create/register below from this main; no reference
+read is needed.
+The CLI handles Notion REST; load an API Skill only for direct API work.
+Open [setup](references/setup.md) only to create/connect a library or resolve a
+reported connection/schema problem. Adding a Skill is not library setup.
+Report progress before writes and during long verification.
 
 ## Prepare local input
 
@@ -44,12 +50,7 @@ ntn-skills ctl library skill update TARGET --entry ENTRY --input LOCAL_FILE
 
 Create takes complete input: Markdown becomes native; other files stay exact
 resources. Update without --path selects the main.
-For supporting files, supply intended changes; the CLI preserves everything else:
-
-```sh
-ntn-skills ctl library skill update TARGET --entry ENTRY --file references/guide.md=./guide.md --remove-file references/old.md
-ntn-skills ctl library skill update TARGET --entry ENTRY --name 'New name' --enabled true --default-context false
-```
+For supporting files, supply intended changes; the CLI preserves everything else.
 
 Use --description for discovery text. Omitted metadata and relationships stay
 unchanged. Fix links when removing their targets. Default Context is an author
@@ -117,9 +118,9 @@ Complete import intentionally replaces the tree, removing omitted Notion-owned f
 ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
 ```
 
-See [complete import](references/operations.md#import-a-complete-current-tree),
-[projection and recovery](references/operations.md#generate-notion-text), and
-[setup](references/setup.md) only for those tasks. Source apply/refresh,
+See [complete import](references/operations.md#import-a-complete-current-tree) and
+[projection and recovery](references/operations.md#generate-notion-text) for those tasks.
+Source apply/refresh,
 takeover, lifecycle and Profile/View rules use ntn-skills-sync.
 Read references with `ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF`.
 For package-selected instructions, use `ctl builtin read notion/ntn-skills-maintain
