@@ -93,6 +93,8 @@ The complete invocation defaults to 1000 HTTP attempts, 512 MiB payload bytes an
 download and cleanup share these limits. An admitted response may finish beyond
 the byte limit; its actual cost is reported and no next request is admitted.
 Nested calls cannot reset or increase this budget.
+Exhaustion stops new requests and retains pending. An explicit resume receives
+a fresh invocation budget.
 
 ## Generate Notion text
 

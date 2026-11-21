@@ -1,6 +1,6 @@
 ---
 name: ntn-skills-maintain
-description: Manage complete resource/native Skill imports, readable Notion text, exact Skill Trash restoration, finite import recovery and library setup. Use for local Skill migration, a trashed Skill or missing daily Notion bodies.
+description: Import complete Skills, project Notion text, restore a trashed Skill, and manage setup and recovery. Use for local migration or missing reading bodies.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-maintain
@@ -10,8 +10,8 @@ metadata:
 
 Requires ntn-skills and library Read access; import and restoration also need Insert and Update.
 
-Use the task's executable and exact library. Stable IDs select Skills. Import
-replaces a complete local tree; Source management belongs to notion/ntn-skills-sync.
+Use the task's executable and library. Import replaces a complete local tree;
+manage Sources through notion/ntn-skills-sync.
 
 ## Inspect and prepare
 
@@ -54,27 +54,24 @@ Use the returned PAGE_ID. Import preserves Skill and retained File identities,
 checks complete current metadata and authoritative content, then retires omitted
 Notion-owned supporting rows and unreferenced owned resources. Equal complete input makes zero semantic Notion writes.
 
-Import preserves exact originals. Repeat installed-tree imports under the same
-Skill ID; keep Notion originals native. Generate readable main/supporting text:
+Repeat imports with the same Skill ID and retain native authority. Generate
+complete main/supporting reading text:
 
 ```sh
 ntn-skills ctl library projection PAGE_ID --entry ENTRY
 ```
 
-Source filters preserve Git consumption and Notion authority. See
-[reading and recovery](references/operations.md#generate-notion-text) for filters,
-page rebuild, resume/cancel and zero-write reruns. Consumption stays ready.
+Projection preserves full consumption, Notion authority and ready state. See
+[filters and recovery](references/operations.md#generate-notion-text).
 
-For a completed Skill later moved to Trash, use its original exact page:
+Restore a completed Skill from Trash using its original page:
 
 ```sh
 ntn-skills ctl library projection PAGE_ID --restore --entry ENTRY
 ```
 
-Repeat the same command after its own restore or projection interruption. Keep
-the original filters and budgets. Preserve identity, four policy checkboxes and
-native/resource authority; verify complete text before declaring recovery.
-Use the [Trash recovery boundary](references/operations.md#restore-a-trashed-skill).
+Use exact-page automatic mode. See [restore rules](references/operations.md#restore-a-trashed-skill)
+for retries, preserved identity and rejected combinations.
 
 Repeat --native PATH for editable text, such as --native SKILL.md --native
 references/guide.md. Select exact paths after any entrypoint rename. Native
@@ -87,9 +84,7 @@ use same-library stable refs: omitted preserves, [] clears, a list replaces.
 Export carries both sets. Prompt relations are invalid; changed sets allow 100
 targets and Requires must be acyclic. Old projection/materialization is rejected.
 
-Remote work shares 1000 HTTP attempts, 512 MiB payload bytes and 600000 ms by
-default. Set --max-requests, --max-bytes and --timeout in ms. Exhaustion stops
-new requests and retains pending; explicit resume gets a fresh invocation budget.
+Remote work shares one invocation budget; see [limits](references/operations.md).
 
 ## Authority and unfinished work
 
