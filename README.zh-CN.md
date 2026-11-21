@@ -182,6 +182,8 @@ ntn-skills list --profile PROFILE_ID --database ENTRY_DATABASE_ID
 
 已连接 Notion 库时，从当前库的目录发现 `ntn-skills`、`ntn-skills-maintain`，通过普通 `read` 读取实际返回的精确 ref，附件沿同一选择用 `read --from` 读取。默认 View 没有该项时，在当前库内按名称查询；发现失败或不完整不能判定不存在。
 
+读取维护工作流只是查看。实际采用时，使用同来源的精确 ref 调用 Pi `notion_use(ref)` 或 CLI `use REF --database ENTRY --json`，加载完整 Requires；本任务已经准备完整闭包时可复用。只使用当前可用的路线，没有采用能力就报告不可用。被编辑目标仍只 inspect，不激活其工作流。
+
 没有连接库，或明确检查离线/随包内容时，再使用 `ctl builtin` 或宿主的精确 `@builtin` 身份。包内内容与 Notion 投影可能不同：安装新包不会刷新 Notion Source 或生成其阅读投影，也不会自动替换已有任务选择。
 
 `ntn-skills-maintain` 负责原生新建、局部更新、页面登记、删除、设置、完整导入与有限恢复；`ntn-skills-sync` 负责当前 Profile、Git Source apply/refresh、文件接管与恢复跟随、Source 启停清退和混合树保留规则。

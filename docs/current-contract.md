@@ -19,11 +19,17 @@ binary presentation and unrelated cleanup.
 The CLI's bundled guidance may also be projected into a connected Notion library.
 Those projected Skills use ordinary scoped discovery, exact-ref reads and
 same-selection reference reads. Package IDs and Notion page identities remain
-distinct. Use package guidance when no library is connected or when offline/package
+distinct. Reading inspects the workflow. Applying it uses the same source's exact
+ref through Pi `notion_use` or CLI `use` to load its complete Requires, unless
+already prepared for this task. Inspecting the edited target does not activate it.
+Use only available tools; report when adoption has no supported route.
+Use package guidance when no library is connected or when offline/package
 inspection is explicit; failed or partial discovery does not select that fallback.
 Updating the npm package does not advance the Notion Source or its reading pages.
-Source refresh preserves human Name/Description choices. Compare projected files
-and discovery descriptions before declaring a paired guidance update complete.
+Source refresh preserves human Name/Description choices. Compare consumed file
+bytes and discovery descriptions after updating distributed guidance. This byte
+comparison does not prove generated reading pages, Source ownership, installed
+CLI/Broker pairing or model delivery; those retain their own verification paths.
 An existing task keeps its loaded selection until explicitly changed.
 
 | Table | Current responsibility | Authoritative writer | Rebuildable display |

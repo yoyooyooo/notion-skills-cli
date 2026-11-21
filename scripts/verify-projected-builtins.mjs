@@ -13,7 +13,8 @@ const { values } = parseArgs({
 if (values.help) {
   process.stdout.write(
     "Usage: node scripts/verify-projected-builtins.mjs --entry ENTRY [--cli EXECUTABLE_OR_JS]\n" +
-      "Read the selected library and compare all projected builtin files and descriptions with this CLI package.\n" +
+      "Compare consumer file bytes, directory paths and discovery descriptions with this CLI package.\n" +
+      "This does not verify generated Notion pages or Source ownership, the paired runtime, or model delivery.\n" +
       "No Notion writes. JSON goes to stdout; any missing, partial, changed or unreadable item exits 1.\n",
   )
   process.exit(0)
@@ -185,6 +186,15 @@ const report = {
   cli: values.cli,
   entry: values.entry,
   mode: "read-only",
+  // Scope describes the checks; only ok:true attests that all comparisons passed.
+  proof_scope: {
+    consumer_file_bytes: true,
+    discovery_description: true,
+    generated_notion_pages: false,
+    source_ownership: false,
+    paired_runtime: false,
+    model_delivery: false,
+  },
   skills: [],
 }
 try {

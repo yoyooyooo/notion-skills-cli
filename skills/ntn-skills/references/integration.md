@@ -21,6 +21,10 @@ prove actual model delivery; truncated or failed content is not complete.
 
 For maintenance in a connected library, discover `ntn-skills-maintain` through
 the host's Notion directory or scoped CLI `list`, then read the returned ref.
+Reading only inspects the workflow. To apply it, use that source's exact ref via
+Pi `notion_use(ref)` or CLI `use REF --database ENTRY --json`, loading its Requires
+unless already prepared for this task. If neither route is available, report
+unavailable adoption. Inspect the edited target without activating it.
 Use `ntn-skills-sync` the same way for Source management. If the startup directory
 is pending or its View omits the target, query the connected library explicitly.
 Incomplete discovery is an error, not permission to substitute a package copy.

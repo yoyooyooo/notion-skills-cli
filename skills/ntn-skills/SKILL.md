@@ -111,6 +111,11 @@ do not grant access or activate workflows.
 In a connected library, discover these workflow names through the host's Notion
 directory or `list --database ENTRY --query ntn-skills-maintain`. Read the returned
 exact ref with ordinary `read`, then its references with `read --from` as above.
+Reading only inspects the workflow. To apply the maintenance workflow, use the
+same source's exact ref with Pi `notion_use(ref)` or CLI
+`ntn-skills use 'EXACT_WORKFLOW_REF' --database ENTRY --json` to load its Requires,
+unless that closure is already prepared for this task. Use an available route; otherwise
+report that adoption is unavailable. Inspect the edited target; do not activate it.
 The default View may omit a workflow; broaden discovery within the same library.
 Failed or partial discovery does not authorize switching to a same-name package.
 

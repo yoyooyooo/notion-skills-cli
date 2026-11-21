@@ -42,7 +42,9 @@ bun test packages/cli/test/verification-skill-map.test.ts packages/cli/test/buil
 
 原生日常管理沿 [skill-maintenance](features/skill-maintenance.md#原生日常管理与实际-pi)
 覆盖公开四动作、语义规范化、局部更新与自动清理。真实 `pi -ne` 的 group/worker
-用自然任务发现并读取已连接库里的维护 Skill；无连接或显式离线/随包检查另验 builtin。
+用自然任务发现并读取已连接库里的维护 Skill；仅查看仍用 read，真正采用时沿同来源
+精确 ref 用 notion_use/CLI use 加载 Requires，被编辑目标仍只 inspect。
+无连接或显式离线/随包检查另验 builtin。
 不在提示里预填字段或命令来替代指引发现。
 
 [skill-domains.json](../../../verification/skill-domains.json) 记录当前 feature 的唯一主要 owner 与可执行回归。[feature map](features/README.md) 只路由现有能力及明确未实现边界，不保留已取消流程的执行说明。

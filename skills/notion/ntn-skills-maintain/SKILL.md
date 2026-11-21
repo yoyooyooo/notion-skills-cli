@@ -8,25 +8,29 @@ metadata:
 
 # Maintain the current library
 
-Use the task's executable and library. Reads need Read access; management also
-needs Insert and Update. Discover an existing target, then use its exact page ID,
-page URL or stable Skill ID. Never write by a fuzzy display title.
+Use the task's executable and library. Reads need Read access; writes also need
+Insert and Update. Discover targets; use an exact page ID, URL or stable Skill ID,
+never a fuzzy title.
+
+For this Notion workflow, read only inspects. To apply, use the same source's
+exact ref via available `notion_use(ref)` or CLI `use REF`, loading Requires unless
+prepared for this task. Report unavailable routes. Inspect edited targets;
+local/package workflows stay native.
 
 ## Create or edit a native Skill
 
-Supply the authored content and the intended metadata. The CLI owns registration,
-file identities, authority descriptors, relationships and finite operation state;
-do not construct those Notion fields or clear pending by hand.
+Supply authored content and intended metadata. The CLI owns registration, file
+identity, authority, relationships and finite state; do not construct those Notion fields
+or clear pending by hand.
 
 ```sh
 ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID
 ntn-skills ctl library skill update TARGET --entry ENTRY --input LOCAL_FILE
 ```
 
-Create accepts a complete local input. Markdown files use editable native bodies;
-other files use exact resources. No per-file --native list is needed. Update
-without --path selects the main. To change supporting files, supply only the
-intended changes; the CLI preserves everything else:
+Create takes a complete input: Markdown becomes native; other files stay exact
+resources. No --native list is needed. Update without --path selects the main.
+For supporting files, supply intended changes; the CLI preserves everything else:
 
 ```sh
 ntn-skills ctl library skill update TARGET --entry ENTRY --file references/guide.md=./guide.md --remove-file references/old.md
@@ -38,11 +42,10 @@ TARGET replaces that relation set; a single empty string clears it. Omitted
 metadata and relationships stay unchanged. Fix links in authored files when
 removing their targets. Source-owned changes use ntn-skills-sync.
 
-Native writes verify the complete Notion body for equivalent text, code, links
-and structure. Supported formatting normalization is reported; native does not
-promise the original Markdown bytes. Resource originals remain byte-exact. After
-creation, edit a native body directly in Notion or use update; no projection is
-needed for native edits. See [native management](references/operations.md#manage-native-skills).
+Native writes verify the complete body for equivalent text, code, links and
+structure. Supported formatting normalization is reported; native Markdown bytes
+may change. Resources stay byte-exact. Edit native bodies in Notion or via update;
+no projection is needed. See [native management](references/operations.md#manage-native-skills).
 
 ## Register or remove an existing page
 
@@ -52,8 +55,8 @@ Register an authored page in the current Skills table without replacing its body
 ntn-skills ctl library skill register PAGE_ID --entry ENTRY
 ```
 
-Use --skill-id for an explicit identity; provide --name or --description when
-valid business metadata is missing. An already valid native registration is unchanged.
+Use --skill-id for explicit identity; supply --name or --description for missing metadata.
+Valid native registration is unchanged.
 Do not move a foreign page into the library or repair conflicting ownership by hand.
 
 ```sh
@@ -82,9 +85,9 @@ byte is needed. Native reads make zero semantic Notion writes.
 CURRENT_SCHEMA_REQUIRED or CURRENT_OPERATION_PENDING never authorizes manual
 field repair or bypassing unfinished management.
 
-All four skill actions support --dry-run and invocation budgets. Repeat the same
-command with the same intent after interruption. Preserve input, local state and
-credential scope; conflicting edits and unresolved writes must remain visible.
+All four actions support --dry-run and budgets. After interruption, repeat the same
+command and intent. Preserve input, state and credential scope; report conflicting
+edits and unresolved writes.
 See [unfinished work](references/operations.md#incomplete-current-work) for
 operation inspection and complete-import resume or supersede.
 

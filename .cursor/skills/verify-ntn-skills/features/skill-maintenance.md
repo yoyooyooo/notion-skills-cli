@@ -86,8 +86,10 @@ trash 说成可自动恢复。
    自身动作。完整语义不同、未知语法或并发修改不得伪报 ready；失败证据保留。
 
 真实宿主验收使用用户要求的 `pi -ne` 和实际 group/worker：给自然的新建、修改、读取、
-登记与删除目标，让模型从已连接库发现并普通读取 maintain，沿同一选择读取必要 reference 后自行选择
+登记与删除目标，让模型从已连接库发现并普通读取 maintain；实际采用时用同来源的
+精确 ref 调用 notion_use/CLI use 加载 Requires，沿同一选择读取必要 reference 后自行选择
 公共动作。任务输入可以给内容和已授权对象，不能预填内部字段、正确命令或期望答案。
+只查看指引时保持 read，被编辑目标也只 inspect；无采用工具时报告不可用。
 核 group/worker 实际调用与 provider 收到的完整正文、后续 native 编辑可读、最终有限
 意图清空。缺管理能力、靠外部 Agent 扫尾或只跑准备命令都不能记 passed。真实写入仅
 限授权对象；cleanup 也走同一公开 remove。受控、安装、live、natural 结果分开，不提前填数。
@@ -95,7 +97,11 @@ trash 说成可自动恢复。
 维护说明随包和 Notion 投影分别保留身份；无连接或显式离线检查另验包内入口。
 发布指导更新后，用现有安装包运行
 `node scripts/verify-projected-builtins.mjs --cli CLI --entry ENTRY`，
-核全部主文/附件 hash 和发现 Description。脚本只读；Source refresh 不覆盖人工描述。
+核消费返回的全部主文/附件字节、目录和发现 Description。脚本只读；它不验证生成的
+Notion 阅读正文或 Source ownership，也不证明安装配对或模型投递。相同名称和字节
+不足以证明来源归属；这些边界仍沿原有领域入口验证。Source refresh 不覆盖人工描述。
+受控正反例由 `bun test packages/cli/test/verify-projected-builtins.test.ts` 执行，
+根 `test:unit` 的 `packages/*/test` 已收集它；受控子 CLI 成绩不代表真实库通过。
 目录晚到或 View 未含维护项时仍应查询当前库，不能把不完整发现当作切换包内版本的理由。
 
 ## 当前内容 writer 与剩余治理

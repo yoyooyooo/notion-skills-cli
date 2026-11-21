@@ -63,7 +63,10 @@ ntn-skills list --default-view
 
 Views retain native API ordering and filters. Explicit View selection wins over
 Profile rules. Profiles and Views do not grant access. Discover `ntn-skills-sync`
-in the connected library to change shared rules, then read its exact returned ref.
+in the connected library and read its exact returned ref for inspection. To apply
+that workflow, use the same source's ref with `use REF --database ENTRY --json`
+or Pi `notion_use(ref)` to load its Requires, unless already prepared for this task.
+Inspect the edited target without activating it.
 
 ## Library inspection
 

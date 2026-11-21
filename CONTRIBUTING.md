@@ -46,14 +46,21 @@ node scripts/verify-projected-builtins.mjs --cli /absolute/ntn-skills --entry EN
 ```
 
 This read-only check requires complete discovery, reads every packaged main and
-reference through ordinary Notion reads, and compares exact hashes and discovery
-Description with the package's parsed frontmatter. It emits JSON and exits
+reference through ordinary consumption, and compares exact file bytes, directory
+paths and discovery Description with the package's parsed frontmatter. It emits
+JSON with an explicit `proof_scope` and exits
 nonzero for drift, missing content or incomplete discovery. Source refresh
 preserves existing author metadata; align an intended Description change
 explicitly rather than treating it as a file synchronization side effect.
 For a Source-owned Skill, edit the requested Name/Description author fields in
 Notion. `ctl library skill update` rejects current Source contributions even for
 metadata-only requests.
+
+The comparison does not verify generated Notion reading pages or Source ownership.
+Matching names and bytes do not establish ownership. Installed CLI/Broker pairing
+and model delivery also require their existing verification paths. The controlled
+contract cases run with `bun test packages/cli/test/verify-projected-builtins.test.ts`
+and are included by the root `test:unit` package-test glob; they do not access Notion.
 
 The compact `packages/core/test/fixtures/router-original/.ntn-skills.json` is a byte-preservation fixture. Its whitespace and final newline are intentional. Builtin lifecycle tests use isolated application and agent directories; preserve that isolation when extending a test.
 

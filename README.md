@@ -306,6 +306,11 @@ the scoped Notion directory and read their exact returned refs with ordinary
 View may omit a workflow; query its name within the connected library before
 concluding it is absent. Failed discovery is not absence.
 
+Reading only inspects a workflow. To apply it, use that source's exact ref with
+Pi `notion_use(ref)` or CLI `use REF --database ENTRY --json` to load its Requires,
+unless already prepared for this task. Use only an available route; otherwise
+report unavailable adoption. Inspect the edited target without activating it.
+
 Without a connected library, or for explicit offline/package inspection, use the
 `ctl builtin` catalog or an exact host `@builtin` identity. Package and Notion
 copies can differ: installing a package does not refresh a Notion Source or its

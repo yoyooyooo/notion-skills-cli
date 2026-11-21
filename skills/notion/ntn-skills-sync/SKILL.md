@@ -15,7 +15,12 @@ consumption never updates Source content. Reading a script does not authorize
 executing it. Complete local imports belong to ntn-skills-maintain.
 
 In a connected library, discover that workflow within the same library and read
-its exact returned ref. Read this Skill's references with `ntn-skills read
+its exact returned ref for inspection. To apply a Notion-selected workflow, use
+that source's exact ref via Pi `notion_use(ref)` or CLI `ntn-skills use REF
+--database ENTRY --json` to load its Requires, unless already prepared for this
+task. Use only an available route; otherwise report unavailable adoption. Inspect
+the edited target without activating it. Local and package workflows keep their
+host's native route. Read this Skill's references with `ntn-skills read
 RELATIVE_PATH --from CONTAINING_FILE_REF`. Keep package-selected references in the
 same package with `ctl builtin read notion/ntn-skills-sync --path RELATIVE_PATH`.
 An npm update does not refresh a Notion Source. Refresh its selected Git ref and
