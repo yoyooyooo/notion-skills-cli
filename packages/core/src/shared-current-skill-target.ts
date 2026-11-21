@@ -96,16 +96,25 @@ export function assertCurrentSkillPage(
 }
 
 /** Exhaust one scoped query before absence can authorize a mutation. */
-export function queryCurrentTablePages(library: SharedLibrary, table: Table, filter?: unknown) {
+export function queryCurrentTablePages(
+  library: SharedLibrary,
+  table: Table,
+  filter?: unknown,
+  fields: readonly string[] = [],
+) {
   return Effect.gen(function* () {
     const api = yield* Notion
+    const query = new URLSearchParams()
+    for (const name of fields)
+      query.append("filter_properties", currentSkillProperty(library, table, name))
+    const suffix = fields.length === 0 ? "" : "?" + query
     const pages: unknown[] = [],
       ids = new Set<string>(),
       cursors = new Set<string>()
     let cursor: string | undefined
     for (;;) {
       const raw = yield* api.request(
-        "v1/data_sources/" + library[table].data_source_id + "/query",
+        "v1/data_sources/" + library[table].data_source_id + "/query" + suffix,
         {
           page_size: 100,
           ...(filter === undefined ? {} : { filter }),
@@ -211,13 +220,23 @@ export function resolveCurrentSkillPage(
 /** A Source contribution remains authority even when all its reading rows disappeared. */
 export function assertNoCurrentSourceContribution(library: SharedLibrary, skillId: string) {
   return Effect.gen(function* () {
-    const rows = yield* queryCurrentTablePages(library, "sources")
+    const rows = yield* queryCurrentTablePages(library, "sources", undefined, ["Contributions"])
     for (const raw of rows) {
-      const contributions = yield* checkedSkillManagement(() =>
-        validateCurrentSourceContributions(
-          JSON.parse(currentSkillText(library, "sources", raw, "Contributions")),
-        ),
-      )
+      const contributions = yield* checkedSkillManagement(() => {
+        const encoded = currentSkillText(library, "sources", raw, "Contributions")
+        // An empty current declaration names no target. Unrelated unbound Source
+        // rows must not become a migration prerequisite for native authoring.
+        if (encoded === "") return []
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(encoded)
+        } catch {
+          throw invalid("A nonempty Source contribution declaration is not complete JSON.", {
+            source_page_id: property(raw).id,
+          })
+        }
+        return validateCurrentSourceContributions(parsed)
+      })
       if (contributions.some((item) => item.skill_id === skillId))
         return yield* Effect.fail(
           fail(
