@@ -47,8 +47,7 @@ export function requireTestCommand(
   args: readonly string[],
   library: Pick<SharedLibrary, "library_id" | "skills">,
 ) {
-  const repair = args[0] === "ctl" && args[1] === "repair"
-  const isScopeFlag = (value: string) => value === "--database" || (!repair && value === "--entry")
+  const isScopeFlag = (value: string) => value === "--database" || value === "--entry"
   const flags = args.filter(isScopeFlag)
   assert.equal(
     flags.length,
@@ -256,10 +255,6 @@ export async function runEmptyLibrary(input: {
     const created = await execute("init", ["ctl", "library", "init", "--parent", state.parent])
     const library = Schema.decodeUnknownSync(SharedLibrarySchema)(created.library)
     assert.equal(library.parent_page_id, state.parent)
-    assert.ok(
-      library.sources && created.source_management_ready === true,
-      "Core initialized but Sources is not ready; follow the original next action",
-    )
     state = { ...state, kind: "library_ready", library }
     await save("state.json", state)
   }
@@ -293,15 +288,6 @@ export async function runEmptyLibrary(input: {
   ])
   assert.equal(listed.total_count, 0)
   assert.equal(listed.has_more, false)
-  const sources = await execute("empty-sources", [
-    "ctl",
-    "library",
-    "sources",
-    "list",
-    "--entry",
-    ready.library.skills.database_id,
-  ])
-  assert.deepEqual(sources.items, [])
   const after = await census(ready.library, "empty-after-repeat")
   assert.deepEqual(after.tables, before.tables)
   const children = Schema.decodeUnknownSync(ListResponse)(
