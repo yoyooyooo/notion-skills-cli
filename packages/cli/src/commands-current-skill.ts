@@ -152,7 +152,9 @@ const create = defineCommand(
   "create",
   {
     input: Argument.String("input").pipe(
-      Argument.withDescription("One Markdown file, a Skill directory, or current portable ZIP"),
+      Argument.withDescription(
+        "One Markdown file, Skill directory or current portable ZIP at a physical path; resolve temporary parent aliases with pwd -P before writing input",
+      ),
     ),
     skillId: requiredSingleton(
       "skill-id",

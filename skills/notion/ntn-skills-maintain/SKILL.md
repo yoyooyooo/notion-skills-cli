@@ -8,28 +8,42 @@ metadata:
 
 # Maintain the current library
 
-Use the task's executable and library. Reads need Read access; writes also need
-Insert and Update. Discover targets; use an exact page ID, URL or stable Skill ID,
-never a fuzzy title.
+Use the task's executable and library, with Read and for writes Insert/Update access.
+Select an exact page ID, URL or stable Skill ID, never a fuzzy title.
 
-For this Notion workflow, read only inspects. To apply, use the same source's
-exact ref via available `notion_use(ref)` or CLI `use REF`, loading Requires unless
-prepared for this task. Report unavailable routes. Inspect edited targets;
-local/package workflows stay native.
+Read only inspects. To apply, use this source's exact ref via `notion_use(ref)`
+or CLI `use REF` with Requires unless already prepared. Report unavailable adoption.
+Inspect edited targets; local/package workflows stay native.
+
+This main explains ordinary creation in an existing library. Read references
+only as needed; setup is for new connections. Report progress before writes
+and during long verification.
+
+## Prepare local input
+
+Writers require physical paths, including parents. Prepare temporary input before
+writing files:
+
+```sh
+skill_dir=$(mktemp -d)
+skill_dir=$(cd "$skill_dir" && pwd -P)
+printf '%s\n' "$skill_dir"
+```
+
+Use that physical path; links inside it remain rejected.
 
 ## Create or edit a native Skill
 
-Supply authored content and intended metadata. The CLI owns registration, file
-identity, authority, relationships and finite state; do not construct those Notion fields
-or clear pending by hand.
+Supply content and author metadata; do not construct those Notion fields
+that the CLI owns: identity, authority, relationships and finite state.
 
 ```sh
 ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID
 ntn-skills ctl library skill update TARGET --entry ENTRY --input LOCAL_FILE
 ```
 
-Create takes a complete input: Markdown becomes native; other files stay exact
-resources. No --native list is needed. Update without --path selects the main.
+Create takes complete input: Markdown becomes native; other files stay exact
+resources. Update without --path selects the main.
 For supporting files, supply intended changes; the CLI preserves everything else:
 
 ```sh
@@ -37,14 +51,13 @@ ntn-skills ctl library skill update TARGET --entry ENTRY --file references/guide
 ntn-skills ctl library skill update TARGET --entry ENTRY --name 'New name' --enabled true --default-context false
 ```
 
-Use --description for discovery text. Repeated --members TARGET or --requires
-TARGET replaces that relation set; a single empty string clears it. Omitted
-metadata and relationships stay unchanged. Fix links in authored files when
-removing their targets. Source-owned changes use ntn-skills-sync.
+Use --description for discovery text. Omitted metadata and relationships stay
+unchanged. Fix links when removing their targets. Default Context is an author
+property; actual default visibility follows the View. Source-owned changes use
+ntn-skills-sync.
 
-Native writes verify the complete body for equivalent text, code, links and
-structure. Supported formatting normalization is reported; native Markdown bytes
-may change. Resources stay byte-exact. Edit native bodies in Notion or via update;
+Native writes verify complete text, code, links and structure; formatting may
+normalize. Resources stay byte-exact. Native bodies are editable in Notion;
 no projection is needed. See [native management](references/operations.md#manage-native-skills).
 
 ## Register or remove an existing page
@@ -55,64 +68,59 @@ Register an authored page in the current Skills table without replacing its body
 ntn-skills ctl library skill register PAGE_ID --entry ENTRY
 ```
 
-Use --skill-id for explicit identity; supply --name or --description for missing metadata.
-Valid native registration is unchanged.
-Do not move a foreign page into the library or repair conflicting ownership by hand.
+Supply missing --name or --description. Valid registration is unchanged;
+foreign pages and conflicting ownership are refused.
 
 ```sh
 ntn-skills ctl library skill remove TARGET --entry ENTRY --dry-run
 ntn-skills ctl library skill remove TARGET --entry ENTRY
 ```
 
-Removal moves the Skill, its Files and unused owned resources to Trash and clears
-typed incoming Members/Requires links in the same library. It preserves the other
-Skills and their remaining relationships. Read the actual affected scope;
-a preview is not a completed edit. See [removal boundaries](references/operations.md#remove-a-skill).
+Removal moves the Skill, Files and unused owned resources to Trash and clears
+typed incoming Members/Requires links in the library, preserving other links.
+A preview is not a completed edit. See [removal boundaries](references/operations.md#remove-a-skill).
 
 ## Verify and continue
 
 A successful `ready` result or `removed` with `cleanup_verified: true` includes
-complete CLI verification. Use the reads below only for requested review or
-consumption; they are not routine cleanup.
+complete CLI verification. Continue only for requested review or
+consumption; extra reads are not routine cleanup.
+
+For a requested Pi consumption test after writing, refresh that source's directory
+with `notion_list({query: SKILL_ID, source: SOURCE_ID, refresh: true})`, then use
+ordinary `read` on its returned exact ref. This refreshes discovery, not adopted
+versions. Inspect the edited target; do not activate it. Repeating an unchanged
+empty query or running CLI list does not refresh the host directory.
+
+For a CLI readback or metadata inspection:
 
 ```sh
 ntn-skills ctl library files PAGE_ID --entry ENTRY
 ntn-skills read PAGE_ID --database ENTRY --refresh --json
 ```
 
-Use the returned PAGE_ID. Files reads metadata only; export when every supporting
-byte is needed. Native reads make zero semantic Notion writes.
+Use the returned PAGE_ID. Files reads metadata only. Native reads make
+zero semantic Notion writes. Summarized readbacks retain page/ref, snapshot,
+path, source, content bytes/hash, has_more and effects; check content itself.
 CURRENT_SCHEMA_REQUIRED or CURRENT_OPERATION_PENDING never authorizes manual
 field repair or bypassing unfinished management.
 
-All four actions support --dry-run and budgets. After interruption, repeat the same
-command and intent. Preserve input, state and credential scope; report conflicting
-edits and unresolved writes.
-See [unfinished work](references/operations.md#incomplete-current-work) for
-operation inspection and complete-import resume or supersede.
+All four actions support --dry-run and budgets. After interruption, repeat the
+same command and intent, preserving input, state and credentials. Conflicts and
+unresolved writes follow [unfinished work](references/operations.md#incomplete-current-work).
 
 ## Other management
 
-Use complete import only for an intentional full-tree replacement. Omitted
-Notion-owned files are removed, including later edits absent from that input:
+Complete import intentionally replaces the tree, removing omitted Notion-owned files:
 
 ```sh
 ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
 ```
 
-Import defaults to resource originals; repeated --native PATH selects editable
-Markdown. See [complete import](references/operations.md#import-a-complete-current-tree).
-Generate Source/resource reading pages, or restore a completed trashed Skill:
-
-```sh
-ntn-skills ctl library projection PAGE_ID --entry ENTRY
-ntn-skills ctl library projection PAGE_ID --restore --entry ENTRY
-```
-
-See [projection and recovery](references/operations.md#generate-notion-text) for
-filters and exact-page restore limits. Generated bodies never transfer authority.
-Use [setup](references/setup.md) for libraries and ntn-skills-sync for Source
-apply/refresh, takeover, lifecycle or Profile/View rules.
+See [complete import](references/operations.md#import-a-complete-current-tree),
+[projection and recovery](references/operations.md#generate-notion-text), and
+[setup](references/setup.md) only for those tasks. Source apply/refresh,
+takeover, lifecycle and Profile/View rules use ntn-skills-sync.
 Read references with `ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF`.
 For package-selected instructions, use `ctl builtin read notion/ntn-skills-maintain
 --path RELATIVE_PATH`.

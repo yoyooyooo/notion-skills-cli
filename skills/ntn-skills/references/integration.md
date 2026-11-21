@@ -43,6 +43,17 @@ for the user's Notion library. Do not infer host support from CLI URI support.
 
 ## Current selection and cache
 
+Discovery metadata and adopted instructions have separate freshness. In Pi, a
+requested verification after authoring can call
+`notion_list({query: SKILL_ID, source: SOURCE_ID, refresh: true})` and inspect the
+returned exact ref. The refresh queries the selected configured source; omission
+of source uses the configured discovery scope. Do not combine refresh with an
+old pagination cursor. It updates the directory without adopting newer bodies or
+changing active task snapshots. Keep the returned observation freshness:
+exhaustive coverage alone does not mean the observation is current after a write.
+An independent CLI `list --refresh` does not refresh the running host's directory.
+`read` and `notion_use` refresh options inspect/adopt content, not the directory.
+
 A task keeps one selected tree until explicitly selecting current content again.
 Already materialized bytes remain usable locally. A missing Source/resource byte
 may be acquired only through its unchanged current declared owner and location.
@@ -91,6 +102,7 @@ metadata.
 | Symptom | Check and action |
 | --- | --- |
 | Expected workflow absent | Inspect coverage and failed sources; broaden query or select the exact known database. Search absence is not workspace absence. |
+| Just-authored Skill absent from Pi discovery | Refresh the configured source with notion_list refresh:true, then inspect its exact returned ref. Keep existing task pins. Repeating a cached empty query or refreshing only the CLI does not prove host discovery. |
 | Bare-name read reports CATALOG_INCOMPLETE with no failed sources | Global Notion Search is still non-exhaustive. Use an explicit database or exact returned ref; a machine binding does not make global name lookup unique. |
 | Same name matches several pages | Select the intended database or exact returned ref; preserve each identity. |
 | Current schema required | Keep the precise error and affected entry. Current descriptor conversion is a management task; another reader must not mask it. |
@@ -106,3 +118,8 @@ metadata.
 Follow the current installed parser and supplied host interface. Report actual
 configuration, current read and model delivery separately. Loading succeeded
 only when the necessary complete content was actually returned.
+
+When summarizing a readback, retain exact page/ref, snapshot, path, source,
+content byte count/hash, range or has_more, and effects. Check the content field,
+not keywords in serialized metadata. A compact summary must still bind the bytes
+to the requested owner and say whether the delivered body is complete.

@@ -85,7 +85,9 @@ trash 说成可自动恢复。
 5. 中断/预算/unknown 使用现有 finite operation 回归，普通同意图命令只继续能确认的
    自身动作。完整语义不同、未知语法或并发修改不得伪报 ready；失败证据保留。
 
-真实宿主验收使用用户要求的 `pi -ne` 和实际 group/worker：给自然的新建、修改、读取、
+真实宿主验收按用户环境使用普通 Pi 和实际 group/worker；保留正常 settings、自动加载
+Broker、本地 Skills、MCP 和缓存，不默认加 `-ns/-ne/-e` 或工具过滤。显式要求的隔离
+`pi -ne` 另记范围，不能替代日用。给自然的新建、修改、读取、
 登记与删除目标，让模型从已连接库发现并普通读取 maintain；实际采用时用同来源的
 精确 ref 调用 notion_use/CLI use 加载 Requires，沿同一选择读取必要 reference 后自行选择
 公共动作。任务输入可以给内容和已授权对象，不能预填内部字段、正确命令或期望答案。
@@ -93,6 +95,17 @@ trash 说成可自动恢复。
 核 group/worker 实际调用与 provider 收到的完整正文、后续 native 编辑可读、最终有限
 意图清空。缺管理能力、靠外部 Agent 扫尾或只跑准备命令都不能记 passed。真实写入仅
 限授权对象；cleanup 也走同一公开 remove。受控、安装、live、natural 结果分开，不提前填数。
+
+写后发现使用同一进程、同一 session 的两轮自然输入：先问怎么加 Skill，再要求创建
+唯一命名的占位草稿并测试链路。只替换用户材料中的测试名，不在 prompt 预告工具、
+刷新、临时路径或正确答案。复用 Broker 现有 RPC harness 和公共 session 审计，
+不新增 runner。先有目录观察，再创建 Enabled=true/Default Context=false 的目标，
+核 native notion_list 能刷新发现并由 native read 读取其精确 ref；CLI list/read 不代填
+宿主成绩。原有维护 Skill 的 selected/active snapshot 和 fixed refs 保持，目标仅 inspect。
+普通 mktemp 输入须在调用入口使用物理路径；不能用预先建在非临时目录的 fixture
+绕过本次 macOS 反例。核无路径失败、无相同条件反复空搜、实际 owner/snapshot/正文
+hash/bytes/completeness/effects，保留失败原件与复验关联。只分析公开文本和实际工具
+调用/返回，不输出 thinking。先取得两轮结果，再独立清理自有测试目标。
 
 维护说明随包和 Notion 投影分别保留身份；无连接或显式离线检查另验包内入口。
 发布指导更新后，用现有安装包运行

@@ -120,6 +120,13 @@ test("maintenance routes daily native management through public commands and kee
   expect(root).toContain("complete CLI verification")
   expect(root).toContain("only for requested review or")
   expect(root).toContain("not a completed")
+  expect(root).toContain('skill_dir=$(cd "$skill_dir" && pwd -P)')
+  expect(root).toContain("notion_list({query: SKILL_ID, source: SOURCE_ID, refresh: true})")
+  expect(root).toContain("then use\nordinary `read`")
+  expect(root).toContain("not adopted\nversions")
+  expect(root).toContain("Summarized readbacks retain page/ref, snapshot")
+  expect(root).toContain("setup is for new connections")
+  expect(operations).toContain("local input recipe")
   expect(setup).toContain("ctl library init --parent AUTHORIZED_PARENT_PAGE")
   expect(setup).toContain("ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID")
   expect(setup).toContain("converts an older library schema")
@@ -179,6 +186,8 @@ test("connected maintenance guidance reads projected workflows and preserves the
   }
   expect(integration).toContain("startup directory")
   expect(integration).toContain("query the connected library explicitly")
+  expect(integration).toContain("An independent CLI `list --refresh` does not refresh")
+  expect(integration).toContain("Do not combine refresh with an\nold pagination cursor")
 })
 
 test("the published documentation allowlist contains only current guides", () => {

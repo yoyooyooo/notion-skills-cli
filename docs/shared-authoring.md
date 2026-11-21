@@ -33,6 +33,18 @@ Use `ctl library skill` for daily authorship. Supply content and author decision
 the CLI manages identities, Content descriptors, owner relations and finite
 operation state. It does not require an Agent to construct internal Notion fields.
 
+All local writer inputs require physical paths, including their parents. Prepare
+temporary input once, then write files under the returned path:
+
+```bash
+skill_dir=$(mktemp -d)
+skill_dir=$(cd "$skill_dir" && pwd -P)
+printf '%s\n' "$skill_dir"
+```
+
+This resolves macOS temporary-directory aliases before admission; links inside
+the selected input and concurrent input changes remain rejected.
+
 ### Create
 
 ```bash
@@ -114,6 +126,18 @@ page with no pending removal returns `already_trashed`, zero writes and
 unverified. Those results do not certify cleanup after a manual deletion.
 
 ### Native verification and retries
+
+A requested Pi consumption check also needs the host's discovery path. After a
+successful write, call `notion_list` for that source with `refresh:true`, then
+inspect the exact returned ref through native `read`. Refreshing the directory
+preserves adopted snapshots; it does not activate the new or edited Skill.
+CLI `list --refresh` alone does not refresh a running Broker's directory. Keep
+the directory observation's freshness separate from exhaustive coverage.
+
+For compact readback evidence, retain page/ref, snapshot, path, source, content
+bytes/hash, completeness and effects. Check content itself, not serialized
+metadata keywords. Default Context is an author property; the selected View
+determines actual default discovery.
 
 All native writes share [the native contract](current-contract.md#files-and-main-file-descriptors),
 including explicit native import and Source takeover. Normal LF/CRLF and terminal

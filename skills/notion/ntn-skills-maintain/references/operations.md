@@ -31,6 +31,11 @@ An arbitrary multiple-path export option is not available.
 
 ## Manage native Skills
 
+Create and update use the same physical-path admission as complete import.
+Prepare temporary input with the main workflow's
+[local input recipe](../SKILL.md#prepare-local-input) before writing it. This also
+applies to macOS temporary paths whose parents are system aliases.
+
 ```sh
 ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
 ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID
@@ -161,7 +166,7 @@ Prompt relations, old projection/materialization and unknown fields are rejected
 A single selected Markdown file is the only
 automatic entrypoint rename.
 
-Use real physical paths. The loader rejects symlinks, unsafe ZIP entries, input
+Use the same [physical input](../SKILL.md#prepare-local-input) preparation. The loader rejects symlinks, unsafe ZIP entries, input
 changes during reading, more than 10,000 entries or more than 128 MiB of originals.
 One original is limited to 64 MiB. Keep raw bytes and regular executable modes.
 Local Markdown references are checked before Notion access. A deleted or moved
