@@ -161,6 +161,13 @@ function check(input: unknown): void {
         existing(match[1]!)
     }
   }
+  const requireLocalDiscovery = (entries: ReadonlyArray<typeof entrypointSchema.Type>) => {
+    if (
+      !entries.some((entry) => entry.command === "pi") ||
+      entries.some((entry) => /(?:^|\s)(?:-ns|--no-skills)(?:\s|$)/u.test(entry.command))
+    )
+      throw new Error("LOCAL_SKILL_DISCOVERY_REQUIRED")
+  }
   for (const contract of map.contracts) {
     if (contractIds.has(contract.id)) throw new Error("DUPLICATE_CONTRACT")
     contractIds.add(contract.id)
@@ -180,6 +187,7 @@ function check(input: unknown): void {
       if (!contract[field].length || contract[field].some((item) => !item.trim()))
         throw new Error("CONTRACT_BOUNDARY_MISSING")
     inspectEntrypoints(contract.entrypoints)
+    if (contract.id === "C08") requireLocalDiscovery(contract.entrypoints)
   }
   const requiredContracts = [
     ...Array.from({ length: 11 }, (_, index) => `C${String(index + 1).padStart(2, "0")}`),
@@ -204,6 +212,7 @@ function check(input: unknown): void {
       if (id.startsWith("C07")) covered.add("C07")
     }
     inspectEntrypoints(scenario.entrypoints)
+    if (scenario.id === "T22") requireLocalDiscovery(scenario.entrypoints)
   }
   const requiredScenarios = Array.from(
     { length: 23 },
@@ -283,6 +292,26 @@ test("current contracts and timeline seeds cannot lose their owner, oracle or ex
       ),
     }),
   ).toThrow("CONFIGURED_ROUTE_INPUTS_MISSING")
+  for (const command of ["pi -ns", "pi --no-skills"]) {
+    const replacePi = (entries: ReadonlyArray<typeof entrypointSchema.Type>) =>
+      entries.map((entry) => (entry.command === "pi" ? { ...entry, command } : entry))
+    expect(() =>
+      check({
+        ...original,
+        contracts: original.contracts.map((item) =>
+          item.id === "C08" ? { ...item, entrypoints: replacePi(item.entrypoints) } : item,
+        ),
+      }),
+    ).toThrow("LOCAL_SKILL_DISCOVERY_REQUIRED")
+    expect(() =>
+      check({
+        ...original,
+        scenarios: original.scenarios.map((item) =>
+          item.id === "T22" ? { ...item, entrypoints: replacePi(item.entrypoints) } : item,
+        ),
+      }),
+    ).toThrow("LOCAL_SKILL_DISCOVERY_REQUIRED")
+  }
 })
 
 test("lost ownership, missing regression and duplicated responsibilities fail routing validation", () => {

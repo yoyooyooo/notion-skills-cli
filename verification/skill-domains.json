@@ -365,7 +365,7 @@
       "entrypoints": [
         {
           "repository": "broker",
-          "command": "pi -ns",
+          "command": "pi",
           "required_inputs": [
             "当前物理机器实际日用安装与 source/provider 配置；新进程、自有任务及已授权模型。"
           ]
