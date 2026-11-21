@@ -75,7 +75,9 @@ for retries, preserved identity and rejected combinations.
 
 Repeat --native PATH for editable text, such as --native SKILL.md --native
 references/guide.md. Select exact paths after any entrypoint rename. Native
-bodies require UTF-8/LF and an actual round-trip; frontmatter/mode stay exact.
+bodies require UTF-8/LF without a terminal LF and an actual exact round-trip;
+frontmatter/mode stay exact. Never trim input to make a failed intent pass. See
+[native admission](references/operations.md#import-a-complete-current-tree).
 Reimport replaces later edits; export them first if needed. Failed native
 conversion never falls back to resource.
 

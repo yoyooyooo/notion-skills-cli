@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { Command } from "effect/cli"
+import { createHash } from "node:crypto"
 import { chmod, mkdir, mkdtemp, readFile, realpath, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -25,9 +26,9 @@ const original = encode(
   "\uFEFF---\r\nname: Original\r\ndescription: Exact bytes\r\n---\r\n# Body\r\n",
 )
 const nativeHeader = "\uFEFF---\r\nname: Native\r\ndescription: Notion authoring\r\n---\r\n\r\n"
-const nativeBody = "# Native\n\nRead [guide](references/guide.txt).\n"
+const nativeBody = "# Native\n\nRead [guide](references/guide.txt)."
 const nativeMain = encode(nativeHeader + nativeBody)
-const nativeGuide = encode("# Guide\n\nEditable text without an extension restriction.\n")
+const nativeGuide = encode("# Guide\n\nEditable text without an extension restriction.")
 const nativePaths = ["SKILL.md", "references/guide.txt"]
 async function nativeInput() {
   const parent = await root(),
@@ -81,7 +82,7 @@ test("only an explicitly selected single Markdown file is renamed to SKILL.md", 
   ).rejects.toMatchObject({ code: "CURRENT_IMPORT_ENTRYPOINT" })
   await writeFile(
     file,
-    "---\nname: Single\ndescription: Native single file\n---\n# Native single file\n",
+    "---\nname: Single\ndescription: Native single file\n---\n# Native single file",
   )
   const native = await run(prepareCurrentImport(file, { skillId: "single", native: ["SKILL.md"] }))
   expect(native.plan.files[0]).toMatchObject({ path: "SKILL.md", kind: "native" })
@@ -152,6 +153,51 @@ test("native body rejection never normalizes arbitrary resource bytes", async ()
       run(prepareCurrentImport(directory, { skillId: "exact", native: ["notes.dat"] })),
     ).rejects.toMatchObject({ code: "CURRENT_WRITE_INPUT_INVALID" })
     expect(new Uint8Array(await readFile(join(directory, "notes.dat")))).toEqual(bytes)
+  }
+})
+
+test("native terminal LF fails public admission before remote work without changing original bytes", async () => {
+  for (const selected of ["SKILL.md", "notes.txt"]) {
+    const parent = await root(),
+      directory = join(parent, "input"),
+      f = currentWriteFixture(parent)
+    await mkdir(directory)
+    const header = "---\nname: Native boundary\ndescription: Exact body boundary\n---\n\n",
+      body = "# Native boundary\n\nPreserve this terminal LF.\n",
+      bytes = encode((selected === "SKILL.md" ? header : "") + body),
+      originalHash = createHash("sha256").update(bytes).digest("hex")
+    await writeFile(join(directory, "SKILL.md"), header + "# Native boundary")
+    await writeFile(join(directory, selected), bytes)
+    const resource = await f.run(prepareCurrentImport(directory, { skillId: "native-boundary" }))
+    expect(resource.plan.files.find((file) => file.path === selected)).toMatchObject({
+      bytes,
+      sha256: originalHash,
+      kind: "resource",
+    })
+    for (const mode of [[], ["--dry-run"], ["--operation", "old-native", "--resume"]])
+      await expect(
+        f.run(
+          Command.runWith(currentImportCommand, { version: "test", renderErrors: false })([
+            directory,
+            "--entry",
+            library.skills.database_id,
+            "--skill-id",
+            "native-boundary",
+            "--native",
+            selected,
+            ...mode,
+          ]),
+        ),
+      ).rejects.toMatchObject({
+        code: "CURRENT_WRITE_INPUT_INVALID",
+        details: { path: selected, reason: "native_terminal_lf" },
+      })
+    expect(f.calls).toEqual([])
+    expect(f.pages.size).toBe(0)
+    expect([...f.json.keys()].filter((key) => key.startsWith("operations/"))).toEqual([])
+    const after = await readFile(join(directory, selected))
+    expect(new Uint8Array(after)).toEqual(bytes)
+    expect(createHash("sha256").update(after).digest("hex")).toBe(originalHash)
   }
 })
 
@@ -375,12 +421,12 @@ test("current portable metadata selects its canonical kind and preserves the who
   expect(prepared.plan.main).toBe("PROMPT.md")
   expect(prepared.plan.files.map((file) => file.path)).toEqual(["PROMPT.md", "empty"])
   expect(prepared.plan.files[0]!.bytes).toEqual(encode("Exact prompt\r\n"))
-  await writeFile(join(directory, "PROMPT.md"), "# Editable prompt\n")
+  await writeFile(join(directory, "PROMPT.md"), "# Editable prompt")
   const native = await run(
     prepareCurrentImport(directory, { skillId: "prompt-id", native: ["PROMPT.md"] }),
   )
   expect(native.plan.main).toBe("PROMPT.md")
-  expect(native.plan.files[0]).toMatchObject({ kind: "native", markdown: "# Editable prompt\n" })
+  expect(native.plan.files[0]).toMatchObject({ kind: "native", markdown: "# Editable prompt" })
   expect(native.plan.files[1]).toMatchObject({ path: "empty", kind: "resource" })
 })
 

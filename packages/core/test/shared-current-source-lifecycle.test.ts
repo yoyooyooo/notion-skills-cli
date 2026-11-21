@@ -108,7 +108,7 @@ async function seedSkill(f: Fixture) {
         {
           path: "SKILL.md",
           file_id: "human-main",
-          bytes: testBytes("---\nname: Human\ndescription: Keep author decisions\n---\n# Author\n"),
+          bytes: testBytes("---\nname: Human\ndescription: Keep author decisions\n---\n# Author"),
           authority: { kind: "native" },
         },
         { path: "notes.md", file_id: "human-note", bytes: testBytes("# Supporting original\n") },

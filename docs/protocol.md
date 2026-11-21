@@ -78,6 +78,8 @@ The input limit is 128 MiB expanded and 10,000 entries. The ZIP wire limit is 13
 The default representation is exact Notion resource content. Generated reading projections are separate and do not block readiness.
 An existing Notion-owned supporting file omitted from the input is removed.
 Repeat `--native PATH` for editable UTF-8/LF text with exact frontmatter and mode.
+The author body must not end in LF. This local admission check never trims input;
+actual complete round-trip verification still rejects other representation changes.
 Unknown or noncanonical native paths are rejected locally; the selection is part
 of the input fingerprint and must match on resume. A target containing any Source
 main or supporting file returns `CURRENT_SOURCE_MANAGEMENT_REQUIRED` in both dry-run

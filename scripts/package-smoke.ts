@@ -178,7 +178,7 @@ const currentFiles = [
   },
   {
     path: "scripts/run.sh",
-    content: "#!/bin/sh\nprintf 'installed current original\\n'\n",
+    content: "#!/bin/sh\nprintf 'installed current original\\n'",
     executable: true,
   },
 ]

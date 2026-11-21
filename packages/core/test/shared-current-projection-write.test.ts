@@ -51,7 +51,7 @@ afterAll(async () => {
   if (process.platform === "darwin") await Effect.runPromise(trashPath(parent))
 })
 const main = testBytes("# Current main\r\n\r\nRead [guide](references/guide.md).\r\n")
-const native = "# Human guide\n\nThe author keeps this exact current body.\n"
+const native = "# Human guide\n\nThe author keeps this exact current body."
 const script = testBytes("// Full source\n" + "const value = '字😀';\n".repeat(2500) + "// FINAL\n")
 const defaults: CurrentSkillWriteInput = {
   skill_id: "readable-current",
@@ -416,7 +416,7 @@ test("automatic projection does not take over an unfinished content operation", 
     prepareCurrentSkillWrite({
       ...defaults,
       files: [
-        { path: "SKILL.md", bytes: testBytes("# Native author\n"), authority: { kind: "native" } },
+        { path: "SKILL.md", bytes: testBytes("# Native author"), authority: { kind: "native" } },
       ],
     }),
   )

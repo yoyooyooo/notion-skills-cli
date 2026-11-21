@@ -107,10 +107,20 @@ ntn-skills ctl library import ./my-skill --entry LIBRARY_ENTRY --skill-id my-ski
 Native selection is explicit and enters the input fingerprint. Unknown, duplicate
 or noncanonical paths are rejected before network access. Select `SKILL.md` after
 the single-Markdown entrypoint rename. The body must be valid UTF-8 with LF line
-endings; the stored frontmatter and regular executable mode remain exact. Invalid
-text is rejected, never silently normalized. Native transport is checked by an
-actual round trip; an unconfirmed write leaves the intent unfinished. Keep exact
-resources for byte formats the native body cannot preserve.
+endings and must not end with LF. Native admits only the subset Notion can express
+exactly; stored frontmatter and regular executable mode remain exact. The terminal
+LF check follows repeated live Markdown v2 observations that omitted that byte.
+It does not predict every Markdown representation change. Invalid input is rejected
+before remote access, never silently trimmed or normalized. An actual complete
+round trip still precedes ready; a mismatch leaves the intent unfinished. Keep
+exact resources for byte formats the native body cannot preserve.
+
+If an earlier native intent remains unfinished because Notion changed its text,
+retain the original input and operation evidence. To adopt the observed text,
+prepare a separate complete input and use a distinct operation with
+`--supersede OLD_OPERATION_ID --operation NEW_OPERATION_ID`. This completes a new
+intent, not the original byte-preserving import. Do not change ready or clear
+pending manually; complete imports have no general cancel command.
 
 Paths, original resource bytes, and executable modes remain part of file identity.
 The writer verifies the complete current tree and authoritative bytes. Run the explicit projection command below for generated main-page and supporting-page reading bodies; those bodies do not block content readiness.

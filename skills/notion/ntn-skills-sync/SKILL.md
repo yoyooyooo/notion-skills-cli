@@ -76,7 +76,9 @@ ntn-skills ctl library source remove SOURCE_ID --entry ENTRY --dry-run
 
 Takeover preserves File/page/path/mode and adds its exact contribution exclusion.
 Resource is the default. --as native explicitly requests an editable body and
-fails without an exact round-trip; it never falls back. Repeating a completed
+fails without an exact round-trip; it never falls back. A selected body ending in
+LF is rejected before a new operation or semantic write; do not trim Source bytes.
+Repeating a completed
 takeover preserves later author edits. Restore-follow explicitly overwrites
 customization with the enabled Source's selected original, removes the exclusion
 and aligns mapping. No permanent former-Origin pointer is required.

@@ -63,8 +63,10 @@ is not silently replaced merely by editing its generated page.
 Use repeated --native PATH to select editable author bodies, including a main
 or supporting path. Paths are exact and canonical after the single-file rename;
 duplicates, unknown paths and invalid text are refused before network access.
-Bodies require UTF-8/LF. Stored frontmatter and executable mode stay exact; no
-silent normalization or fallback occurs. Apply writes and reads the actual body
+Bodies require UTF-8/LF without a terminal LF. This known admission limit follows
+repeated live Markdown v2 observations, not a guarantee that every other form is
+lossless. Stored frontmatter and executable mode stay exact; no silent trimming,
+normalization or fallback occurs. Apply writes and reads the complete actual body
 before ready. A round-trip mismatch leaves the intent unfinished. Reimporting a
 local native copy replaces human edits made since that copy; export current edits
 first if they must be retained. The native path set is part of the input fingerprint.
@@ -223,6 +225,11 @@ child cannot be superseded independently through local import. Use the owning
 Source action. Supersede and resume are mutually exclusive and both refuse dry-run.
 Failure before handoff still belongs to the predecessor; after handoff, resume the
 new operation with its complete input. Preserve the returned exact error context.
+For a native representation mismatch, preserve the failed input bytes and hash.
+Adopting the observed Notion text means preparing a separate complete input and
+explicit successor; do not report it as successful recovery of the original bytes.
+Complete import has no general cancel command. The projection-only cancel route
+does not apply to a content intent.
 
 Archive recovery uses the exact physical page even after it leaves active queries.
 Completion checks the current tree, publishes ready, then retires the remote intent

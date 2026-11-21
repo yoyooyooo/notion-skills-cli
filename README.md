@@ -230,7 +230,8 @@ ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_
 ```
 
 Import preserves exact resource originals; run `ctl library projection` for reading pages. Use
-`--native SKILL.md --native references/guide.md` to select editable UTF-8/LF bodies;
+`--native SKILL.md --native references/guide.md` to select editable UTF-8/LF bodies
+without a terminal LF. Native must round-trip exactly; input is never trimmed and
 the same selection is required on resume. It replaces the
 whole file tree for that stable identity; review removals in dry-run. Repeat equal
 input for a zero-write no-op. Resume unfinished work with the same input and

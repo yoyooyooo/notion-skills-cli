@@ -51,14 +51,14 @@ const declaration: CurrentSourceDeclaration = {
   ],
 }
 const font = new Uint8Array([119, 79, 70, 70, 0, 255, 1])
-function observation(next = false): SourceSnapshot {
+function observation(next = false, mainEnding: "" | "\n" = ""): SourceSnapshot {
   const commit = (next ? "b" : "a").repeat(40),
     root = "skills/one",
     files = [
       {
         path: "SKILL.md",
         bytes: testBytes(
-          `---\nname: one\ndescription: Current original\n---\n# Upstream ${next ? "two" : "one"}\n\nComplete author body.\n`,
+          `---\nname: one\ndescription: Current original\n---\n# Upstream ${next ? "two" : "one"}\n\nComplete author body.${mainEnding}`,
         ),
         mode: "100644" as const,
       },
@@ -108,10 +108,10 @@ function observation(next = false): SourceSnapshot {
     ],
   }
 }
-function provider() {
+function provider(mainEnding: "" | "\n" = "") {
   const bodies = new Map<string, Uint8Array>(),
     requests: string[] = []
-  for (const snapshot of [observation(), observation(true)])
+  for (const snapshot of [observation(false, mainEnding), observation(true, mainEnding)])
     for (const member of snapshot.members)
       for (const file of member.portable.files)
         bodies.set(
@@ -146,10 +146,12 @@ function provider() {
 type Fixture = ReturnType<typeof currentWriteFixture>
 const pending = (f: Fixture) =>
   [...f.json.keys()].filter((key) => key.startsWith("operations/current-write-pending/"))
-async function seed() {
+async function seed(mainEnding: "" | "\n" = "") {
   const f = currentWriteFixture(parent),
-    http = provider()
-  const prepared = await f.run(prepareCurrentSourceFromDiscovery(declaration, observation()))
+    http = provider(mainEnding)
+  const prepared = await f.run(
+    prepareCurrentSourceFromDiscovery(declaration, observation(false, mainEnding)),
+  )
   await f.run(http.use(writePreparedCurrentSource(library, { prepared, operation_id: "seed" })))
   await seedSourceFileRows(f, prepared)
   const page = String(f.table("skills")[0]!.id)
@@ -213,6 +215,47 @@ async function author(f: Fixture, page: string, body: string) {
     },
   ])
 }
+
+test.each([true, false])(
+  "native takeover rejects terminal LF before semantic writes (dry_run=%s)",
+  async (dry_run) => {
+    const { f, http, page, index } = await seed("\n")
+    const sourceBefore = await f.run(queryCurrentSourceManagement(library, "file-source"))
+    const original = await f.run(
+      http.use(readSkill(page, { database: library.skills.database_id, refresh: true })),
+    )
+    if (!("content" in original)) throw new Error("Expected the current Source text")
+    expect(original.content.endsWith("\n")).toBe(true)
+    const originalHash = createHash("sha256").update(original.content).digest("hex")
+    const pagesBefore = structuredClone([...f.pages])
+    f.clearCalls()
+    await expect(
+      f.run(
+        http.use(
+          changeCurrentSourceFileAuthority(library, {
+            ...change(index.main, "native-terminal-lf", { kind: "takeover", to: "native" }),
+            dry_run,
+          }),
+        ),
+      ),
+    ).rejects.toMatchObject({
+      code: "CURRENT_WRITE_INPUT_INVALID",
+      details: { reason: "native_terminal_lf", path: "SKILL.md" },
+    })
+    expect(f.mutations()).toEqual([])
+    expect([...f.pages]).toEqual(pagesBefore)
+    expect(await f.run(queryCurrentSourceManagement(library, "file-source"))).toEqual(sourceBefore)
+    expect(await f.run(queryCurrentSkillIndex(library, page))).toEqual(index)
+    const retained = await f.run(
+      http.use(readSkill(page, { database: library.skills.database_id, refresh: true })),
+    )
+    if (!("content" in retained)) throw new Error("Expected the retained Source text")
+    expect(retained.content).toBe(original.content)
+    expect(createHash("sha256").update(retained.content).digest("hex")).toBe(originalHash)
+    await ready(f)
+    expect(f.mutations()).toEqual([])
+  },
+)
 
 test("main takeover preserves identity and human edits through refresh, then follows the current selected original", async () => {
   const { f, http, page, index } = await seed()

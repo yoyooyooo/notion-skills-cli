@@ -139,7 +139,7 @@ async function coordinatedFixture() {
       ...original,
       files: original.files.map((file) =>
         file.path === "references/local.md"
-          ? { ...file, authority: { kind: "native" as const } }
+          ? { ...file, bytes: testBytes("# Local note"), authority: { kind: "native" as const } }
           : file,
       ),
     }),
@@ -273,7 +273,11 @@ describe("complete current Skill writer", () => {
   })
   test.each([
     ["main to resource", "SKILL.md", (file) => ({ ...file, authority: { kind: "resource" } })],
-    ["main to native", "SKILL.md", (file) => ({ ...file, authority: { kind: "native" } })],
+    [
+      "main to native",
+      "SKILL.md",
+      (file) => ({ ...file, bytes: testBytes("# Source main"), authority: { kind: "native" } }),
+    ],
     [
       "support to resource",
       "references/source.md",
@@ -282,7 +286,7 @@ describe("complete current Skill writer", () => {
     [
       "support to native",
       "references/source.md",
-      (file) => ({ ...file, authority: { kind: "native" } }),
+      (file) => ({ ...file, bytes: testBytes("# Source child"), authority: { kind: "native" } }),
     ],
     ["omitted support", "references/source.md", () => undefined],
     ["new main identity", "SKILL.md", (file) => ({ ...file, file_id: "replacement-main" })],
@@ -774,7 +778,11 @@ describe("complete current Skill writer", () => {
         prepareCurrentSkillWrite(
           input([
             { path: "SKILL.md", bytes: testBytes("# Main\n") },
-            { path: "support.md", bytes: testBytes("# Support\n"), authority: { kind } },
+            {
+              path: "support.md",
+              bytes: testBytes(kind === "native" ? "# Support" : "# Support\n"),
+              authority: { kind },
+            },
           ]),
         ),
       )

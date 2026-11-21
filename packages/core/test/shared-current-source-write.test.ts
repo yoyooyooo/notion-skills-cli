@@ -80,7 +80,7 @@ const declaration: CurrentSourceDeclaration = {
 const font = new Uint8Array([119, 79, 70, 70, 0, 255, 1]),
   localBytes = testBytes('{"owned":"Notion"}\n'),
   nativeHeader = "---\nname: Human\ndescription: Editable current main\n---\n",
-  originalBody = "# Human main\n\nKeep this authoring surface.\n"
+  originalBody = "# Human main\n\nKeep this authoring surface."
 
 function observation(
   commit = firstCommit,

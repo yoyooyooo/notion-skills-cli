@@ -81,9 +81,37 @@ describe("current write input boundaries", () => {
     })
   })
 
+  test("prepared native input cannot bypass terminal LF admission with matching file bytes and hash", async () => {
+    const plan = await run(
+      prepareCurrentSkillWrite(
+        input([{ path: "SKILL.md", bytes: bytes("# Native"), authority: { kind: "native" } }]),
+      ),
+    )
+    const native = plan.files[0]!
+    if (native.kind !== "native") throw new Error("Expected prepared native input")
+    const original = bytes("# Native\n")
+    const forged = {
+      ...native,
+      bytes: original,
+      sha256: await run(sha256(original)),
+      markdown: "# Native\n",
+    }
+    const expected = {
+      code: "CURRENT_WRITE_INPUT_INVALID",
+      details: { reason: "native_terminal_lf", path: "SKILL.md" },
+    }
+    await expect(run(copyValidatedCurrentWriteFile(forged))).rejects.toMatchObject(expected)
+    await expect(
+      run(copyValidatedCurrentSkillWrite({ ...plan, files: [forged] })),
+    ).rejects.toMatchObject(expected)
+    expect(forged.bytes).toEqual(original)
+    expect(forged.sha256).toBe(await run(sha256(original)))
+    expect(native.bytes).toEqual(bytes("# Native"))
+  })
+
   test("native Content size is checked in UTF-8 bytes during preparation; resource keeps the complete original", async () => {
     for (const header of ["x".repeat(200000), "字".repeat(45000)]) {
-      const original = bytes("---\nnote: " + header + "\n---\n# Short body\n")
+      const original = bytes("---\nnote: " + header + "\n---\n# Short body")
       const selected = { path: "child.md", bytes: original }
       await expect(
         run(

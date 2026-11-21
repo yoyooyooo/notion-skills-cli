@@ -139,7 +139,7 @@ ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_
 ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID
 ```
 
-导入保留精确 resource 原件；阅读页由 `ctl library projection` 补齐，不阻塞消费。要在 Notion 编辑正文，可加 `--native SKILL.md --native references/guide.md`，所选正文须为 UTF-8/LF。相同稳定身份对应完整文件树替换。先检查 dry-run 中的移除范围；相同输入再次执行为零写入。未完成时用原输入、原 native 选择加 `--operation OPERATION_ID --resume`。具体步骤见[当前管理](docs/shared-authoring.md)。
+导入保留精确 resource 原件；阅读页由 `ctl library projection` 补齐，不阻塞消费。要在 Notion 编辑正文，可加 `--native SKILL.md --native references/guide.md`，所选正文须为 UTF-8/LF 且不能以 LF 结尾。native 只接收 Notion 能精确表达的文本，输入不会被自动裁剪，实际读回仍须完全一致。相同稳定身份对应完整文件树替换。先检查 dry-run 中的移除范围；相同输入再次执行为零写入。未完成时用原输入、原 native 选择加 `--operation OPERATION_ID --resume`。具体步骤见[当前管理](docs/shared-authoring.md)。
 
 Profile 将当前 View 和 freshness 规则保存在一个稳定 Record：
 

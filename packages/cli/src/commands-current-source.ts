@@ -406,7 +406,7 @@ export const takeoverCurrentSourceCommand = defineCommand(
     { kind: "allowed_values", flag: "as", values: ["native", "resource"] },
   ]),
   Command.withDescription(
-    "Take over one exact Source file while preserving its File ID, physical page, target path and mode. Use the current Source original and add its exact member-relative contribution exclusion in the same finite intent. Resource is the default and preserves the original bytes; --as native requires an exact editable-body round-trip and never silently falls back. Other files and other Source contributions remain unchanged.",
+    "Take over one exact Source file while preserving its File ID, physical page, target path and mode. Use the current Source original and add its exact member-relative contribution exclusion in the same finite intent. Resource is the default and preserves the original bytes; --as native requires an exact editable-body round-trip and never silently falls back. Native body terminal LF is rejected before operation allocation or semantic writes, after acquiring the selected original; bytes are never trimmed. Other files and other Source contributions remain unchanged.",
   ),
 )
 export const restoreFollowCurrentSourceCommand = defineCommand(

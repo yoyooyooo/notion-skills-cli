@@ -122,6 +122,11 @@ preserve arbitrary source bytes through a native representation that changes the
 If native transport cannot preserve the selected text, use its **current** exact
 resource and render the entire readable text. Native import refuses invalid input
 or leaves an unconfirmed round trip unfinished; it never silently changes authority.
+New native writes reject a body ending in LF before operation allocation or semantic
+writes. This admission limit follows a repeated live Markdown v2 observation and
+does not assert that every other Markdown form round-trips. It never trims input
+or changes existing native read behavior. Stored frontmatter may retain its exact
+line endings; the limit applies to the author body after that header.
 Import never silently normalizes a
 BOM, line ending or executable mode. An explicitly requested conversion is a new
 current edit, not a reason to keep both past and present content.
@@ -425,7 +430,10 @@ Profiles and local configuration. Import is
 replacement, and `--operation ID --resume` supplies the same input to its finite
 intent. Default import keeps exact originals as Notion resources without waiting
 for generated text projections. Repeated `--native PATH` selects editable UTF-8/LF bodies with exact
-stored frontmatter and mode; that selection must remain identical on resume.
+stored frontmatter and mode; bodies ending in LF are rejected before remote access.
+That selection must remain identical on resume. An input changed to adopt Notion's
+observed representation requires an explicit successor operation, not a resumed
+claim that the original bytes were preserved.
 Actual native round-trip verification precedes ready. Reimport replaces the chosen
 native content, so a local copy does not automatically merge a later Notion edit.
 Import preserves the physical Skill, stable retained File IDs and
@@ -472,6 +480,8 @@ be preserved on surviving pages or supplied separately when rebuilding.
 transfers exactly one selected original into Notion authority. Resource is the
 default representation. Native requires actual supported UTF-8/LF Markdown and a
 successful Notion round-trip; failure does not silently switch representation.
+Terminal LF is rejected after acquiring the selected Source original but before
+allocating an operation or making semantic writes. The Source bytes remain exact.
 `source restore-follow` takes the same exact coordinates and follows the Source's
 already-selected plan. Neither action discovers a new Git HEAD. Both adjust the
 current contribution, preserve all other files, and keep the selected File/page/
