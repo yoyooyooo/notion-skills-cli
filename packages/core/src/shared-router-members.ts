@@ -17,6 +17,7 @@ import {
   validateSharedRecordIdentity,
 } from "./shared-content.ts"
 import type { SharedLibrary, SharedSkillRelationField } from "./shared-library-model.ts"
+import { sharedGraphSkillTargets } from "./shared-graph-read-context.ts"
 export type { SharedSkillRelationField } from "./shared-library-model.ts"
 
 export interface SharedSkillRelationTarget {
@@ -42,7 +43,6 @@ export interface SharedSkillRelationTarget {
 /** Historical Router callers use the same native relation engine. */
 export type SharedRouterMember = SharedSkillRelationTarget
 
-const InventoryPageSchema = listSchema(Schema.Unknown)
 const RelationPageSchema = listSchema(
   Schema.Struct({
     object: Schema.Literal("property_item"),
@@ -244,20 +244,7 @@ export function completeSharedSkillRelationIds(
   })
 }
 
-function inventoryPath(library: SharedLibrary): string {
-  const parameters = new URLSearchParams()
-  for (const name of ["Name", "Description", "Kind", "Skill ID", "Enabled", "Default Context"]) {
-    const id = library.skills.property_ids[name]
-    if (typeof id !== "string" || id === "")
-      throw fail("LIBRARY_INVALID", "A registered member metadata property is unavailable.", {
-        property: name,
-      })
-    parameters.append("filter_properties", id)
-  }
-  return `v1/data_sources/${library.skills.data_source_id}/query?${parameters}`
-}
-
-/** Complete relation + one paginated metadata inventory; never reads member bodies. */
+/** Complete relation plus exact physical targets and stable claims; never reads member bodies. */
 export function querySharedSkillRelation(
   library: SharedLibrary,
   input: {
@@ -286,76 +273,28 @@ export function querySharedSkillRelation(
         fail("INVALID_MEMBERS", "The complete metadata inventory belongs to another data source."),
       )
     if (wanted.size === 0) return []
-    const source = sourceFor(library)
-    const api = yield* Notion
-    const path = yield* checked(() => inventoryPath(library))
-    const records = new Map<string, SharedSkillRecord>()
-    const claims = new Map<string, Set<string>>()
-    const selectedPages = new Set<string>()
-    const cursors = new Set<string>()
-    let cursor: string | undefined
-    do {
-      const raw =
-        input.inventory === undefined
-          ? yield* api.request(path, {
-              page_size: 100,
-              ...(cursor === undefined ? {} : { start_cursor: cursor }),
-            })
-          : { object: "list", results: input.inventory.pages, has_more: false, next_cursor: null }
-      const page = yield* checked(() => {
-        if (property(raw).object !== "list")
-          throw fail(
-            "SHARED_ROUTER_MEMBERS_INCOMPLETE",
-            "Member metadata is not a complete data-source list.",
-          )
-        return decode(InventoryPageSchema, raw)
-      })
-      for (const item of page.results) {
-        const pageIdentity = exactPage(property(item).id)
-        const selected = pageIdentity !== undefined && wanted.has(pageIdentity)
-        const record = yield* checked(() => {
-          if (selected) {
-            if (selectedPages.has(pageIdentity!))
-              throw fail(
-                "SHARED_ROUTER_MEMBERS_INCOMPLETE",
-                "Member inventory repeated a selected page identity.",
-              )
-            selectedPages.add(pageIdentity!)
-          }
-          try {
-            return sharedRecordFromPage(item, source, library.skills.data_source_id)
-          } catch (error) {
-            // Unrelated malformed rows do not make a selected Router unavailable.
-            if (!selected && error instanceof SkillsError) return undefined
-            throw error
-          }
-        })
-        if (record === undefined) continue
-        const pages = claims.get(record.id) ?? new Set<string>()
-        pages.add(record.locator.page_id)
-        claims.set(record.id, pages)
-        if (selected) records.set(record.locator.page_id, record)
-      }
-      cursor = yield* checked(() => nextCursor(page, cursors))
-    } while (cursor !== undefined)
+    const records = yield* sharedGraphSkillTargets(library, [...wanted], input.inventory).pipe(
+      Effect.catch((error) =>
+        ["SHARED_ROUTER_MEMBER_UNAVAILABLE", "SHARED_SKILL_ID_CONFLICT"].includes(error.code)
+          ? Effect.fail(
+              fail(error.code, `${input.field}: ${error.message}`, {
+                ...property(error.details),
+                field: input.field,
+              }),
+            )
+          : Effect.fail(error),
+      ),
+    )
 
     const members: SharedSkillRelationTarget[] = []
     for (const pageIdentity of wanted) {
-      const record = records.get(pageIdentity)
+      const record = records.get(pageIdentity)?.record
       if (record === undefined)
         return yield* Effect.fail(
           fail(
             "SHARED_ROUTER_MEMBER_UNAVAILABLE",
             `A selected ${input.field} target is missing, inaccessible or outside this shared library.`,
             { field: input.field, page_id: pageIdentity },
-          ),
-        )
-      if ((claims.get(record.id)?.size ?? 0) > 1)
-        return yield* Effect.fail(
-          fail(
-            "SHARED_SKILL_ID_CONFLICT",
-            `Several shared pages claim a selected ${input.field} target's stable identity.`,
-            { field: input.field, id: record.id, page_ids: [...claims.get(record.id)!].sort() },
           ),
         )
       if (record.kind !== "skill")

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { prepareGraph } from "../../core/src/graph-prepare.ts"
 import { Notion } from "../../core/src/notion.ts"
+import { property } from "../../core/src/model.ts"
 import {
   graphLibrary as library,
   nativeGraphFixture,
@@ -191,7 +192,17 @@ test("public Node use batches current HTTPS metadata, persists derived directori
         (call) =>
           call.path.split("?", 1)[0] === `v1/data_sources/${library.skills.data_source_id}/query`,
       )
-      expect(metadata.length).toBeLessThanOrEqual(1)
+      expect(metadata).toHaveLength(condition === "warm" ? 0 : 4)
+      expect(
+        metadata.map((call) => {
+          const filter = property(property(call.body).filter)
+          const parts = Array.isArray(filter.or) ? filter.or : [filter]
+          return parts.map((raw) => {
+            expect(property(raw).property).toBe(library.skills.property_ids["Skill ID"])
+            return property(property(raw).rich_text).equals
+          })
+        }),
+      ).toEqual(condition === "warm" ? [] : [["a"], ["optional"], ["b", "c"], ["d"]])
       return { result, actual }
     }
     const cold = await invoke("cold")

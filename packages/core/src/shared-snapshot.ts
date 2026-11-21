@@ -3,6 +3,7 @@ import {
   invalidateScopeCache,
   invalidateSnapshotCache,
   publishSnapshotObservation,
+  recordPhysicalPageGrant,
 } from "./cache.ts"
 import {
   localContentRestrictedHashes,
@@ -26,7 +27,7 @@ import {
   assertSelectedSharedSourceReferences,
   currentAuthoredReferenceFiles,
 } from "./shared-file-references.ts"
-import { sharedGraphInventory, sharedGraphMetadata } from "./shared-graph-read-context.ts"
+import { observeSharedGraphTarget, sharedGraphMetadata } from "./shared-graph-read-context.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import {
   sharedSkillMetadataFor,
@@ -44,6 +45,7 @@ import {
 } from "./shared-router-members.ts"
 import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
 import { sha256, Store } from "./store.ts"
+import { observedRelationPageDenial } from "./shared-skill-targets.ts"
 
 export type FixedSharedSource = {
   readonly source_id: string
@@ -139,6 +141,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     })
     const api = yield* Notion
     const store = yield* Store
+    const physicalGeneration = yield* store.reserveCacheGeneration(input.scope, selected)
     const raw =
       input.rawPage === undefined ? yield* api.request(`v1/pages/${selected}`) : input.rawPage
     const source: Source = {
@@ -168,13 +171,15 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     // Reserve before dependent metadata/body reads. The native-body slot and the
     // current snapshot observation use this same owner and causal generation.
     const generation = yield* store.reserveCacheGeneration(input.scope, record.id)
-    const inventory =
-      (yield* sharedGraphInventory(input.library)) ??
-      (input.skillsMetadata === undefined
+    const inventory = yield* observeSharedGraphTarget(
+      input.library,
+      raw,
+      input.skillsMetadata === undefined
         ? undefined
         : yield* checked(() =>
             sharedSkillMetadataFor(input.skillsMetadata!, input.library, input.scope),
-          ))
+          ),
+    )
     const members =
       record.kind === "router" ||
       (record.kind === "skill" && input.library.skills.property_ids.Members !== undefined)
@@ -614,10 +619,23 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           age_ms: 0,
         },
       }
-    return yield* publishSnapshotObservation(current, input.startedAt, generation, {
+    const published = yield* publishSnapshotObservation(current, input.startedAt, generation, {
       ...(bodyReads === 0 ? { metadataOnly: true as const } : {}),
       sharedBodyValidUntil: bodyValidUntil,
       sharedMaterializedPaths: [...materialized.keys()].sort(compare),
     })
-  }).pipe(withReadOnlyNotion)
+    yield* recordPhysicalPageGrant(input.scope, selected, physicalGeneration)
+    return published
+  }).pipe(
+    withReadOnlyNotion,
+    Effect.tapError((error) => {
+      const denied = observedRelationPageDenial(error)
+      return denied === undefined
+        ? Effect.void
+        : invalidateSnapshotCache(denied.page_id, input.scope, {
+            retainForOffline: true,
+            accessDenied: "ACCESS_DENIED",
+          })
+    }),
+  )
 }

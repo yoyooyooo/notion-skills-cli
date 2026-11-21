@@ -161,15 +161,25 @@ test("ordinary current reads expose Members and Requires without downloading the
       }).pipe(
         Effect.provideService(Notion, {
           ...api,
-          request: (path, body, options) =>
-            path.startsWith(`v1/data_sources/${currentLibrary.skills.data_source_id}/query`)
-              ? Effect.succeed({
-                  object: "list",
-                  results: [target],
-                  has_more: false,
-                  next_cursor: null,
-                })
-              : api.request(path, body, options),
+          request: (path, body, options) => {
+            if (path === `v1/pages/${target.id}`) {
+              f.calls.push({ path, body, method: "GET" })
+              return Effect.succeed(structuredClone(target))
+            }
+            if (path.startsWith(`v1/data_sources/${currentLibrary.skills.data_source_id}/query`)) {
+              expect(property(body).filter).toEqual({
+                property: "skill-id",
+                rich_text: { equals: "target-skill" },
+              })
+              return Effect.succeed({
+                object: "list",
+                results: [target],
+                has_more: false,
+                next_cursor: null,
+              })
+            }
+            return api.request(path, body, options)
+          },
         }),
       )
     }),

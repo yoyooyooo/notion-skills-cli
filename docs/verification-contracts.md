@@ -47,6 +47,14 @@ candidate 是项目级检查，不能替代 Pro/Mini 的普通日用入口；候
   metadata 缺行不能推导精确 deny，重新启用需可信 fresh use 或新 metadata 观察。
 - 缓存层分别记录 observations、objects、manifest、短引用和有效 context。cache clear 不等于空 Store。
   不能恢复的 mandatory closure 应降级该能力；后续普通聊天和刷新请求必须可达模型。
+  真实 physical page 拒绝覆盖该页已知旧/新稳定身份；alias 丢失、改绑或读取失败不能抹去此事实。
+  physical 授权观察不冒充第二份正文缓存；当前成功须经原 owner/fence，不能将新身份正文替换旧 pin。
+  区分构造的 Store seam 与公开 SQLite：后者在 alias 退休后仍拒绝改绑另一个 stable identity。
+  公开恢复用同 stable 的两个正文版本验 scalar/batch、clear 与 fresh 后各自 pin/hash；不能把改绑前提不成立的失败写成已复现。
+- 精确 owner/Requires/Members 读取只观察所选 physical targets 与完整 stable claims，Disabled 重复声明仍参与。
+  局部元数据不标 complete；catalog/name 与 native 外部引用的完整 inventory 保留独立义务。
+  stable query 只选身份，正文前 exact owner GET 与正文后的 owner/Files/Source fence 都需真实当前观察。
+  有界查询、物理 alias 和缓存授权的实现回放不能由不含这些变量的有限模型 PASS 代替。
 - 当前 Source 声明与稀疏阅读投影分开；脚本、测试、二进制和 mode 仍属于完整消费树。
 - 内容 Operation 与独立 projection intent 是两条状态轴。projection pending 不将内容 owner 改为 applying，
   也不能在结束时把另一个 writer 的 unready owner 改回 ready。

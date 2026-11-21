@@ -285,7 +285,7 @@ export function validateFixedGithubMaterializationSource(input: unknown): FixedG
   return source
 }
 
-/** Validate the complete source, then acquire requested files without branch or tree discovery. */
+/** Validate the complete source, then acquire requested files without resolving a new branch or source revision. */
 export function materializeFixedGithubSource(
   input: FixedGithubSource,
   options: MaterializationOptions = {},

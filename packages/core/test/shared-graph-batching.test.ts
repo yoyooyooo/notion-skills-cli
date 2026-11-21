@@ -278,20 +278,20 @@ describe("library-scoped graph metadata batches", () => {
     expect((await prepare(f)).usage.prepared_nodes).toBe(4)
   })
 
-  test("one inventory covers multi-root diamond metadata and inspect does not batch Required Files", async () => {
+  test("scoped identities cover multi-root diamond metadata and inspect does not batch Required Files", async () => {
     const f = nativeGraphFixture()
     const result = await prepare(f, { roots: [f.pageIds[0]!, f.pageIds[2]!] })
     expect(result.usage.prepared_nodes).toBe(4)
-    expect(f.calls.filter((call) => isQuery("skills", call.path))).toHaveLength(1)
+    expect(f.calls.filter((call) => isQuery("skills", call.path))).toHaveLength(4)
     expect(
       f.calls
         .filter((call) => f.pageIds.some((id) => endpoint(call.path) === `v1/pages/${id}`))
         .map((call) => call.path)
         .sort(),
     ).toEqual(
-      // The direct entry lookup is followed by one final state check per
-      // prepared owner, so an in-flight writer cannot publish a mixed graph.
-      [f.pageIds[0]!, ...f.pageIds.slice(0, 4)].map((id) => `v1/pages/${id}`).sort(),
+      // One requested-page observation per declared target, then fresh final
+      // checks for prepared owners. The optional Member never has its body read.
+      [...f.pageIds, ...f.pageIds.slice(0, 4)].map((id) => `v1/pages/${id}`).sort(),
     )
     // Initial batches are followed by one complete Files fence for each prepared owner.
     expect(f.calls.filter((call) => isQuery("files", call.path))).toHaveLength(6)
@@ -310,11 +310,16 @@ describe("library-scoped graph metadata batches", () => {
     ])
   })
 
-  test("25 inline Requires, 101 complete relations and 102 inventory nodes remain complete", async () => {
+  test("25 inline Requires, 101 complete relations and 102 selected identities remain complete", async () => {
     const f = nativeGraphFixture({ width: 101 })
     const result = await prepare(f, { budget: { maxNodes: 128, maxContextBytes: 8 * 1024 * 1024 } })
     expect(result.required_closure).toHaveLength(102)
-    expect(f.calls.filter((call) => isQuery("skills", call.path))).toHaveLength(2)
+    expect(f.calls.filter((call) => isQuery("skills", call.path))).toHaveLength(3)
+    expect(
+      f.calls
+        .filter((call) => isQuery("skills", call.path))
+        .every((call) => property(call.body).filter !== undefined),
+    ).toBe(true)
     expect(f.calls.filter((call) => /\/properties\/requires/u.test(call.path))).toHaveLength(2)
     const fileOwners = f.calls
       .filter((call) => isQuery("files", call.path))
@@ -435,7 +440,7 @@ describe("library-scoped graph metadata batches", () => {
     expect(f.writeCount()).toBe(0)
   })
 
-  test("a failed inventory does not become a complete observation or poison a later preparation", async () => {
+  test("a failed identity observation does not become a complete graph or poison a later preparation", async () => {
     const f = nativeGraphFixture()
     f.pages.push(structuredClone(f.pages[0]!))
     const failed = await f.run(
@@ -453,7 +458,7 @@ describe("library-scoped graph metadata batches", () => {
     f.pages.pop()
     f.clearCalls()
     expect((await prepare(f)).usage.prepared_nodes).toBe(4)
-    expect(f.calls.filter((call) => isQuery("skills", call.path))).toHaveLength(1)
+    expect(f.calls.filter((call) => isQuery("skills", call.path))).toHaveLength(4)
   })
 
   test("a corrupt derived receipt is rejected without fetching or replacing its validated main", async () => {

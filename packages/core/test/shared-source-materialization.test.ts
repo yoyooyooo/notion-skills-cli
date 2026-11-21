@@ -444,7 +444,7 @@ describe("fixed GitHub source materialization", () => {
     expect(f.requests.length).toBe(before)
   })
 
-  test("selective Git acquisition reads only requested blob identities and preserves corruption checks", async () => {
+  test("selective Git materialization forwards only requested blob identities and preserves corruption checks", async () => {
     const selected = encode("requested\n"),
       unused = encode("not requested\n")
     const one = entry("copy.md", selected),

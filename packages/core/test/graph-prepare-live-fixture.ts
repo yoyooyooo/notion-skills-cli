@@ -1,6 +1,6 @@
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
-import { property } from "../src/model.ts"
+import { fail, property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { Store } from "../src/store.ts"
@@ -228,8 +228,43 @@ export function nativeGraphFixture(
                 const offset =
                   typeof cursor === "string" ? Number(cursor.replace("offset-", "")) : 0
                 const size = Math.min(100, Number(property(body).page_size ?? 100))
-                const end = Math.min(pages.length, offset + size)
-                const results = pages.slice(offset, end).map((row) => ({
+                const filter = property(body).filter
+                const parts = Array.isArray(property(filter).or)
+                  ? (property(filter).or as unknown[])
+                  : [filter]
+                const identities =
+                  filter === undefined
+                    ? undefined
+                    : new Set(
+                        parts.map((raw) => {
+                          const part = property(raw)
+                          const identity = property(part.rich_text).equals
+                          if (
+                            part.property !== descriptor.skills.property_ids["Skill ID"] ||
+                            typeof identity !== "string"
+                          )
+                            throw fail(
+                              "UNEXPECTED_REQUEST",
+                              "The fixture requires exact registered Skill ID filters.",
+                            )
+                          return identity
+                        }),
+                      )
+                const values =
+                  identities === undefined
+                    ? pages
+                    : pages.filter((page) =>
+                        identities.has(
+                          String(
+                            property(
+                              (property(page.properties).skill_id as { rich_text: unknown[] })
+                                .rich_text[0],
+                            ).plain_text,
+                          ),
+                        ),
+                      )
+                const end = Math.min(values.length, offset + size)
+                const results = values.slice(offset, end).map((row) => ({
                   ...structuredClone(row),
                   properties: Object.fromEntries(
                     Object.entries(property(row.properties)).filter(
@@ -240,8 +275,8 @@ export function nativeGraphFixture(
                 return Effect.succeed({
                   object: "list",
                   results,
-                  has_more: end < pages.length,
-                  next_cursor: end < pages.length ? `offset-${end}` : null,
+                  has_more: end < values.length,
+                  next_cursor: end < values.length ? `offset-${end}` : null,
                 })
               }
               return api.request(path, body, requestOptions)

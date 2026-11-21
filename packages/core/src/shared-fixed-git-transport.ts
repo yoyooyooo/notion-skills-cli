@@ -55,9 +55,11 @@ const checked = <A>(f: () => A) =>
 const decoder = new TextDecoder("utf-8", { fatal: true }),
   encoder = new TextEncoder()
 
-/** No worktree/checkout, branch discovery, unselected blob fetch, resource
- * execution or shared Notion byte retention. Host Git authentication is local;
- * the source descriptor contains only canonical origin/commit/tree/file IDs. */
+/** Validate the pinned commit/tree and extract only selected blobs, without a
+ * worktree/checkout or resource execution. Git filtering is best effort; the
+ * server may transfer additional objects. The scoped repository is discarded
+ * after acquisition. Host Git authentication remains local; the source
+ * descriptor contains only canonical origin/commit/tree/file IDs. */
 export function readFixedGitObjects(input: Input) {
   return Effect.scoped(
     Effect.gen(function* () {
@@ -92,7 +94,7 @@ export function readFixedGitObjects(input: Input) {
         return yield* Effect.fail(
           fail(
             "FIXED_GIT_TRANSFER_LIMIT",
-            "The selected fixed blob bytes exceed the bounded transfer limit.",
+            "Selected fixed blob output exceeds the materialization byte limit.",
           ),
         )
       const fs = yield* FileSystem.FileSystem

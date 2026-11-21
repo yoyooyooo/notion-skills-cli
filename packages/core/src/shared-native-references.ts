@@ -20,6 +20,7 @@ import type { CurrentFileBinding as FileRecord } from "./shared-current-index.ts
 import { sha256 } from "./store.ts"
 import { mapMarkdownLinks, readLinkBlocks } from "./typed-links.ts"
 import { referenceProse } from "./shared-file-references.ts"
+import { sharedGraphInventory } from "./shared-graph-read-context.ts"
 import {
   nativeAliasTargets,
   validateNativeBodyCompletion,
@@ -71,7 +72,8 @@ function inventory(
         )
       return supplied.pages
     }
-    return (yield* querySharedMetadataInventory(library, kind)).pages
+    const graph = kind === "skills" ? yield* sharedGraphInventory(library) : undefined
+    return (graph ?? (yield* querySharedMetadataInventory(library, kind))).pages
   })
 }
 

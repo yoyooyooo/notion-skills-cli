@@ -153,14 +153,52 @@ function fixture(count = 2) {
             ? Effect.fail(fail("UNEXPECTED_REQUEST", "Unexpected relation page."))
             : Effect.succeed(structuredClone(result))
         }
+        if (/^\/v1\/pages\/[^/]+$/.test(url.pathname)) {
+          const selected = inventoryRows.find(
+            (raw) => url.pathname === `/v1/pages/${property(raw).id}`,
+          )
+          return selected === undefined
+            ? Effect.fail(
+                fail("NOT_FOUND", "The exact requested child is unavailable.", {
+                  path,
+                  notion_code: "object_not_found",
+                }),
+              )
+            : Effect.succeed(structuredClone(selected))
+        }
         if (url.pathname === `/v1/data_sources/${library.skills.data_source_id}/query`) {
+          const filter = property(property(body).filter)
+          const parts = Array.isArray(filter.or) ? filter.or : [filter]
+          const identities = new Set(
+            parts.map((raw) => {
+              const part = property(raw)
+              if (
+                part.property !== "skill_id" ||
+                typeof property(part.rich_text).equals !== "string"
+              )
+                throw fail(
+                  "UNEXPECTED_REQUEST",
+                  "Relation metadata requires exact stable identity filters.",
+                )
+              return property(part.rich_text).equals
+            }),
+          )
+          const values = inventoryRows.filter((raw) => {
+            const field = Object.values(property(property(raw).properties))
+              .map(property)
+              .find((value) => value.id === "skill_id")
+            const text = Array.isArray(field?.rich_text)
+              ? field.rich_text.map((part) => property(part).plain_text).join("")
+              : undefined
+            return identities.has(text)
+          })
           const pages =
             inventoryPages ??
-            Array.from({ length: Math.ceil(inventoryRows.length / 100) }, (_, page) =>
+            Array.from({ length: Math.max(1, Math.ceil(values.length / 100)) }, (_, page) =>
               list(
-                inventoryRows.slice(page * 100, page * 100 + 100),
+                values.slice(page * 100, page * 100 + 100),
                 page,
-                Math.ceil(inventoryRows.length / 100),
+                Math.max(1, Math.ceil(values.length / 100)),
               ),
             )
           const result = pages[index]
@@ -171,7 +209,7 @@ function fixture(count = 2) {
         return Effect.fail(
           fail(
             "UNEXPECTED_REQUEST",
-            "Member bodies, per-page metadata and writes are forbidden in this fixture.",
+            "Member bodies, unrelated metadata and writes are forbidden in this fixture.",
             { path },
           ),
         )
@@ -206,7 +244,8 @@ function assertMetadataOnly(f: ReturnType<typeof fixture>) {
         (call.method === "POST" &&
           call.path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query?`)) ||
         (call.method === "GET" &&
-          call.path.startsWith(`v1/pages/${routerPage}/properties/${membersProperty}?`)),
+          (call.path.startsWith(`v1/pages/${routerPage}/properties/${membersProperty}?`) ||
+            f.members.some((member) => call.path === `v1/pages/${member.id}`))),
     ),
   ).toBe(true)
   expect(f.calls.some((call) => /\/markdown|\/blocks|\/export/.test(call.path))).toBe(false)
@@ -327,7 +366,7 @@ describe("shared Router members", () => {
       assertMetadataOnly(f)
     }
   })
-  test("uses registered property IDs and one metadata batch, preserving false Default Context members", async () => {
+  test("uses registered IDs and one exact claim batch, preserving false Default Context members", async () => {
     const f = fixture()
     f.inventory([f.members[1], f.rawRouter, f.members[0]])
     const result = await f.run(f.query())
@@ -353,11 +392,37 @@ describe("shared Router members", () => {
       name: "Member 0",
       description: "Member 0 instructions",
     })
-    expect(f.calls).toHaveLength(1)
+    expect(f.calls).toHaveLength(3)
+    expect(f.calls.filter((call) => call.method === "GET").map((call) => call.path)).toEqual(
+      f.members.map((member) => `v1/pages/${member.id}`),
+    )
+    const query = f.calls.find((call) => call.method === "POST")!
     expect(
-      new URL(f.calls[0]!.path, "https://api.notion.com/").searchParams.getAll("filter_properties"),
-    ).toEqual(["title", "description", "kind", "skill_id", "enabled", "default"])
-    expect(f.calls[0]?.body).toEqual({ page_size: 100 })
+      new URL(query.path, "https://api.notion.com/").searchParams.getAll("filter_properties"),
+    ).toEqual([
+      "title",
+      "description",
+      "kind",
+      "skill_id",
+      "enabled",
+      "default",
+      "main_file_id",
+      "content",
+      "state",
+      "operation",
+      "origin",
+      membersProperty,
+      "requires",
+    ])
+    expect(query.body).toEqual({
+      page_size: 100,
+      filter: {
+        or: [
+          { property: "skill_id", rich_text: { equals: "member-000" } },
+          { property: "skill_id", rich_text: { equals: "member-001" } },
+        ],
+      },
+    })
     assertMetadataOnly(f)
   })
 
@@ -367,7 +432,7 @@ describe("shared Router members", () => {
     expect(empty.calls).toEqual([])
     const single = fixture(1)
     expect(await single.run(single.query())).toHaveLength(1)
-    expect(single.calls).toHaveLength(1)
+    expect(single.calls).toHaveLength(2)
   })
 
   test("fails a missing registered Members property before any request instead of using its display name", async () => {
@@ -415,14 +480,28 @@ describe("shared Router members", () => {
     }
   })
 
-  test("paginates 101 relation members and complete Skills metadata without N+1 or double-encoding property ID", async () => {
+  test("paginates 101 relation members and exact claim batches without scanning unselected Skills or double-encoding property IDs", async () => {
     const f = fixture(101)
     const result = await f.run(f.query())
     expect(result).toHaveLength(101)
     expect(new Set(result.map((member) => member.id)).size).toBe(101)
-    expect(f.calls.filter((call) => call.method === "GET")).toHaveLength(2)
+    expect(f.calls.filter((call) => call.method === "GET")).toHaveLength(103)
+    expect(
+      f.calls.filter((call) => call.method === "GET" && !call.path.includes("/properties/")),
+    ).toHaveLength(101)
     expect(f.calls.filter((call) => call.method === "POST")).toHaveLength(2)
-    expect(f.calls.some((call) => call.path.includes("%253A"))).toBe(false)
+    // The native property path retains its encoded segment. Query parameters
+    // encode that literal property ID as data and decode back to the same ID.
+    expect(f.calls.some((call) => call.path.split("?", 1)[0]!.includes("%253A"))).toBe(false)
+    expect(
+      f.calls
+        .filter((call) => call.method === "POST")
+        .every((call) =>
+          new URL(call.path, "https://fixture.invalid/").searchParams
+            .getAll("filter_properties")
+            .includes(membersProperty),
+        ),
+    ).toBe(true)
     expect(f.calls[1]?.path).toContain("start_cursor=page-1")
     assertMetadataOnly(f)
   })
@@ -543,18 +622,22 @@ describe("shared Router members", () => {
   test("incomplete metadata status, repeated selected rows and bad final cursors fail", async () => {
     for (const issue of ["status", "duplicate", "cursor"]) {
       const f = fixture()
-      const page = list([f.rawRouter, ...f.members], 0, 1)
+      const page = list([...f.members], 0, 1)
       if (issue === "status")
         page.request_status = {
           type: "incomplete",
           incomplete_reason: "query_result_limit_reached",
         }
-      if (issue === "duplicate") page.results = [f.rawRouter, ...f.members, f.members[0]]
+      if (issue === "duplicate") page.results = [...f.members, f.members[0]]
       if (issue === "cursor") page.next_cursor = "unexpected"
       f.inventoryPages([page])
       const error = await f.run(Effect.flip(f.query()))
-      expect(["INVALID_RESPONSE", "SHARED_ROUTER_MEMBERS_INCOMPLETE"]).toContain(error.code)
-      expect(f.calls).toHaveLength(1)
+      expect(error.code).toBe(
+        issue === "duplicate"
+          ? "SHARED_GRAPH_METADATA_INVALID"
+          : "SHARED_GRAPH_METADATA_INCOMPLETE",
+      )
+      expect(f.calls).toHaveLength(3)
     }
   })
 
@@ -568,5 +651,20 @@ describe("shared Router members", () => {
     const changed = await f.run(f.query())
     expect(changed[0]?.metadata.description).toBe("New metadata")
     expect(before[0]?.metadata.description).toBe("Member 0 instructions")
+  })
+
+  test("a supplied complete inventory ignores unrelated malformed rows but rejects a malformed selected target", async () => {
+    const f = fixture()
+    const pages = [f.rawRouter, ...f.members, { id: id(999), properties: {} }, { malformed: true }]
+    const read = () =>
+      querySharedRouterMembers(library, {
+        router: f.router,
+        rawPage: f.rawRouter,
+        inventory: { data_source_id: library.skills.data_source_id, complete: true, pages },
+      })
+    expect(await f.run(read())).toHaveLength(2)
+    expect(f.calls).toEqual([])
+    delete property(f.members[0]!.properties)["Renamed description"]
+    expect((await f.run(Effect.flip(read()))).code).toBe("INVALID_SHARED_SKILL")
   })
 })

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
-import { property } from "../src/model.ts"
+import { property, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { parseTarget } from "../src/ref.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
@@ -63,15 +63,29 @@ function routerFixture(registered = true) {
             ...api,
             request: (path, body, options) => {
               const endpoint = path.split("?", 1)[0]
+              if (endpoint === `v1/pages/${member.id}`) {
+                f.calls.push({ path, body, method: "GET" })
+                return Effect.succeed(structuredClone(member))
+              }
               if (endpoint === `v1/data_sources/${library.skills.data_source_id}/query`) {
                 f.calls.push({
                   path,
                   method: options?.method ?? (body === undefined ? "GET" : "POST"),
                   body,
                 })
+                const filter = property(body).filter
+                if (filter !== undefined)
+                  expect(property(filter).property).toBe(library.skills.property_ids["Skill ID"])
                 return Effect.succeed({
                   object: "list",
-                  results: structuredClone([f.main, member]),
+                  results: structuredClone(
+                    [f.main, member].filter(
+                      (row) =>
+                        filter === undefined ||
+                        text(property(property(row.properties)["Skill ID"]).rich_text) ===
+                          property(property(filter).rich_text).equals,
+                    ),
+                  ),
                   has_more: false,
                   next_cursor: null,
                 })
@@ -121,7 +135,9 @@ describe("shared Router snapshot integration", () => {
     expect(mainText(f, snapshot)).toContain("Keep the author's content.")
     expect(mainText(f, snapshot)).not.toContain("## Members")
     expect(f.bodyCalls().length).toBe(1)
-    expect(f.calls.some((call) => call.path.startsWith(`v1/pages/${id(900)}`))).toBe(false)
+    expect(f.calls.filter((call) => call.path.startsWith(`v1/pages/${id(900)}`))).toEqual([
+      { method: "GET", path: `v1/pages/${id(900)}`, body: undefined },
+    ])
     expect(
       f.calls.filter((call) =>
         call.path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`),

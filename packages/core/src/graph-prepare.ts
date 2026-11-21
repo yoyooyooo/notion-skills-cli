@@ -31,6 +31,7 @@ import {
 import { fileRef, pageId, parseTarget, type SkillTarget } from "./ref.ts"
 import { withSharedGraphReadDepth, withSharedGraphReads } from "./shared-graph-read-context.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
+import { observedRelationPageDenial } from "./shared-skill-targets.ts"
 import { targetSnapshot } from "./snapshot.ts"
 import { sha256, Store } from "./store.ts"
 
@@ -334,6 +335,26 @@ function prepareSelectedInScope(
           error: failure(error),
         })
       errorsById.set(id, error)
+      const denied = observedRelationPageDenial(error)
+      if (denied !== undefined) {
+        // The HTTP rejection establishes this physical identity only. Retain it
+        // for the existing Broker denial observer without guessing a stable ID.
+        const previous = nodes.get(denied.page_id)
+        nodes.set(denied.page_id, {
+          id: denied.page_id,
+          ref: fileRef(denied.page_id, ""),
+          roles: rolesWith(
+            previous?.roles ?? [],
+            denied.field === "Requires" ? "required" : "member",
+          ),
+          state: "failed",
+          error: {
+            code: "ACCESS_DENIED",
+            message: "The exact related page denied access.",
+            details: { page_id: denied.page_id, field: denied.field },
+          },
+        })
+      }
     }
     const visit = (
       targetText: string,

@@ -554,14 +554,19 @@ function latestObservation(page: string, scope: string) {
 export function reserveScopeAccess(scope: string) {
   return Effect.flatMap(Store, (store) => store.reserveCacheGeneration(scope, scopeAccessIdentity))
 }
-export function recordScopeAccess(scope: string, generation: number, denied?: AccessDenial) {
+function recordAccessObservation(
+  scope: string,
+  identity: string,
+  generation: number,
+  denied?: AccessDenial,
+) {
   return Effect.gen(function* () {
-    const previous = yield* latestObservation(scopeAccessIdentity, scope)
+    const previous = yield* latestObservation(identity, scope)
     if (denied === undefined && previous?.access_denied === undefined) return
     const now = yield* Clock.currentTimeMillis
     const id = yield* (yield* Crypto.Crypto).randomUUIDv4()
-    yield* (yield* Store).writeJson(`cache/latest/${scope}/${scopeAccessIdentity}/${id}.json`, {
-      record_identity: scopeAccessIdentity,
+    yield* (yield* Store).writeJson(`cache/latest/${scope}/${identity}/${id}.json`, {
+      record_identity: identity,
       scope,
       started_at: now,
       validated_at: now,
@@ -577,12 +582,25 @@ export function recordScopeAccess(scope: string, generation: number, denied?: Ac
     ),
   )
 }
+export function recordScopeAccess(scope: string, generation: number, denied?: AccessDenial) {
+  return recordAccessObservation(scope, scopeAccessIdentity, generation, denied)
+}
+
+/** Called only after the current exact owner fence. The reservation predates
+ * dependent I/O, so an older success cannot erase a newer physical rejection. */
+export function recordPhysicalPageGrant(scope: string, page: string, generation: number) {
+  return recordAccessObservation(scope, page, generation)
+}
 /** This checks known denials only. Hashes never become a new permission grant. */
 export function assertKnownSnapshotAccess(snapshot: Snapshot) {
   return Effect.gen(function* () {
     const scope = yield* latestObservation(scopeAccessIdentity, snapshot.scope)
     const target = yield* latestObservation(snapshot.record.id, snapshot.scope)
-    const denied = scope?.access_denied ?? target?.access_denied
+    const physical =
+      snapshot.record.locator.type === "shared_skill"
+        ? yield* latestObservation(snapshot.record.locator.page_id, snapshot.scope)
+        : undefined
+    const denied = scope?.access_denied ?? target?.access_denied ?? physical?.access_denied
     if (denied !== undefined)
       return yield* Effect.fail(
         fail(
@@ -732,6 +750,31 @@ export function invalidateSnapshotCache(
       : [...new Set((yield* store.listKeys("cache/latest")).map((key) => key.split("/")[2]!))]
     const now = yield* Clock.currentTimeMillis
     for (const selected of scopes) {
+      const invalidate = (identity: string) =>
+        Effect.gen(function* () {
+          const generation = yield* store.reserveCacheGeneration(selected, identity)
+          const last = yield* latestObservation(identity, selected)
+          const previous = options.retainForOffline ? last : undefined
+          const id = yield* (yield* Crypto.Crypto).randomUUIDv4()
+          yield* store.writeJson(`cache/latest/${selected}/${identity}/${id}.json`, {
+            ...previous,
+            record_identity: identity,
+            scope: selected,
+            started_at: now,
+            // A rejected refresh retires current eligibility, not the last successful
+            // observation or its immutable pin. Offline reads retain its actual age.
+            validated_at: previous?.validated_at ?? now,
+            generation,
+            invalidated: true,
+            ...((options.accessDenied ?? last?.access_denied)
+              ? { access_denied: options.accessDenied ?? last?.access_denied }
+              : {}),
+          })
+        })
+      // An exact page rejection covers every retained stable identity for that page.
+      // Save it before disposable views, alias lookup, or a second write can fail.
+      const physical = options.accessDenied === undefined ? undefined : pageId(page)
+      if (physical !== undefined) yield* invalidate(physical)
       const viewKeys = new Set(yield* store.listKeys(`cache/views/${selected}`))
       for (const key of yield* store.listKeys(`cache-generations/${selected}`)) {
         const identity = key.split("/")[2]!.replace(/\.json$/, "")
@@ -740,24 +783,7 @@ export function invalidateSnapshotCache(
       }
       if (viewKeys.size) yield* store.retireKeys([...viewKeys])
       const identity = (yield* cachedRecordIdentity(page, selected)).identity
-      const generation = yield* store.reserveCacheGeneration(selected, identity)
-      const last = yield* latestObservation(identity, selected)
-      const previous = options.retainForOffline ? last : undefined
-      const id = yield* (yield* Crypto.Crypto).randomUUIDv4()
-      yield* store.writeJson(`cache/latest/${selected}/${identity}/${id}.json`, {
-        ...previous,
-        record_identity: identity,
-        scope: selected,
-        started_at: now,
-        // A rejected refresh retires current eligibility, not the last successful
-        // observation or its immutable pin. Offline reads retain its actual age.
-        validated_at: previous?.validated_at ?? now,
-        generation,
-        invalidated: true,
-        ...((options.accessDenied ?? last?.access_denied)
-          ? { access_denied: options.accessDenied ?? last?.access_denied }
-          : {}),
-      })
+      if (identity !== physical) yield* invalidate(identity)
     }
   }).pipe(
     Effect.mapError((error) =>
@@ -890,7 +916,9 @@ export function cacheStatus(target?: string, options: { database?: string } = {}
     const observations: Array<unknown> = []
     for (const pair of pairs.values()) {
       const observation = yield* cachedRemoteObservation(pair.page, pair.scope)
-      if (observation)
+      // Physical authorization slots may resolve through an alias, but are not
+      // another current content observation for that stable record.
+      if (observation?.snapshot.record.id === pair.page)
         observations.push({
           scope: pair.scope,
           page_id: pair.page,

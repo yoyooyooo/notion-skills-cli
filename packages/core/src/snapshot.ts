@@ -42,8 +42,9 @@ import {
   assertSelectedSharedFileReferences,
   currentAuthoredReferenceFiles,
 } from "./shared-file-references.ts"
-import { sharedGraphTarget } from "./shared-graph-read-context.ts"
+import { sharedGraphTarget, sharedGraphSkillIdentity } from "./shared-graph-read-context.ts"
 import { sharedReadFreshness } from "./shared-read-freshness.ts"
+import { sharedSkillId } from "./shared-content.ts"
 import { resolveCurrentSourceReference } from "./shared-source-references.ts"
 import { sha256, Store } from "./store.ts"
 
@@ -113,6 +114,42 @@ function openSnapshot(
         library: source.shared_library,
         target: id,
         rawPage,
+        scope,
+        startedAt,
+        forceFull: Boolean(options.refresh) || options.maxAge === 0,
+        maxAge: options.maxAge,
+        ...selectedFiles,
+      })
+    }
+    if (selectedDatabase !== undefined && selector.startsWith("shared_skill:")) {
+      const identity = yield* Effect.try({
+        try: () => {
+          const parts = selector.split(":")
+          if (parts.length !== 3)
+            throw fail("INVALID_REF", "The shared Skill identity is malformed.")
+          const libraryId = decodeURIComponent(parts[1]!),
+            skillId = decodeURIComponent(parts[2]!)
+          if (sharedSkillId(libraryId, skillId) !== selector)
+            throw fail("INVALID_REF", "The shared Skill identity is not canonical.")
+          return { libraryId, skillId }
+        },
+        catch: (error) =>
+          error instanceof SkillsError
+            ? error
+            : fail("INVALID_REF", "The shared Skill identity is malformed."),
+      })
+      const scope = yield* authScope
+      const source = yield* explicitSource(selectedDatabase)
+      const library = source.shared_library
+      if (library.library_id !== identity.libraryId)
+        return yield* Effect.fail(
+          fail("SKILL_NOT_FOUND", "The Skill identity does not belong to the selected library."),
+        )
+      const target = yield* sharedGraphSkillIdentity(library, identity.skillId)
+      return yield* openSharedConsumer({
+        library,
+        target: target.record.locator.page_id,
+        expectedSkillId: identity.skillId,
         scope,
         startedAt,
         forceFull: Boolean(options.refresh) || options.maxAge === 0,

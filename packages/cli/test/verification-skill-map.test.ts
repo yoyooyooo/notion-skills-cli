@@ -6,6 +6,7 @@ import { Schema } from "effect"
 
 const root = fileURLToPath(new URL("../../../", import.meta.url))
 const featureRoot = ".cursor/skills/verify-ntn-skills/features"
+const ordinaryWorkflowPi = "pi --provider magpie --model group/worker --thinking high"
 const domainSchema = Schema.Struct({
   id: Schema.String,
   skill: Schema.String,
@@ -163,7 +164,7 @@ function check(input: unknown): void {
   }
   const requireLocalDiscovery = (entries: ReadonlyArray<typeof entrypointSchema.Type>) => {
     if (
-      !entries.some((entry) => entry.command === "pi") ||
+      !entries.some((entry) => entry.command === ordinaryWorkflowPi) ||
       entries.some((entry) => /(?:^|\s)(?:-ns|--no-skills)(?:\s|$)/u.test(entry.command))
     )
       throw new Error("LOCAL_SKILL_DISCOVERY_REQUIRED")
@@ -187,7 +188,11 @@ function check(input: unknown): void {
       if (!contract[field].length || contract[field].some((item) => !item.trim()))
         throw new Error("CONTRACT_BOUNDARY_MISSING")
     inspectEntrypoints(contract.entrypoints)
-    if (contract.id === "C08") requireLocalDiscovery(contract.entrypoints)
+    if (contract.id === "C08") {
+      if (contract.owner !== "verify-notion-agent-workflows")
+        throw new Error("NATURAL_WORKFLOW_OWNER_MISSING")
+      requireLocalDiscovery(contract.entrypoints)
+    }
   }
   const requiredContracts = [
     ...Array.from({ length: 11 }, (_, index) => `C${String(index + 1).padStart(2, "0")}`),
@@ -212,7 +217,11 @@ function check(input: unknown): void {
       if (id.startsWith("C07")) covered.add("C07")
     }
     inspectEntrypoints(scenario.entrypoints)
-    if (scenario.id === "T22") requireLocalDiscovery(scenario.entrypoints)
+    if (scenario.id === "T22") {
+      if (scenario.owner !== "verify-notion-agent-workflows")
+        throw new Error("NATURAL_WORKFLOW_OWNER_MISSING")
+      requireLocalDiscovery(scenario.entrypoints)
+    }
   }
   const requiredScenarios = Array.from(
     { length: 23 },
@@ -292,9 +301,14 @@ test("current contracts and timeline seeds cannot lose their owner, oracle or ex
       ),
     }),
   ).toThrow("CONFIGURED_ROUTE_INPUTS_MISSING")
-  for (const command of ["pi -ns", "pi --no-skills"]) {
+  for (const command of [
+    "pi -ns",
+    "pi --no-skills",
+    "pi",
+    "pi --provider magpie --model group/flash --thinking high",
+  ]) {
     const replacePi = (entries: ReadonlyArray<typeof entrypointSchema.Type>) =>
-      entries.map((entry) => (entry.command === "pi" ? { ...entry, command } : entry))
+      entries.map((entry) => (entry.command === ordinaryWorkflowPi ? { ...entry, command } : entry))
     expect(() =>
       check({
         ...original,
@@ -311,6 +325,21 @@ test("current contracts and timeline seeds cannot lose their owner, oracle or ex
         ),
       }),
     ).toThrow("LOCAL_SKILL_DISCOVERY_REQUIRED")
+  }
+})
+
+test("natural workflow responsibility cannot return to the general Broker owner", () => {
+  const original = load()
+  for (const section of ["contracts", "scenarios"] as const) {
+    const id = section === "contracts" ? "C08" : "T22"
+    expect(() =>
+      check({
+        ...original,
+        [section]: original[section].map((row) =>
+          row.id === id ? { ...row, owner: "verify-context-broker" } : row,
+        ),
+      }),
+    ).toThrow("NATURAL_WORKFLOW_OWNER_MISSING")
   }
 })
 
