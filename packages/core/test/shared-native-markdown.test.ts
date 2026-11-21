@@ -50,6 +50,43 @@ test("native comparison retains link definitions and escaped or code text", () =
   )
 })
 
+test.each([
+  ["Use `code`.", "Use <code>code</code>."],
+  ["`&amp;` and `` `literal` ``.", "<code>&amp;</code> and <code>`literal`</code>."],
+  [
+    "**Use `code`** and [`label`](https://example.com).",
+    "<b>Use <code>code</code></b> and [<code>label</code>](https://example.com/).",
+  ],
+  [
+    "`` `[fake](missing.md) `` then ~`real` [go][ref].\n\n[ref]: https://example.com",
+    "<code>`[fake](missing.md)</code> then ~`real` [go][ref].\n\n[ref]: https://example.com/",
+  ],
+  ["`<code>`", "<code><code></code>"],
+  ["| A |\n|---|\n| `x &amp;` |", "| A |\n|---|\n| <code>x &amp;</code> |"],
+])(
+  "native inline code preserves literal content and its surrounding context: %s",
+  (expected, observed) => {
+    expect(() => validateNativeMarkdown(observed)).not.toThrow()
+    expect(compareNativeMarkdown({ expected, observed })).toBe("normalized")
+    expect(compareNativeMarkdown({ expected: observed, observed })).toBe("exact")
+  },
+)
+
+test("native code tags cannot reinterpret entities, hide real links or turn escaped tags into code", () => {
+  for (const [expected, observed] of [
+    ["`&amp;`", "<code>&</code>"],
+    ["`[label](a.md)`", "<code>[label](b.md)</code>"],
+    [
+      "`` `literal `` [real](https://example.com/a)",
+      "<code>`literal</code> [real](https://example.com/b)",
+    ],
+    ["\\<code>x\\</code>", "<code>x</code>"],
+  ] as const)
+    expect(compareNativeMarkdown({ expected, observed })).toBe("different")
+  for (const malformed of ["<code>unclosed", '<code class="unsafe">text</code>', "text</code>"])
+    expect(() => validateNativeMarkdown(malformed)).toThrow()
+})
+
 test("native admission rejects unknown structures before a write, including unsupported encoding", () => {
   for (const markdown of [
     '<custom-block definition-id="x" />',

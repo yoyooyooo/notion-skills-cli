@@ -1,5 +1,6 @@
 import { SourceLexer } from "@notion-skills-cli/markdown"
 import { fail, property } from "./model.ts"
+import { splitNativeInlineCode } from "./shared-native-inline-code.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 
 type Style = {
@@ -44,7 +45,11 @@ type Block =
       readonly header: readonly (readonly Inline[])[]
       readonly rows: readonly (readonly (readonly Inline[])[])[]
     }
-type Context = { count: number; readonly destinations: Map<string, Link> }
+type Context = {
+  count: number
+  readonly destinations: Map<string, Link>
+  readonly links: ReturnType<typeof SourceLexer.lex>["links"]
+}
 const plain: Style = { bold: false, italic: false, strike: false, underline: false }
 const invalid = (reason: string) =>
   fail(
@@ -158,6 +163,23 @@ function language(value: unknown): string {
   }
 }
 
+type InlineInput =
+  | { readonly kind: "parsed"; readonly token: unknown }
+  | { readonly kind: "native_code"; readonly text: string }
+function inlineInputs(input: readonly unknown[], context: Context): readonly InlineInput[] {
+  const raw = input.map((token) => string(property(token).raw)).join("")
+  const parts = splitNativeInlineCode(raw)
+  if (parts === undefined) throw invalid("incomplete_native_inline_code")
+  if (!parts.some((part) => part.code)) return input.map((token) => ({ kind: "parsed", token }))
+  // A code tag can contain literal backticks that invalidate later lexer tokens.
+  // Restart outside each exact closing tag, retaining the document's link definitions.
+  return parts.flatMap((part): InlineInput[] =>
+    part.code
+      ? [{ kind: "native_code", text: part.raw.slice("<code>".length, -"</code>".length) }]
+      : SourceLexer.lexInline(part.raw, context.links).map((token) => ({ kind: "parsed", token })),
+  )
+}
+
 function inline(
   input: readonly unknown[],
   context: Context,
@@ -182,9 +204,13 @@ function inline(
       result[result.length - 1] = { ...previous, text: previous.text + value.text }
     else result.push(value)
   }
-  for (const raw of input) {
+  for (const selected of inlineInputs(input, context)) {
     step(context, depth)
-    const token = property(raw),
+    if (selected.kind === "native_code") {
+      add({ kind: "text", text: selected.text, code: true, style, link })
+      continue
+    }
+    const token = property(selected.token),
       type = string(token.type)
     if (type === "strong" || type === "em" || type === "del") {
       const next =
@@ -276,7 +302,7 @@ function blocks(input: readonly unknown[], context: Context, depth: number): rea
     } else if (type === "paragraph" || type === "text") {
       const content = inline(
         token.tokens === undefined
-          ? SourceLexer.lexInline(string(token.text))
+          ? SourceLexer.lexInline(string(token.text), context.links)
           : array(token.tokens),
         context,
         depth + 1,
@@ -354,8 +380,9 @@ function blocks(input: readonly unknown[], context: Context, depth: number): rea
   return result
 }
 function signature(markdown: string): string {
-  const context: Context = { count: 0, destinations: new Map() }
-  const document = blocks(SourceLexer.lex(nativeMarkdownTransport(markdown)), context, 0)
+  const tokens = SourceLexer.lex(nativeMarkdownTransport(markdown))
+  const context: Context = { count: 0, destinations: new Map(), links: tokens.links }
+  const document = blocks(tokens, context, 0)
   return canonicalSharedJson({
     blocks: document,
     destinations: [...context.destinations]
