@@ -54,12 +54,35 @@ projection 分类去除后，实际内核把该意图按内容操作处理，因
 真实 mutation 必须 baseline 通过、移除 guard 后出现行为断言失败、恢复原字节后通过；未执行测试、导入/解析异常不算杀死 mutant。
 报告保留实际变异文件和前后 hash，原工作树不变。
 
+## Native 管理的对应边界
+
+`93a895f3` 的 Native 管理变更沿用上述四个守卫。`skill_action` 仍是内容意图，
+没有把注册、更新或删除归类为保持 owner ready 的 projection/restore。
+模型、七个配置、完整规则清单及四项实际 guard mutation 均保留。
+本次源码对应审查区分以下边界：
+
+| 实际路径 | 本模型的范围 | 其余生产义务 |
+| --- | --- | --- |
+| 已绑定 owner 的 create/update | 内容写入的 applying/attention、核对、ready 和意图退役 | create-only 身份、完整输入指纹、自动匹配恢复以及多文件选择由 `shared-current-skill.test.ts` 与 `shared-current-skill-patch.test.ts` 回放 |
+| Native 正文完成 | `VerifyTarget` 只抽象验证成功 | `shared-native-markdown.test.ts`、`shared-current-write-input.test.ts`、CLI import 与 Source file 回归验证准入、完整结构等价、原输入保留及 read/export；模型不证明 Markdown 或实际 Notion 格式 |
+| 未绑定的原页注册 | 未枚举；模型从 ready owner 开始，没有 ownerBound 变量 | `shared-current-skill-register.test.ts` 验证 exact-page seed、bind、ACK 丢失／未接受恢复，以及外来 Operation 标记零写拒绝；正文保持当前原件 |
+| 未选中的 Native/resource 文件 | 未枚举具体 binding 或正文 | partial patch 只冻结所选写入和目录范围，保留文件的后来作者修改不靠旧正文覆写 |
+| 整 Skill 删除 | 未枚举；模型的 content `Finish` 返回 ready，不代表 owner Trash | `shared-current-skill-remove.test.ts` 验证反向关系、Files、Resources、owner 与有限意图的清理顺序，及 Trash 后按冻结物理身份读回 |
+
+Native 允许支持范围内的表示规范化，不能再用“逐字相同”描述其完成条件。
+原输入 bytes/hash/frontmatter/mode 仍冻结，Source/resource 仍按原字节核对。
+完整读回中的文本、代码、链接或结构改变不能当作 Native 成功。
+这些生产判定及其实际 Notion 验收不由模型的 `verified` 位代替。
+对应实现与永久回归列在 [coverage.json](coverage.json) 的 `unmodeled_bindings`；
+列入该部分不表示已新增形式证明，也不替代本次实际运行回执。
+
 ## 条件进展
 
 OperationEventuallyExplained 要求最终达到 retired 或 blocked；后者明确保留未解意图，不能算业务完成。
 ReadEventuallyExplained 仅针对已经开始的读取，要求最终发布或明确拒绝。
 
-这两条性质以模型列出的弱公平性为前提：已开始的外部调用返回，用户最终发起一次准确 resume，
+这两条性质以模型列出的弱公平性为前提：已开始的外部调用返回，调用方最终重跑相同冻结输入
+（CLI 可以自动选择匹配的 resume），
 验证/完成/退役与已开始的读继续得到执行。它们不证明永久断网下成功，不自动替用户恢复未知写，
 也不保证 Notion 与 provider 的任意延迟。没有这些假设只声明 safety。NoDeadlock 不能替代这些进展性质。
 
