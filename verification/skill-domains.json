@@ -431,6 +431,8 @@
           "command": "node scripts/verify-pi-daily-installation.mjs plan --config /absolute/owned/current-daily.json",
           "required_inputs": [
             "本轮自有 config.version:1；实际日用 Pi package/source 配置、当前配对 CLI/Broker roots、archive paths/hashes、embedded CLI/SDK hashes、CLI entry hash 与自有 evidenceRoot。",
+            "config.delivery:{id:UUID,startedAt:UTC_ISO} 标识本次交付；两机共用新的 UUID 和 canonical UTC 开始时间，startedAt 不得在未来。run 强制该字段；plan 可报告缺项，不能证明执行。",
+            "worktrees.cli/worktrees.broker 分别含实际 next checkout 的绝对 root 与 40 位 commit；cliRoot/brokerRoot 指向对应 packages，构建 receipt 与当前源、产物逐字节匹配。",
             "run 另需实际正常 PATH/包注册、expectedFindRecord 与适用的 namespace review；保留两机分别取得的实际加载回执。",
             "plan 只生成准备信息，不执行日用验证。"
           ]
@@ -440,7 +442,19 @@
           "command": "node scripts/verify-pi-daily-installation.mjs run --config /absolute/owned/current-daily.json",
           "required_inputs": [
             "本轮自有 config.version:1；实际日用 Pi package/source 配置、当前配对 CLI/Broker roots、archive paths/hashes、embedded CLI/SDK hashes、CLI entry hash 与自有 evidenceRoot。",
+            "config.delivery:{id:UUID,startedAt:UTC_ISO} 标识本次交付；两机共用新的 UUID 和 canonical UTC 开始时间，startedAt 不得在未来。run 强制该字段；plan 可报告缺项，不能证明执行。",
+            "worktrees.cli/worktrees.broker 分别含实际 next checkout 的绝对 root 与 40 位 commit；cliRoot/brokerRoot 指向对应 packages，构建 receipt 与当前源、产物逐字节匹配。",
             "run 另需实际正常 PATH/包注册、expectedFindRecord 与适用的 namespace review；保留两机分别取得的实际加载回执。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs aggregate --config /absolute/owned/current-delivery.json",
+          "required_inputs": [
+            "config.version:1；delivery:{id:UUID,startedAt:UTC_ISO} 使用本次两机共用的新交付身份，startedAt 为不在未来的 canonical UTC ISO。",
+            "worktrees.cli/worktrees.broker 含绝对 root 与 40 位 commit；cliRoot/brokerRoot 与本轮当前配对及 source/build bytes 一致。",
+            "receipts:{pro:ABSOLUTE_RESULT_JSON,mini:ABSOLUTE_RESULT_JSON} 指向两台不同机器的完整实际 daily v2 回执；同 delivery、当前 pair/build/verifier 与真实 origin/source/build 证据全部匹配。",
+            "aggregate 只读且不调用 Notion/Pi/model；拒绝旧回执、plan、candidate、source-only、blocked、failed 或 not_run。通过仅证明 two-machine-ordinary-pi-startup-and-metadata，provider_model/skill_body_consumption 仍为 not_run。"
           ]
         },
         {
@@ -1086,6 +1100,8 @@
           "command": "node scripts/verify-pi-daily-installation.mjs plan --config /absolute/owned/current-daily.json",
           "required_inputs": [
             "本轮自有 config.version:1；实际日用 Pi package/source 配置、当前配对 CLI/Broker roots、archive paths/hashes、embedded CLI/SDK hashes、CLI entry hash 与自有 evidenceRoot。",
+            "config.delivery:{id:UUID,startedAt:UTC_ISO} 标识本次交付；两机共用新的 UUID 和 canonical UTC 开始时间，startedAt 不得在未来。run 强制该字段；plan 可报告缺项，不能证明执行。",
+            "worktrees.cli/worktrees.broker 分别含实际 next checkout 的绝对 root 与 40 位 commit；cliRoot/brokerRoot 指向对应 packages，构建 receipt 与当前源、产物逐字节匹配。",
             "run 另需实际正常 PATH/包注册、expectedFindRecord 与适用的 namespace review；保留两机分别取得的实际加载回执。",
             "plan 只生成准备信息，不执行日用验证。"
           ]
@@ -1095,7 +1111,19 @@
           "command": "node scripts/verify-pi-daily-installation.mjs run --config /absolute/owned/current-daily.json",
           "required_inputs": [
             "本轮自有 config.version:1；实际日用 Pi package/source 配置、当前配对 CLI/Broker roots、archive paths/hashes、embedded CLI/SDK hashes、CLI entry hash 与自有 evidenceRoot。",
+            "config.delivery:{id:UUID,startedAt:UTC_ISO} 标识本次交付；两机共用新的 UUID 和 canonical UTC 开始时间，startedAt 不得在未来。run 强制该字段；plan 可报告缺项，不能证明执行。",
+            "worktrees.cli/worktrees.broker 分别含实际 next checkout 的绝对 root 与 40 位 commit；cliRoot/brokerRoot 指向对应 packages，构建 receipt 与当前源、产物逐字节匹配。",
             "run 另需实际正常 PATH/包注册、expectedFindRecord 与适用的 namespace review；保留两机分别取得的实际加载回执。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs aggregate --config /absolute/owned/current-delivery.json",
+          "required_inputs": [
+            "config.version:1；delivery:{id:UUID,startedAt:UTC_ISO} 使用本次两机共用的新交付身份，startedAt 为不在未来的 canonical UTC ISO。",
+            "worktrees.cli/worktrees.broker 含绝对 root 与 40 位 commit；cliRoot/brokerRoot 与本轮当前配对及 source/build bytes 一致。",
+            "receipts:{pro:ABSOLUTE_RESULT_JSON,mini:ABSOLUTE_RESULT_JSON} 指向两台不同机器的完整实际 daily v2 回执；同 delivery、当前 pair/build/verifier 与真实 origin/source/build 证据全部匹配。",
+            "aggregate 只读且不调用 Notion/Pi/model；拒绝旧回执、plan、candidate、source-only、blocked、failed 或 not_run。通过仅证明 two-machine-ordinary-pi-startup-and-metadata，provider_model/skill_body_consumption 仍为 not_run。"
           ]
         },
         {
