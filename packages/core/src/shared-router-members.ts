@@ -346,16 +346,16 @@ export function querySharedSkillRelation(
         return yield* Effect.fail(
           fail(
             "SHARED_ROUTER_MEMBER_UNAVAILABLE",
-            "A selected member is missing, inaccessible or outside this shared library.",
-            { page_id: pageIdentity },
+            `A selected ${input.field} target is missing, inaccessible or outside this shared library.`,
+            { field: input.field, page_id: pageIdentity },
           ),
         )
       if ((claims.get(record.id)?.size ?? 0) > 1)
         return yield* Effect.fail(
           fail(
             "SHARED_SKILL_ID_CONFLICT",
-            "Several shared pages claim a selected Router member's stable identity.",
-            { id: record.id, page_ids: [...claims.get(record.id)!].sort() },
+            `Several shared pages claim a selected ${input.field} target's stable identity.`,
+            { field: input.field, id: record.id, page_ids: [...claims.get(record.id)!].sort() },
           ),
         )
       if (record.kind !== "skill")
@@ -368,10 +368,11 @@ export function querySharedSkillRelation(
         )
       if (!record.enabled)
         return yield* Effect.fail(
-          fail("SHARED_ROUTER_MEMBER_UNAVAILABLE", "A selected Router member is disabled.", {
-            page_id: pageIdentity,
-            reason: "disabled",
-          }),
+          fail(
+            "SHARED_ROUTER_MEMBER_UNAVAILABLE",
+            `A selected ${input.field} target is disabled.`,
+            { field: input.field, page_id: pageIdentity, reason: "disabled" },
+          ),
         )
       members.push({
         id: record.id,
@@ -423,9 +424,4 @@ export function querySharedRouterMembers(
     field: "Members",
     inventory: input.inventory,
   })
-}
-
-/** Match the existing native Router projection; authored instructions stay separate. */
-export function renderSharedRouterMembers(members: readonly SharedRouterMember[]): string {
-  return `\n\n## Members\n\n${members.map((member) => `- [${member.name}](${member.ref}) — ${member.description}`).join("\n")}\n`
 }

@@ -79,9 +79,6 @@ export function fileRef(
   snapshot?: string,
   fileId?: string,
 ): string {
-  if (selector.startsWith("notion_page:")) selector = selector.slice("notion_page:".length)
-  else if (selector.startsWith("notion_subscription:"))
-    selector = `upstream:${selector.slice("notion_subscription:".length)}`
   const query = [
     snapshot === undefined ? "" : `snapshot=${snapshot}`,
     fileId === undefined ? "" : `file_id=${encodeURIComponent(fileId)}`,
@@ -104,12 +101,12 @@ export function resolveRef(base: string, relative: string): string {
 }
 
 export function pageId(input: string): string | undefined {
-  if (input.startsWith("notion_page:")) input = input.slice("notion_page:".length)
   const raw = /^[a-f\d-]{32,36}$/i.test(input)
     ? input.replaceAll("-", "")
     : (() => {
         try {
           const url = new URL(input)
+          if (url.protocol !== "https:" && url.protocol !== "http:") return undefined
           if (!/(^|\.)notion\.(com|site|so)$/.test(url.hostname)) return undefined
           return /([a-f\d]{32})\/?$/i.exec(url.pathname)?.[1]
         } catch {
@@ -130,6 +127,11 @@ export interface SkillTarget {
 export function parseTarget(input: string, path?: string): SkillTarget {
   if (!input.trim() || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(input))
     throw fail("INVALID_ARGUMENT", "Provide a nonempty Skill target without control characters.")
+  if (/^(?:notion_page|notion_subscription|upstream):/u.test(input))
+    throw fail(
+      "CURRENT_TARGET_REQUIRED",
+      "Select a current Skill identity, page ID, URL or current file reference.",
+    )
   let target: SkillTarget
   if (input.startsWith("skill://")) {
     const ref = parseRef(input)

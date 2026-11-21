@@ -1,15 +1,11 @@
 import { Effect } from "effect"
-import { explicitSource } from "./catalog.ts"
 import { exportPortable, portableIdentity } from "./export.ts"
 import { aliasFor, fail } from "./model.ts"
 import type { SkillsError } from "./model.ts"
-import { createPortable, replaceSkill } from "./mutation.ts"
-import type { CreateOptions, ReplaceOptions } from "./mutation.ts"
 import { normalizePath } from "./ref.ts"
 import { importDocument } from "./import.ts"
 import type { ImportFile } from "./import.ts"
 import type { PortableSkill } from "./portable.ts"
-import { configuration, publicConfiguration, Store } from "./store.ts"
 
 export interface BuiltinSkill {
   readonly id: string
@@ -101,39 +97,5 @@ export function exportBuiltin(skill: BuiltinSkill, output: string) {
       source: "builtin",
       builtin: yield* builtinInfo(skill),
     }
-  })
-}
-
-export function configureBuiltinDatabase(database?: string) {
-  return Effect.gen(function* () {
-    const config = yield* configuration
-    const source = database === undefined ? undefined : yield* explicitSource(database)
-    const { builtin_database: _previous, ...rest } = config
-    const next = { ...rest, ...(source ? { builtin_database: source.database_id } : {}) }
-    const store = yield* Store
-    yield* store.writeJson("config.json", next)
-    return publicConfiguration(next)
-  })
-}
-
-export function publishBuiltin(
-  skill: BuiltinSkill,
-  options: CreateOptions & { readonly target?: ReplaceOptions["target"] } = {},
-) {
-  return Effect.gen(function* () {
-    const config = yield* configuration
-    const database =
-      options.database ?? (options.target === undefined ? config.builtin_database : undefined)
-    const selected = {
-      database,
-      dryRun: options.dryRun,
-      onProgress: options.onProgress,
-      source: { type: "builtin" as const, builtinId: skill.id },
-    }
-    const result =
-      options.target === undefined
-        ? yield* createPortable(skill.portable, selected)
-        : yield* replaceSkill(skill.portable, { ...selected, target: options.target })
-    return { ...result, builtin: yield* builtinInfo(skill) }
   })
 }

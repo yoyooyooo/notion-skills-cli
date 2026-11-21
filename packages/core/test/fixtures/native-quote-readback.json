@@ -1,0 +1,6 @@
+{
+  "kind": "minimized_regression",
+  "source": "> **Current observation: verify before acting.** Keep `sample.app` as the selected target.\n>\n> Read [lookup](lookup.md), run `observe --image`, then read [steps](playbook.md) and [history](progress.md).\n",
+  "observed": "<quote>\n<b>Current observation: verify before acting.</b> Keep <code>sample.app</code> as the selected target.\n\nRead [lookup](https://lookup.md), run <code>observe --image</code>, then read [steps](https://playbook.md) and [history](https://progress.md).\n</quote>\n",
+  "local_hrefs": ["lookup.md", "playbook.md", "progress.md"]
+}

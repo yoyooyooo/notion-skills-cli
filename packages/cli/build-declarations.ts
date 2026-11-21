@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, readdir, writeFile } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
 import ts from "typescript"
 
@@ -33,10 +33,10 @@ export async function buildDeclarations(root: string, target: string) {
       }),
     )
   const pending = [join(outDir, "cli/src/sdk.d.ts")]
-  const written = new Set<string>()
+  const declarations = new Map<string, string>()
   while (pending.length) {
     const path = pending.pop()!
-    if (written.has(path)) continue
+    if (declarations.has(path)) continue
     const original = emitted.get(path)
     if (original === undefined) throw new Error(`Missing SDK declaration: ${path}`)
     let text = original
@@ -66,9 +66,28 @@ export async function buildDeclarations(root: string, target: string) {
         throw new Error(`SDK declaration escapes its package: ${specifier}`)
       pending.push(dependencyPath)
     }
+    declarations.set(path, text)
+  }
+  const current = new Set<string>()
+  for (const path of declarations.keys()) {
+    let name = relative(outDir, path)
+    while (name !== ".") {
+      current.add(name)
+      name = dirname(name)
+    }
+  }
+  const projected = await readdir(outDir, { recursive: true }).catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return []
+    throw error
+  })
+  const stale = projected.filter((name) => !current.has(name))
+  if (stale.length)
+    throw new Error(
+      `Retired files remain in the generated SDK declarations. Move these paths to system Trash, or build into a fresh --outdir: ${stale.map((name) => join(outDir, name)).join(", ")}`,
+    )
+  for (const [path, text] of declarations) {
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, text)
-    written.add(path)
   }
-  return written.size
+  return declarations.size
 }

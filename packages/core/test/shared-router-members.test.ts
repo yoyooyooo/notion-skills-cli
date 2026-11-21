@@ -4,40 +4,25 @@ import { fail, property, SkillsError, type Source } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { sharedRecordFromPage, sharedSkillId } from "../src/shared-content.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
-import {
-  querySharedRouterMembers,
-  querySharedSkillRelation,
-  renderSharedRouterMembers,
-} from "../src/shared-router-members.ts"
+import { querySharedRouterMembers, querySharedSkillRelation } from "../src/shared-router-members.ts"
+import { currentLibrary } from "./shared-current-fixture.ts"
 
 const id = (value: number) => `00000000-0000-4000-8000-${value.toString(16).padStart(12, "0")}`
 const routerPage = id(1)
 const membersProperty = "mem%3Aroles"
 const library: SharedLibrary = {
-  version: 1,
+  ...currentLibrary,
   library_id: "library-router",
   operation_id: "library-router",
-  parent_page_id: id(2),
   skills: {
-    database_id: id(3),
-    data_source_id: id(4),
+    ...currentLibrary.skills,
     property_ids: {
-      Name: "title",
-      Description: "description",
-      Kind: "kind",
+      ...currentLibrary.skills.property_ids,
       "Skill ID": "skill_id",
-      Enabled: "enabled",
-      "Default Context": "default",
       Members: membersProperty,
-      Tags: "tags",
-      References: "references",
       "Main File ID": "main_file_id",
-      Projection: "projection",
-      Source: "source",
     },
   },
-  files: { database_id: id(5), data_source_id: id(6), property_ids: { Name: "title" } },
-  records: { database_id: id(7), data_source_id: id(8), property_ids: { Name: "title" } },
 }
 const source: Source = {
   alias: library.library_id,
@@ -77,6 +62,14 @@ function row(
       "Renamed kind": { id: "kind", type: "select", select: { name: kind } },
       "Renamed enabled": { id: "enabled", type: "checkbox", checkbox: enabled },
       "Renamed context": { id: "default", type: "checkbox", checkbox: false },
+      "Main File ID": rich("main_file_id", `main-${stableId}`),
+      Content: rich("content", JSON.stringify({ kind: "native", mode: "100644", frontmatter: "" })),
+      "Current State": { id: "state", type: "select", select: { name: "ready" } },
+      Operation: rich("operation", ""),
+      "Renamed Members": { id: membersProperty, type: "relation", relation: [], has_more: false },
+      Requires: { id: "requires", type: "relation", relation: [], has_more: false },
+      Origin: { id: "origin", type: "relation", relation: [], has_more: false },
+      Tags: { id: "tags", type: "multi_select", multi_select: [] },
       Name: { id: "unregistered-title", type: "title", title: [{ plain_text: "Wrong name" }] },
       Description: rich("unregistered-description", "Wrong description"),
       Members: {
@@ -281,8 +274,8 @@ describe("shared Router members", () => {
     assertMetadataOnly(f)
   })
 
-  test("Requires rejects disabled, Prompt, nested Router and duplicate stable identities in the complete inventory", async () => {
-    for (const issue of ["disabled", "prompt", "router", "duplicate"] as const) {
+  test("Requires rejects missing, disabled, Prompt, nested Router and duplicate stable identities in the complete inventory", async () => {
+    for (const issue of ["missing", "disabled", "prompt", "router", "duplicate"] as const) {
       const f = fixture(2)
       const registered = {
         ...library,
@@ -298,7 +291,8 @@ describe("shared Router members", () => {
       const first = f.members[0]
       const second = f.members[1]
       if (!first || !second) throw new Error("Fixture needs two targets")
-      if (issue === "disabled")
+      if (issue === "missing") f.inventory([f.rawRouter, second])
+      else if (issue === "disabled")
         property(property(first.properties)["Renamed enabled"]).checkbox = false
       else if (issue === "duplicate")
         property(second.properties)["Renamed identity"] = rich("skill_id", "member-000")
@@ -316,6 +310,20 @@ describe("shared Router members", () => {
         }).pipe(Effect.result),
       )
       expect(result._tag).toBe("Failure")
+      if (result._tag === "Failure") {
+        expect(property(result.failure.details).field).toBe("Requires")
+        expect(result.failure.message).toContain("Requires")
+        expect(result.failure.message).not.toContain("Router member")
+        if (issue === "missing" || issue === "disabled") {
+          expect(result.failure.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
+          expect(property(result.failure.details).page_id).toBe(id(100))
+          expect(property(result.failure.details).reason).toBe(
+            issue === "disabled" ? "disabled" : undefined,
+          )
+        } else if (issue === "duplicate") {
+          expect(result.failure.code).toBe("SHARED_SKILL_ID_CONFLICT")
+        } else expect(result.failure.code).toBe("INVALID_MEMBERS")
+      }
       assertMetadataOnly(f)
     }
   })
@@ -467,6 +475,9 @@ describe("shared Router members", () => {
     const error = await f.run(Effect.flip(f.query()))
     expect(error.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
     expect(property(error.details).page_id).toBe(id(101))
+    expect(property(error.details).field).toBe("Members")
+    expect(property(error.details).reason).toBeUndefined()
+    expect(error.message).toContain("Members")
   })
 
   test("rejects a selected member from a foreign source", async () => {
@@ -482,6 +493,8 @@ describe("shared Router members", () => {
     const error = await f.run(Effect.flip(f.query()))
     expect(error.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
     expect(property(error.details).reason).toBe("disabled")
+    expect(property(error.details).field).toBe("Members")
+    expect(error.message).toBe("A selected Members target is disabled.")
   })
 
   test("nested Routers and Prompts cannot be selected members", async () => {
@@ -499,7 +512,10 @@ describe("shared Router members", () => {
   test("detects selected-to-selected stable ID conflicts", async () => {
     const f = fixture()
     property(f.members[1]!.properties)["Renamed identity"] = rich("skill_id", "member-000")
-    expect((await f.run(Effect.flip(f.query()))).code).toBe("SHARED_SKILL_ID_CONFLICT")
+    const error = await f.run(Effect.flip(f.query()))
+    expect(error.code).toBe("SHARED_SKILL_ID_CONFLICT")
+    expect(property(error.details).field).toBe("Members")
+    expect(error.message).toContain("Members")
   })
 
   test("detects valid nonmember claims even when disabled without blocking unrelated corrupt rows", async () => {
@@ -542,7 +558,7 @@ describe("shared Router members", () => {
     }
   })
 
-  test("freezes render metadata, ignoring body-only edit timestamps", async () => {
+  test("freezes relation metadata, ignoring body-only edit timestamps", async () => {
     const f = fixture()
     const before = await f.run(f.query())
     f.members[0]!.last_edited_time = "2026-10-31T00:00:00.000Z"
@@ -552,14 +568,5 @@ describe("shared Router members", () => {
     const changed = await f.run(f.query())
     expect(changed[0]?.metadata.description).toBe("New metadata")
     expect(before[0]?.metadata.description).toBe("Member 0 instructions")
-  })
-
-  test("matches the existing Router Members renderer including empty output", async () => {
-    const f = fixture()
-    const members = await f.run(f.query())
-    expect(renderSharedRouterMembers(members)).toBe(
-      `\n\n## Members\n\n- [Member 0](${members[0]!.ref}) — Member 0 instructions\n- [Member 1](${members[1]!.ref}) — Member 1 instructions\n`,
-    )
-    expect(renderSharedRouterMembers([])).toBe("\n\n## Members\n\n\n")
   })
 })

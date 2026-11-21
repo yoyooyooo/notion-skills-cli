@@ -20,6 +20,7 @@ function sample() {
         skills: { database_id: "skills-db", data_source_id: "skills" },
         files: { data_source_id: "files" },
         records: { data_source_id: "records" },
+        sources: { data_source_id: "sources" },
       },
       main,
       skills: [main],
@@ -28,6 +29,7 @@ function sample() {
       database: { id: "skills-db" },
       files: [],
       records: [],
+      sources: [],
       bodies: { selected: "完整正文\n".repeat(20) },
     },
     view_dynamics: {
@@ -67,6 +69,59 @@ async function settled(source: Source, count: number) {
 }
 
 const sha256 = (value: Uint8Array) => createHash("sha256").update(value).digest("hex")
+
+test("Source contribution contains queries return complete candidates with normal pagination", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "sdk-source-contributions-"))
+  const base = sample()
+  const rows = ["demo", "demo-other", "unrelated"].map((skill, index) => ({
+    id: "source-" + index,
+    properties: {
+      Contributions: {
+        id: "contributions",
+        type: "rich_text",
+        rich_text: [
+          {
+            type: "text",
+            text: {
+              content: JSON.stringify([
+                { member_key: ".", skill_id: skill, mount_path: "", mapping: {}, exclude: [] },
+              ]),
+            },
+          },
+        ],
+      },
+    },
+  }))
+  const source = await startSdkSourceFixture(
+    { ...base, notion: { ...base.notion, sources: rows } },
+    join(directory, "requests.jsonl"),
+  )
+  try {
+    const query = async (cursor?: string) =>
+      (
+        await fetch(source.origin + "/v1/data_sources/sources/query", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            page_size: 1,
+            filter: { property: "contributions", rich_text: { contains: "demo" } },
+            ...(cursor === undefined ? {} : { start_cursor: cursor }),
+          }),
+        })
+      ).json()
+    const first = await query()
+    expect(first.results.map((row: { id: string }) => row.id)).toEqual(["source-0"])
+    expect(first.has_more).toBe(true)
+    const second = await query(first.next_cursor)
+    expect(second.results.map((row: { id: string }) => row.id)).toEqual(["source-1"])
+    expect(second.has_more).toBe(false)
+    expect(second.next_cursor).toBeNull()
+    await settled(source, 2)
+    expect(source.unexpected).toEqual([])
+  } finally {
+    await source.close()
+  }
+})
 
 test("complete responses bind actual bytes, phases, View metadata and fixed 401/403 routes", async () => {
   await withSource(async (source) => {

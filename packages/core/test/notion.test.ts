@@ -1,4 +1,3 @@
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 import { expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import {
@@ -18,7 +17,7 @@ import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http"
 import { NotionCredentialProviderLive } from "../src/notion-credential.ts"
 import { TestClock } from "effect/testing"
 import { decode, property, SkillsError } from "../src/model.ts"
-import { Notion, NotionTransport } from "../src/notion.ts"
+import { Notion, NotionTransport, withNotionRequestAttribution } from "../src/notion.ts"
 import {
   makeRequestScheduler,
   NOTION_ADMISSION_BUDGET_MS,
@@ -28,10 +27,6 @@ import {
 import { configuredToken, Store } from "../src/store.ts"
 
 const store = Layer.succeed(Store, {
-  integrity: integrityRepositoryFixture(),
-  upstream: upstreamRepositoryFixture(),
-  registerBindingWithBase: () => Effect.die(new Error("Unexpected binding transaction")),
-  advanceBaseAndReceipt: () => Effect.die(new Error("Unexpected baseline transaction")),
   backup: () => Effect.die(new Error("Unexpected backup")),
   root: "/notion-test",
   configRoot: "/notion-test",
@@ -203,6 +198,7 @@ function withClockedNotion<A>(
   }) => Effect.Effect<A, SkillsError>,
   timeoutMs = 60_000,
   concurrency?: string,
+  traceLimit = 0,
 ) {
   return Effect.scoped(
     Effect.gen(function* () {
@@ -274,6 +270,7 @@ function withClockedNotion<A>(
           ConfigProvider.layer(
             ConfigProvider.fromUnknown({
               NTN_SKILLS_REQUEST_TIMEOUT_MS: String(timeoutMs),
+              NTN_SKILLS_REQUEST_TRACE_LIMIT: String(traceLimit),
               ...(concurrency === undefined ? {} : { NTN_SKILLS_NOTION_CONCURRENCY: concurrency }),
             }),
           ),
@@ -1005,6 +1002,55 @@ test("formal Notion Layer releases permits on queued and last-waiter cancellatio
   )
 })
 
+test("request attribution follows the actual producer across retry and does not leak to the next phase", async () => {
+  const path = "v1/pages/attributed-retry"
+  const attribution = {
+    phase: "author_preflight" as const,
+    skill_page_id: "11111111-2222-4333-8444-555555555555",
+    operation_id: "body-write-original.operation",
+  }
+  await Effect.runPromise(
+    withClockedNotion(
+      (start) =>
+        start.path === path && start.attempt === 1
+          ? { networkError: "controlled network failure" }
+          : {},
+      ({ api, clock, started, sleeps }) =>
+        Effect.gen(function* () {
+          const running = yield* Effect.forkChild(
+            withNotionRequestAttribution(api.request(path), attribution),
+            { startImmediately: true },
+          )
+          yield* Queue.take(started)
+          yield* Queue.take(sleeps)
+          yield* clock.adjust(1000)
+          yield* Fiber.join(running)
+          const metrics = api.requestMetrics?.()
+          const attempts = metrics?.trace.filter((entry) => entry.event === "attempt")
+          expect(attempts).toHaveLength(2)
+          expect(
+            attempts?.every(
+              (entry) => JSON.stringify(entry.attribution) === JSON.stringify(attribution),
+            ),
+          ).toBe(true)
+          expect(
+            metrics?.trace.filter((entry) => entry.event === "wait" && entry.kind === "retry"),
+          ).toMatchObject([{ attribution, milliseconds: 1000 }])
+          yield* clock.adjust(350)
+          yield* api.request("v1/pages/unknown-phase")
+          expect(api.requestMetrics?.().trace.at(-1)?.attribution).toEqual({
+            phase: null,
+            skill_page_id: null,
+            operation_id: null,
+          })
+        }),
+      60000,
+      "1",
+      30,
+    ),
+  )
+})
+
 test("formal Notion Layer holds no concurrency permit during read retry backoff", async () => {
   const path = "v1/pages/bounded-retry"
   await Effect.runPromise(
@@ -1445,7 +1491,7 @@ test("formal Notion Layer keeps file-backed POST queries read-only even though t
           const result = yield* api
             .request("v1/data_sources/00000000-0000-4000-8000-000000000001/query", undefined, {
               method: "POST",
-              file: new URL("./fixtures.ts", import.meta.url).pathname,
+              file: new URL("./notion.test.ts", import.meta.url).pathname,
             })
             .pipe(Effect.result)
           expect(result._tag).toBe("Failure")

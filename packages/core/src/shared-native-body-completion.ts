@@ -3,10 +3,16 @@ import { fail, property, SkillsError } from "./model.ts"
 import type { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { referenceProse } from "./shared-file-references.ts"
-import { normalizeObservedBody } from "./shared-file-state.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
 import { readLinkBlocks } from "./typed-links.ts"
+
+// Preserve author whitespace, code and links; only transport CRLF is normalized.
+function normalizeObservedBody(markdown: string): string {
+  if (/<unknown(?:\s|\/?>)/i.test(markdown))
+    throw fail("BODY_INCOMPLETE", "Notion returned unsupported or unavailable body content.")
+  return markdown.replace(/\r\n/g, "\n")
+}
 
 const Page = Schema.String.check(Schema.isUUID())
 /** This is evidence about the export, never a replacement body or ownership fact. */
@@ -195,7 +201,6 @@ export function completeNativeAliasBody(
           : fail("BODY_INCOMPLETE", "Invalid native alias export."),
     })
     const blocks = yield* readLinkBlocks(page, api, {
-      structureEvidence: true,
       completeBodyEvidence: true,
     }).pipe(
       Effect.mapError((error) =>

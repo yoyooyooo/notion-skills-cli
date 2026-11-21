@@ -5,53 +5,18 @@ import { catalog, discoverDatabases } from "../src/catalog.ts"
 import { property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
-import { LIBRARY_MARKER, type SharedLibrary } from "../src/shared-library-model.ts"
-import { sourceDefinitionLayout } from "../src/shared-sources-model.ts"
+import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
-import { nativeGraphFixture } from "./graph-prepare-live-fixture.ts"
-import { id, library, rich } from "./shared-snapshot-fixture.ts"
+import { graphLibrary as library, nativeGraphFixture } from "./graph-prepare-live-fixture.ts"
+import { currentId as id, currentRich as rich } from "./shared-current-fixture.ts"
 
 function fixture(
-  options: {
-    readonly managementFirst?: boolean
-    readonly registeredManagement?: boolean
-    readonly legacyKind?: string
-  } = {},
+  options: { readonly managementFirst?: boolean; readonly registeredManagement?: boolean } = {},
 ) {
   const f = nativeGraphFixture({ width: 0 })
-  const registered: SharedLibrary = {
-    ...f.descriptor,
-    skills: {
-      ...f.descriptor.skills,
-      property_ids: {
-        ...f.descriptor.skills.property_ids,
-        Origin: "origin",
-        "Source Member": "member",
-      },
-    },
-    records: {
-      ...library.records,
-      property_ids: { ...library.records.property_ids, Origin: "origin" },
-    },
-    sources: {
-      database_id: id(80),
-      data_source_id: id(81),
-      property_ids: Object.fromEntries(
-        Object.keys(
-          sourceDefinitionLayout(library.skills.data_source_id, library.records.data_source_id),
-        ).map((name, index) => [name, name === "Name" ? "title" : `source-${index}`]),
-      ),
-    },
-  }
+  const registered = f.descriptor
   const root = f.pages[0]!
-  property(root.properties).origin = {
-    id: "origin",
-    type: "relation",
-    relation: [],
-    has_more: false,
-  }
-  property(root.properties).member = rich("member", "")
   const managed = [registered.files, registered.records, registered.sources!]
   const legacy = { database_id: id(90), data_source_id: id(91) }
   const references = {
@@ -148,33 +113,6 @@ function fixture(
                 f.calls.push({ path, body, method: "POST" })
                 return Effect.succeed(list(searched))
               }
-              if (endpoint === `v1/data_sources/${legacy.data_source_id}/query`) {
-                f.calls.push({ path, body, method: "POST" })
-                return Effect.succeed(
-                  list([
-                    {
-                      id: id(92),
-                      properties: {
-                        Name: {
-                          id: "title",
-                          type: "title",
-                          title: [{ plain_text: "Still a legacy Skill" }],
-                        },
-                        Description: rich(
-                          "description",
-                          "Valid legacy content remains discoverable.",
-                        ),
-                        References: rich("references", ""),
-                        Kind: {
-                          id: "kind",
-                          type: "select",
-                          select: { name: options.legacyKind ?? "skill" },
-                        },
-                      },
-                    },
-                  ]),
-                )
-              }
               return api.request(path, body, requestOptions)
             },
           }),
@@ -192,43 +130,55 @@ test.each([true, false])(
   async (managementFirst) => {
     const f = fixture({ managementFirst, registeredManagement: true })
     const result = await f.run(catalog({ refresh: true }))
-    expect(result.records.map((record) => record.id).sort()).toEqual(
-      [`notion_page:${id(92)}`, `shared_skill:${library.library_id}:a`].sort(),
+    expect(result.records.map((record) => record.id)).toEqual([
+      `shared_skill:${library.library_id}:a`,
+    ])
+    expect(result.databases.map((source) => source.database_id)).toEqual([
+      library.skills.database_id,
+    ])
+    expect(
+      result.coverage.failed_sources.map(({ database_id, code }) => ({ database_id, code })),
+    ).toEqual(
+      f.managed.map((table) => ({
+        database_id: table.database_id,
+        code: "CURRENT_SCHEMA_REQUIRED",
+      })),
     )
-    expect(result.databases.map((source) => source.database_id).sort()).toEqual(
-      [library.skills.database_id, f.legacy.database_id].sort(),
-    )
-    expect(result.coverage.failed_sources).toEqual([])
     for (const table of f.managed)
       expect(f.calls.some((call) => query(call.path, table.data_source_id))).toBe(false)
-    expect(result.records.find((record) => record.id === `notion_page:${id(92)}`)?.name).toBe(
-      "Still a legacy Skill",
-    )
+    expect(f.calls.some((call) => query(call.path, f.legacy.data_source_id))).toBe(false)
   },
 )
 
-test("legacy discovery does not expose management tables when shared consumption is not enabled", async () => {
+test("discovery returns only current Skill entries and excludes management and obsolete content tables", async () => {
   const f = fixture()
   const result = await f.run(discoverDatabases())
-  expect(result.databases.map((source) => source.database_id)).toEqual([f.legacy.database_id])
-  expect(result.failures.map((failure) => failure.code)).toEqual([
-    "SHARED_LIBRARY_CONSUMER_PENDING",
-  ])
+  expect(result.databases.map((source) => source.database_id)).toEqual([library.skills.database_id])
+  expect(result.failures).toEqual([])
   expect(f.calls.some((call) => call.path.includes("/query"))).toBe(false)
 })
 
-test("an actual legacy content table with an invalid Kind still fails instead of being hidden", async () => {
-  const f = fixture({ legacyKind: "file_event" })
+test("an invalid current Skill Kind fails while obsolete tables are never consumed", async () => {
+  const f = fixture()
+  f.pages[0]!.properties.kind.select.name = "file_event"
   const error = await f.run(Effect.flip(catalog({ refresh: true })))
   expect(error.code).toBe("INVALID_RESPONSE")
   expect(error.message).toBe("The response does not match the expected schema.")
-  expect(f.calls.some((call) => query(call.path, f.legacy.data_source_id))).toBe(true)
+  expect(f.calls.some((call) => query(call.path, f.legacy.data_source_id))).toBe(false)
   for (const table of f.managed)
     expect(f.calls.some((call) => query(call.path, table.data_source_id))).toBe(false)
 })
 
+test("an explicit obsolete entry fails current admission without reading its rows", async () => {
+  const f = fixture()
+  const error = await f.run(Effect.flip(catalog({ database: f.legacy.database_id, refresh: true })))
+  expect(error.code).toBe("CURRENT_SCHEMA_REQUIRED")
+  expect(f.calls.some((call) => query(call.path, f.legacy.data_source_id))).toBe(false)
+  expect(f.writeCount()).toBe(0)
+})
+
 test("cold logical ref refresh without database resolves the shared Skill without broad management queries", async () => {
-  const f = fixture({ registeredManagement: true })
+  const f = fixture()
   const target = `shared_skill:${library.library_id}:a`
   const result = await f.run(readSkill(fileRef(target, "SKILL.md"), { refresh: true }))
   expect(result.record.id).toBe(target)
@@ -237,8 +187,17 @@ test("cold logical ref refresh without database resolves the shared Skill withou
   expect(
     f.calls.some((call) => call.path === `v1/pages/${f.pageIds[0]}/markdown?markdown_version=v2`),
   ).toBe(true)
-  expect(f.calls.some((call) => query(call.path, f.registered.sources!.data_source_id))).toBe(false)
-  for (const table of [f.registered.files, f.registered.records]) {
+  const sourceQueries = f.calls.filter((call) =>
+    query(call.path, f.registered.sources!.data_source_id),
+  )
+  expect(sourceQueries.map((call) => property(call.body).filter)).toEqual(
+    Array.from({ length: 2 }, () => ({
+      property: f.registered.sources!.property_ids.Contributions,
+      rich_text: { contains: "a" },
+    })),
+  )
+  expect(f.calls.some((call) => query(call.path, f.registered.records.data_source_id))).toBe(false)
+  for (const table of [f.registered.files]) {
     const selected = f.calls.filter((call) => query(call.path, table.data_source_id))
     expect(selected.length).toBeGreaterThan(0)
     for (const call of selected)

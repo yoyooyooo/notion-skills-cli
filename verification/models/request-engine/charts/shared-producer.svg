@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pele pele-state" viewBox="0 0 1112 1113" width="1112" height="1113" style="max-width:100%;height:auto;--_bg:var(--pele-bg,#fff);--_fg:var(--pele-fg,#1f1f1f);--_m:var(--pele-muted,#6e6e6e);--_l:var(--pele-line,#1f1f1f);--_s:var(--pele-surface,#f3f3f3);--_a:var(--pele-surface-alt,#e6e6e6);--_b:var(--pele-border,#8a8a8a);--_c:var(--pele-accent,#5b7bd5);color:var(--_fg);--_tw:var(--pele-title-weight,bold);--_fm:var(--pele-font-mono,monospace);font:16px sans-serif;letter-spacing:normal;word-spacing:normal;text-transform:none;direction:ltr;font-family:var(--pele-font,sans-serif)" fill="var(--_fg)" role="graphics-document document" aria-roledescription="state"><style>.pele {
+  --pele-bg: #ffffff;
+  --pele-fg: #1c1c1c;
+  --pele-muted: #656565;
+  --pele-line: #808080;
+  --pele-surface: #fcfcfc;
+  --pele-surface-alt: #f1f1f1;
+  --pele-border: #c9c9c9;
+}
+.pele .blue rect { fill: #c3e0ff; }
+.pele .orange rect { fill: #f0d3bf; }
+.pele .purple rect { fill: #e3d5ff; }
+.pele .yellow rect { fill: #f0dcbf; }
+.pele .teal rect { fill: #bfe3df; }
+.pele .tan rect { fill: #e5d9ce; }
+.pele .pink rect { fill: #ffcbe6; }
+.pele .breaks rect {
+  fill: #ffecee !important;
+  stroke: #e72e3b !important;
+  stroke-width: 2.5px !important;
+}
+.pele .breaks text {
+  fill: #cd2834 !important;
+}
+.pele .mayBreak rect {
+  fill: #fff3e6 !important;
+  stroke: #e8730c !important;
+  stroke-width: 2.5px !important;
+}
+.pele .mayBreak text {
+  fill: #b85a06 !important;
+}
+.pele .bugPath rect {
+  stroke: #1680f3 !important;
+  stroke-width: 2.5px !important;
+}
+.pele .repeats rect {
+  stroke: #9b35d6 !important;
+  stroke-width: 2.5px !important;
+  stroke-dasharray: 6 3;
+}
+@media (prefers-color-scheme: dark) {
+  .pele {
+    --pele-bg: #1f1f1f;
+    --pele-fg: #f5f5f5;
+    --pele-muted: #acacac;
+    --pele-line: #939393;
+    --pele-surface: #121212;
+    --pele-surface-alt: #2c2c2c;
+    --pele-border: #4e4e4e;
+  }
+  .pele .blue rect { fill: #1b3857; }
+  .pele .orange rect { fill: #573117; }
+  .pele .purple rect { fill: #3c2e57; }
+  .pele .yellow rect { fill: #573d17; }
+  .pele .teal rect { fill: #174641; }
+  .pele .tan rect { fill: #3d3127; }
+  .pele .pink rect { fill: #57233e; }
+  .pele .breaks rect {
+    fill: #2e2021 !important;
+    stroke: #cf2b35 !important;
+  }
+  .pele .breaks text {
+    fill: #ff6463 !important;
+  }
+  .pele .mayBreak rect {
+    fill: #2e2619 !important;
+    stroke: #d0700f !important;
+  }
+  .pele .mayBreak text {
+    fill: #ffa257 !important;
+  }
+  .pele .bugPath rect {
+    stroke: #116dd2 !important;
+  }
+  .pele .repeats rect {
+    stroke: #9a3fcf !important;
+  }
+}</style><text class="pele-title" font-weight="var(--_tw)" text-anchor="middle" xml:space="preserve"><tspan x="556" y="25.6">共享读取的所有权、取消与容量</tspan></text><g transform="translate(0,36)"><g class="pele-edges" fill="none" stroke="var(--_l)" stroke-linecap="round"><g class="pele-edge pele-transition" data-id="edge0"><path d="M576.66,22L576.66,59"/><path class="pele-marker" d="M576.66,66L573.3,58L580.02,58Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge1"><path d="M576.66,110L576.66,172"/><path class="pele-marker" d="M576.66,179L573.3,171L580.02,171Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge2"><path d="M522.87,223C522.87,228.11 255.03,236.39 255.03,241.5L255.03,294"/><path class="pele-marker" d="M255.03,301L251.67,293L258.39,293Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge3"><path d="M630.46,223C630.46,232.25 754.23,232.25 754.23,241.5L754.23,285"/><path class="pele-marker" d="M754.23,292L750.87,284L757.59,284Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge4"><path d="M710.23,354C710.23,388.5 637.68,388.5 637.68,423L637.68,635.75C637.68,645.13 524.89,645.13 524.89,654.5L524.89,660.5"/><path class="pele-marker" d="M524.89,667.5L521.53,659.5L528.25,659.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge5"><path d="M798.23,354C798.23,363.25 845.02,363.25 845.02,372.5L845.02,425"/><path class="pele-marker" d="M845.02,432L841.66,424L848.38,424Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge6"><path d="M203.03,345C203.03,384 73.51,384 73.51,423L73.51,660.5"/><path class="pele-marker" d="M73.51,667.5L70.15,659.5L76.87,659.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge7"><path d="M228.54,345L228.54,635.75C228.54,642.5 436.89,647.75 436.89,654.5L436.89,660.5"/><path class="pele-marker" d="M436.89,667.5L433.53,659.5L440.25,659.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge8"><path d="M307.03,345C307.03,358.75 402.11,358.75 402.11,372.5L402.11,416"/><path class="pele-marker" d="M402.11,423L398.75,415L405.47,415Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge9"><path d="M488.89,711.5L488.89,773.5"/><path class="pele-marker" d="M488.89,780.5L485.53,772.5L492.25,772.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge10"><path d="M402.11,485L402.11,642C402.11,648.94 452.89,648.94 452.89,655.88L452.89,660.5"/><path class="pele-marker" d="M452.89,667.5L449.53,659.5L456.25,659.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge11"><path d="M446.11,485C446.11,551 815.81,551 815.81,617L815.81,660.5"/><path class="pele-marker" d="M815.81,667.5L812.45,659.5L819.17,659.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge12"><path d="M793.02,476C793.02,546.5 695.25,546.5 695.25,617L695.25,642C695.25,646.99 540.89,650.89 540.89,655.88L540.89,660.5"/><path class="pele-marker" d="M540.89,667.5L537.53,659.5L544.25,659.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge13"><path d="M897.02,476C897.02,546.5 941.81,546.5 941.81,617L941.81,660.5"/><path class="pele-marker" d="M941.81,667.5L938.45,659.5L945.17,659.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge14"><path d="M358.11,485C358.11,551 147.03,551 147.03,617L147.03,660.5"/><path class="pele-marker" d="M147.03,667.5L143.67,659.5L150.39,659.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge15"><path d="M878.81,711.5L878.81,773.5"/><path class="pele-marker" d="M878.81,780.5L875.45,772.5L882.17,772.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge16"><path d="M818.81,824.5C818.81,833.75 754.37,833.75 754.37,843L754.37,886.5"/><path class="pele-marker" d="M754.37,893.5L751.01,885.5L757.73,885.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge17"><path d="M938.81,824.5C938.81,833.75 1003.26,833.75 1003.26,843L1003.26,886.5"/><path class="pele-marker" d="M1003.26,893.5L999.9,885.5L1006.62,885.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge18"><path d="M754.37,955.5L754.37,999C754.37,1005.94 817.02,1005.94 817.02,1012.88L817.02,1017.5"/><path class="pele-marker" d="M817.02,1024.5L813.66,1016.5L820.38,1016.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge19"><path d="M1003.26,955.5L1003.26,999C1003.26,1005.94 940.61,1005.94 940.61,1012.88L940.61,1017.5"/><path class="pele-marker" d="M940.61,1024.5L937.25,1016.5L943.97,1016.5Z" fill="var(--_l)" stroke="none"/></g></g><g class="pele-edge-labels" font-size="14"><g class="pele-edge-label" data-id="edge1"><rect x="530.66" y="130.5" width="92" height="21" rx="3" fill="var(--_bg)"/><text x="576.66" y="145.9" text-anchor="middle">发起首个读取</text></g><g class="pele-edge-label" data-id="edge2"><rect x="174.03" y="243.5" width="162" height="21" rx="3" fill="var(--_bg)"/><text x="255.03" y="258.9" text-anchor="middle">核对身份、共享域和容量</text></g><g class="pele-edge-label" data-id="edge3"><rect x="673.23" y="243.5" width="162" height="21" rx="3" fill="var(--_bg)"/><text x="754.23" y="258.9" text-anchor="middle">核对身份、共享域和容量</text></g><g class="pele-edge-label" data-id="edge4"><rect x="590.11" y="443.5" width="95.14" height="21" rx="3" fill="var(--_bg)"/><text x="637.68" y="458.9" text-anchor="middle">producer 返回</text></g><g class="pele-edge-label" data-id="edge5"><rect x="792.02" y="374.5" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="845.02" y="389.9" text-anchor="middle">一个调用者取消</text></g><g class="pele-edge-label" data-id="edge6"><rect x="10" y="443.5" width="127.03" height="21" rx="3" fill="var(--_bg)"/><text x="73.51" y="458.9" text-anchor="middle">独立 producer 返回</text></g><g class="pele-edge-label" data-id="edge7"><rect x="180.97" y="443.5" width="95.14" height="21" rx="3" fill="var(--_bg)"/><text x="228.54" y="458.9" text-anchor="middle">producer 返回</text></g><g class="pele-edge-label" data-id="edge8"><rect x="349.11" y="374.5" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="402.11" y="389.9" text-anchor="middle">一个调用者取消</text></g><g class="pele-edge-label" data-id="edge9"><rect x="430.06" y="732" width="117.68" height="21" rx="3" fill="var(--_bg)"/><text x="488.89" y="747.4" text-anchor="middle">再次读取同一 key</text></g><g class="pele-edge-label" data-id="edge10"><rect x="354.54" y="619" width="95.14" height="21" rx="3" fill="var(--_bg)"/><text x="402.11" y="634.4" text-anchor="middle">producer 返回</text></g><g class="pele-edge-label" data-id="edge11"><rect x="762.81" y="619" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="815.81" y="634.4" text-anchor="middle">一个调用者取消</text></g><g class="pele-edge-label" data-id="edge12"><rect x="647.68" y="619" width="95.14" height="21" rx="3" fill="var(--_bg)"/><text x="695.25" y="634.4" text-anchor="middle">producer 返回</text></g><g class="pele-edge-label" data-id="edge13"><rect x="888.81" y="619" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="941.81" y="634.4" text-anchor="middle">一个调用者取消</text></g><g class="pele-edge-label" data-id="edge14"><rect x="83.51" y="619" width="127.03" height="21" rx="3" fill="var(--_bg)"/><text x="147.03" y="634.4" text-anchor="middle">独立 producer 返回</text></g><g class="pele-edge-label" data-id="edge15"><rect x="804.81" y="732" width="148" height="21" rx="3" fill="var(--_bg)"/><text x="878.81" y="747.4" text-anchor="middle">核实所有等待者已退出</text></g><g class="pele-edge-label" data-id="edge16"><rect x="686.58" y="845" width="135.57" height="21" rx="3" fill="var(--_bg)"/><text x="754.37" y="860.4" text-anchor="middle">以原 key 发起新读取</text></g><g class="pele-edge-label" data-id="edge17"><rect x="935.48" y="845" width="135.57" height="21" rx="3" fill="var(--_bg)"/><text x="1003.26" y="860.4" text-anchor="middle">以原 key 发起新读取</text></g><g class="pele-edge-label" data-id="edge18"><rect x="655.85" y="976" width="197.03" height="21" rx="3" fill="var(--_bg)"/><text x="754.37" y="991.4" text-anchor="middle">已取消旧 producer 的清理迟到</text></g><g class="pele-edge-label" data-id="edge19"><rect x="904.75" y="976" width="197.03" height="21" rx="3" fill="var(--_bg)"/><text x="1003.26" y="991.4" text-anchor="middle">已取消旧 producer 的清理迟到</text></g></g><g class="pele-nodes"><g class="pele-node pele-state" data-id="s0" transform="translate(576.66,88)"><rect x="-48" y="-22" width="96" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">尚无读取</text></g><g class="pele-node pele-state" data-id="s1" transform="translate(576.66,201)"><rect x="-105.79" y="-22" width="211.58" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">首个等待者启动 producer</text></g><g class="pele-node pele-state" data-id="s2" transform="translate(754.23,323)"><rect x="-96" y="-31" width="192" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">完整身份相同共享在途</tspan><tspan x="0" y="16.1">producer</tspan></text></g><g class="pele-node pele-state" data-id="s3" transform="translate(255.03,323)"><rect x="-104" y="-22" width="208" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">身份或预算不同各自执行</text></g><g class="pele-node pele-state" data-id="s4" transform="translate(106.27,689.5)"><rect x="-96" y="-22" width="192" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">独立请求取得独立结果</text></g><g class="pele-node pele-state" data-id="s5" transform="translate(488.89,689.5)"><rect x="-96" y="-22" width="192" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">仅存活等待者取得结果</text></g><g class="pele-node pele-state" data-id="s6" transform="translate(402.11,454)"><rect x="-96" y="-31" width="192" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">独立请求只取消自己的</tspan><tspan x="0" y="16.1">producer</tspan></text></g><g class="pele-node pele-state" data-id="s7" transform="translate(845.02,454)"><rect x="-104" y="-22" width="208" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">一个等待者退出其余继续</text></g><g class="pele-node pele-state" data-id="s8" transform="translate(488.89,802.5)"><rect x="-105.79" y="-22" width="211.58" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">再次读取启动新 producer</text></g><g class="pele-node pele-state" data-id="s9" transform="translate(878.81,689.5)"><rect x="-112" y="-22" width="224" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">所有等待者退出并请求中断</text></g><g class="pele-node pele-state" data-id="s10" transform="translate(878.81,802.5)"><rect x="-112" y="-22" width="224" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">原请求已取消，等待旧清理</text></g><g class="pele-node pele-state" data-id="s11" transform="translate(754.37,924.5)"><rect x="-112" y="-31" width="224" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">容量仍被占用，新读取独立</tspan><tspan x="0" y="16.1">执行</tspan></text></g><g class="pele-node pele-state" data-id="s12" transform="translate(1003.26,924.5)"><rect x="-96.9" y="-31" width="193.79" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">原 key 已启动替代共享</tspan><tspan x="0" y="16.1">producer</tspan></text></g><g class="pele-node pele-state" data-id="s13" transform="translate(878.81,1046.5)"><rect x="-113.79" y="-22" width="227.58" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">旧清理不影响替代 producer</text></g><g class="pele-node pele-state-start" data-id="root_start" transform="translate(576.66,15)"><circle r="7" fill="var(--_l)"/></g></g></g></svg>

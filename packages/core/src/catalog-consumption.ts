@@ -227,7 +227,7 @@ export function pageCatalog(catalog: ListCatalogResult, options: ListPageOptions
               library_id: catalog.profile.library_id,
               library_entry: catalog.profile.library_entry,
               profile_id: catalog.profile.profile_id,
-              revision_id: catalog.profile.revision_id,
+              fingerprint: catalog.profile.fingerprint,
               selection: catalog.profile.selection,
             },
         query,

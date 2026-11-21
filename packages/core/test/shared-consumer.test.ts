@@ -1,318 +1,433 @@
-import { describe, expect, test } from "bun:test"
-import { createHash } from "node:crypto"
+import { expect, test } from "bun:test"
 import { Effect } from "effect"
-import { HttpClient, HttpClientResponse } from "effect/http"
-import { markLocalContentRestriction } from "../src/content-restrictions.ts"
-import { property, type Snapshot } from "../src/model.ts"
-import { openSharedConsumer } from "../src/shared-consumer.ts"
-import type { FixedGithubSource } from "../src/shared-github-source.ts"
-import { registerSourceBinding } from "../src/shared-source-binding.ts"
+import { consume } from "../src/consumer.ts"
+import { exportSkill } from "../src/export.ts"
+import { readImportZip } from "../src/import.ts"
+import { fail, property } from "../src/model.ts"
+import { readPortable } from "../src/portable.ts"
+import { fileRef } from "../src/ref.ts"
+import { readSkill } from "../src/snapshot.ts"
+import { readResources } from "../src/resource-read.ts"
+import { Store } from "../src/store.ts"
 import {
-  sharedSnapshotFixture,
-  skillPage,
-  library,
-  id,
-  rich,
-  digest,
-  encode,
-} from "./shared-snapshot-fixture.ts"
+  currentBytes as bytes,
+  currentId,
+  currentLibrary,
+  currentRich as rich,
+  currentSkillPage,
+} from "./shared-current-fixture.ts"
+import {
+  currentSourceConsumerFixture,
+  type SourceFile,
+} from "./shared-current-source-consumer-fixture.ts"
 
-const commitA = "1".repeat(40)
-const commitB = "2".repeat(40)
-const repository = "https://github.com/example/skills"
-const sourceRoot = "skills/example"
-const gitOid = (bytes: Uint8Array) =>
-  createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex")
-type Fixture = ReturnType<typeof sharedSnapshotFixture>
+const gitFiles: readonly SourceFile[] = [
+  {
+    path: "SKILL.md",
+    bytes: bytes(
+      "---\r\nname: Source name\r\ndescription: Source description\r\nlicense: MIT\r\n---\r\n\r\n# Exact Git main\r\n",
+    ),
+    mode: "100644",
+  },
+  { path: "scripts/check.sh", bytes: bytes("#!/bin/sh\r\nexit 91\r\n"), mode: "100755" },
+  { path: "assets/icon.bin", bytes: new Uint8Array([0, 255, 10, 13, 0, 128]), mode: "100644" },
+]
 
-function fixedSource(commit: string, files: ReadonlyMap<string, Uint8Array>): FixedGithubSource {
-  return {
-    url: repository,
-    commit,
-    tree: commit === commitA ? "a".repeat(40) : "b".repeat(40),
-    root: sourceRoot,
-    files: [...files].map(([path, bytes]) => ({
-      path,
-      source_path: `${sourceRoot}/${path}`,
-      git_oid: gitOid(bytes),
-      bytes: bytes.length,
-    })),
+test("Git-only current Files preserve every exact byte and mode without reading their projections", async () => {
+  const f = await currentSourceConsumerFixture()
+  await f.select(gitFiles, "git")
+  for (const file of gitFiles) f.bind(file.path)
+  f.clearCalls()
+  const snapshot = await f.target()
+  expect(snapshot.files.map((file) => file.path)).toEqual(gitFiles.map((file) => file.path).sort())
+  for (const file of gitFiles) {
+    expect(f.bytes(snapshot, file.path)).toEqual(file.bytes)
+    expect(snapshot.files.find((actual) => actual.path === file.path)?.mode).toBe(file.mode)
   }
-}
+  expect(f.requests).toHaveLength(3)
+  expect(f.requests.every((url) => url.includes(`/example/skills/${"a".repeat(40)}/`))).toBe(true)
+  expect(f.bodyCalls()).toHaveLength(0)
+  expect(f.semanticWrites()).toHaveLength(0)
+  expect(f.records.size).toBe(0)
+  f.clearCalls()
+  f.requests.length = 0
+  const refreshed = await f.target({ refresh: true })
+  expect(refreshed.snapshot_id).toBe(snapshot.snapshot_id)
+  expect(f.requests).toEqual([])
+  expect(f.bodyCalls()).toHaveLength(0)
+  expect(f.semanticWrites()).toHaveLength(0)
+})
 
-function outputBytes(fixture: Fixture, snapshot: Snapshot, path: string): Uint8Array {
-  const file = snapshot.files.find((file) => file.path === path)
-  if (file === undefined) throw new Error(`Missing snapshot file: ${path}`)
-  const bytes = fixture.objects.get(`objects/${file.sha256}`)
-  if (bytes === undefined) throw new Error(`Missing snapshot bytes: ${path}`)
-  return bytes
-}
-
-function requiredBytes(files: ReadonlyMap<string, Uint8Array>, path: string): Uint8Array {
-  const bytes = files.get(path)
-  if (bytes === undefined) throw new Error(`Missing source fixture bytes: ${path}`)
-  return bytes
-}
-
-function providerFixture() {
-  const requests: string[] = []
-  const bodies = new Map<string, Uint8Array>()
-  const client = HttpClient.make((request, url) =>
-    Effect.sync(() => {
-      requests.push(url.toString())
-      if (url.origin !== "https://raw.githubusercontent.com")
-        throw new Error("Fixed consumption attempted provider discovery.")
-      const bytes = bodies.get(url.toString())
-      if (bytes === undefined)
-        throw new Error("Consumption requested an unregistered source revision or path.")
-      return HttpClientResponse.fromWeb(
-        request,
-        new Response(bytes.slice(), { headers: { "content-length": String(bytes.length) } }),
+test.each(["read", "export", "use"] as const)(
+  "a rebuilt Git-only Skill refreshes through public %s with its existing cache",
+  async (action) => {
+    const f = await currentSourceConsumerFixture()
+    await f.select(gitFiles, "git")
+    for (const file of gitFiles) f.bind(file.path)
+    const first = await f.target()
+    const retained = structuredClone(f.json.get(`snapshots/${first.snapshot_id}.json`))
+    const nativeKey = [...f.json.keys()].find((key) =>
+      key.startsWith("cache/current-native-bodies/"),
+    )!
+    expect(f.json.get(nativeKey)).toMatchObject({ skill_page_id: currentSkillPage, files: [] })
+    const rebuilt = currentId(900)
+    f.main.id = rebuilt
+    for (const file of f.files) file.properties.Skill.relation = [{ id: rebuilt }]
+    const options = { database: currentLibrary.skills.database_id, refresh: true }
+    f.clearCalls()
+    f.requests.length = 0
+    let currentSnapshotId: string
+    if (action === "read") {
+      const selected = await f.run(readSkill(rebuilt, options))
+      currentSnapshotId = selected.snapshot_id
+      expect("content" in selected && selected.content).toBe(
+        new TextDecoder().decode(gitFiles[0]!.bytes),
       )
-    }),
-  )
-  const f = sharedSnapshotFixture({ httpClient: client })
-  const sourceBytes = new Map<string, Uint8Array>([
-    [
-      "SKILL.md",
-      encode(
-        "---\nname: Upstream name\ndescription: Upstream description\n---\n\n# Git version A\n",
-      ),
-    ],
-    ["references/1.md", encode("Git reference A one\n")],
-    ["references/2.md", encode("Git reference A two\n")],
-    ["scripts/check.sh", encode("#!/bin/sh\r\nexit 91\r\n")],
-    ["assets/icon.bin", new Uint8Array([0, 255, 10, 13, 0, 128])],
-  ])
-  const retainProviderBodies = (commit: string, files: ReadonlyMap<string, Uint8Array>) => {
-    for (const [path, bytes] of files) {
-      const encoded = `${sourceRoot}/${path}`.split("/").map(encodeURIComponent).join("/")
-      bodies.set(`https://raw.githubusercontent.com/example/skills/${commit}/${encoded}`, bytes)
+    } else if (action === "export") {
+      const store = await f.run(Store)
+      let archive: Uint8Array | undefined
+      const selected = await f.run(
+        exportSkill(rebuilt, { ...options, output: "/recreated-skill.zip", format: "zip" }).pipe(
+          Effect.provideService(Store, {
+            ...store,
+            output: (output, value) =>
+              Effect.sync(() => {
+                archive = value
+                return { output, reused: false }
+              }),
+          }),
+        ),
+      )
+      currentSnapshotId = selected.snapshot_id
+      if (archive === undefined) throw new Error("Missing exported archive.")
+      const exported = readPortable(readImportZip(archive))!
+      for (const file of gitFiles)
+        expect(exported.files.find((item) => item.path === file.path)?.bytes).toEqual(file.bytes)
+    } else {
+      const selected = await f.run(
+        consume(
+          { version: 1, targets: [rebuilt], purpose: "use", freshness: { policy: "refresh" } },
+          options,
+        ),
+      )
+      expect(selected.status).toBe("ready")
+      if (selected.status !== "ready") throw new Error(JSON.stringify(selected))
+      currentSnapshotId = selected.entries[0]!.manifest.snapshot_id
     }
-  }
-  const register = async (commit: string, files: ReadonlyMap<string, Uint8Array>) => {
-    retainProviderBodies(commit, files)
-    return (
-      await f.run(
-        registerSourceBinding(library, {
-          skillPageId: skillPage,
-          mode: "create",
-          fixedSource: fixedSource(commit, files),
-        }),
-      )
-    ).binding
-  }
-  const select = (sourceId: string) => {
-    property(f.main.properties).source = rich("source", sourceId)
-  }
-  const projectInitialPages = () => {
-    const bindings = [
-      { file_id: "file-main", page: skillPage },
-      { file_id: "file-1", page: id(11) },
-      { file_id: "file-2", page: id(12) },
-    ]
-    for (const binding of bindings) {
-      const body = f.bodies.get(binding.page)
-      if (body === undefined) throw new Error("Missing projection fixture body.")
-      const eventId = `initial-${binding.file_id}`
-      f.seedFact(
-        {
-          event_id: eventId,
-          file_id: binding.file_id,
-          parents: [],
-          kind: "projected",
-          source_revision: commitA,
-          projection: { normalization_version: 1, sha256: digest(body) },
-        },
-        "file_event",
-        binding.file_id,
-        eventId,
-      )
-    }
-  }
-  const open = (scope: string) =>
-    f.run(
-      openSharedConsumer({
-        library,
-        target: skillPage,
-        scope,
-        startedAt: Date.now(),
+    expect(currentSnapshotId).not.toBe(first.snapshot_id)
+    expect(f.json.get(nativeKey)).toMatchObject({ skill_page_id: rebuilt, files: [] })
+    expect(f.json.get(`snapshots/${first.snapshot_id}.json`)).toEqual(retained)
+    expect(f.requests).toEqual([])
+    expect(f.bodyCalls()).toHaveLength(0)
+    expect(f.semanticWrites()).toHaveLength(0)
+    f.clearCalls()
+    const warm = await f.run(readSkill(rebuilt, { database: options.database }))
+    expect(warm.snapshot_id).toBe(currentSnapshotId)
+    expect(warm.version_id).not.toBe(first.version_id)
+    expect(warm.source).toBe("local_cache")
+    const stable = await f.run(readSkill(first.record.id, { database: options.database }))
+    expect(stable.snapshot_id).toBe(currentSnapshotId)
+    expect(stable.source).toBe("local_cache")
+    const pinned = await f.run(
+      readSkill(fileRef(first.record.id, "SKILL.md", first.snapshot_id), {
+        offline: true,
       }),
     )
-  return { f, requests, bodies, sourceBytes, register, select, projectInitialPages, open }
-}
-
-describe("standard shared source consumer", () => {
-  test("a selected source without its immutable record fails before body or provider access", async () => {
-    const p = providerFixture()
-    p.select(`source-${"a".repeat(64)}`)
-    await expect(p.f.target({ selector: skillPage })).rejects.toThrow(
-      "exact selected source record",
-    )
-    expect(p.requests).toHaveLength(0)
-    expect(p.f.requestMetrics().provider_requests.github ?? 0).toBe(0)
-    expect(p.f.readBodyCount()).toBe(0)
-    expect(p.f.writeCount()).toBe(0)
-    expect([...p.f.json.keys()].some((key) => key.startsWith("snapshots/"))).toBe(false)
-  })
-
-  test("standard target dispatch copies fixed binary and script bytes while canonicalizing only main metadata", async () => {
-    const p = providerFixture()
-    const binding = await p.register(commitA, p.sourceBytes)
-    p.select(binding.source_id)
-    p.projectInitialPages()
-    p.f.clearCalls()
-    const snapshot = await p.f.target({ selector: skillPage })
-    expect(snapshot.record.locator.type).toBe("shared_skill")
-    expect(snapshot.files.map((file) => file.path)).toEqual([
-      "SKILL.md",
-      "assets/icon.bin",
-      "references/1.md",
-      "references/2.md",
-      "scripts/check.sh",
-    ])
-    expect(outputBytes(p.f, snapshot, "assets/icon.bin")).toEqual(
-      requiredBytes(p.sourceBytes, "assets/icon.bin"),
-    )
-    expect(outputBytes(p.f, snapshot, "scripts/check.sh")).toEqual(
-      requiredBytes(p.sourceBytes, "scripts/check.sh"),
-    )
-    const main = new TextDecoder().decode(outputBytes(p.f, snapshot, "SKILL.md"))
-    expect(main).toContain('"name": "Managed Name"')
-    expect(main).toContain('"description": "Managed description"')
-    expect(main).toContain("# Git version A")
-    expect(main).not.toContain("Upstream name")
-    expect(p.requests).toHaveLength(5)
-    expect(p.f.requestMetrics().provider_requests.github).toBe(5)
-    expect(
-      p.requests.every((url) => url.includes(`/example/skills/${commitA}/${sourceRoot}/`)),
-    ).toBe(true)
-    expect(p.f.readBodyCount()).toBe(3)
-    expect(p.f.writeCount()).toBe(0)
-  })
-
-  test("warm metadata revalidation uses no GitHub requests and no Notion body reads", async () => {
-    const p = providerFixture()
-    const binding = await p.register(commitA, p.sourceBytes)
-    p.select(binding.source_id)
-    p.projectInitialPages()
-    const cold = await p.f.target({ selector: skillPage })
-    p.requests.length = 0
-    p.f.clearCalls()
-    const warm = await p.open(cold.scope)
-    expect(warm.snapshot_id).toBe(cold.snapshot_id)
-    expect(warm.freshness?.validation).toBe("metadata")
-    expect(p.requests).toHaveLength(0)
-    expect(p.f.requestMetrics()).toMatchObject({
-      total_requests: 5,
-      requests: { notion_metadata: 5, notion_body: 0, notion_write: 0, provider: 0 },
-      in_flight: 0,
-    })
-    expect(p.f.readBodyCount()).toBe(0)
-    expect(p.f.writeCount()).toBe(0)
-    expect(p.f.calls).toHaveLength(5)
-    expect(
-      p.f.calls.filter((call) =>
-        call.path.includes(`/data_sources/${library.records.data_source_id}/query`),
-      ),
-    ).toHaveLength(3)
-  })
-
-  test("loss of the selected source record does not reuse a stale successful cache", async () => {
-    const p = providerFixture()
-    const binding = await p.register(commitA, p.sourceBytes)
-    p.select(binding.source_id)
-    p.projectInitialPages()
-    const first = await p.f.target({ selector: skillPage })
-    for (const [pageId, record] of p.f.records) {
-      if (property(property(property(record.properties).kind).select).name === "source")
-        p.f.records.delete(pageId)
+    expect("content" in pinned && pinned.content).toBe(new TextDecoder().decode(gitFiles[0]!.bytes))
+    expect(f.calls).toHaveLength(0)
+    if (action === "read") {
+      const missing = first.files.find((file) => file.path === "scripts/check.sh")!
+      expect(first.file_bindings).toEqual([])
+      f.objects.delete(`objects/${missing.sha256}`)
+      const acquired = await f.run(
+        readSkill(fileRef(warm.record.id, missing.path, warm.snapshot_id), {
+          database: options.database,
+        }),
+      )
+      expect(acquired.record.locator).toEqual(warm.record.locator)
+      expect("content" in acquired && acquired.content).toBe(
+        new TextDecoder().decode(gitFiles[1]!.bytes),
+      )
+      expect(f.calls.some((call) => call.path === `v1/pages/${currentSkillPage}`)).toBe(false)
+      expect(f.requests).toHaveLength(1)
+      expect(f.bodyCalls()).toHaveLength(0)
+      expect(f.semanticWrites()).toHaveLength(0)
+      f.objects.delete(`objects/${missing.sha256}`)
+      f.clearCalls()
+      const batch = await f.run(
+        readResources(
+          {
+            version: 1,
+            refs: [fileRef(warm.record.id, missing.path, warm.snapshot_id)],
+          },
+          { database: options.database },
+        ),
+      )
+      expect(batch.status, JSON.stringify(batch)).toBe("ready")
+      if (batch.status !== "ready") throw new Error(JSON.stringify(batch))
+      expect(batch.manifest.record.locator).toEqual(warm.record.locator)
+      expect(batch.files[0]?.content).toBe(new TextDecoder().decode(gitFiles[1]!.bytes))
+      expect(f.calls.some((call) => call.path === `v1/pages/${currentSkillPage}`)).toBe(false)
+      const oldRef = fileRef(first.record.id, missing.path, first.snapshot_id)
+      f.clearCalls()
+      const old = await f.run(readSkill(oldRef, { offline: true }))
+      expect(old.record.locator).toEqual(first.record.locator)
+      expect(f.calls).toHaveLength(0)
+      f.objects.delete(`objects/${missing.sha256}`)
+      f.failRequests((call) =>
+        call.path === `v1/pages/${currentSkillPage}`
+          ? fail("NOT_FOUND", "The former physical owner is gone.")
+          : undefined,
+      )
+      await expect(f.run(readSkill(oldRef))).rejects.toMatchObject({ code: "NOT_FOUND" })
+      expect(f.calls.some((call) => call.path === `v1/pages/${rebuilt}`)).toBe(false)
     }
-    p.requests.length = 0
-    p.f.clearCalls()
-    await expect(p.open(first.scope)).rejects.toThrow("exact selected source record")
-    expect(p.requests).toHaveLength(0)
-    expect(p.f.readBodyCount()).toBe(0)
-    expect(p.f.writeCount()).toBe(0)
-  })
+  },
+)
 
-  test("a registered newer commit remains unused until Notion explicitly selects its source identity", async () => {
-    const p = providerFixture()
-    const initial = await p.register(commitA, p.sourceBytes)
-    p.select(initial.source_id)
-    p.projectInitialPages()
-    const first = await p.f.target({ selector: skillPage })
-    const advancedBytes = new Map(p.sourceBytes)
-    advancedBytes.set("references/2.md", encode("Git reference B two\n"))
-    const advanced = await p.register(commitB, advancedBytes)
-    expect(advanced.source_id).not.toBe(initial.source_id)
-    p.requests.length = 0
-    p.f.clearCalls()
-    const stillSelected = await p.open(first.scope)
-    expect(stillSelected.snapshot_id).toBe(first.snapshot_id)
-    expect(outputBytes(p.f, stillSelected, "references/2.md")).toEqual(
-      requiredBytes(p.sourceBytes, "references/2.md"),
-    )
-    expect(p.requests).toHaveLength(0)
-    p.select(advanced.source_id)
-    const next = await p.open(first.scope)
-    expect(next.snapshot_id).not.toBe(first.snapshot_id)
-    expect(outputBytes(p.f, next, "references/2.md")).toEqual(
-      requiredBytes(advancedBytes, "references/2.md"),
-    )
-    expect(p.requests).toEqual([
-      `https://raw.githubusercontent.com/example/skills/${commitB}/${sourceRoot}/references/2.md`,
-    ])
-    expect(p.f.requestMetrics()).toMatchObject({
-      provider_requests: { github: 1 },
-      in_flight: 0,
-      unknown_response_bytes: 0,
+test("missing or unready current Source metadata fails before bodies, providers or snapshot publication", async () => {
+  for (const fault of ["missing", "pending", "revision", "content"] as const) {
+    const f = await currentSourceConsumerFixture()
+    await f.select(gitFiles, "git")
+    f.bind("SKILL.md")
+    if (fault === "missing") f.visible(false)
+    const fields = property(f.source.properties)
+    if (fault === "pending") {
+      property(property(fields.Status).select).name = "attention"
+      fields.Operation = rich(String(property(fields.Operation).id), "source-operation")
+    }
+    if (fault === "revision")
+      fields["Last Revision"] = rich(String(property(fields["Last Revision"]).id), "f".repeat(64))
+    if (fault === "content") delete fields.Content
+    f.clearCalls()
+    await expect(f.target()).rejects.toMatchObject({
+      code: (
+        {
+          missing: "COMPOSITION_MISSING_ENTRYPOINT",
+          pending: "CURRENT_SOURCE_NOT_READY",
+          revision: "SHARED_SOURCE_CONFLICT",
+          content: "CURRENT_SOURCE_MANAGEMENT_INVALID",
+        } as const
+      )[fault],
     })
-    expect(p.f.writeCount()).toBe(0)
-  })
+    expect(f.requests).toEqual([])
+    expect(f.bodyCalls()).toHaveLength(0)
+    expect(f.semanticWrites()).toHaveLength(0)
+    expect([...f.json.keys()].some((key) => key.startsWith("snapshots/"))).toBe(false)
+  }
+})
 
-  test("a Notion whole-file edit survives an explicitly selected Git source advance", async () => {
-    const p = providerFixture()
-    const initial = await p.register(commitA, p.sourceBytes)
-    p.select(initial.source_id)
-    p.projectInitialPages()
-    const first = await p.f.target({ selector: skillPage })
-    const userBytes = encode("# Entire user replacement\nNo generated sections remain.\n")
-    p.f.bodies.set(id(11), new TextDecoder().decode(userBytes))
-    const edited = p.f.files[0]
-    if (edited === undefined) throw new Error("Missing editable reference fixture.")
-    edited.last_edited_time = new Date().toISOString()
-    p.f.clearCalls()
-    const customized = await p.open(first.scope)
-    expect(outputBytes(p.f, customized, "references/1.md")).toEqual(userBytes)
-    expect(p.f.readBodyCount()).toBe(1)
-    const advancedBytes = new Map(p.sourceBytes)
-    advancedBytes.set("references/1.md", encode("Upstream changed the same whole file.\n"))
-    advancedBytes.set("references/2.md", encode("Untouched file follows Git version B.\n"))
-    const advanced = await p.register(commitB, advancedBytes)
-    await p.f.run(
-      markLocalContentRestriction(digest(requiredBytes(advancedBytes, "references/1.md"))),
-    )
-    p.select(advanced.source_id)
-    p.requests.length = 0
-    p.f.clearCalls()
-    const next = await p.open(first.scope)
-    expect(outputBytes(p.f, next, "references/1.md")).toEqual(userBytes)
-    expect(outputBytes(p.f, next, "references/2.md")).toEqual(
-      requiredBytes(advancedBytes, "references/2.md"),
-    )
-    expect(outputBytes(p.f, next, "assets/icon.bin")).toEqual(
-      requiredBytes(p.sourceBytes, "assets/icon.bin"),
-    )
-    expect(p.requests.sort()).toEqual([
-      `https://raw.githubusercontent.com/example/skills/${commitB}/${sourceRoot}/references/1.md`,
-      `https://raw.githubusercontent.com/example/skills/${commitB}/${sourceRoot}/references/2.md`,
-    ])
-    expect(p.f.json.get(`content-restrictions/local/${digest(userBytes)}.json`)).toEqual({
-      version: 1,
-      sha256: digest(userBytes),
-      reason: "local_resource",
-    })
-    expect(p.f.writeCount()).toBe(0)
-  })
+test("stale Source projection hash, size and mode cannot override the complete Source manifest", async () => {
+  for (const field of ["sha256", "bytes", "mode"] as const) {
+    const f = await currentSourceConsumerFixture()
+    await f.select(gitFiles)
+    f.bind("SKILL.md")
+    f.bind("scripts/check.sh")
+    const row = f.files[0]!
+    const descriptor = JSON.parse(row.properties.Content.rich_text[0]!.plain_text)
+    descriptor[field] = field === "sha256" ? "f".repeat(64) : field === "bytes" ? 0 : "100644"
+    row.properties.Content = rich("content", JSON.stringify(descriptor))
+    f.clearCalls()
+    const snapshot = await f.target()
+    expect(f.bytes(snapshot, "scripts/check.sh")).toEqual(gitFiles[1]!.bytes)
+    expect(snapshot.files.find((file) => file.path === "scripts/check.sh")?.mode).toBe("100755")
+    expect(snapshot.file_bindings).toEqual([])
+    expect(f.bodyCalls()).toHaveLength(0)
+    expect(f.semanticWrites()).toHaveLength(0)
+    expect(snapshot.files).toHaveLength(gitFiles.length)
+  }
+})
+
+test("editing a source projection never replaces its exact current author bytes", async () => {
+  const f = await currentSourceConsumerFixture()
+  await f.select(gitFiles)
+  for (const file of gitFiles) f.bind(file.path)
+  const first = await f.target()
+  for (const page of [currentSkillPage, ...f.files.map((file) => file.id)])
+    f.bodies.set(page, "# Edited reading projection\nDo not adopt this text.\n")
+  f.main.last_edited_time = new Date().toISOString()
+  f.clearCalls()
+  f.requests.length = 0
+  const current = await f.target({ refresh: true })
+  expect(current.snapshot_id).toBe(first.snapshot_id)
+  for (const file of gitFiles) expect(f.bytes(current, file.path)).toEqual(file.bytes)
+  expect(f.requests).toEqual([])
+  expect(f.bodyCalls()).toHaveLength(0)
+  expect(f.semanticWrites()).toHaveLength(0)
+  expect([...f.json.keys()].filter((key) => key.startsWith("operations/"))).toEqual([])
+})
+
+test("an explicitly selected Source advance updates consumption without rebinding projections and preserves native takeover", async () => {
+  const f = await currentSourceConsumerFixture()
+  await f.select(gitFiles, "git")
+  f.bind("SKILL.md")
+  f.bind("scripts/check.sh")
+  const first = await f.target()
+  const original = f.bytes(first, "SKILL.md")
+  const next: readonly SourceFile[] = gitFiles.map((file) =>
+    file.path === "scripts/check.sh" ? { ...file, bytes: bytes("#!/bin/sh\nexit 92\n") } : file,
+  )
+  await f.select(next, "git", "c".repeat(40))
+  f.clearCalls()
+  f.requests.length = 0
+  const advanced = await f.target({ refresh: true })
+  expect(advanced.snapshot_id).not.toBe(first.snapshot_id)
+  expect(f.bytes(advanced, "scripts/check.sh")).toEqual(next[1]!.bytes)
+  expect(advanced.files).toHaveLength(gitFiles.length)
+  expect(f.requests).toHaveLength(1)
+  expect(f.bodyCalls()).toHaveLength(0)
+  expect(f.semanticWrites()).toHaveLength(0)
+  f.clearCalls()
+  const selected = await f.run(
+    readSkill(fileRef(first.record.id, "SKILL.md", first.snapshot_id), { offline: true }),
+  )
+  expect("content" in selected && bytes(selected.content)).toEqual(new Uint8Array(original))
+  expect(f.calls).toHaveLength(0)
+  f.native(
+    "SKILL.md",
+    "# Explicit Notion author\n",
+    "---\nname: Local author\nlicense: MIT\n---\n\n",
+  )
+  f.contribute([
+    { member_key: ".", skill_id: "demo", mount_path: "", mapping: {}, exclude: ["SKILL.md"] },
+  ])
+  f.objects.clear()
+  f.requests.length = 0
+  const current = await f.target({ refresh: true })
+  expect(new TextDecoder().decode(f.bytes(current, "SKILL.md"))).toBe(
+    "---\nname: Local author\nlicense: MIT\n---\n\n# Explicit Notion author\n",
+  )
+  expect(f.bytes(current, "scripts/check.sh")).toEqual(next[1]!.bytes)
+  expect(current.files.map((file) => file.path)).toEqual([
+    "SKILL.md",
+    "assets/icon.bin",
+    "scripts/check.sh",
+  ])
+  expect(f.requests).toHaveLength(2)
+  expect(f.requests.some((url) => url.endsWith("/SKILL.md"))).toBe(false)
+  expect(f.semanticWrites()).toHaveLength(0)
+})
+
+test("main plus one Markdown projection keeps scripts and tests in snapshots, cold reads and exact exports", async () => {
+  const f = await currentSourceConsumerFixture()
+  const files: readonly SourceFile[] = [
+    ...gitFiles,
+    { path: "references/guide.md", bytes: bytes("# Human guide\n"), mode: "100644" },
+    { path: "tests/corpus/example.json", bytes: bytes('{"fixture":true}\n'), mode: "100644" },
+  ]
+  await f.select(files, "git")
+  f.bind("SKILL.md")
+  f.bind("references/guide.md")
+  expect(f.files).toHaveLength(1)
+  const first = await f.target({}, "manifest")
+  expect(first.files.map((file) => file.path)).toEqual(files.map((file) => file.path).sort())
+  expect(first.file_bindings).toEqual([])
+  const script = first.files.find((file) => file.path === "scripts/check.sh")!
+  f.objects.delete("objects/" + script.sha256)
+  f.clearCalls()
+  f.requests.length = 0
+  const selected = await f.run(
+    readSkill(fileRef(first.record.id, script.path, first.snapshot_id), {
+      database: currentLibrary.skills.database_id,
+    }),
+  )
+  expect("content" in selected && selected.content).toBe(
+    new TextDecoder().decode(gitFiles[1]!.bytes),
+  )
+  expect(f.requests).toHaveLength(1)
+  expect(f.requests[0]).toEndWith("/scripts/check.sh")
+  expect(f.bodyCalls()).toHaveLength(0)
+  expect(f.semanticWrites()).toHaveLength(0)
+
+  const store = await f.run(Store)
+  let archive: Uint8Array | undefined
+  await f.run(
+    exportSkill(currentSkillPage, {
+      database: currentLibrary.skills.database_id,
+      output: "/complete-source.zip",
+      format: "zip",
+    }).pipe(
+      Effect.provideService(Store, {
+        ...store,
+        output: (output, value) =>
+          Effect.sync(() => {
+            archive = value
+            return { output, reused: false }
+          }),
+      }),
+    ),
+  )
+  if (archive === undefined) throw new Error("Expected complete exported source archive")
+  const exported = readPortable(readImportZip(archive))!
+  expect(exported.files.map((file) => file.path).sort()).toEqual(
+    files.map((file) => file.path).sort(),
+  )
+  for (const file of files) {
+    expect(exported.files.find((item) => item.path === file.path)?.bytes).toEqual(file.bytes)
+    expect(exported.files.find((item) => item.path === file.path)?.mode ?? "100644").toBe(file.mode)
+  }
+  expect(f.semanticWrites()).toHaveLength(0)
+
+  const previousPage = f.files[0]!.id
+  f.files.splice(0)
+  f.clearCalls()
+  f.requests.length = 0
+  const removed = await f.target({ refresh: true })
+  expect(removed.snapshot_id).toBe(first.snapshot_id)
+  expect(removed.files).toEqual(first.files)
+  expect(removed.file_bindings).toEqual([])
+  f.bind("references/guide.md")
+  expect(f.files[0]?.id).not.toBe(previousPage)
+  const rebuilt = await f.target({ refresh: true })
+  expect(rebuilt.snapshot_id).toBe(first.snapshot_id)
+  expect(rebuilt.files).toEqual(first.files)
+  expect(rebuilt.file_bindings).toEqual([])
+  expect(f.requests).toEqual([])
+  expect(f.bodyCalls()).toHaveLength(0)
+  expect(f.semanticWrites()).toHaveLength(0)
+})
+
+test("native takeover prevents a former Source path from cold acquisition and retains its real binding", async () => {
+  const f = await currentSourceConsumerFixture()
+  await f.select(gitFiles, "git")
+  f.bind("SKILL.md")
+  const first = await f.target({}, "manifest")
+  const script = first.files.find((file) => file.path === "scripts/check.sh")!
+  expect(first.file_bindings).toEqual([])
+  const nativePage = f.native("scripts/check.sh", "#!/bin/sh\nprintf 'local owner\\n'\n")
+  f.contribute([
+    {
+      member_key: ".",
+      skill_id: "demo",
+      mount_path: "",
+      mapping: {},
+      exclude: ["scripts/check.sh"],
+    },
+  ])
+  f.objects.delete("objects/" + script.sha256)
+  f.clearCalls()
+  f.requests.length = 0
+  await expect(
+    f.run(
+      readSkill(fileRef(first.record.id, script.path, first.snapshot_id), {
+        database: currentLibrary.skills.database_id,
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "SHARED_ACQUISITION_CHANGED" })
+  expect(f.requests).toEqual([])
+  expect(f.bodyCalls()).toHaveLength(0)
+  expect(f.semanticWrites()).toHaveLength(0)
+  const current = await f.target({ refresh: true })
+  expect(current.file_bindings).toEqual([
+    {
+      path: "scripts/check.sh",
+      page_id: nativePage,
+      file_id: f.files[0]!.properties["File ID"].rich_text[0]!.plain_text,
+    },
+  ])
+  expect(new TextDecoder().decode(f.bytes(current, script.path))).toBe(
+    "#!/bin/sh\nprintf 'local owner\\n'\n",
+  )
+  expect(f.requests.some((url) => url.endsWith("/scripts/check.sh"))).toBe(false)
+  expect(f.semanticWrites()).toHaveLength(0)
 })

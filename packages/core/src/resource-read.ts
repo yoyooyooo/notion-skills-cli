@@ -1,14 +1,14 @@
 import { Cause, Effect, Option, Schema } from "effect"
-import { databaseId as resolveDatabaseId } from "./catalog.ts"
 import { validateSnapshotManifest } from "./cache.ts"
+import { databaseId as resolveDatabaseId } from "./catalog.ts"
 import type { VerifiedManifest } from "./consumer-model.ts"
-import { aliasFor, entrypointFor, fail, SkillsError, type Snapshot } from "./model.ts"
-import { fileRef, normalizePath, pageId, parseRef } from "./ref.ts"
+import {
+  withConsumptionEffects,
+  type ConsumptionObservationOptions,
+} from "./consumption-effects.ts"
 import { openFixedSnapshotFiles } from "./fixed-snapshot-files.ts"
-import { validateSharedRecordIdentity } from "./shared-content.ts"
-import { canonicalSharedJson } from "./shared-records.ts"
-import { boundSnapshotPath } from "./snapshot.ts"
-import { sha256 } from "./store.ts"
+import { aliasFor, entrypointFor, fail, property, SkillsError, type Snapshot } from "./model.ts"
+import { fileRef, normalizePath, pageId, parseRef } from "./ref.ts"
 import {
   RESOURCE_READ_CONTRACT_VERSION,
   RESOURCE_READ_DEFAULT_BUDGET,
@@ -19,6 +19,11 @@ import {
   type ResourceReadReady,
   type ResourceReadResult,
 } from "./resource-read-model.ts"
+import { validateSharedRecordIdentity } from "./shared-content.ts"
+import { ImmutableByteReadPolicy } from "./shared-immutable-read.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
+import { boundSnapshotPath } from "./snapshot.ts"
+import { sha256 } from "./store.ts"
 
 export * from "./resource-read-model.ts"
 
@@ -50,12 +55,12 @@ function budgetFor(input: ResourceReadInput) {
 }
 function ownerKey(selector: string) {
   const page = pageId(selector)
-  if (page !== undefined) return "notion_page:" + page
+  if (page !== undefined) return page
   if (/^shared_skill:[^:]+:.+$/u.test(selector)) return selector
-  const subscription = /^(?:notion_subscription|upstream):(.+)$/u.exec(selector)
-  if (subscription !== null && pageId(subscription[1]!) === subscription[1])
-    return "notion_subscription:" + subscription[1]
-  throw fail("INVALID_ARGUMENT", "Resources require an exact fixed Skill owner.")
+  throw fail(
+    "INVALID_ARGUMENT",
+    "Resources require an exact current Skill owner and fixed selection.",
+  )
 }
 
 /** Structural limits run before the SDK acquires its runtime. */
@@ -108,23 +113,9 @@ function validateManifestShape(snapshot: Snapshot) {
   )
     throw fail("STATE_CORRUPT", "The fixed resource manifest has inconsistent content identity.")
   validateSharedRecordIdentity(record)
-  const identifiers =
-    locator.type === "notion_subscription"
-      ? [
-          locator.subscription_id,
-          locator.database_id,
-          locator.data_source_id,
-          locator.target_database_id,
-        ]
-      : [locator.page_id, locator.database_id, locator.data_source_id]
+  const identifiers = [locator.page_id, locator.database_id, locator.data_source_id]
   if (identifiers.some((value) => pageId(value) !== value))
     throw fail("STATE_CORRUPT", "The fixed resource locator requires canonical Notion identities.")
-  if (
-    (locator.type === "notion_page" && record.id !== "notion_page:" + locator.page_id) ||
-    (locator.type === "notion_subscription" &&
-      (record.id !== "notion_subscription:" + locator.subscription_id || record.kind !== "router"))
-  )
-    throw fail("STATE_CORRUPT", "The fixed resource manifest has inconsistent ownership.")
   const paths = new Set(files.map((file) => file.path))
   if (
     paths.size !== files.length ||
@@ -158,7 +149,7 @@ function validateManifestShape(snapshot: Snapshot) {
   const main = bindings.find((binding) => binding.path === entrypoint)
   if (
     snapshot.file_bindings !== undefined &&
-    (main === undefined || locator.type !== "shared_skill" || main.page_id !== locator.page_id)
+    (locator.type !== "shared_skill" || (main !== undefined && main.page_id !== locator.page_id))
   )
     throw fail("STATE_CORRUPT", "The fixed resource manifest has no exact main File binding.")
 }
@@ -170,8 +161,11 @@ function selectFiles(snapshot: Snapshot, input: ResourceReadInput, database?: st
   let total = 0
   return input.refs.map((requested_ref) => {
     const target = parseRef(requested_ref)
+    const selectedOwner = ownerKey(target.selector)
     if (
-      ownerKey(target.selector) !== snapshot.record.id ||
+      (selectedOwner !== snapshot.record.id &&
+        (snapshot.record.locator.type !== "shared_skill" ||
+          selectedOwner !== snapshot.record.locator.page_id)) ||
       target.snapshot !== snapshot.snapshot_id
     )
       throw fail(
@@ -179,12 +173,7 @@ function selectFiles(snapshot: Snapshot, input: ResourceReadInput, database?: st
         "The fixed snapshot belongs to another resource owner.",
       )
     const locator = snapshot.record.locator
-    const selectedDatabase =
-      locator.type === "local"
-        ? undefined
-        : locator.type === "notion_subscription"
-          ? locator.target_database_id
-          : locator.database_id
+    const selectedDatabase = locator.type === "local" ? undefined : locator.database_id
     if (database !== undefined && selectedDatabase !== database)
       throw fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database.")
     const path = boundSnapshotPath(snapshot, target)
@@ -220,17 +209,11 @@ function manifestFor(snapshot: Snapshot): VerifiedManifest {
     complete: true,
     scope: snapshot.scope,
     snapshot_id: snapshot.snapshot_id,
-    ...(snapshot.historical_snapshot_id === undefined
-      ? {}
-      : { historical_snapshot_id: snapshot.historical_snapshot_id }),
     version_id: snapshot.version_id,
     record: snapshot.record,
     entrypoint: snapshot.entrypoint,
     files: snapshot.files,
     ...(snapshot.file_bindings === undefined ? {} : { file_bindings: snapshot.file_bindings }),
-    ...(snapshot.source_projection === undefined
-      ? {}
-      : { source_projection: snapshot.source_projection }),
   }
 }
 function base64(bytes: Uint8Array) {
@@ -332,6 +315,7 @@ export function decodeResourceReadResult(value: unknown, expected?: ResourceRead
             path: file.path,
             bytes: file.bytes,
             sha256: file.sha256,
+            ...(file.mode === undefined ? {} : { mode: file.mode }),
             ...(file.file_id === undefined ? {} : { file_id: file.file_id }),
           },
           wanted,
@@ -349,7 +333,7 @@ export function decodeResourceReadResult(value: unknown, expected?: ResourceRead
   })
 }
 
-export type ResourceReadOptions = {
+export type ResourceReadOptions = ConsumptionObservationOptions & {
   readonly database?: string
   readonly offline?: boolean
   readonly signal?: AbortSignal
@@ -406,60 +390,79 @@ function readReady(input: ResourceReadInput, options: ResourceReadOptions) {
 
 /** One resource-only operation; a failed/cancelled batch never exposes partial ready evidence. */
 export function readResources(value: unknown, options: ResourceReadOptions = {}) {
-  return Effect.suspend(() => {
-    const cancelled: ResourceReadResult = {
-      version: RESOURCE_READ_CONTRACT_VERSION,
-      status: "cancelled",
-      reason: "interrupted",
-    }
-    const signal = options.signal
-    if (signal?.aborted) return Effect.succeed(cancelled)
-    const work = checked(() => decodeResourceReadInput(value)).pipe(
-      Effect.flatMap((input) =>
-        readReady(input, options).pipe(
-          Effect.timeout(budgetFor(input).timeBudgetMs),
-          Effect.mapError((error) =>
-            error instanceof SkillsError
-              ? error
-              : fail(
-                  "RESOURCE_TIME_BUDGET",
-                  "Resource reading exceeded its complete-operation time budget.",
-                  {
-                    time_budget_ms: budgetFor(input).timeBudgetMs,
-                  },
-                ),
+  return withConsumptionEffects(
+    Effect.suspend(() => {
+      const cancelled: ResourceReadResult = {
+        version: RESOURCE_READ_CONTRACT_VERSION,
+        status: "cancelled",
+        reason: "interrupted",
+      }
+      const signal = options.signal
+      if (signal?.aborted) return Effect.succeed(cancelled)
+      const work = checked(() => decodeResourceReadInput(value)).pipe(
+        Effect.flatMap((input) =>
+          readReady(input, options).pipe(
+            Effect.provideService(
+              ImmutableByteReadPolicy,
+              JSON.stringify(["resources", budgetFor(input), options.offline === true]),
+            ),
+            Effect.timeout(budgetFor(input).timeBudgetMs),
+            Effect.mapError((error) =>
+              error instanceof SkillsError
+                ? error
+                : fail(
+                    "RESOURCE_TIME_BUDGET",
+                    "Resource reading exceeded its complete-operation time budget.",
+                    {
+                      time_budget_ms: budgetFor(input).timeBudgetMs,
+                    },
+                  ),
+            ),
           ),
         ),
-      ),
-      Effect.catchCause((cause) => {
-        const error = Option.getOrUndefined(Cause.findErrorOption(cause))
-        if (
-          Cause.hasDies(cause) ||
-          Cause.hasInterruptsOnly(cause) ||
-          !(error instanceof SkillsError)
-        )
-          return Effect.failCause(cause)
-        return Effect.succeed<ResourceReadResult>({
-          version: RESOURCE_READ_CONTRACT_VERSION,
-          status: "failed",
-          error: {
-            code: error.code,
-            message: error.message,
-            ...(error.details === undefined ? {} : { details: error.details }),
-          },
-        })
-      }),
-    )
-    if (signal === undefined) return work
-    const cancellation = Effect.callback<ResourceReadResult>((resume) => {
-      const abort = () => resume(Effect.succeed(cancelled))
-      signal.addEventListener("abort", abort, { once: true })
-      if (signal.aborted) abort()
-      return Effect.sync(() => signal.removeEventListener("abort", abort))
-    })
-    return work.pipe(
-      Effect.raceFirst(cancellation),
-      Effect.map((result) => (signal.aborted ? cancelled : result)),
-    )
-  })
+        Effect.catchCause((cause) => {
+          const error = Option.getOrUndefined(Cause.findErrorOption(cause))
+          if (
+            Cause.hasDies(cause) ||
+            Cause.hasInterruptsOnly(cause) ||
+            !(error instanceof SkillsError)
+          )
+            return Effect.failCause(cause)
+          return Effect.succeed<ResourceReadResult>({
+            version: RESOURCE_READ_CONTRACT_VERSION,
+            status: "failed",
+            error: {
+              code: error.code,
+              message: error.message,
+              ...(error.details === undefined ? {} : { details: error.details }),
+            },
+          })
+        }),
+      )
+      if (signal === undefined) return work
+      const cancellation = Effect.callback<ResourceReadResult>((resume) => {
+        const abort = () => resume(Effect.succeed(cancelled))
+        signal.addEventListener("abort", abort, { once: true })
+        if (signal.aborted) abort()
+        return Effect.sync(() => signal.removeEventListener("abort", abort))
+      })
+      return work.pipe(
+        Effect.raceFirst(cancellation),
+        Effect.map((result) => (signal.aborted ? cancelled : result)),
+      )
+    }),
+    options,
+  ).pipe(
+    Effect.map((result) =>
+      result.status === "failed"
+        ? {
+            ...result,
+            error: {
+              ...result.error,
+              details: { ...property(result.error.details), effects: result.effects },
+            },
+          }
+        : result,
+    ),
+  )
 }

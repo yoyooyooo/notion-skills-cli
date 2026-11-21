@@ -1,5 +1,4 @@
 import { Clock, Effect, Schema } from "effect"
-import { authScope, databaseId, discoverDatabases, explicitSource } from "./catalog.ts"
 import {
   effectiveCachePolicy,
   freshness,
@@ -8,16 +7,15 @@ import {
   validateReadPolicy,
   type ReadPolicyOptions,
 } from "./cache.ts"
+import { authScope, databaseId, discoverDatabases, explicitSource } from "./catalog.ts"
 import {
   CatalogSchema,
-  PageSchema,
-  SourceSchema,
   SkillsError,
+  SourceSchema,
   aliasFor,
   decode,
   fail,
   property,
-  recordFromPage,
   validateDescription,
   type ContentRecord,
   type Source,
@@ -164,7 +162,7 @@ function selectedDatabase(selector?: string) {
           databases: configured,
         }),
       )
-    const found = yield* discoverDatabases({ allowShared: true })
+    const found = yield* discoverDatabases()
     if (found.failures.length)
       return yield* Effect.fail(
         fail("CATALOG_INCOMPLETE", "Cannot select a database from incomplete discovery."),
@@ -269,7 +267,7 @@ export function retrieveView(id: string, database?: string) {
 
 function currentViews(database: string, details: "all" | "first") {
   return Effect.gen(function* () {
-    const source = yield* explicitSource(database, undefined, { allowShared: true })
+    const source = yield* explicitSource(database, undefined)
     const api = yield* Notion
     const ids: string[] = []
     const cursors = new Set<string>()
@@ -395,40 +393,16 @@ function metadataInventory(
   options: ReadPolicyOptions,
 ) {
   return Effect.gen(function* () {
-    if (source.shared_library !== undefined) {
-      const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).catalog_max_age_ms
-      const observation = yield* directorySkillMetadata(
-        source.shared_library,
-        scope,
-        maxAge,
-        "view",
+    if (
+      source.shared_library === undefined ||
+      source.shared_library.skills.data_source_id !== dataSourceId
+    )
+      return yield* Effect.fail(
+        fail("CURRENT_SCHEMA_REQUIRED", "View members require a current library Skills table."),
       )
-      return { pages: observation.inventory.pages, fetched_at: observation.fetched_at }
-    }
-    const api = yield* Notion
-    const InventorySchema = Schema.Struct({
-      results: Schema.Array(Schema.Unknown),
-      has_more: Schema.Boolean,
-      next_cursor: Schema.NullOr(Schema.String),
-      request_status: Schema.optional(Schema.Unknown),
-    })
-    const fetched_at = yield* Clock.currentTimeMillis
-    const pages: unknown[] = []
-    const cursors = new Set<string>()
-    let cursor: string | undefined
-    do {
-      const page = yield* parse(
-        InventorySchema,
-        yield* api.request(`v1/data_sources/${dataSourceId}/query`, {
-          page_size: 100,
-          ...(cursor ? { start_cursor: cursor } : {}),
-        }),
-      )
-      yield* check(() => complete(page))
-      pages.push(...page.results)
-      cursor = yield* check(() => nextCursor(page, cursors))
-    } while (cursor)
-    return { pages, fetched_at }
+    const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).catalog_max_age_ms
+    const observation = yield* directorySkillMetadata(source.shared_library, scope, maxAge, "view")
+    return { pages: observation.inventory.pages, fetched_at: observation.fetched_at }
   })
 }
 
@@ -438,13 +412,11 @@ function validateSharedViewCatalog(value: typeof ViewCatalogSchema.Type): void {
   for (const record of value.records) {
     const locator = record.locator
     const source =
-      locator.type === "shared_skill" || locator.type === "notion_page"
+      locator.type === "shared_skill"
         ? value.databases.find((source) => source.database_id === locator.database_id)
         : undefined
-    if (source?.shared_library !== undefined && locator.type !== "shared_skill") {
-      throw fail("STATE_CORRUPT", "A cached shared View member uses a legacy page identity.")
-    }
-    if (locator.type !== "shared_skill") continue
+    if (locator.type !== "shared_skill")
+      throw fail("STATE_CORRUPT", "A cached View member must identify a current Skill.")
     validateSharedRecordIdentity(record)
     validateDescription(record.description)
     const library = source?.shared_library
@@ -498,9 +470,7 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
             )
           const view =
             explicit !== undefined ? yield* retrieveView(explicit, database) : listing?.view
-          const source =
-            listing?.database ??
-            (yield* explicitSource(view!.database_id, undefined, { allowShared: true }))
+          const source = listing?.database ?? (yield* explicitSource(view!.database_id, undefined))
           if (view && !source.data_source_ids.includes(view.data_source_id))
             return yield* Effect.fail(
               fail("VIEW_SCOPE_MISMATCH", "View references another data source."),
@@ -565,22 +535,8 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
             const checked = yield* check(() => {
               if (seen.has(id)) throw fail("INVALID_RESPONSE", "Repeated selected page metadata.")
               seen.add(id)
-              if (source.shared_library !== undefined) {
-                const entry = sharedMetadataEntryFromPage(raw, source, view.data_source_id)
-                return entry.state === "registered" ? entry.record : undefined
-              }
-              const row = decode(PageSchema, raw)
-              const parent = property(property(raw).parent)
-              if (
-                row.in_trash ||
-                parent.database_id !== source.database_id ||
-                parent.data_source_id !== view.data_source_id
-              )
-                throw fail(
-                  "VIEW_MEMBER_UNAVAILABLE",
-                  "A selected page moved, was removed or changed ownership.",
-                )
-              return recordFromPage(row, source, view.data_source_id)
+              const entry = sharedMetadataEntryFromPage(raw, source, view.data_source_id)
+              return entry.state === "registered" ? entry.record : undefined
             }).pipe(Effect.result)
             if (checked._tag === "Success") {
               const record = checked.success

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, next]
   pull_request:
 
 permissions:
@@ -33,12 +33,18 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run check
       - name: Pack and test a fresh consumer
+        env:
+          NTN_SMOKE_EVIDENCE_ROOT: ${{ runner.temp }}/ntn-consumer-evidence
         run: bun scripts/package-check.ts > "$RUNNER_TEMP/ntn-package-check.json"
       - name: Upload consumer verification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: consumer-${{ matrix.os }}-node-${{ matrix.node }}
-          path: ${{ runner.temp }}/ntn-package-check.json
+          path: |
+            ${{ runner.temp }}/ntn-package-check.json
+            ${{ runner.temp }}/ntn-consumer-evidence/**/report.json
+            ${{ runner.temp }}/ntn-consumer-evidence/**/*requests*.jsonl
+            !${{ runner.temp }}/ntn-consumer-evidence/**/node_modules/**
           if-no-files-found: ignore
           retention-days: 7

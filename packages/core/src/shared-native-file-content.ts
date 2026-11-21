@@ -1,9 +1,7 @@
 import { posix } from "node:path"
-import { withoutCreationMarker } from "./publication-create-identity.ts"
-import { pageId, parseRef, normalizePath } from "./ref.ts"
+import { pageId } from "./ref.ts"
 import { mapMarkdownLinks } from "./typed-links.ts"
-import { fail } from "./model.ts"
-import { referenceProse, mapSharedMarkdownReferences } from "./shared-file-references.ts"
+import { referenceProse } from "./shared-file-references.ts"
 import {
   materializeNativeAliases,
   type NativeBodyCompletion,
@@ -13,39 +11,6 @@ export type SharedFileLink = {
   readonly from: string
   readonly href: string
   readonly target: string
-}
-
-/** A fresh owner snapshot supplies exact native bindings for authoring. Restore
- * consumer-relative destinations before writing them back to Notion; provider-only
- * files, foreign refs, external URLs and code keep their original spelling. */
-export function restoreSharedNativeFileLinks(
-  markdown: string,
-  path: string,
-  files: readonly { readonly page_id: string; readonly path: string }[],
-): string {
-  if (!/\.md$/iu.test(path)) return markdown
-  return mapSharedMarkdownReferences(path, markdown, (reference) => {
-    const href = reference.href
-    if (href.startsWith("#") || href.startsWith("?")) return href
-    const matches = files.filter((file) => file.path === reference.target)
-    if (matches.length === 0) return href
-    const selected = matches[0]
-    if (
-      matches.length !== 1 ||
-      selected === undefined ||
-      pageId(selected.page_id) !== selected.page_id
-    )
-      throw fail(
-        "SHARED_REFERENCE_INVALID",
-        "A local reference must resolve to one exact native page in the selected owner snapshot.",
-        { from: path, target: reference.target },
-      )
-    const suffix = href.search(/[?#]/u)
-    return (
-      `https://app.notion.com/p/${selected.page_id.replaceAll("-", "")}` +
-      (suffix < 0 ? "" : href.slice(suffix))
-    )
-  })
 }
 
 /** Page mentions are inline entities; page tags are child pages unless the
@@ -109,8 +74,7 @@ export function sharedNativeAuthoredBody(
   markdown: string,
   linkedPages: ReadonlySet<string> = new Set(),
 ): string {
-  const source = withoutCreationMarker(markdown)
-  const lines = source.split("\n"),
+  const lines = markdown.split("\n"),
     output: string[] = []
   let fence: { marker: string; width: number } | undefined
   for (let at = 0; at < lines.length; at++) {
@@ -144,66 +108,9 @@ export function sharedNativeAuthoredBody(
   return output.join("\n")
 }
 
-/** Explicit per-file links belong to Notion metadata. They are not search
- * guesses, basename aliases, or permission to load another Skill's body. */
-export function parseSharedFileLinks(
-  encoded: string,
-  libraryId: string,
-): readonly SharedFileLink[] {
-  if (encoded === "") return []
-  const invalid = () =>
-    fail("SHARED_FILE_LINKS_INVALID", "References must contain a complete versioned file-link map.")
-  let value: { version?: unknown; kind?: unknown; links?: unknown }
-  try {
-    value = JSON.parse(encoded)
-  } catch {
-    throw invalid()
-  }
-  if (
-    value === null ||
-    value.version !== 1 ||
-    value.kind !== "file_links" ||
-    !Array.isArray(value.links) ||
-    Object.keys(value).sort().join(",") !== "kind,links,version"
-  )
-    throw invalid()
-  const seen = new Set<string>()
-  return value.links.map((raw: unknown) => {
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw invalid()
-    const link = raw as SharedFileLink
-    if (
-      Object.keys(link).sort().join(",") !== "from,href,target" ||
-      typeof link.from !== "string" ||
-      normalizePath(link.from) !== link.from ||
-      !link.from ||
-      typeof link.href !== "string" ||
-      !link.href ||
-      typeof link.target !== "string"
-    )
-      throw invalid()
-    const key = JSON.stringify([link.from, link.href])
-    if (seen.has(key)) throw invalid()
-    seen.add(key)
-    if (link.target.startsWith("skill://")) {
-      const parsed = parseRef(link.target)
-      if (
-        !parsed.selector.startsWith(`shared_skill:${encodeURIComponent(libraryId)}:`) ||
-        !parsed.path
-      )
-        throw invalid()
-    } else if (
-      !/^https:\/\/(?:raw\.githubusercontent\.com\/[^/]+\/[^/]+\/|github\.com\/[^/]+\/[^/]+\/blob\/)[a-f0-9]{40}\//u.test(
-        link.target,
-      )
-    )
-      throw invalid()
-    return { from: link.from, href: link.href, target: link.target }
-  })
-}
-
 /** Body fingerprints remain the exact native response. This is a separate
- * consumer projection: omit transport-only identity paragraphs and render links
- * between the selected Skill's own native pages as local file references.
+ * consumer projection: render links between the selected Skill's own native
+ * pages as local file references, without treating author text as hidden metadata.
  * Unknown Notion pages, prose, code, and external links remain unchanged.
  */
 export function materializeSharedNativeFile(

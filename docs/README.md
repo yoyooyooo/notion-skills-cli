@@ -1,22 +1,46 @@
 # Documentation
 
-Start with the repository README in [English](../README.md) or [简体中文](../README.zh-CN.md) for requirements, installation and the first successful read. Source development/build instructions belong to [Contributing](../CONTRIBUTING.md#development-setup). Detailed guides below are maintained in English.
+The [current library contract](current-contract.md) owns current authority, file
+descriptors, acquisition, finite operations and remaining cutover work. The
+registered CLI parser owns available commands. This `next` line has one current
+reader and no old authoring or history fallback.
 
-- [Usage guide](usage.md): installation, authentication, discovery, fixed/current reads, one pinned apply for file/metadata changes, source/local connection and recurring runs, publication progress and original-operation recovery, cache policy, upgrade and uninstall.
-- [Shared library authoring](shared-authoring.md): ordinary native creation, pinned body/resources/metadata apply, individual file lifecycle, fixed source selection, Profile/View defaults and matching original-operation recovery.
-- [Source management](sources-management.md): active provider-neutral Sources, exact Skill/member relationships, Git/GitLab and Linear acquisition, frozen prepare/apply and original-operation reconciliation. Mutable configuration stays separate from fixed content pins.
-- [CLI and ref contract](protocol.md): identities, selectors, fixed snapshots, JSON responses, storage, synchronization/recovery, cache boundaries and errors.
-- [Saved Skill graphs](graph-releases.md): explicitly retain selected roots and Requires, restore exact history on another machine, and materialize fixed files on demand while preserving complete export verification.
-- [Graph preparation performance](graph-preparation-performance.md): request batching, derived directory cache boundaries, reproducible measurements and the limits of each observation.
-- [Host integration](host-integration.md): metadata injection, activation state, ordinary `$...@builtin` selection across OMP/Pi/Tern, `/context-broker` session controls and explicit local distribution, plus Read/Write adapters.
-- [Historical operator commands](historical-operations.md): retained one-off actions in the independent migration artifact; absent from the daily CLI.
-- [Releasing](releasing.md): immutable tags, first publication, Trusted Publishing, registry verification and repair.
-- [Independent portable conversion](portable-converter.md): v1 archive inventories, offline preserved-byte conversion, explicit owned remote plan/apply and proof prerequisite; excluded from normal runtime.
-- [Entrypoint Skill](../skills/ntn-skills/SKILL.md): discover/read remote workflows and route other tasks; available as `notion/ntn-skills` in the builtin catalog.
-- [Content maintenance Skill](../skills/notion/ntn-skills-maintain/SKILL.md): create/update selected shared native content, file identity and portable copies, with the matching shared or earlier Publication recovery path.
-- [Synchronization Skill](../skills/notion/ntn-skills-sync/SKILL.md): select fixed shared sources and Profile defaults, maintain existing upstream/local relationships, review conflicts and continue original operations. All three support independent local management; [usage, receipts and identity rules](usage.md#optional-official-skills) keep package installation separate from remote publication.
-- [Contributing](../CONTRIBUTING.md), [security policy](../SECURITY.md) and [changelog](../CHANGELOG.md): compatibility, maintenance and release status.
-- [Sync/cache CLI design](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/sync-cache-cli-design.md): repository-only accepted design and rationale for implemented commands; protocol owns current semantics.
-- [Sync/cache acceptance matrix](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/sync-cache-verification-plan.md): repository-only acceptance/evidence requirements and [command coverage map](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/README.md#accepted-design-coverage). Runtime outcomes belong in each external run ledger. These maintenance files are excluded from the npm package; use the source checkout while changes are unpublished.
+## Current entrypoints
 
-The protocol owns command and response semantics. Host and Skill guidance follows that contract; release claims require the evidence described in the release procedure.
+| Need | Read |
+| --- | --- |
+| Installation and first current read | [English README](../README.md) or [简体中文](../README.zh-CN.md) |
+| Four-table ownership, current fields and implementation boundary | [Current contract](current-contract.md) |
+| Current CLI commands and everyday consumption | [Usage](usage.md) |
+| Complete input, current import, reading projections and resume | [Authoring](shared-authoring.md) |
+| Output contracts, cache, request limits and local storage | [Protocol](protocol.md) |
+| Create/inspect a current layout | [Setup](../skills/notion/ntn-skills-maintain/references/setup.md) |
+| Agent consumption | [Entrypoint Skill](../skills/ntn-skills/SKILL.md) |
+| Native authoring, registration, deletion and complete import | [Maintenance Skill](../skills/notion/ntn-skills-maintain/SKILL.md) |
+| Current Profiles and Source boundaries | [Profile/Source Skill](../skills/notion/ntn-skills-sync/SKILL.md) |
+| Implemented behavior and bounded verification correspondence | [Maintenance verification](maintenance-verification-review.md) |
+| Build and contribute | [Contributing](../CONTRIBUTING.md) |
+
+Use `ntn-skills schema COMMAND...` for exact command fields. The current root
+contains list/read/use/files/export/schema/ctl. `ctl library` contains init,
+inspect, files, operation, import, projection, source and the singular `profile` family.
+
+## Retired procedures
+
+Earlier authoring, sync, Source onboarding, saved-graph, historical operation,
+repair and inventory recipes describe APIs that are being removed. They are no
+longer execution guidance for this branch, even if an old file remains in the
+repository or a package inventory. Do not follow their create/apply/adopt/archive/
+restore steps or use an older binary to make them run.
+
+Current import and Source apply/refresh write complete current content through
+finite operations. `ctl library projection` separately generates the full text
+on existing Skills and Files pages. Daily text coverage is required; non-daily
+projection and binary presentation remain deferred. Source bytes, generated
+bodies, installed packages and live library coverage each need their own actual
+result. Replaced runtime code leaves in the same change; AH-517 covers remaining
+static material. Navigation alone does not establish cleanup.
+
+The existing [current-convergence journey](https://github.com/yoyooyooo/notion-skills-cli/blob/next/.cursor/skills/verify-ntn-skills/features/current-convergence.md)
+is the verification entry. It reuses six domain checks and records controlled
+code, installed packages, live Notion and Pi outcomes separately.

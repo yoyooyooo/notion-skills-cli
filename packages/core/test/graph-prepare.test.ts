@@ -18,19 +18,18 @@ import {
   type Snapshot,
 } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
-import { nativeGraphFixture as nativeFixture } from "./graph-prepare-live-fixture.ts"
+import { graphLibrary, nativeGraphFixture as nativeFixture } from "./graph-prepare-live-fixture.ts"
 import { fileRef } from "../src/ref.ts"
-import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { Store } from "../src/store.ts"
 import {
-  digest,
-  encode,
-  id,
-  library,
-  rich,
-  sharedSnapshotFixture,
-  skillPage,
-} from "./shared-snapshot-fixture.ts"
+  currentDigest as digest,
+  currentBytes as encode,
+  currentId as id,
+  currentLibrary as library,
+  currentScope as scope,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+} from "./shared-current-fixture.ts"
 
 type Definition = {
   readonly requires?: readonly string[]
@@ -39,12 +38,9 @@ type Definition = {
   readonly enabled?: boolean
   readonly content?: string
 }
-const scope = digest(
-  JSON.stringify(["fixture-user", "", "https://api.notion.com", "controlled-credential"]),
-)
-const identity = (name: string) => `shared_skill:library-snapshot:${name}`
+const identity = (name: string) => `shared_skill:${library.library_id}:${name}`
 async function fixture(definitions: Readonly<Record<string, Definition>>) {
-  const f = sharedSnapshotFixture({ fileCount: 1 })
+  const f = currentSnapshotFixture({ fileCount: 0 })
   const snapshots = new Map<string, Snapshot>()
   const opened = new Map<string, number>()
   const entries = Object.entries(definitions)
@@ -80,7 +76,9 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
       created_at: 1000,
       record,
       entrypoint,
-      files: [{ path: entrypoint, sha256: digest(bytes), bytes: bytes.byteLength }],
+      files: [{ path: entrypoint, sha256: digest(bytes), bytes: bytes.byteLength, mode: "100644" }],
+      file_bindings: [{ file_id: `main-${name}`, page_id: id(100 + index), path: entrypoint }],
+      shared_acquisition: { version: 5, library, files: [] },
       members: [],
       required: [],
     }
@@ -259,7 +257,7 @@ describe("graph prepare", () => {
       sessionBindings: first.session_bindings,
     })
     expect(again.session_bindings).toEqual(first.session_bindings)
-    expect(f.calls.map((call) => call.path)).toEqual(["v1/users/me"])
+    expect(f.calls).toHaveLength(0)
     const forged = first.session_bindings.map((binding) => ({
       ...binding,
       body_sha256: "f".repeat(64),
@@ -451,15 +449,17 @@ describe("graph prepare", () => {
   })
 })
 
+const graphIdentity = (name: string) => `shared_skill:${graphLibrary.library_id}:${name}`
+
 describe("prepare through current shared snapshot transport", () => {
   test("warm logical IDs with shared prefixes retain their own complete observation", async () => {
     const f = nativeFixture({ width: 12 })
     const input = { roots: [skillPage], purpose: "use" as const }
-    const cold = await f.run(prepareGraph(input, { database: library.skills.database_id }))
+    const cold = await f.run(prepareGraph(input, { database: graphLibrary.skills.database_id }))
     f.clearCalls()
-    const warm = await f.run(prepareGraph(input, { database: library.skills.database_id }))
+    const warm = await f.run(prepareGraph(input, { database: graphLibrary.skills.database_id }))
     expect(warm.graph_lock).toEqual(cold.graph_lock)
-    expect(f.calls.map((call) => call.path)).toEqual(["v1/users/me"])
+    expect(f.calls).toHaveLength(0)
   })
 
   test("a live multi-root diamond reads each required main once and leaves the Member body unread", async () => {
@@ -467,12 +467,12 @@ describe("prepare through current shared snapshot transport", () => {
     const result = await f.run(
       prepareGraph(
         { roots: [skillPage, id(901)], purpose: "use" },
-        { database: library.skills.database_id },
+        { database: graphLibrary.skills.database_id },
       ),
     )
     expect(result.status).toBe("ready")
     expect(result.usage.prepared_nodes).toBe(4)
-    expect(f.calls.filter((call) => call.path === "v1/users/me")).toHaveLength(1)
+    expect(f.calls.filter((call) => call.path === "v1/users/me")).toHaveLength(0)
     for (const page of f.pageIds.slice(0, 4))
       expect(
         f.calls.filter((call) => call.path.split("?", 1)[0] === `v1/pages/${page}/markdown`),
@@ -480,14 +480,14 @@ describe("prepare through current shared snapshot transport", () => {
     expect(
       f.calls.some((call) => call.path.split("?", 1)[0] === `v1/pages/${id(903)}/markdown`),
     ).toBe(false)
-    expect(result.nodes.find((node) => node.id === identity("optional"))?.state).toBe("known")
+    expect(result.nodes.find((node) => node.id === graphIdentity("optional"))?.state).toBe("known")
   })
   test("live inspect loads only the root body even when Requires has a nontrivial closure", async () => {
     const f = nativeFixture()
     const result = await f.run(
       prepareGraph(
         { roots: [skillPage], purpose: "inspect" },
-        { database: library.skills.database_id },
+        { database: graphLibrary.skills.database_id },
       ),
     )
     expect(result.usage.prepared_nodes).toBe(1)
@@ -507,17 +507,19 @@ describe("prepare through current shared snapshot transport", () => {
     const result = await f.run(
       prepareGraph(
         { roots: [skillPage], purpose: "inspect" },
-        { database: library.skills.database_id },
+        { database: graphLibrary.skills.database_id },
       ),
     )
     const root = result.nodes.find((node) => node.state === "prepared")
     if (root?.state !== "prepared") throw new Error("Expected prepared root")
     expect(root.references).toHaveLength(1)
-    expect(result.nodes.find((node) => node.id === identity("optional"))?.roles).toEqual([
+    expect(result.nodes.find((node) => node.id === graphIdentity("optional"))?.roles).toEqual([
       "member",
       "reference",
     ])
-    expect(result.session_bindings.map((binding) => binding.record.id)).toEqual([identity("a")])
+    expect(result.session_bindings.map((binding) => binding.record.id)).toEqual([
+      graphIdentity("a"),
+    ])
     expect(f.readBodyCount()).toBe(1)
   })
 })

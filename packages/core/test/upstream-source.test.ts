@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test"
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { Effect, Layer } from "effect"
+import { Effect, Exit, Layer } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { execFileSync } from "node:child_process"
-import { createHash } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import { access, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
@@ -13,8 +13,15 @@ import {
   discoverSource,
   type DiscoverSourceInput,
   type SourcePatch,
+  type SourceSnapshot,
 } from "../src/upstream-source.ts"
 import { portableIdentity } from "../src/export.ts"
+import { createRequestMetrics } from "../src/request-metrics.ts"
+import { discoverSourceDefinition } from "../src/shared-source-adapters.ts"
+import { withCurrentInvocationBudget } from "../src/shared-current-invocation.ts"
+import { makeRequestBudget, RequestBudget } from "../src/request-budget.ts"
+import { requestBudgetHttpClient } from "../src/request-budget-http.ts"
+import { HttpClient } from "effect/http"
 
 const services = Layer.merge(NodeServices.layer, NodeHttpClient.layerFetch)
 const utf8 = new TextEncoder()
@@ -72,6 +79,189 @@ function discover(input: DiscoverSourceInput) {
 function result(input: DiscoverSourceInput) {
   return Effect.runPromise(discoverSource(input).pipe(Effect.result, Effect.provide(services)))
 }
+
+test("a filtered Git acquisition retains selected and referenced blobs without downloading an unrelated large asset", async () => {
+  await repository(async (directory) => {
+    git(directory, ["config", "uploadpack.allowFilter", "true"])
+    git(directory, ["config", "uploadpack.allowAnySHA1InWant", "true"])
+    const main = skill(
+      "small",
+      "Read [shared notes](../../shared/notes.md), without loading the unselected workflow.",
+    )
+    await put(directory, "skills/small/SKILL.md", main)
+    await put(directory, "skills/small/run", "#!/bin/sh\necho not-executed\n")
+    await put(directory, "skills/unselected/SKILL.md", skill("unselected", "Not selected."))
+    const external = "# Exact shared notes\n"
+    await put(directory, "shared/notes.md", external)
+    await put(directory, "unselected/large.bin", randomBytes(2 * 1024 * 1024))
+    const revision = commit(directory),
+      metrics = createRequestMetrics()
+    const snapshot = await Effect.runPromise(
+      discoverSource(
+        input(directory, {
+          source: { type: "git", url: `file://${directory}`, ref: revision },
+          roots: ["skills/small"],
+        }),
+        { metrics },
+      ).pipe(Effect.provide(services)),
+    )
+    expect(snapshot.revision).toBe(revision)
+    expect(snapshot.members.map((member) => member.member_key)).toEqual(["skills/small"])
+    expect(
+      snapshot.members[0]!.portable.files.find((file) => file.path === "SKILL.md")?.bytes,
+    ).toEqual(utf8.encode(main))
+    expect(snapshot.external_resources).toMatchObject([
+      {
+        source_path: "shared/notes.md",
+        sha256: createHash("sha256").update(external).digest("hex"),
+        mode: "100644",
+        bytes: utf8.encode(external),
+      },
+    ])
+    const observed = metrics.snapshot().source_acquisitions!
+    expect(observed.outcomes.success).toBe(1)
+    expect(observed.repository_object_bytes).toBeLessThan(256 * 1024)
+    expect(observed.cat_file_bytes).toBe(
+      utf8.encode(main + "#!/bin/sh\necho not-executed\n" + external).byteLength,
+    )
+    const all = await discover(
+      input(directory, { source: { type: "git", url: `file://${directory}`, ref: revision } }),
+    )
+    expect(all.members.map((member) => member.member_key)).toEqual([
+      "skills/small",
+      "skills/unselected",
+    ])
+  })
+}, 30000)
+
+test("a runtime-only exact member selection reads the pinned Git tree without fetching other member bytes", async () => {
+  await repository(async (directory) => {
+    const selected = skill("selected", "Only this original Skill is needed.")
+    const unrelated = randomBytes(2 * 1024 * 1024)
+    await put(directory, "skills/selected/SKILL.md", selected)
+    await put(directory, "skills/other/SKILL.md", skill("other", "Keep this independent."))
+    await put(directory, "skills/other/assets/large.bin", unrelated)
+    const revision = commit(directory)
+    const gitInput = input(directory, {
+      source: { type: "git", url: `file://${directory}`, ref: revision },
+    })
+    const metrics = createRequestMetrics()
+    const scoped = await Effect.runPromise(
+      discoverSource(gitInput, { onlyMembers: ["skills/selected"], metrics }).pipe(
+        Effect.provide(services),
+      ),
+    )
+    expect(scoped.revision).toBe(revision)
+    expect(scoped.members.map((item) => item.member_key)).toEqual(["skills/selected"])
+    expect(scoped.members[0]?.portable.files[0]?.bytes).toEqual(utf8.encode(selected))
+    expect(metrics.snapshot().source_acquisitions?.cat_file_bytes).toBe(
+      utf8.encode(selected).length,
+    )
+    const complete = await discover(gitInput)
+    expect(complete.members.map((item) => item.member_key)).toEqual([
+      "skills/other",
+      "skills/selected",
+    ])
+    await expect(
+      Effect.runPromise(
+        discoverSource(gitInput, { onlyMembers: ["skills/missing"] }).pipe(
+          Effect.provide(services),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "UPSTREAM_MEMBER_UNAVAILABLE" })
+    for (const onlyMembers of [[], ["skills/selected", "skills/selected"], ["../escape"]]) {
+      await expect(
+        Effect.runPromise(discoverSource(gitInput, { onlyMembers }).pipe(Effect.provide(services))),
+      ).rejects.toMatchObject({ code: expect.stringMatching(/^UPSTREAM_/u) })
+    }
+    expect(await readFile(join(directory, "skills/other/assets/large.bin"))).toEqual(
+      Buffer.from(unrelated),
+    )
+  })
+}, 30000)
+
+test("formal Git discovery reports real fetch/storage/blob costs without changing fixed content identity", async () => {
+  await repository(async (directory) => {
+    const main = skill("measured", "Read the fixed resource.")
+    await put(directory, "skills/measured/SKILL.md", main)
+    await put(directory, "skills/measured/assets/raw.bin", binary)
+    await put(
+      directory,
+      "unselected/outside.bin",
+      new Uint8Array(8192).map((_, index) => index % 251),
+    )
+    const revision = commit(directory)
+    const metrics = createRequestMetrics({ traceLimit: 100 })
+    const definition = {
+      version: 1 as const,
+      source_id: "measured-source",
+      name: "Measured source",
+      description: "Exact controlled Git acquisition",
+      enabled: true,
+      policy: "manual" as const,
+      adapter: {
+        type: "git" as const,
+        url: "https://github.com/source-fixture/repository.git",
+        ref: revision,
+      },
+      selection: { roots: ["skills"], include: [], exclude: [], mapping: {} },
+      options: {},
+    }
+    let scopedGithubHttp11 = 0
+    const acquire = () =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const real = yield* ChildProcessSpawner.ChildProcessSpawner
+          const routed = ChildProcessSpawner.make((command) =>
+            command._tag === "StandardCommand"
+              ? (() => {
+                  if (command.args.slice(-3).join("|") === "config|http.version|HTTP/1.1")
+                    scopedGithubHttp11++
+                  return real.spawn(
+                    ChildProcess.make(
+                      command.command,
+                      command.args.map((arg) => (arg === definition.adapter.url ? directory : arg)),
+                      command.options,
+                    ),
+                  )
+                })()
+              : real.spawn(command),
+          )
+          return yield* discoverSourceDefinition(definition, { metrics }).pipe(
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, routed),
+          )
+        }).pipe(Effect.provide(services)),
+      )
+    const first = await acquire()
+    const second = await acquire()
+    expect(scopedGithubHttp11).toBe(2)
+    expect(second).toEqual(first)
+    expect(first.revision).toBe(revision)
+    expect(
+      first.members[0]!.portable.files.find((file) => file.path === "assets/raw.bin")!.bytes,
+    ).toEqual(binary)
+    const observed = metrics.snapshot()
+    expect(observed.total_requests).toBe(0)
+    expect(observed.source_acquisitions).toMatchObject({
+      attempts: 2,
+      outcomes: { success: 2, failure: 0, cancelled: 0 },
+      in_flight: 0,
+      unknown_repository_object_bytes: 0,
+      cat_file_bytes: 2 * (utf8.encode(main).byteLength + binary.byteLength),
+      wire_bytes: null,
+      auth_wait_ms: null,
+      trace_dropped: 0,
+    })
+    expect(observed.source_acquisitions!.repository_object_bytes).toBeGreaterThan(0)
+    expect(observed.source_acquisitions!.fetch_ms).toBeGreaterThan(0)
+    expect(observed.source_acquisitions!.observation_ms).toBeGreaterThan(0)
+    expect(observed.source_acquisitions!.trace).toHaveLength(2)
+    expect(
+      observed.source_acquisitions!.trace.every((entry) => entry.configured_transport === "https"),
+    ).toBe(true)
+    expect(JSON.stringify(observed)).not.toContain(directory)
+  })
+})
 
 test("Git snapshot pins a commit, retains binary bytes, filters one roster and maps names by stable path", async () => {
   await repository(async (directory) => {
@@ -584,6 +774,7 @@ test("Git source launches a configured host credential helper without exposing a
     })
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
     const address = server.address() as { port: number }
+    const metrics = createRequestMetrics({ traceLimit: 20 })
     try {
       const acquire = Effect.gen(function* () {
         const real = yield* ChildProcessSpawner.ChildProcessSpawner
@@ -606,6 +797,7 @@ test("Git source launches a configured host credential helper without exposing a
               ref: "main",
             },
           }),
+          { metrics },
         ).pipe(
           Effect.result,
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, configured),
@@ -624,6 +816,17 @@ test("Git source launches a configured host credential helper without exposing a
       ).toHaveLength(1)
       expect(JSON.stringify(outcome)).not.toMatch(
         /fixture-user|fixture-password|Authorization|Basic /,
+      )
+      expect(metrics.snapshot().source_acquisitions).toMatchObject({
+        attempts: 1,
+        outcomes: { success: 0, failure: 1, cancelled: 0 },
+        in_flight: 0,
+        cat_file_bytes: 0,
+        auth_wait_ms: null,
+        wire_bytes: null,
+      })
+      expect(JSON.stringify(metrics.snapshot())).not.toMatch(
+        /fixture-user|fixture-password|Authorization|Basic |private\.git|127\.0\.0\.1/,
       )
     } finally {
       await new Promise<void>((resolve, reject) =>
@@ -686,6 +889,56 @@ test("Git source rejects embedded credentials and disallows host URL rewrites to
   })
 })
 
+test("a real Git fetch interrupted by the source deadline closes its acquisition ledger", async () => {
+  let requests = 0
+  const server = createServer(() => {
+    requests += 1
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const address = server.address()
+  if (!address || typeof address === "string") throw new Error("Fixture has no bound TCP port")
+  const metrics = createRequestMetrics({ traceLimit: 20 })
+  try {
+    const observed = await Effect.runPromise(
+      withCurrentInvocationBudget(
+        discoverSource(
+          {
+            source: {
+              type: "git",
+              url: `http://127.0.0.1:${address.port}/pending.git`,
+              ref: "main",
+            },
+            roots: ["."],
+            include: [],
+            exclude: [],
+            mapping: {},
+          },
+          { metrics },
+        ),
+        { requests: 10, bytes: 1024 * 1024, duration_ms: 500 },
+      ).pipe(Effect.result, Effect.provide(services)),
+    )
+    expect(observed).toMatchObject({
+      _tag: "Failure",
+      failure: { code: "REQUEST_BUDGET_EXHAUSTED", details: { budget: { exhausted: "duration" } } },
+    })
+    expect(requests).toBe(1)
+    expect(metrics.snapshot().source_acquisitions).toMatchObject({
+      attempts: 1,
+      in_flight: 0,
+      outcomes: { success: 0, failure: 1, cancelled: 0 },
+      wire_bytes: null,
+      auth_wait_ms: null,
+    })
+    expect(metrics.snapshot().source_acquisitions!.trace[0]!.fetch_ms).toBeGreaterThan(0)
+  } finally {
+    server.closeAllConnections()
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    )
+  }
+})
+
 test("skills.sh provenance resolves a unique directory through real Git object acquisition", async () => {
   await repository(async (directory) => {
     await put(directory, "skills/alpha/SKILL.md", skill("alpha"))
@@ -742,6 +995,7 @@ async function registry(
     files: RegistryFile[]
     bodies: Map<string, Uint8Array>
     requests: URL[]
+    responseBytes: number[]
     setLatest: (version: string) => void
     setVersion: (version: string) => void
     setOwner: (owner: string) => void
@@ -758,6 +1012,7 @@ async function registry(
     contentType: path.endsWith(".md") ? "text/markdown" : "application/octet-stream",
   }))
   const requests: URL[] = []
+  const responseBytes: number[] = []
   let latest = "1.8.8"
   let version = "1.8.8"
   let owner = "iswalle"
@@ -766,7 +1021,9 @@ async function registry(
     requests.push(url)
     const send = (data: unknown) => {
       response.setHeader("Content-Type", "application/json")
-      response.end(JSON.stringify(data))
+      const body = JSON.stringify(data)
+      responseBytes.push(Buffer.byteLength(body))
+      response.end(body)
     }
     if (url.pathname === "/api/v1/skills/getnote")
       return send({
@@ -779,11 +1036,13 @@ async function registry(
     if (url.pathname === "/api/v1/skills/getnote/file") {
       const bytes = bodies.get(url.searchParams.get("path")!)
       if (bytes) {
+        responseBytes.push(bytes.byteLength)
         response.end(bytes)
         return
       }
     }
     response.statusCode = 404
+    responseBytes.push(Buffer.byteLength("missing fixture"))
     response.end("missing fixture")
   })
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
@@ -800,6 +1059,7 @@ async function registry(
       files,
       bodies,
       requests,
+      responseBytes,
       setLatest: (value) => {
         latest = value
       },
@@ -852,6 +1112,148 @@ test("registry follows ClawHub getnote version/file protocol and verifies binary
         .every((url) => url.searchParams.get("version") === "1.8.8"),
     ).toBe(true)
   })
+})
+
+test("registry metrics match actual response payloads with and without the invocation budget", async () => {
+  await registry(async ({ source, requests, responseBytes }) => {
+    let expected: SourceSnapshot | undefined
+    for (const bounded of [false, true]) {
+      const before = requests.length
+      const metrics = createRequestMetrics({ traceLimit: 100 })
+      const acquisition = discoverSource(
+        { source, roots: ["."], include: [], exclude: [], mapping: {} },
+        { metrics },
+      )
+      const current = await Effect.runPromise(
+        (bounded
+          ? withCurrentInvocationBudget(acquisition, {
+              requests: 20,
+              bytes: 1024 * 1024,
+              duration_ms: 10_000,
+            }).pipe(Effect.map((value) => value.result))
+          : acquisition
+        ).pipe(Effect.provide(services)),
+      )
+      if (expected === undefined) expected = current
+      else expect(current).toEqual(expected)
+      const observed = metrics.snapshot()
+      expect(requests.length - before).toBe(4)
+      expect(observed).toMatchObject({
+        total_requests: 4,
+        provider_requests: { clawhub: 4 },
+        in_flight: 0,
+        unknown_response_bytes: 0,
+        unknown_request_bytes: 0,
+        trace_dropped: 0,
+      })
+      expect(observed.response_bytes).toBe(
+        responseBytes.slice(before).reduce((total, bytes) => total + bytes, 0),
+      )
+      expect(observed.trace.filter((event) => event.event === "attempt")).toHaveLength(4)
+      expect(observed).not.toHaveProperty("source_acquisitions")
+      expect(JSON.stringify(observed)).not.toMatch(/ownerHandle|127\.0\.0\.1|getnote/)
+    }
+  })
+})
+
+test("registry budget rejection before transport has no fabricated HTTP attempt", async () => {
+  await registry(async ({ source, requests }) => {
+    const metrics = createRequestMetrics({ traceLimit: 20 })
+    const observed = await Effect.runPromise(
+      Effect.gen(function* () {
+        const budget = yield* makeRequestBudget("already-spent", {
+          requests: 1,
+          bytes: 1024 * 1024,
+          duration_ms: 10_000,
+        })
+        yield* budget.admit(0)
+        const client = yield* HttpClient.HttpClient
+        return yield* discoverSource(
+          { source, roots: ["."], include: [], exclude: [], mapping: {} },
+          { metrics },
+        ).pipe(
+          Effect.provideService(RequestBudget, budget),
+          Effect.provideService(HttpClient.HttpClient, requestBudgetHttpClient(client, budget)),
+          Effect.result,
+        )
+      }).pipe(Effect.provide(services)),
+    )
+    expect(observed).toMatchObject({ _tag: "Failure", failure: { code: "UPSTREAM_HTTP_FAILED" } })
+    expect(requests).toHaveLength(0)
+    expect(metrics.snapshot()).toMatchObject({
+      total_requests: 0,
+      in_flight: 0,
+      unknown_response_bytes: 0,
+    })
+  })
+})
+
+test("registry response interruption and budget timeout terminate the one actual attempt", async () => {
+  for (const bounded of [false, true]) {
+    let requests = 0
+    let onRequest!: () => void
+    const requestSeen = new Promise<void>((resolve) => {
+      onRequest = resolve
+    })
+    const server = createServer((_request, response) => {
+      requests += 1
+      response.writeHead(200, { "content-type": "application/json" })
+      response.write('{"skill":')
+      onRequest()
+    })
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+    const address = server.address()
+    if (!address || typeof address === "string") throw new Error("Fixture has no bound TCP port")
+    const metrics = createRequestMetrics({ traceLimit: 20 })
+    const controller = new AbortController()
+    try {
+      const acquisition = discoverSource(
+        {
+          source: {
+            type: "registry",
+            base_url: `http://127.0.0.1:${address.port}`,
+            owner: "fixture",
+            slug: "waiting",
+          },
+          roots: ["."],
+          include: [],
+          exclude: [],
+          mapping: {},
+        },
+        { metrics },
+      )
+      const pending = Effect.runPromiseExit(
+        (bounded
+          ? withCurrentInvocationBudget(acquisition, {
+              requests: 5,
+              bytes: 1024 * 1024,
+              duration_ms: 500,
+            }).pipe(Effect.map((value) => value.result))
+          : acquisition
+        ).pipe(Effect.provide(services)),
+        { signal: controller.signal },
+      )
+      await Promise.race([
+        requestSeen,
+        pending.then(() => {
+          throw new Error("Acquisition ended before the real request")
+        }),
+      ])
+      if (!bounded) controller.abort()
+      expect(Exit.isFailure(await pending)).toBe(true)
+      expect(requests).toBe(1)
+      const observed = metrics.snapshot()
+      expect(observed).toMatchObject({ total_requests: 1, in_flight: 0, trace_dropped: 0 })
+      expect(observed.outcomes.failure + observed.outcomes.cancelled).toBe(1)
+      expect(observed.trace.filter((event) => event.event === "attempt")).toHaveLength(1)
+    } finally {
+      controller.abort()
+      server.closeAllConnections()
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      )
+    }
+  }
 })
 
 test("registry accepted_ref pins version despite a newer latest and detects wrong version and owner", async () => {

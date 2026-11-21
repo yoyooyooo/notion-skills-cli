@@ -1,16 +1,21 @@
 import {
   Clock,
   Config,
+  ConfigProvider,
   Context,
   Crypto,
   Effect,
   Exit,
   FileSystem,
   Layer,
+  Option,
   Path,
+  Redacted,
   Schema,
   Semaphore,
 } from "effect"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
 import { HttpClient } from "effect/http"
 import { ApiErrorSchema, decode, fail, property, SkillsError } from "./model.ts"
 import { sha256 } from "./store.ts"
@@ -23,7 +28,14 @@ import {
   type RequestPriority,
 } from "./notion-request-scheduler.ts"
 import { requestTimeoutMs } from "./request-timeout.ts"
-import { createRequestMetrics, type RequestMetricsSnapshot } from "./request-metrics.ts"
+import { IndependentByteReadRuntime } from "./shared-immutable-read.ts"
+import { RequestBudget, withinRequestBudget } from "./request-budget.ts"
+import {
+  createRequestMetrics,
+  requestAttribution,
+  type RequestAttribution,
+  type RequestMetricsSnapshot,
+} from "./request-metrics.ts"
 import { isCoalescibleNotionRead, makeSharedReadCoalescer } from "./shared-read-coalescing.ts"
 import {
   NotionCredentialProvider,
@@ -52,9 +64,27 @@ export type NotionConnectionIdentity = {
   readonly api_origin: string
 }
 
+const NotionRequestAttribution = Context.Reference<RequestAttribution>(
+  "ntn-skills/NotionRequestAttribution",
+  { defaultValue: () => requestAttribution(undefined) },
+)
+/** Diagnostic lineage only. This does not grant authority or reuse any request. */
+export function withNotionRequestAttribution<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  attribution: Partial<RequestAttribution>,
+) {
+  return Effect.gen(function* () {
+    const inherited = yield* NotionRequestAttribution
+    return yield* effect.pipe(
+      Effect.provideService(NotionRequestAttribution, { ...inherited, ...attribution }),
+    )
+  })
+}
+
 type NotionRequestOptions = {
   readonly method?: "GET" | "POST" | "PATCH"
   readonly file?: string
+  readonly partNumber?: number
   readonly content?: "body"
   readonly priority?: RequestPriority
   readonly queueBudgetMs?: number
@@ -62,6 +92,17 @@ type NotionRequestOptions = {
   /** Records schema property ID; the transport derives identities from sent JSON only. */
   readonly entityPropertyId?: string
 }
+
+type DetachedNotionReadContext = {
+  readonly identity: string
+  readonly run: <A>(
+    effect: Effect.Effect<A, SkillsError, Notion | Crypto.Crypto | HttpClient.HttpClient>,
+  ) => Effect.Effect<A, SkillsError>
+}
+const NetworkMetrics = Context.Reference<ReturnType<typeof createRequestMetrics> | undefined>(
+  "ntn-skills/NetworkMetrics",
+  { defaultValue: () => undefined },
+)
 
 export class Notion extends Context.Service<
   Notion,
@@ -73,10 +114,15 @@ export class Notion extends Context.Service<
     ) => Effect.Effect<unknown, SkillsError>
     readonly version: Effect.Effect<string, SkillsError>
     readonly credentialIdentity: Effect.Effect<string, SkillsError>
+    /** Static endpoint identity; reading it performs no authentication or HTTP request. */
+    readonly apiOrigin?: string
     readonly connectionIdentity?: Effect.Effect<NotionConnectionIdentity, SkillsError>
     /** Actual HTTP attempts; payload bytes exclude HTTP/TLS framing. */
     readonly requestMetrics?: () => RequestMetricsSnapshot
     readonly metrics?: ReturnType<typeof createRequestMetrics>
+    readonly readOnly?: true
+    /** Independently scoped, semantic-read-only transport. It owns no caller Store. */
+    readonly detachedReadContext?: Effect.Effect<DetachedNotionReadContext, SkillsError>
   }
 >()("ntn-skills/Notion") {}
 
@@ -135,6 +181,11 @@ export const NotionTransport = Layer.effect(
     const crypto = yield* Crypto.Crypto
     const scheduler = yield* NotionRequestScheduler
     const credentials = yield* NotionCredentialProvider
+    const configProvider = yield* ConfigProvider.ConfigProvider
+    const independentReads = Option.getOrElse(
+      yield* Effect.serviceOption(IndependentByteReadRuntime),
+      () => false,
+    )
     // One service is one CLI operation. A rotation takes effect in the next service.
     const resolveCredential = yield* Effect.cached(credentials.resolve)
     const origin = yield* notionApiOrigin
@@ -165,7 +216,7 @@ export const NotionTransport = Layer.effect(
       return yield* Effect.fail(
         fail("CONFIG_ERROR", "NTN_SKILLS_REQUEST_TRACE_LIMIT must be an integer from 0 to 10000."),
       )
-    const metrics = createRequestMetrics({ traceLimit })
+    const metrics = (yield* NetworkMetrics) ?? createRequestMetrics({ traceLimit })
     const identities = new Map<string, NotionConnectionIdentity>()
     const coalescer = yield* makeSharedReadCoalescer(metrics)
     const request = (
@@ -175,6 +226,11 @@ export const NotionTransport = Layer.effect(
       options?: NotionRequestOptions,
     ) =>
       Effect.gen(function* () {
+        const budget = Option.getOrUndefined(yield* Effect.serviceOption(RequestBudget))
+        const attribution = requestAttribution(
+          yield* NotionRequestAttribution,
+          Redacted.value(credential.token),
+        )
         const method = options?.method ?? (body === undefined ? "GET" : "POST")
         const identity = credential.identity
         const mutating =
@@ -194,6 +250,7 @@ export const NotionTransport = Layer.effect(
           credential,
           body,
           file: options?.file,
+          partNumber: options?.partNumber,
           entityPropertyId: options?.entityPropertyId,
         }).pipe(
           Effect.provideService(FileSystem.FileSystem, fs),
@@ -207,14 +264,20 @@ export const NotionTransport = Layer.effect(
             path,
             body,
             options?.file,
+            options?.partNumber,
             // A shared producer owns admission; incompatible queue budgets
             // cannot inherit the first waiter's timeout or deferred outcome.
             options?.queueBudgetMs ?? NOTION_ADMISSION_BUDGET_MS,
+            ...(budget === undefined ? [] : [budget.identity]),
             ...(options?.priority === "prefetch" ? ["prefetch", options.rateShare ?? 0.1] : []),
           ]),
         )
-        const deadline =
+        const operationDeadline =
           (yield* Clock.monotonicTimeNanos) + BigInt(NOTION_ADMISSION_BUDGET_MS) * 1_000_000n
+        const deadline =
+          budget !== undefined && budget.deadline < operationDeadline
+            ? budget.deadline
+            : operationDeadline
         const scheduleOptions = () => ({
           ...identities.get(identity),
           apiOrigin: origin,
@@ -226,6 +289,7 @@ export const NotionTransport = Layer.effect(
         let retryNotBefore: bigint | undefined
         const once = Effect.scoped(
           Effect.gen(function* () {
+            if (budget !== undefined) yield* budget.check
             const queuedAt = yield* Clock.monotonicTimeNanos
             let admitted = false
             let waitedForRetry = 0
@@ -237,10 +301,11 @@ export const NotionTransport = Layer.effect(
             const recordWait = Effect.gen(function* () {
               const elapsed = Number((yield* Clock.monotonicTimeNanos) - queuedAt) / 1_000_000
               const retry = Math.min(elapsed, waitedForRetry)
-              if (retry > 0) metrics.wait(retry, "retry")
-              metrics.wait(elapsed - retry, "queue")
+              if (retry > 0) metrics.wait(retry, "retry", attribution)
+              metrics.wait(elapsed - retry, "queue", attribution)
             })
-            const attempt = Effect.gen(function* () {
+            const unbudgetedAttempt = Effect.gen(function* () {
+              if (budget !== undefined) yield* budget.admit(prepared.requestBytes)
               admitted = true
               yield* recordWait
               const finish = metrics.begin({
@@ -250,8 +315,10 @@ export const NotionTransport = Layer.effect(
                 ...(options?.content ? { content: options.content } : {}),
                 requestBytes: prepared.requestBytes,
                 target: prepared.target,
+                attribution,
               })
               let responseBytes: number | undefined
+              let budgetResponseBytes = 0
               let observed: ReturnType<typeof notionResponseDetails> | undefined
               return yield* Effect.gen(function* () {
                 const response = yield* sendNotionRequest({
@@ -261,9 +328,12 @@ export const NotionTransport = Layer.effect(
                   observe: (metadata, bytes) => {
                     observed = metadata
                     responseBytes = bytes
+                    budget?.responseBytes(bytes - budgetResponseBytes)
+                    budgetResponseBytes = bytes
                   },
                 }).pipe(
                   Effect.timeout(timeoutMs),
+                  (effect) => (budget === undefined ? effect : withinRequestBudget(effect, budget)),
                   Effect.mapError((error) => {
                     const cause =
                       error instanceof SkillsError
@@ -337,12 +407,23 @@ export const NotionTransport = Layer.effect(
                 ),
               )
             })
+            const attempt =
+              budget === undefined ? unbudgetedAttempt : budget.withPermit(unbudgetedAttempt)
             return yield* scheduler
               .withAdmission(identity, deadline, permits, attempt, {
                 ...scheduleOptions(),
                 onWait: observedWait,
               })
-              .pipe(Effect.onExit(() => (admitted ? Effect.void : recordWait)))
+              .pipe(
+                Effect.mapError((error) =>
+                  budget !== undefined &&
+                  deadline === budget.deadline &&
+                  property(error.details).reason === "admission_wait_exhausted"
+                    ? budget.exhaust("duration")
+                    : error,
+                ),
+                Effect.onExit(() => (admitted ? Effect.void : recordWait)),
+              )
           }),
         )
         const execute = Effect.gen(function* () {
@@ -415,11 +496,87 @@ export const NotionTransport = Layer.effect(
           execute,
         )
       })
+    const detachedReadContext: Effect.Effect<DetachedNotionReadContext, SkillsError> = Effect.gen(
+      function* () {
+        const credential = yield* resolveCredential
+        const schedule = yield* Config.all({
+          root: Config.String("NTN_SKILLS_SCHEDULER_ROOT").pipe(Config.withDefault("default-host")),
+          interval: Config.String("NTN_SKILLS_NOTION_INTERVAL_MS").pipe(Config.withDefault("350")),
+          queue: Config.String("NTN_SKILLS_NOTION_QUEUE_LIMIT").pipe(Config.withDefault("256")),
+        }).pipe(
+          Effect.mapError(() => fail("CONFIG_ERROR", "Immutable read scheduling is invalid.")),
+        )
+        const identity = yield* hash(
+          JSON.stringify([
+            credential.identity,
+            origin,
+            NOTION_API_VERSION,
+            timeoutMs,
+            maxInFlight,
+            schedule,
+            NOTION_ADMISSION_BUDGET_MS,
+          ]),
+        )
+        const runtime = NotionTransport.pipe(
+          Layer.provide(
+            Layer.succeed(NotionCredentialProvider, { resolve: Effect.succeed(credential) }),
+          ),
+          Layer.provide(NotionRequestSchedulerLive),
+          Layer.provide(
+            Layer.mergeAll(
+              NodeServices.layer,
+              NodeHttpClient.layerFetch,
+              Layer.succeed(IndependentByteReadRuntime, false),
+            ),
+          ),
+        )
+        return {
+          identity,
+          run: <A>(
+            effect: Effect.Effect<A, SkillsError, Notion | Crypto.Crypto | HttpClient.HttpClient>,
+          ) =>
+            Effect.gen(function* () {
+              const api = yield* Notion
+              const readOnly: Notion["Service"] = {
+                ...api,
+                readOnly: true,
+                request: (path, body, options) => {
+                  const method = options?.method ?? (body === undefined ? "GET" : "POST")
+                  return (method === "GET" && body !== undefined) ||
+                    !isCoalescibleNotionRead({
+                      key: "immutable-read",
+                      path,
+                      method,
+                      file: options?.file,
+                    })
+                    ? Effect.fail(
+                        fail(
+                          "NOTION_READ_ONLY",
+                          "An immutable byte producer cannot dispatch a write.",
+                        ),
+                      )
+                    : api.request(path, body, options)
+                },
+              }
+              return yield* effect.pipe(Effect.provideService(Notion, readOnly))
+            }).pipe(
+              Effect.provide(runtime),
+              Effect.provide(NodeServices.layer),
+              Effect.provide(NodeHttpClient.layerFetch),
+              Effect.provideService(ConfigProvider.ConfigProvider, configProvider),
+              Effect.provideService(NetworkMetrics, metrics),
+              Effect.scoped,
+            ),
+        } satisfies DetachedNotionReadContext
+      },
+    )
     return {
       credentialIdentity: resolveCredential.pipe(Effect.map((credential) => credential.identity)),
+      apiOrigin: origin,
       version: Effect.succeed(NOTION_API_VERSION),
       requestMetrics: () => metrics.snapshot(),
       metrics,
+      ...(independentReads ? { detachedReadContext } : {}),
       request: (path, body, options) =>
         resolveCredential.pipe(
           Effect.flatMap((credential) => request(credential, path, body, options)),

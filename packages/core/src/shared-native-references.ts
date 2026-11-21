@@ -15,8 +15,8 @@ import {
 } from "./shared-native-file-content.ts"
 import type { NativeReference, NativeReferenceIndex } from "./shared-native-reference-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
-import type { SharedBodyBinding } from "./shared-skill-index.ts"
-import { fileRecord, type FileRecord } from "./skill-file-index.ts"
+import { currentFileRecord as fileRecord } from "./shared-current-index.ts"
+import type { CurrentFileBinding as FileRecord } from "./shared-current-index.ts"
 import { sha256 } from "./store.ts"
 import { mapMarkdownLinks, readLinkBlocks } from "./typed-links.ts"
 import { referenceProse } from "./shared-file-references.ts"
@@ -56,12 +56,16 @@ function checked<A>(run: () => A): Effect.Effect<A, SkillsError> {
 function inventory(
   library: SharedLibrary,
   kind: "skills" | "files",
-  supplied?: NativeMetadataInventory,
+  supplied?: {
+    readonly data_source_id: string
+    readonly complete: boolean
+    readonly pages: readonly unknown[]
+  },
 ) {
   return Effect.gen(function* () {
     const source = library[kind]
     if (supplied !== undefined) {
-      if (supplied.data_source_id !== source.data_source_id || supplied.complete !== true)
+      if (supplied.data_source_id !== source.data_source_id)
         return yield* Effect.fail(
           fail("SHARED_REFERENCE_SCOPE", "The reference inventory belongs to another data source."),
         )
@@ -99,18 +103,21 @@ function ownerOfFile(raw: unknown, library: SharedLibrary) {
 function target(
   owner: SharedSkillRecord,
   candidate: Candidate,
-  file?: SharedBodyBinding | FileRecord,
+  file?: FileRecord,
   verifiedFile = false,
 ): NativeReference {
   const path = file?.path ?? owner.entrypoint
+  const fileId = file?.content.kind === "source" ? undefined : file?.file_id
   return {
     from: candidate.from,
     href: candidate.href,
     id:
       file === undefined
         ? owner.id
-        : `shared_file:${encodeURIComponent(owner.locator.library_id)}:${encodeURIComponent(owner.locator.skill_id)}:${encodeURIComponent(file.file_id)}`,
-    ref: fileRef(owner.id, path, undefined, file?.file_id),
+        : fileId === undefined
+          ? fileRef(owner.id, path)
+          : `shared_file:${encodeURIComponent(owner.locator.library_id)}:${encodeURIComponent(owner.locator.skill_id)}:${encodeURIComponent(fileId)}`,
+    ref: fileRef(owner.id, path, undefined, fileId),
     kind: file === undefined ? "skill" : "file",
     name: file === undefined ? owner.name : file.path,
     description: owner.description,
@@ -123,7 +130,7 @@ function target(
     skill_id: owner.locator.skill_id,
     skill_page_id: owner.locator.page_id,
     page_id: file?.page_id ?? owner.locator.page_id,
-    ...(file === undefined ? {} : { file_id: file.file_id }),
+    ...(fileId === undefined ? {} : { file_id: fileId }),
     path,
     ...(candidate.block_id === undefined
       ? {}
@@ -137,11 +144,19 @@ export function compileSharedNativeReferences(input: {
   readonly library: SharedLibrary
   readonly record: SharedSkillRecord
   readonly files: readonly NativeReferenceSource[]
-  readonly bindings: readonly SharedBodyBinding[]
+  readonly bindings: readonly FileRecord[]
   readonly relations: unknown
   readonly inventory?: {
-    readonly skills?: NativeMetadataInventory
-    readonly files?: NativeMetadataInventory
+    readonly skills?: {
+      readonly data_source_id: string
+      readonly complete: boolean
+      readonly pages: readonly unknown[]
+    }
+    readonly files?: {
+      readonly data_source_id: string
+      readonly complete: boolean
+      readonly pages: readonly unknown[]
+    }
   }
 }) {
   return Effect.gen(function* () {
@@ -201,7 +216,7 @@ export function compileSharedNativeReferences(input: {
         source.page_id !== undefined &&
         tags.some((tag) => tag.kind === "page")
       ) {
-        const blocks = yield* readLinkBlocks(source.page_id, api, { structureEvidence: true })
+        const blocks = yield* readLinkBlocks(source.page_id, api)
         for (const block of blocks) {
           if (block.type !== "link_to_page") continue
           const link = property(block.link_to_page)
@@ -234,7 +249,7 @@ export function compileSharedNativeReferences(input: {
     }
     if (candidates.size === 0)
       return { linkedPages, completions, links: [] as readonly SharedFileLink[], index: undefined }
-    const ownFiles = new Map<string, SharedBodyBinding>()
+    const ownFiles = new Map<string, FileRecord>()
     const ownLogicalFiles = new Set<string>()
     for (const file of input.bindings) {
       if (file.skill_page_id !== input.record.locator.page_id)
@@ -426,7 +441,7 @@ export function compileSharedNativeReferences(input: {
       index_sha256: yield* sha256(canonicalSharedJson(identity)),
     }
     // Same-owner resources retain portable relative links in file bytes; their
-    // directory entry still carries the stable File ID for independent reads.
+    // directory entry uses a path for Source files and a File ID for Notion authority.
     const links = entries
       .filter(
         (entry) => entry.skill_page_id !== input.record.locator.page_id || entry.kind === "skill",

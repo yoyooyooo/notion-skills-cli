@@ -1,94 +1,145 @@
 ---
 name: ntn-skills-sync
-description: Manage active Git/GitLab/Linear source definitions, explicitly refresh one bound Skill, and select fixed Git/HTTP/local sources or shared Profile/View defaults for a Notion Skill library, or maintain existing upstream subscriptions and local synchronization bindings. Use for source revisions, shared supply rules, local resource scopes, recurring legacy sync or interrupted operations. Keep exact identities and original plans; report each affected item.
-compatibility: Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, and an existing Notion token; reads need Read content and writes need Insert/Update content. Local replacement requires supported system Trash retention.
+description: Manage current Git Source contributions, take over or restore one exact file, enable, disable or remove a Source, and manage Profiles, View defaults and freshness. Use for Source onboarding, refresh, authority changes and current discovery policy.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-sync
 ---
 
-# Maintain sources and supply rules
+# Manage current Sources and Profiles
 
-Identify the selected library and record first. A `shared_skill` locator uses shared native Source/Profile rules. Existing upstream subscriptions and local sync bindings keep their earlier workflows until explicitly migrated. One-time content edits belong to `ntn-skills-maintain`; consuming a remote workflow needs no sync binding.
+Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, and exact library access. Source management needs Notion Insert and Update; Profiles need Records access.
 
-## Manage an active Source definition
+Use the task's executable, exact library and stable identities. Ordinary
+consumption never updates Source content. Reading a script does not authorize
+executing it. Complete local imports belong to ntn-skills-maintain.
 
-For the four-table shared library, use `ctl library sources`, not the retired library's `ctl sync upstream` subscription path. Sources owns provider/location/ref/selection and its Origin/member binding. `Selected Version` is the separate exact content pin; changing a definition alone does not advance it.
+In a connected library, discover that workflow within the same library and read
+its exact returned ref for inspection. To apply a Notion-selected workflow, use
+that source's exact ref via Pi `notion_use(ref)` or CLI `ntn-skills use REF
+--database ENTRY --json` to load its Requires, unless already prepared for this
+task. Use only an available route; otherwise report unavailable adoption. Inspect
+the edited target without activating it. Local and package workflows keep their
+host's native route. Read this Skill's references with `ntn-skills read
+RELATIVE_PATH --from CONTAINING_FILE_REF`. Keep package-selected references in the
+same package with `ctl builtin read notion/ntn-skills-sync --path RELATIVE_PATH`.
+An npm update does not refresh a Notion Source. Refresh its selected Git ref and
+generate reading pages explicitly when that update is requested; preserve active
+task selections and human discovery metadata.
 
-```bash
-ntn-skills ctl library sources list --entry LIBRARY_ENTRY
-ntn-skills ctl library sources show SOURCE_ID --entry LIBRARY_ENTRY
-ntn-skills ctl library sources members SOURCE_ID --entry LIBRARY_ENTRY
-ntn-skills ctl library sources check SOURCE_ID --entry LIBRARY_ENTRY
-ntn-skills ctl library sources fetch SOURCE_ID --entry LIBRARY_ENTRY --member EXACT_MEMBER --output ./source-files
-ntn-skills ctl library sources prepare SOURCE_ID --entry LIBRARY_ENTRY --target SKILL_PAGE_ID --output ./refresh.json
-ntn-skills ctl library sources apply ./refresh.json --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library sources apply ./refresh.json --entry LIBRARY_ENTRY
+## Source declarations
+
+Use the complete {version:1,definition,contributions} input in
+[Source input](references/synchronization.md#a-source-management-request):
+
+```sh
+ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --dry-run
+ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --operation OPERATION_ID
+ntn-skills ctl library source refresh SOURCE_ID --entry ENTRY
+ntn-skills ctl library projection --daily --entry ENTRY
 ```
 
-`check/fetch` are read-only provider operations. `prepare` freezes the complete member plus current ownership and content expectations. `apply` retains the exact candidate before selecting it, preserves whole custom files and old pins, and verifies the resulting directory. It does not run scripts, update every member, rewrite native projections or silently follow a branch. Use `sources reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY` to inspect the original selection without repeating it. Never re-create a frozen plan from current text to make an unknown result look complete.
+Use regular Git content from GitHub or a credential-free private HTTP(S) Git
+origin with existing machine authentication. Manual policy follows the configured
+ref; pinned policy retains its exact commit. Do not invent a provider or scheduler.
+Discovery supplies the complete selected member set. Existing contributions keep
+stable Skill identities; new members receive deterministic identities. Missing
+members are removed, including a completely empty selected set. A provider or
+pagination failure must never be interpreted as deletion.
 
-`put --input DEFINITION --expect FINGERPRINT` changes one full configuration; use the fingerprint from `show` or `absent` for a new stable ID. `bind SOURCE_ID --target SKILL_PAGE_ID --member EXACT_MEMBER --expect-origin CURRENT_SOURCE_PAGE_OR_none --entry LIBRARY_ENTRY` changes only association. Providers include generic Git, registry and explicitly mapped Linear issue/document content. Auth stays on the machine. Shared contributor sets require explicit composition, not a single-source overwrite. See [source decisions](references/synchronization.md#active-sources-definitions) before authoring configurations.
+Use contribution mapping/exclude for exact member-relative files and Selection
+include/exclude for member roots. A desired upstream path replaces matching
+native/resource content; inspect the authority change in dry-run. Exclude a path
+explicitly to retain its Notion authority. Other Source content cannot be replaced.
+A removed pure Source member is archived with its Files; unrelated author content
+prevents silent deletion. Retained paths preserve File identities and human metadata.
+The complete Source manifest and Contributions own every Git consumption file;
+Source Files rows are selected reading documents. After sync, projection keeps
+the main and defaults to Markdown outside test/fixture/generated/dependency
+directories. It creates missing selected pages and retires excluded Source rows
+without removing consumption files. Notion-owned native/resource Files remain
+authoritative. Native bodies are verified without writes; non-text is skipped.
+Projection failure preserves consumption. See
+[daily text](references/synchronization.md#daily-notion-text) for preview and recovery.
 
-## Select a fixed shared source
+Keep the declaration outside Notion. Reapply it to rebuild a missing Source or
+Skill; upstream content does not reconstruct human checkbox or relation choices.
+For an existing completed Skill moved to Trash, prefer the original exact page:
+`ctl library projection PAGE_ID --restore --entry ENTRY`. It restores the same
+owner and current reading projection, preserving identity and human choices.
+Use [Trash recovery](references/synchronization.md#restore-a-trashed-skill) for its
+limits and repeat the same command after its own interrupted stages.
+For daily batches, combine Source 日用 (all real members), Skill 日用 and Default
+Context without changing Default Context to match the daily set. Installed/App
+Skills use repeatable complete imports through ntn-skills-maintain; genuine
+Notion originals retain native authority and use complete exports as recovery input.
 
-Use an exact authorized commit and repository-relative root:
+## File authority and lifecycle
 
-```bash
-ntn-skills ctl library source inspect https://github.com/OWNER/REPOSITORY --commit FULL_COMMIT --root skills/example
-ntn-skills ctl library source register SKILL_PAGE_ID --entry LIBRARY_ENTRY \
-  --url https://github.com/OWNER/REPOSITORY --commit FULL_COMMIT --root skills/example
-ntn-skills ctl library source select prepare SKILL_PAGE_ID --entry LIBRARY_ENTRY \
-  --source SOURCE_ID_FROM_REGISTER --output ./source-selection.json
-ntn-skills ctl library source select apply ./source-selection.json --entry LIBRARY_ENTRY
+Inspect `ctl library files PAGE_ID --entry ENTRY` to obtain exact Skill/File IDs.
+Name the original Source path, including its member root:
+
+```sh
+ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID --as resource
+ntn-skills ctl library source restore-follow SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID
+ntn-skills ctl library source disable SOURCE_ID --entry ENTRY
+ntn-skills ctl library source enable SOURCE_ID --entry ENTRY
+ntn-skills ctl library source remove SOURCE_ID --entry ENTRY --dry-run
 ```
 
-`FULL_COMMIT` is the complete immutable 40-character Git commit. Register creates the fixed source identity; selection changes only the native Source property. The CLI generates the selection plan. Preserve it unchanged for execution or reconciliation. Use `--native` instead of `--source` when deliberately clearing Source. Use `--dry-run` on selection apply when a preview is needed.
+Takeover preserves File/page/path/mode and adds its exact contribution exclusion.
+Resource is the default. --as native requests an editable body under the shared
+native semantic check. Supported formatting normalization is reported; content
+loss leaves pending without fallback. The selected Source input stays exact.
+Repeating a completed
+takeover preserves later author edits. Restore-follow explicitly overwrites
+customization with the enabled Source's selected original, removes the exclusion
+and aligns mapping. No permanent former-Origin pointer is required.
 
-Current consumption uses the selected revision. Updating to a later commit requires that explicit new selection. Customized Notion files retain their whole bodies; delegate an intentional `restore-follow` to content maintenance. Name, Description, Default Context and Router Members stay native Notion metadata.
+Disable blocks ordinary Source consumption and preserves files/configuration;
+enable restores eligibility without discovering a new revision. Remove requires
+a complete same-library metadata scan proving no current Content or Origin
+references. Take over referenced files first, including a Source main. Remove
+does not delete Skills or repair arbitrary inbound links. See
+[authority and lifecycle](references/synchronization.md#file-authority-and-lifecycle).
 
-Advanced HTTP/local composition accepts a fixed plan through `ctl library source composition inspect PLAN_JSON --verify` and `composition register SKILL_PAGE_ID --entry LIBRARY_ENTRY --manifest PLAN_JSON`. Consult its actual help and [source and synchronization decisions](references/synchronization.md). Local Provider bindings are explicit machine/workspace read permissions, separate from old two-way sync bindings. Machine roots and signed HTTP retrieval addresses remain machine-only. Never copy credentials or silently upload local resource bytes.
+## Unfinished Source work
 
-To share an exact complete local snapshot containing restricted local bytes, use `ctl library snapshot save SNAPSHOT_ID --entry LIBRARY_ENTRY --allow-local-archive` only within that archive's explicit scope. This authorizes the selected bytes once and preserves durable restrictions; restore-follow's same-named flag covers only its selected body.
+Resume the original action with --operation OPERATION_ID --resume. Declaration
+resume freezes its commit and uses the original INPUT_JSON when Notion differs.
+Keep original input, local state and credential scope; an unknown child CREATE
+cannot safely resume from empty state on another machine.
 
-## Choose shared Profile and View defaults
+To replace an unfinished intent, use --supersede OLD --operation NEW. The action
+family stays the same; a file transfer retains its exact target. Reconcile the
+predecessor first, without replaying unknown CREATE/append or clearing pending
+by hand. Supersede is incompatible with resume and dry-run. See
+[recovery](references/synchronization.md#unfinished-source-work).
 
-```bash
-ntn-skills ctl views --database LIBRARY_ENTRY
-ntn-skills ctl library profile show PROFILE_ID --entry LIBRARY_ENTRY
-ntn-skills list --profile PROFILE_ID --database LIBRARY_ENTRY
-ntn-skills ctl library profile bind PROFILE_ID --entry LIBRARY_ENTRY
-ntn-skills list --default-view
+All actions share HTTP/deadline limits. Git subprocess HTTP/wire bytes remain
+unmetered; known object bytes and the deadline are reported separately.
+Complete equal input makes zero semantic writes. No multi-Skill atomicity or
+distributed CAS is promised. Live data conversion and full governance remain
+separate from these commands.
+
+## Profiles and discovery
+
+A Profile is one current Records rule; a local binding stores its selection.
+
+```sh
+ntn-skills ctl library profile show PROFILE_ID --entry ENTRY
+ntn-skills ctl library profile set PROFILE_ID --entry ENTRY --name NAME --enabled true --expect new
+ntn-skills ctl views --database ENTRY
 ```
 
-Use `profile list` to discover IDs. When changing rules, `profile set` requires the full `--name`, `--enabled true|false` and exact `--base` revision from `show`; `--base new` is for a new Profile. Supply `--default-view VIEW_ID` intentionally: omitting it clears the old default. The machine stores only entry and Profile ID. `profile unbind` leaves shared rules intact.
+For replacement, use show's fingerprint as --expect and supply the complete desired rule.
+Name/enabled/expect are required; omitted View/freshness removes their prior value.
+Unchanged rules make no write. After a lost response, repeat that intent with
+--reconcile to inspect without another POST or PATCH. This is observed conflict
+detection, not distributed CAS.
 
-Explicit `list --view VIEW_ID --database LIBRARY_ENTRY` takes precedence. Without a default View, use the first View in API order. Bare `list` discovers the accessible source scope; follow `next_cursor` while `has_more` is true for the complete observation. Profile/View choices do not grant access or activate workflow bodies; hosts own session selection and first-submission timing.
-
-## Maintain existing legacy bindings
-
-For an existing legacy upstream library, connect and run within the requested scope:
-
-```bash
-ntn-skills ctl sync upstream connect SOURCE --database DATABASE --root skills --name 'Team Skills'
-ntn-skills ctl sync upstream run --target SUBSCRIPTION_ID
-```
-
-Use supported `--ref`, `--include` and `--exclude` to preserve the chosen source range. Retain the returned subscription ID; repeat `--target` for a selected batch. `--all` requires every enabled subscription to be in scope. Run checks original pending work first. Legacy tracked body/resources/Name/Description follow upstream; explicit `ctl sync upstream fork` preserves a personal member. An inaccessible page is not proof of deletion.
-
-For an existing local synchronization relationship:
-
-```bash
-ntn-skills ctl sync local connect CURRENT_PAGE_ID --path /absolute/skill-directory --as release-review
-ntn-skills ctl sync local run release-review
-```
-
-A missing directory initializes from Notion; equal content establishes the baseline. For differing existing work, use only the user's chosen `--from notion` or `--from local` direction. Run preserves each binding's common baseline, checks pending work and stops on competing edits. Do not infer direction from timestamps or remove unrelated files. Generated snapshot directories remain consumption output unless the user explicitly submits selected files through normal authoring.
-
-## Resolve the original operation
-
-Shared source registration uses `ctl library source reconcile SKILL_PAGE_ID --entry LIBRARY_ENTRY --source ORIGINAL_SOURCE_ID`; source selection uses `source select reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY`. For a Profile revision, repeat its complete original `profile set` arguments with `--reconcile`. These paths inspect retained original facts without replaying unknown mutations. Current property equality is insufficient proof.
-
-Legacy `ctl sync upstream/local status` inspects existing state and `check` obtains a current observation. Neither proves a successful run. Repeat the ordinary run to use its guarded original-operation recovery; advanced saved-plan review remains available when needed. Preserve exact results, operation IDs, receipts and current content. An invisible first request on another machine can remain unresolved; do not recreate it to force progress.
-
-Report verified changed/unchanged results, conflicts and unresolved items separately. Use [source and synchronization decisions](references/synchronization.md) for scoped recovery details; do not treat old bindings as already retired or a source-built test as a completed migration.
+Profiles and Views do not grant access or activate bodies. Explicit View/read
+policy wins over Profile defaults; a longer TTL delays current-edit visibility
+without extending native-body eligibility. Read
+[Profile rules](references/synchronization.md#profile-rules) for bind/unbind,
+per-invocation selection and complete freshness input.

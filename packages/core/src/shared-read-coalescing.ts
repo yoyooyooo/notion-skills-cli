@@ -34,12 +34,12 @@ export function isCoalescibleNotionRead(request: SharedReadRequest): boolean {
 }
 
 /** Equality excludes the effect closure; one immutable transport identity selects its producer. */
-class ReadKey implements Equal.Equal {
+class ReadKey<A> implements Equal.Equal {
   selectedForLookup = false
   readonly identity: string
-  readonly execute: Effect.Effect<unknown, SkillsError>
+  readonly execute: Effect.Effect<A, SkillsError>
 
-  constructor(identity: string, execute: Effect.Effect<unknown, SkillsError>) {
+  constructor(identity: string, execute: Effect.Effect<A, SkillsError>) {
     this.identity = identity
     this.execute = execute
   }
@@ -70,24 +70,44 @@ export function makeSharedReadCoalescer(
   metrics?: Pick<ReturnType<typeof createRequestMetrics>, "coalesced">,
 ): Effect.Effect<SharedReadCoalescer> {
   return Effect.gen(function* () {
+    const shared = yield* makeSharedResultCoalescer<unknown>(metrics)
+    return {
+      run: (request, execute) =>
+        !isCoalescibleNotionRead(request)
+          ? execute
+          : shared.run(
+              JSON.stringify([request.key, request.method, request.path, request.content ?? null]),
+              execute,
+            ),
+    } satisfies SharedReadCoalescer
+  })
+}
+
+export interface SharedResultCoalescer<A> {
+  readonly run: (
+    identity: string,
+    execute: Effect.Effect<A, SkillsError>,
+  ) => Effect.Effect<A, SkillsError>
+}
+
+/** Pending-only sharing for an already validated immutable source identity.
+ * Callers own authorization and identity; this retains no completed result. */
+export function makeSharedResultCoalescer<A>(
+  metrics?: Pick<ReturnType<typeof createRequestMetrics>, "coalesced">,
+): Effect.Effect<SharedResultCoalescer<A>> {
+  return Effect.gen(function* () {
     const cache = yield* Cache.make({
       capacity: Infinity,
       timeToLive: 0,
-      lookup: (key: ReadKey) => {
+      lookup: (key: ReadKey<A>) => {
         key.selectedForLookup = true
         return key.execute
       },
     })
     return {
-      run: (request, execute) =>
+      run: (identity, execute) =>
         Effect.suspend(() => {
-          if (!isCoalescibleNotionRead(request)) return execute
-          // Content classification is part of the key so a body-bearing request
-          // cannot borrow a metadata-only attempt's accounting.
-          const key = new ReadKey(
-            JSON.stringify([request.key, request.method, request.path, request.content ?? null]),
-            execute,
-          )
+          const key = new ReadKey(identity, execute)
           return Effect.acquireUseRelease(
             Effect.gen(function* () {
               // Enter Cache.get before observing lookup ownership. Each caller owns
@@ -102,6 +122,6 @@ export function makeSharedReadCoalescer(
             Fiber.interrupt,
           )
         }),
-    } satisfies SharedReadCoalescer
+    } satisfies SharedResultCoalescer<A>
   })
 }

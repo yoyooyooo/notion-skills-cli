@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect"
 import { PreparedNodeSchema, type PrepareDirectoryEntry } from "./graph-prepare-model.ts"
 import { fail, property, snapshotMembers, type Snapshot } from "./model.ts"
-import { currentMaterializationVersion } from "./materialization.ts"
+import { CURRENT_MATERIALIZATION_VERSION } from "./materialization.ts"
 import { fileRef } from "./ref.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
@@ -61,7 +61,7 @@ export function derivedGraphDirectory(snapshot: Snapshot, bodySha256: string) {
       canonicalSharedJson({
         version: 1,
         compiler_version: GRAPH_DIRECTORY_COMPILER_VERSION,
-        materialization_version: currentMaterializationVersion(snapshot.record.id),
+        materialization_version: CURRENT_MATERIALIZATION_VERSION,
         scope: snapshot.scope,
         record: snapshot.record,
         snapshot_id: snapshot.snapshot_id,

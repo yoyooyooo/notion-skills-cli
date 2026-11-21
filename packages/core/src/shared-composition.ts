@@ -4,6 +4,7 @@ import { normalizePath } from "./ref.ts"
 export type CompositionFile = {
   readonly path: string
   readonly bytes: Uint8Array
+  readonly mode?: "100644" | "100755"
 }
 
 export type CompositionMount = {
@@ -18,6 +19,7 @@ export type CompositionOverride =
       readonly file_id: string
       readonly path: string
       readonly bytes: Uint8Array
+      readonly mode?: "100644" | "100755"
     }
   | { readonly kind: "tombstone"; readonly file_id: string; readonly path: string }
 
@@ -275,18 +277,29 @@ export function planSharedFiles(input: PlanSharedFilesInput): SharedCompositionP
 export function composeSharedFiles(input: ComposeSharedFilesInput): SharedComposition {
   const plan = planSharedFiles(input)
   const bytes = new Map<string, Uint8Array>()
+  const modes = new Map<string, CompositionFile["mode"]>()
   // This full-byte API continues validating every supplied source, including overridden ones.
-  for (const file of input.base) bytes.set(file.path, fileBytes(file.bytes, file.path))
+  for (const file of input.base) {
+    bytes.set(file.path, fileBytes(file.bytes, file.path))
+    modes.set(file.path, file.mode)
+  }
   for (const mount of input.mounts)
     for (const file of mount.files) {
       const path = mount.mount_path === "" ? file.path : `${mount.mount_path}/${file.path}`
       bytes.set(path, fileBytes(file.bytes, path))
+      modes.set(path, file.mode)
     }
   for (const override of input.overrides)
-    if (override.kind === "custom")
+    if (override.kind === "custom") {
       bytes.set(override.path, fileBytes(override.bytes, override.path))
+      modes.set(override.path, override.mode)
+    }
   return {
-    files: plan.paths.map((path) => ({ path, bytes: fileBytes(bytes.get(path), path) })),
+    files: plan.paths.map((path) => ({
+      path,
+      bytes: fileBytes(bytes.get(path), path),
+      ...(modes.get(path) === undefined ? {} : { mode: modes.get(path)! }),
+    })),
     provenance: plan.provenance,
   }
 }

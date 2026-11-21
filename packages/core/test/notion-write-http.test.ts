@@ -1,19 +1,11 @@
 import { expect, test } from "bun:test"
-import type { IncomingMessage } from "node:http"
 import { ByteSize, Effect, Fiber, FileSystem, Option, Stream } from "effect"
-import { property, text } from "../src/model.ts"
-import { Notion } from "../src/notion.ts"
+import type { IncomingMessage } from "node:http"
+import { property } from "../src/model.ts"
 import { NOTION_SINGLE_UPLOAD_LIMIT } from "../src/notion-http.ts"
-import type { PortableSkill } from "../src/portable.ts"
-import {
-  createSharedNative,
-  executeSharedCreate,
-  prepareSharedCreate,
-} from "../src/shared-create.ts"
-import { canonicalSharedJson } from "../src/shared-records.ts"
+import { Notion } from "../src/notion.ts"
 import { fixtureToken, json, localServer, runtime } from "./notion-http-fixture.ts"
-import { createLibrary, sharedCreateFixture } from "./shared-create-fixture.ts"
-import { encode, id } from "./shared-snapshot-fixture.ts"
+import { currentBytes as encode, currentId as id } from "./shared-current-fixture.ts"
 
 async function bodyOf(request: IncomingMessage) {
   const chunks: Buffer[] = []
@@ -413,121 +405,3 @@ test("cancelled multipart closes the real HTTP attempt and never marks an upload
   expect(attempts).toBe(1)
   expect(fixture.counts()).toEqual({ opened: 1, closed: 1 })
 })
-
-test("accepted writes with a dropped HTTP response reconcile the original native-create journal without creating again", async () => {
-  for (const lostStage of ["skill", "outcome"] as const) {
-    const fixture = sharedCreateFixture()
-    const backend = await fixture.run(Notion)
-    const portable: PortableSkill = {
-      kind: "skill",
-      name: `HTTP unknown ${lostStage}`,
-      description: "Owned wire recovery fixture",
-      main: "SKILL.md",
-      files: [
-        { path: "SKILL.md", bytes: encode("# Frozen original\n\nOwned HTTP recovery marker.\n") },
-      ],
-    }
-    let dropped = false
-    await localServer(
-      (request, response) => {
-        void bodyOf(request)
-          .then(async (bytes) => {
-            const path = (request.url ?? "/").slice(1)
-            const method = request.method
-            if (method !== "GET" && method !== "POST" && method !== "PATCH")
-              throw new Error("Unexpected fixture method")
-            if (path === "v1/users/me") {
-              json(response, 200, { object: "user", id: id(95) })
-              return
-            }
-            const body: unknown = bytes.length ? JSON.parse(bytes.toString()) : undefined
-            const parent = property(property(body).parent).data_source_id
-            const recordText = text(
-              property(
-                property(property(body).properties)[createLibrary.records.property_ids.Payload!],
-              ).rich_text,
-            )
-            const payload = recordText ? property(property(JSON.parse(recordText)).payload) : {}
-            const native =
-              method === "POST" &&
-              path === "v1/pages" &&
-              parent === createLibrary.skills.data_source_id
-            const applied = payload.kind === "skill_create_outcome" && payload.status === "applied"
-            const result = await Effect.runPromise(
-              backend.request(path, body, { method }).pipe(Effect.result),
-            )
-            if (result._tag === "Failure") throw new Error(`${result.failure.code}: ${path}`)
-            if (!dropped && (lostStage === "skill" ? native : applied)) {
-              dropped = true
-              response.destroy()
-            } else json(response, 200, result.success)
-          })
-          .catch((error) =>
-            json(response, 500, {
-              object: "error",
-              code: "internal_server_error",
-              message: String(error),
-            }),
-          )
-      },
-      async (origin) => {
-        const transport = () => runtime(origin, { intervalMs: 1 })
-        const plan = await fixture.run(
-          prepareSharedCreate(createLibrary, { portable }).pipe(Effect.provide(transport())),
-        )
-        const frozen = canonicalSharedJson(plan)
-        const first = await fixture.run(
-          executeSharedCreate(createLibrary, { plan, mode: "create" }).pipe(
-            Effect.result,
-            Effect.provide(transport()),
-          ),
-        )
-        expect(first._tag === "Failure" && first.failure.code).toBe("WRITE_OUTCOME_UNKNOWN")
-        expect(dropped).toBe(true)
-        expect(fixture.pending()).toHaveLength(1)
-        expect(
-          canonicalSharedJson(property(fixture.base.json.get(fixture.pending()[0]!)).plan),
-        ).toBe(frozen)
-        const creates = fixture.nativeCreates().length
-        const records = fixture.base.records.size
-        const second = await fixture.run(
-          executeSharedCreate(createLibrary, { plan, mode: "create" }).pipe(
-            Effect.result,
-            Effect.provide(transport()),
-          ),
-        )
-        expect(fixture.nativeCreates()).toHaveLength(creates)
-        expect(fixture.base.records.size).toBe(records)
-        if (lostStage === "skill") {
-          expect(second._tag === "Failure" && second.failure.code).toBe("SHARED_RECORD_UNRESOLVED")
-          const next = await fixture.run(
-            createSharedNative(createLibrary, { portable }).pipe(
-              Effect.result,
-              Effect.provide(transport()),
-            ),
-          )
-          expect(next._tag === "Failure" && next.failure.code).toBe("SHARED_RECORD_UNRESOLVED")
-          if (next._tag === "Failure")
-            expect(next.failure.details).toMatchObject({
-              native_create_operation_id: plan.operation_id,
-            })
-          expect(fixture.pending()).toHaveLength(1)
-          expect(fixture.nativeCreates()).toHaveLength(1)
-          expect(
-            canonicalSharedJson(property(fixture.base.json.get(fixture.pending()[0]!)).plan),
-          ).toBe(frozen)
-        } else {
-          expect(second._tag).toBe("Success")
-          if (second._tag !== "Success") throw new Error("Original saved outcome did not reconcile")
-          expect(second.success.status).toBe("created")
-          expect(second.success.reused).toBe(true)
-          expect(second.success.operation_id).toBe(plan.operation_id)
-          expect(fixture.pending()).toHaveLength(0)
-          expect(
-            [...fixture.retired.values()].map((value) => canonicalSharedJson(property(value).plan)),
-          ).toContain(frozen)
-        }
-      },
-    )
-  }
-}, 60_000)

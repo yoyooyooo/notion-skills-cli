@@ -161,7 +161,11 @@ export const prepareCommand = defineCommand(
             ? {}
             : { sessionBindings: yield* readBindings(bindingPath) }),
         },
-        { database: Option.getOrUndefined(config.database), execution, metrics: config.metrics },
+        {
+          database: Option.getOrUndefined(config.database),
+          execution,
+          metrics: config.metrics,
+        },
       )
       yield* emit({
         ...prepared,

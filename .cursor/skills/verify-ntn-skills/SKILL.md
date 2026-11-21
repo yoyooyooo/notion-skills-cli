@@ -1,165 +1,66 @@
 ---
 name: verify-ntn-skills
-description: "Verify ntn-skills source and installed Node.js CLI behavior: shared Notion libraries, whole-file ownership, fixed manifests, archived snapshots, Router members, read-only migration plans, request budgets, builtin management, References, recovery and broker consumption. Retain exact entrypoint evidence and distinguish live CLI, installed package, host and model acceptance."
+description: "定位 ntn-skills 当前实现、公共 CLI 与独立安装的验证责任。按 AH-1188 的合同和时间线选择独立领域；修改验证入口、回执或 CLI/SDK/Pi 交接时使用。"
 ---
 
-# Verify ntn-skills
+# ntn-skills 验证路由
 
-AH-617 消费链重构先读 [Skill 消费链](features/skill-consumption.md)。SC-VERIFY-01～03 将本 CLI 的真实消费、成本证据与清理边界接到 Broker 的 SC01–SC26 统一地图；SC25 通过 list/read/use 和 SDK 目录入口取证，SC26 负责真实 Pi 与常规 check/CI 接线。新架构、模型投影和日用安装分别取证。未执行的规程仍为 draft，不沿用 AH-561 的历史 pass。
+从 [当前合同索引](../../../docs/verification-contracts.md) 选择 C01–C11/T01–T23，再按 [current-convergence](features/current-convergence.md) 进入已有执行配方。本入口不负责替代管理或消费实现，也不负责用受控测试证明真实 Notion、安装包或 Pi 已完成。
 
-SC25 名称选择沿同页 C2 驱动：完整 enabled 普通目录经共享 pure resolver 产生 canonical 身份，consumer/decoder 仍核对 exact targets；View、搜索或分页投影不能充当唯一性证明。固定 name/alias 由原 snapshot manifest 和已知权限门槛校验，SDK `listSkill` 不为固定资源准备主文。保留不完整零/单匹配的 fail-before、安装包 export 与无主文对象读取反例，实际 Pi 另走原跨仓 SDK-Pi driver。
+当前合同是 Notion 长期 SSOT、最新内容、普通消费远端 0 写。git-only、mixed、native 共用严格 Content 描述符；保留当前 revision/hash、权限、完整树、请求预算及必要在途状态。
 
-SC11 的 full catalog 与默认目录组合读取沿 [同次目录观察](features/skill-consumption.md#sc11同次-sdk-目录观察) 驱动：原始完整库存只在一次 SDK operation 内复用，独立核对两个投影的 outcome、原观察年龄与实际 HTTP 账本，不把公开 enabled records 当成完整库存。
+| 改变的行为 | 主要入口 | 实际证明范围 |
+| --- | --- | --- |
+| 原生 CRUD、完整树、Trash 恢复、关系与清理 | [管理](../verify-notion-management/SKILL.md) | 作者命令、当前字段、同页恢复；全库治理单列 |
+| 当前读取、选择、缓存、导出 | [消费](../verify-notion-consumption/SKILL.md) | 字节、目录、权限和成本 |
+| 当前 Source、来源获取和阅读投影 | [来源](../verify-notion-source-onboarding/SKILL.md) | 精确来源；成员发布与投影单列 |
+| 当前权威和资源状态 | [资源状态](../verify-notion-resource-lifecycle/SKILL.md) | 可执行当前不变量；旧模型不继承 |
+| unknown、partial 和有限对账 | [操作恢复](../verify-notion-operation-recovery/SKILL.md) | Profile/resource 的当前边界；完整 writer 单列 |
 
-AH-561 直连请求与跨 Skill 图使用 [request-engine](features/request-engine.md) 和 [skill-dependency-graph](features/skill-dependency-graph.md)。先执行 NG-VC-01 离线契约与原生 CLI fail-before，保存两条根选择提示和独立 oracle 合同；后续按 NG-RE/NG-SG feature ID 逐项复验。当前 helper 使用项目 HTTP 引擎、项目凭据和 owned 归档入口。每轮交付需重新取得服务与安装证据；保留历史回执，不把旧单 Skill pass 用作图验收。
-
-图专项由 Broker 仓库的 `scripts/verify-skill-graph-contract.mjs` 共用一个离线检查入口；不新增第三个总验收 Skill。它只驱动当前 Node CLI 的离线 version/schema，绝不读取业务正文、请求生产 API 或调用官方 ntn。`contract-valid` 只说明证据合同成立，不能代替真实 Notion、Pi、模型、UI 或安装包验收。
-
-The primary surface is the JSON CLI. Use the repository's TypeScript dev entrypoint for live Notion operations and its existing npm consumer smoke for the built Node.js package. Read [the feature map](features/README.md) first; a passing convenient path does not prove the other mapped entrypoints.
-
-The same package smoke also drives the [shared author lifecycle](features/import-create-recovery-dry-run.md#independent-installed-author-lifecycle) through an independently installed Node bin and an owned loopback service: create/readback, body-only write, sparse metadata update, apply/replace, old pins and an actually lost original-outcome response. Keep its command/HTTP ledger and strict negative cases separate from seeded offline snapshots and real Notion authorization. The fixture service reuses existing core fixtures; it never writes consumer state to manufacture a result.
-
-For AH-498 shared-library work, follow [shared SSOT verification](features/shared-ssot.md), cases SS01–SS13. Drive `ctl library` and root `list/read/files` through helper `cli`; the existing References import/consumption harness does not prove the shared layout. Include fixed `--manifest` registration, read-only migration review and Router Members when those paths change. Record current-body, retained-body, metadata, write and provider costs separately. Keep unfinished original-operation state until reconciliation; a recipe or selected test count is not epic completion.
-
-For Broker missing-reference changes, follow [the consumption boundary recipe](features/broker-consumption.md#missing-reference-boundary). Broker soft misses preserve ordinary user text; this does not change CLI error JSON or genuine selected-record access/integrity failures. Host/provider acceptance belongs to the separate Broker recipes, not a CLI-only pass.
-
-This is a developer/regression workflow. Daily work uses current reads, one pinned `apply`, and `ctl sync upstream/local connect` followed by `run`. For an authorized ordinary content change, exit 0 with `ok: true`, `verified: true` and no `dry_run: true` is sufficient; the CLI owns saved-content readback. Do not run the detailed matrix or repeat per-file/export checks for every imported Skill. Use them when developing the CLI, diagnosing a discrepancy or fulfilling an explicit audit request.
-
-## Accepted design and readiness
-
-The [sync/cache CLI design](../../../docs/sync-cache-cli-design.md) is implemented. The [command coverage map](features/README.md#accepted-design-coverage) connects implemented entries to their acceptance cases; [protocol](../../../docs/protocol.md) owns executable semantics. Consult actual command help before driving an entry point and record each exercised result separately.
-
-The [shared architecture](../../../docs/shared-ssot-architecture.md) defines library ownership, fixed sources and recovery boundaries. First-plan unknown outcomes that are invisible to an independent client remain a limitation. Do not claim shared write safety from timestamps, page locks, stable IDs or read-after-write. Source-build passes do not establish a production migration, release, second physical machine, native UI or model behavior.
-
-Shared command claims need their exact boundaries: manifest registration uses zero provider requests but still verifies Notion facts; migration output is always `apply_allowed:false`; Router snapshots freeze member metadata while member bodies remain lazy. New init registers native Members and Requires. Existing libraries upgrade through the explicit relations plan/apply/reconcile commands; old missing Members bindings still fail Router consumption explicitly. Ordinary Skills may expose member directories, and neither directory fetches target bodies. Transport checks exercise service-local coalescing, default-four permits and the original five-minute permit/SQL admission deadline independently of network timeouts. Keep controlled cancellation/timeout evidence separate from live elapsed samples.
-
-The [sync/cache verification plan](features/sync-cache-verification-plan.md) separates deterministic regressions, real Notion readback and installed Node.js proof. It covers bindings/common bases, checked plans, real symlink targets, TTL/identity scopes and unknown outcomes. Core tests provide controlled clocks and real-link fixtures; the helper isolates product config/state/cache for live command evidence.
-
-SC12 covers current/directory qualification and known 401-scope / 403-target denial before fixed local/retained reads. Explicit offline preserves old facts, while clear and late publishers cannot grant access; 404/disabled do not revoke historical authority. SC15 uses the existing [request-engine map](features/request-engine.md#sc15-消费请求共享与预算) for waiter budgets, cancellation and dispatch/arrival evidence. The installed SDK smoke records `cache-*` phases alongside its existing scalar-inventory case; synthetic clocks, loopback HTTP, live Notion and actual Pi remain separate proof layers.
-
-The [shared HTTP fixture recipe](features/skill-consumption.md#共用受控-http-来源与终局字节账本) reuses that scalar service in the installed SDK smoke and the Broker's actual Pi driver. Keep the original 22 SDK cases and 32 cache phases, retain incomplete response bytes as unknown, and bind each frozen helper and input before any controlled delay, denial, retry or abort. Fixture controls exercise transport behavior; they do not manufacture SDK or model results.
-
-For origin changes, follow the feature map's source-provenance row and publication/discovery recipes. Retain raw Notion schema/property readback separately from unchanged public record JSON. A repeated already-published attach, metadata-only update and mutation-free complete reuse require distinct evidence. These recipes claim no new live pass.
-
-Consumer metadata identity is covered by C20 in that plan. `ctl cache identity --database SELECTOR` identifies credentials and the remote catalog, excluding cwd, command spelling, local preferences, cache policy and sync bindings. Equivalent database selectors share identity. Use the [Broker consumption map](features/broker-consumption.md) for actual Pi/OMP cross-project shared-catalog/export and active-session snapshot acceptance; CLI-only proof cannot establish those host behaviors.
-
-Select cases affected by the change and record each outcome/evidence path outside the checkout. A routine offline read does not require a live migration or the whole matrix. Full feature acceptance requires its negative/recovery cases and installed-consumer path, not just one successful push. Instruction changes also need a separate fresh-session evaluation of agent use before claiming the Skill improved agent behavior.
-
-The exact-ID `builtin` catalog contains three independently managed package Skills: `notion/ntn-skills` for discovery/consumption/routing, `notion/ntn-skills-maintain` for Notion content maintenance and `notion/ntn-skills-sync` for ongoing synchronization/recovery. The [package recipe](features/portable-export-package-consumption.md) covers every main/reference/export byte and provenance; the [publication recipe](features/import-create-recovery-dry-run.md) covers first-publish collisions, exact-target updates and readback; the [configuration recipe](features/discovery-config-auth-doctor.md) covers the independent publication preference. Installed consumer evidence records `builtins`, including `additional_skills` for entrypoint and sync. Publishing a real remote copy still requires the task's selected database and write authorization.
-
-The [built-in management recipe](features/builtin-management.md) covers XDG central installation, default shared/optional Agent links, complete-file baselines, local modification and foreign-target protection, receipt-v1 preservation and migration-required fences, idempotency, interruption and installed Node.js consumption. Its source map separates native Effect distribution, tree/handle and transaction owners from the external receipt-v1 migration artifact. Broker links route ordinary `$...@builtin` discovery and loading on Pi/OMP/Tern separately; packaged bodies and references do not require central installation. Explicit local-copy management and historical migration cases apply only when those behaviors change. Source/package CLI success does not establish host reload or model consumption.
+Broker 的 verify-notion-skills-integration 负责 CLI→SDK→Pi 的实际交接；AH-1197 管两机持续同步，AH-637 管 Mini 独立验收，AH-1198 汇总当前真实时间线。AH-1063 只作其版本的历史 Pro 基线。OMP/Tern 沿 AH-272 延期。
 
 ## Launch
 
-Run from the checkout root. Development requires Bun 1.4.3, installed dependencies and Node.js 22.22.3+ within 22.x or 24.20.0+. Live authentication uses the inherited `NOTION_API_TOKEN` through the project's credential provider. Confirm that its authorization identity matches the intended saved project token before isolating config; report only the match boolean. Do not print credentials or copy personal configuration into a run.
+从仓库根执行。复用 [harness Launch](references/harness.md#launch) 的运行目录、配置、状态、cache、data 隔离和凭据注入；不复制作者 Store。只补实际缺少的依赖/构建。controller 只负责 init/doctor/cli/empty/cleanup；安装直接运行现有 package:check，导入使用当前公开 CLI。
 
-```bash
-bun install --frozen-lockfile
-bun run build
-RUN="$(mktemp -d "${TMPDIR:-/tmp}/ntn-skills-verification-XXXXXX")"
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts init --run "$RUN"
-```
-
-There is no persistent server, browser, port, or PTY. `init` returning `ready:true` establishes an owned run with private `scratch/config`, `scratch/state`, `scratch/cache`, `scratch/data`, `scratch/builtin-home` and a separate `evidence` directory. The helper overrides application roots plus XDG config/state/cache/data bases. Offline builtin commands use an owned HOME for default links. Credentials remain inherited in process; no secret is copied. Each source drive uses `scripts/dev.ts` to build the formal entry afresh and execute it with Node.js, then waits for its exit. Installed consumption uses the exact npm bin supplied with `--installed-bin`. The shared request scheduler stays independent of content roots. Live runs targeting the same Skill require one writer; controlled concurrency uses designated fixtures. Finish with Cleanup after preserving evidence and resolving original operations that still depend on scratch recovery state.
-
-The overrides isolate driven product processes. Bun can create its own transpiler cache before this helper starts, using the launcher's inherited XDG cache. For strict host-sentinel checks, give the parent Bun process a separate owned temporary `XDG_CACHE_HOME` outside the empty run root and record it for system-trash cleanup. Do not create that launcher cache inside the run before `init`; `init` requires an empty owned root. Distinguish launcher writes from product writes in evidence.
+记录实际 checkout、候选包和范围。源码可运行不代表包已安装；分支更名不证明当前内容已转换。写入仅针对任务已授权的对象。
 
 ## Doctor
 
-Harness discovery is offline and does not initialize a run:
-
-```bash
+~~~sh
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts --help
-```
+bun test packages/cli/test/verification-skill-map.test.ts packages/cli/test/builtin-guidance.test.ts packages/cli/test/installed-package-ci.test.ts
+~~~
 
-
-```bash
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts doctor --run "$RUN"
-```
-
-The default helper Doctor checks the real source CLI version/help, hashes its entrypoint, and records the owned config/state/cache/data roots without contacting Notion. `ready:true` proves offline readiness only. To probe live authentication, run `bun .cursor/skills/verify-ntn-skills/scripts/control.ts doctor --run "$RUN" --live`; add `--database ID` to inspect one catalog and read a Skill. Require `live.transport=direct_http`, `live.notion_api_version=2026-03-11` and `live.authentication=available`. With a database, inspect coverage and skill_read. Explicit scoped `consumption` separately proves exhaustive coverage and exact page or shared Library/Skill identities. Missing prerequisites remain blocked; offline fixtures never prove online health.
+这些检查只证明路由、包内说明、引用和 CI 接线。安装包门禁要求 CLI 与 SDK 使用同一 archive、失败不被忽略，并始终上传报告和请求日志，排除 node_modules。实际安装结果仍由 package:check 提供；正文、全库清理和 Pi 按各自入口验证。
 
 ## Drive
 
-For a complete package-consumption path using the existing harness:
+按 [current-convergence](features/current-convergence.md) 选必要组。领域内只跑对应当前回归。当前入口和实现已经移除的行为，不为旧测试补回兼容或历史证明。
 
-```bash
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts package --run "$RUN"
-```
+安装检查复用 [portable-export-package-consumption](features/portable-export-package-consumption.md) 的当前 archive/bin/SDK 设施与全部当前用例。受控安装通过不能替代真实 Notion 清理或 Pi 日用。未执行的边界明确 blocked/not_run，只沿现有领域入口补必要检查。
 
-This delegates the existing package checker, which builds and packs the independent migration/operator artifact and passes its archive to consumer smoke with `--migration-archive`. Its operator entry retains historical actions outside daily help/schema; it is not a prerequisite for current reads, pinned apply or connect/run. Smoke installs the normal CLI and migration tool separately, imports the historical fixture through the migration executable, then drives the installed CLI with Node.js. It checks offline snapshot consumption, relative/ranged reads, file listing, export reuse, configuration sanitization and corruption rejection. The seeded snapshots are fixtures for the offline contract, not proof of a live import.
+原生日常管理沿 [skill-maintenance](features/skill-maintenance.md#原生日常管理与实际-pi)
+覆盖公开四动作、语义规范化、局部更新与自动清理。真实 `pi -ne` 的 group/worker
+用自然任务发现并读取已连接库里的维护 Skill；仅查看仍用 read，真正采用时沿同来源
+精确 ref 用 notion_use/CLI use 加载 Requires，被编辑目标仍只 inspect。
+无连接或显式离线/随包检查另验 builtin。
+不在提示里预填字段或命令来替代指引发现。
 
-CI runs `init/package` on Ubuntu and macOS 15 with Node.js 22.22.3 and 24.20.0, after the full deterministic suite. Package mode retains `installed-consumer.json` and both integrity-checked tarballs under evidence before scratch retirement. macOS CI exercises system Trash and cleanup; Linux verifies the explicit unavailable-retention error and unchanged cache bytes, then retains scratch on the disposable runner. CI uploads per-matrix evidence for seven days. See [Contributing](../../../CONTRIBUTING.md#development-setup).
-
-The historical read-only migration inventory collector specifically requires Node.js 24. Its successful input/backup contract runs there; other Node runtimes run the explicit `NODE_24_REQUIRED` rejection and pure argument tests. This collector boundary does not remove the CLI/SDK's supported Node.js 22 product gate.
-
-For the CLI contract consumed by the broker source adapter provided in the separate pi-context-broker repository, read [broker consumption](features/broker-consumption.md). Run the existing public list/read/files/export path without remote writes:
-
-```bash
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts consumption --run "$RUN" --database "$DATABASE"
-INSTALLED_BIN="$(jq -er '.smoke.executable' "$RUN/evidence/package.json")"
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts consumption --run "$RUN" --database "$DATABASE" --target "$PAGE_ID" --installed-bin "$INSTALLED_BIN"
-```
-
-Bind `DATABASE` to the actual selected database; obtain `PAGE_ID` from the source catalog or dedicated fixture receipt. Optional `--target` requires a real page ID in that catalog. Consumption requires complete explicit-database coverage, matches read scope to discovery, retains pinned IDs, inspects manifest `main` against export `main_path`, verifies actual files, output reuse/conflict protection and offline reread. Source and installed modes record separate evidence. Package smoke separately covers synthetic credential-scope isolation and a portable non-SKILL.md entry. Neither proves broker host registration/default-catalog/Read/native-command behavior. The separately authorized broker integration helper owns real fixture create/reference/resource/cleanup receipts and runs cleanup in `finally`; avoid creating a second lifecycle here.
-
-The [broker consumption map](features/broker-consumption.md) routes independent Pi/OMP real-model discovery/read/resource consumption to `verify-notion-integration.mjs --mode model`, Pi terminal completion to its dedicated procedure, and daily Tern/OMP installation/menu acceptance to `verify-daily-notion-ui.mjs` in the broker repository. Keep live CLI, installed host, controlled provider and real model observations separate; a source checkout smoke does not establish a user's daily menu or actual model response.
-
-To drive any actual source CLI command and capture its response:
-
-```bash
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- --help
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config show
-```
-
-The wrapper returns the CLI's `exit` and an evidence path. Inspect `exit`; expected failure paths are not wrapper failures. It never reads stdin and rejects `ctl config set-token`; authentication precedence through `set-token --stdin` must be exercised directly in an isolated CLI environment, without recording credential input.
-
-For the authorized live migration, bind `DATABASE` and `SKILL_DIR` to the database and source directory selected for that task. The helper requires concrete values and does not select a target or grant authorization. Generate an import plan with frozen source hashes, then drive the same plan through import, consumer verification and reuse:
-
-```bash
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts prepare --run "$RUN" --database "$DATABASE" --input "$SKILL_DIR"
-IMPORT_PLAN="$RUN/evidence/plan.json"
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts import --run "$RUN" --plan "$IMPORT_PLAN"
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts verify --run "$RUN" --plan "$IMPORT_PLAN"
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts reuse --run "$RUN" --plan "$IMPORT_PLAN"
-```
-
-Repeat `--input` in `prepare` for several Skill directories. An existing frozen plan may instead be passed directly; its exact shape is `{database,entries:[{name,input,files,file_hashes:[{path,bytes,sha256}]}]}`. `input` is absolute; paths are relative. Plans contain no credentials or machine defaults in the committed Skill.
-
-`IMPORT_PLAN` is this helper's frozen References import input, not a product sync plan or shared migration evidence. Product `SYNC_PLAN_ID`/`SYNC_PLAN_FILE` belongs to `ntn-skills ctl sync local apply`; shared `MIGRATION_INPUT` belongs to `ctl library migration plan --input`. Pass those product arguments through helper `cli -- ...`; outer helper `--plan` still accepts only the References import schema. Live import/verify/reuse readbacks explicitly refresh current targets before claiming fresh remote state; pinned reads retain their fixed versions.
-
-`prepare` uses the existing input/portable parsers to determine the invocation name, refreshes the selected catalog, then dry-runs `create` for an absent name or `replace --target PAGE_ID` for an existing exact identity. Helper `import` records the catalog and existing version before/after that dry-run, then performs the explicitly authorized command. It checks that dry-run leaves remote state unchanged; dry-run still reads the network and creates local caches. `verify` freshly enumerates every legacy References page through `files --refresh`, enumerates child pages through the same CLI's read-only `ctl api`, checks References paths/IDs from the immutable snapshot manifest, reads pinned main/reference files, reads a supporting asset where present, and exports every source file with SHA-256 equality. Mutable product state is accessed through the CLI and its SQL store. The automated live recipe requires a References library with optional Files enabled to preserve arbitrary assets and exact source bytes. Page-only, ZIP/single-Markdown, individual write and conflict paths use their mapped CLI recipes.
-
-`reuse` runs `replace --target PAGE_ID` and requires `action:reuse`, `reused:true`, identical page and snapshot IDs, then checks exhaustive catalog coverage and one row per invocation. It writes `evidence/summary.json`. Completed entries within a healthy run are checkpointed. Interrupted publications retain `operation_id` and `receipt_path`; within the original authorization, `cli -- operation resume OPERATION_ID --progress` validates recorded state and continues frozen input on fixed IDs. `receipt_path=sqlite:publications/ID` is a database locator, not a JSON file. Preserve scratch recovery state until this is resolved. External edits conflict; unproven creation remains unresolved without replay. Record safe progress JSONL separately when needed because this helper retains stderr metadata only.
+[skill-domains.json](../../../verification/skill-domains.json) 记录当前 feature 的唯一主要 owner 与可执行回归。[feature map](features/README.md) 只路由现有能力及明确未实现边界，不保留已取消流程的执行说明。
 
 ## Evidence
 
-Proof survives at `$RUN/evidence/`:
+沿 [结果回执](../../../docs/verification-contracts.md#结果回执) 将合同、场景、run、命令、源码/加载字节和原件 hash 连起来。复用现有输出，标 passed / failed / blocked / not_run、剩余缺口及复验关系。模型、真实 Store、受控服务、安装、live 和 natural 分层；partial 不算完整通过。
 
-- `commands/*.json`: exact argv, timestamps, cwd, held child PID, observed exit/signal, timeout and CLI output. Raw child stderr is excluded; its size and SHA-256 are recorded instead.
-- `doctor.json`, `package.json`, frozen `plan.json` and dry-run observations.
-- `installed-consumer.json` and `package/*.tgz`: original seeded consumer outputs, the integrity-checked public CLI tarball and independent migration tarball, copied before package scratch cleanup. `package.json` records both original archive/integrity pairs and retained archive paths.
-- `consumption-source.json`, `consumption-installed.json`, their directory exports/portable manifests/hash inventories and recorded scope/freshness/page/version/snapshot identities. Dedicated live fixture create/cleanup receipts belong to the broker integration helper.
-- `imports.json`, `verification.json`, `reimports.json`, child-page ID inventories and `final-catalog.json`.
-- `exported/`, `read-assets/`, `summary.json`, failure and cleanup receipts.
-- For sync/cache acceptance: case ledger, imported fixture manifest, before/after baseline generations, plan/receipt copies, logical/resolved path and link proof, freshness observations and measured performance samples. Preserve these before scratch cleanup; do not claim missing artifacts or inject private state to manufacture a live result.
-- For shared-library acceptance: descriptor and stable identities, complete cursor coverage, original plan IDs, before/after body hashes, current and shared pin identities, fixed source manifests, frozen Router member metadata, read-only migration inputs/results, `request_metrics`, exact archive/restore inventories and source-build versus installed-runtime provenance. Keep failed and unrun cases in the same ledger; mark controlled fixtures separately from real Notion and physical-machine evidence. Mini connectivity and independent authentication are available, but its older installed 0.3.0 does not prove the candidate package; preserve the candidate's separate installation and verification status.
+没有请求计数不报 0 HTTP；metadata 通过不报全文；目标通过不报全库清理。无需内容版本、多层签收或不可变证据链。
 
-Capture both action and resulting state. A successful write response alone is insufficient: reopen through the user-facing CLI, verify page identity/content and file side effects. Do not call internal setters, mutate cache objects for live proof, introduce REST transport substitutes, or execute imported scripts. Test fixtures remain explicitly scoped to offline package proof. Evidence may contain private Skill contents and page IDs; keep it outside the checkout and do not commit it. CLI JSON excludes credentials and signed URLs. Request evidence uses the engine's bounded safe `request_metrics.trace`; absent or truncated metrics cannot prove zero calls.
+Trash 恢复按 [单条命令验收](features/current-convergence.md#单条命令恢复已完成的投影)
+执行：先清生成正文再 trash 整个已完成 Skill，靠一次公开 --restore 恢复并完整
+对照，再同命令核零写。额外 Agent 写操作不能拼出通过；未实跑仍记 not_run。
 
 ## Cleanup
 
-```bash
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cleanup --run "$RUN"
-test -f "$RUN/evidence/cleanup.json"
-```
+复用 [harness Cleanup](references/harness.md#cleanup) 的自有范围与系统 Trash。当前未完成操作所需状态暂留，完成或明确放弃后有界回收。保留当前唯一字节；历史 pin 不成为永久保留根。
 
-On macOS the helper moves its owned local scratch and recorded package scratch to `/usr/bin/trash`; it never permanently removes files. On other hosts it stops with an explicit recycle-bin prerequisite and retains scratch until a system recycle path is verified. Cleanup preserves the evidence directory and retained Notion Skills. It never archives/deletes remote pages automatically. A disposable remote fixture requires task authorization and a recorded page ID before explicit trashing. Never kill by process name; the helper terminates only children it spawned on its own timeout, with no background service to stop.
-
-Run cleanup after failures once no unresolved original operation depends on the run's scratch state. Preserve that state and its exact run path while a write is unknown; do not clear dispatch records, invent a new operation or treat cleanup as recovery. Verify the evidence remains after cleanup before calling the exercised cases proven. Fix the failed recipe and use a fresh run rather than reusing a cleaned state directory. A separate fresh-session instruction evaluation is still required to claim the Skill itself proven.
-
-## Helpers
-
-The executable helper is [scripts/control.ts](scripts/control.ts). All invocations above use Bun for the development harness. Every source and installed product subprocess uses Node.js. Package mode reuses `scripts/package-check.ts`, including its independent migration build/pack and required `--migration-archive` forwarding to `scripts/package-smoke.ts`. Modes are `init`, `doctor`, `cli`, `package`, `consumption`, `prepare`, `import`, `verify`, `reuse`, and `cleanup`. Helper `import` is orchestration over public `create`/`replace`; the product has no `import` or `open` command. `consumption --installed-bin` launches the actual npm package's declared JavaScript bin with Node.js.
-
-Keep feature recipes, command-to-case coverage and the accepted design current together when observable behavior changes. Use `/maintain-verification-skill` for the maintenance loop; report exact exercised cases and leave unavailable branches/instruction evaluations explicitly unrun.
+各域按本次合同停止，不把历史 Done 重计当前通过。AH-1188 是唯一当前主线；AH-498/500/516/1063 保留原版本及范围的历史证据。Skill 作者检查与独立冷启动使用分开，未执行后者记 instruction_evaluation:not_run。

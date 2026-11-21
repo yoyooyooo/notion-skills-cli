@@ -8,15 +8,17 @@ import { aliasFor, property, type Snapshot } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
 import { sharedSkillId } from "../src/shared-content.ts"
-import { registerRetainedSnapshot } from "../src/shared-history-materialization.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
-import {
-  prepareSharedSnapshotHistory,
-  retainSharedSnapshotHistory,
-} from "../src/shared-snapshot-history.ts"
 import { listSkill, readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
-import { digest, encode, id, library, sharedSnapshotFixture } from "./shared-snapshot-fixture.ts"
+import {
+  currentDigest as digest,
+  currentBytes as encode,
+  currentId as id,
+  currentLibrary as library,
+  currentScope as scope,
+  currentSnapshotFixture,
+} from "./shared-current-fixture.ts"
 
 type Definition = {
   readonly name?: string
@@ -25,11 +27,8 @@ type Definition = {
   readonly requires?: readonly string[]
   readonly members?: readonly string[]
 }
-const scope = digest(
-  JSON.stringify(["fixture-user", "", "https://api.notion.com", "controlled-credential"]),
-)
 async function fixture(definitions: Readonly<Record<string, Definition>>) {
-  const f = sharedSnapshotFixture({ fileCount: 1 })
+  const f = currentSnapshotFixture({ fileCount: 0 })
   const snapshots = new Map<string, Snapshot>()
   const opened = new Map<string, number>()
   const readBytes = new Map<string, number>()
@@ -65,8 +64,9 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
         },
       },
       entrypoint: "SKILL.md",
-      files: [{ path: "SKILL.md", sha256: digest(bytes), bytes: bytes.byteLength }],
+      files: [{ path: "SKILL.md", sha256: digest(bytes), bytes: bytes.byteLength, mode: "100644" }],
       file_bindings: [{ file_id: `main-${key}`, page_id: id(100 + index), path: "SKILL.md" }],
+      shared_acquisition: { version: 5, library: { ...library, library_id: libraryId }, files: [] },
       required: [],
       members: [],
     }
@@ -142,8 +142,8 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
 }
 
 describe("once consume contract", () => {
-  test("fixed historical names list the manifest without reading body objects or current metadata", async () => {
-    const f = await fixture({ a: { name: "Historical Name" } })
+  test("fixed selected names list the manifest without reading body objects or current metadata", async () => {
+    const f = await fixture({ a: { name: "Selected Name" } })
     const snapshot = f.get("a")
     f.objects.clear()
     for (const name of [snapshot.record.name, snapshot.record.alias]) {
@@ -153,9 +153,7 @@ describe("once consume contract", () => {
       expect(listed.record).toEqual(snapshot.record)
       expect(listed.scope).toBe(snapshot.scope)
       expect(listed.snapshot_id).toBe(snapshot.snapshot_id)
-      expect(listed.files).toEqual(
-        snapshot.files.map(({ path, bytes }) => ({ path, bytes, ref: f.ref("a") })),
-      )
+      expect(listed.files).toEqual(snapshot.files.map((file) => ({ ...file, ref: f.ref("a") })))
     }
     const wrong = await f.run(
       listSkill(fileRef("current-replacement", "", snapshot.snapshot_id), { offline: true }).pipe(
@@ -290,7 +288,7 @@ describe("once consume contract", () => {
     ).toBe("Failure")
   })
 
-  test("the old fixed read agrees with the source proof for the selected snapshot bytes", async () => {
+  test("the fixed read agrees with the source proof for the selected snapshot bytes", async () => {
     const f = await fixture({ a: { content: "\uFEFF# Exact\r\n雪\r\n" } })
     const result = await f.run(consume(f.input([f.ref("a")])))
     if (result.status !== "ready") throw new Error(JSON.stringify(result))
@@ -309,17 +307,12 @@ describe("once consume contract", () => {
     expect(read.has_more).toBe(entry.source_body.has_more)
   })
 
-  test("a real retained pin with only its entry bytes local reports a complete manifest and entry readiness", async () => {
-    const f = sharedSnapshotFixture()
+  test("a current local selection with only its entry bytes reports a complete directory and entry readiness", async () => {
+    const f = currentSnapshotFixture()
     const snapshot = await f.open()
-    const plan = await f.run(prepareSharedSnapshotHistory(library, snapshot))
-    await f.run(retainSharedSnapshotHistory(library, { plan, mode: "create" }))
-    const retained = await f.run(
-      registerRetainedSnapshot(scope, library, plan.pin_id, plan.manifest),
-    )
     const main = snapshot.files.find((file) => file.path === snapshot.entrypoint)
     const bytes = main === undefined ? undefined : f.objects.get(`objects/${main.sha256}`)
-    if (main === undefined || bytes === undefined) throw new Error("Expected retained main bytes")
+    if (main === undefined || bytes === undefined) throw new Error("Expected selected main bytes")
     f.objects.clear()
     f.objects.set(`objects/${main.sha256}`, bytes)
     f.clearCalls()
@@ -327,12 +320,7 @@ describe("once consume contract", () => {
       consume({
         version: 1,
         targets: [
-          fileRef(
-            retained.snapshot.record.id,
-            snapshot.entrypoint,
-            retained.snapshot.snapshot_id,
-            "file-main",
-          ),
+          fileRef(snapshot.record.id, snapshot.entrypoint, snapshot.snapshot_id, "main-demo"),
         ],
         purpose: "use",
         freshness: { policy: "offline" },
@@ -348,20 +336,23 @@ describe("once consume contract", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("a wrong physical main File binding fails consumption while legacy prepare keeps its shape", async () => {
+  test("a wrong physical main File binding cannot produce a ready consumption", async () => {
     const f = await fixture({ a: {} })
     const snapshot = f.get("a")
     f.json.set(`snapshots/${snapshot.snapshot_id}.json`, {
       ...snapshot,
       file_bindings: [{ file_id: "main-a", page_id: id(999), path: "SKILL.md" }],
     })
-    const old = await f.run(
-      prepareGraph({ roots: [f.ref("a")], purpose: "use", freshness: { policy: "offline" } }),
+    const prepared = await f.run(
+      prepareGraph({ roots: [f.ref("a")], purpose: "use", freshness: { policy: "offline" } }).pipe(
+        Effect.result,
+      ),
     )
-    expect(old.status).toBe("ready")
+    expect(prepared._tag === "Failure" && prepared.failure.code).toBe("STATE_CORRUPT")
     const result = await f.run(consume(f.input([f.ref("a")])))
     expect(result.status).toBe("failed")
-    if (result.status === "failed") expect(result.error.code).toBe("CONSUME_INVALID_PROOF")
+    if (result.status === "failed") expect(result.error.code).toBe("STATE_CORRUPT")
+    expect(f.readBytes.size).toBe(0)
   })
 
   test("the shared decoder rejects wrong ranges, hashes, manifest refs, graph locks and unknown schema", async () => {

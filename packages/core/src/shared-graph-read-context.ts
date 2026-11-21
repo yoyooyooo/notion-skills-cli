@@ -12,17 +12,10 @@ import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { sharedRecordFromPage } from "./shared-content.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
-import {
-  querySharedOperationIndexes,
-  type SharedOperationHeader,
-} from "./shared-operation-index.ts"
-import {
-  canonicalSharedJson,
-  querySharedFileFactsForSkills,
-  type SharedRecord,
-} from "./shared-records.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
 import type { SharedSkillRelationTarget } from "./shared-router-members.ts"
-import { querySkillFilesForSkills, type FileRecord } from "./skill-file-index.ts"
+import { queryCurrentFilesForSkills } from "./shared-current-index.ts"
+import type { CurrentFileBinding } from "./shared-current-index.ts"
 import { Store } from "./store.ts"
 
 export type CompleteSharedSkillInventory = {
@@ -32,9 +25,7 @@ export type CompleteSharedSkillInventory = {
 }
 type Work<A> = Effect.Effect<A, SkillsError, Notion | Store | Crypto.Crypto>
 type SelectedMetadata = {
-  readonly files: readonly FileRecord[]
-  readonly facts: readonly SharedRecord[]
-  readonly operations: readonly SharedOperationHeader[]
+  readonly files: readonly CurrentFileBinding[]
 }
 type SharedTarget = { readonly library: SharedLibrary; readonly rawPage: unknown }
 
@@ -93,9 +84,10 @@ function queryInventory(library: SharedLibrary) {
       "Default Context",
       "Skill ID",
       "Main File ID",
-      "Projection",
-      "References",
-      "Source",
+      "Content",
+      "Current State",
+      "Operation",
+      "Origin",
       "Members",
       "Requires",
     ]
@@ -321,18 +313,14 @@ export function withSharedGraphReads<A, E, R>(
               "Preparation metadata exceeded the selected-node budget.",
             ),
           )
-        const files = yield* querySkillFilesForSkills({
+        const files = yield* queryCurrentFilesForSkills({
           dataSourceId: library.files.data_source_id,
           propertyIds: library.files.property_ids,
           skillPageIds: owners,
         })
-        const facts = yield* querySharedFileFactsForSkills(library, owners, scope)
-        const operations = yield* querySharedOperationIndexes(library, owners)
         for (const owner of owners)
           selectedMetadata.set(key(owner), {
             files: files.get(owner) ?? [],
-            facts: facts.get(owner) ?? [],
-            operations: operations.get(owner) ?? [],
           })
         return selectedMetadata.get(key(selected.locator.page_id))!
       })

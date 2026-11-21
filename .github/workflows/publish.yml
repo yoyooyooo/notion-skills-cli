@@ -413,10 +413,7 @@ jobs:
           NODE
       - name: Verify registry consumer and registry signatures
         run: |
-          migration_package="$RUNNER_TEMP/ntn-skills-state-migration"
-          bun scripts/build-migration.ts "$migration_package"
-          npm pack "$migration_package" --ignore-scripts --json --pack-destination "$RUNNER_TEMP"
-          bun scripts/package-smoke.ts --registry "${PACKAGE_NAME}@${PACKAGE_VERSION}" --migration-archive "$RUNNER_TEMP/ntn-skills-state-migration-1.0.0.tgz"
+          bun scripts/package-smoke.ts --registry "${PACKAGE_NAME}@${PACKAGE_VERSION}"
           consumer="$RUNNER_TEMP/signature-consumer"
           mkdir -p "$consumer"
           cd "$consumer"

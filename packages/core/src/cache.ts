@@ -1,23 +1,26 @@
 import { Clock, Crypto, Effect, FileSystem, Path, Schema } from "effect"
+import { catalog } from "./catalog.ts"
+import { trashPath } from "./local-locks.ts"
+import { CURRENT_MATERIALIZATION_VERSION } from "./materialization.ts"
 import {
   CatalogSchema,
-  SnapshotSchema,
   SkillsError,
+  SnapshotSchema,
   aliasFor,
   fail,
-  notionPage,
   resolveRecord,
   type Snapshot,
 } from "./model.ts"
-import { trashPath } from "./local-locks.ts"
-import { Notion } from "./notion.ts"
 import { notionApiOrigin } from "./notion-http.ts"
-import { pageId, parseTarget, normalizePath } from "./ref.ts"
-import { Store, configuration, publicConfiguration, sha256 } from "./store.ts"
-import { currentMaterializationVersion } from "./materialization.ts"
-import { catalog } from "./catalog.ts"
-import { assertSharedFileReferences } from "./shared-file-references.ts"
+import { Notion } from "./notion.ts"
+import { normalizePath, pageId, parseTarget } from "./ref.ts"
+import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
+import {
+  assertSelectedSharedFileReferences,
+  currentAuthoredReferenceFiles,
+} from "./shared-file-references.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
+import { Store, configuration, publicConfiguration, sha256 } from "./store.ts"
 
 export interface ReadPolicyOptions {
   readonly refresh?: boolean
@@ -106,15 +109,6 @@ export const CatalogObservationSchema = Schema.Struct({
   ...CatalogSchema.fields,
   invalidated: Schema.optional(Schema.Boolean),
 })
-export const SourceBundleCheckpointSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  snapshot_id: Schema.String,
-  version_id: Schema.String,
-  bundle_hash: Schema.String,
-  pages: Schema.Array(Schema.Struct({ id: Schema.String, fingerprint: Schema.String })),
-  properties: Schema.Array(Schema.Struct({ path: Schema.String, fingerprint: Schema.String })),
-})
-export type SourceBundleCheckpoint = typeof SourceBundleCheckpointSchema.Type
 export const ObservationSchema = Schema.Struct({
   record_identity: Schema.String,
   scope: Schema.String,
@@ -125,9 +119,9 @@ export const ObservationSchema = Schema.Struct({
   invalidated: Schema.Boolean,
   generation: Schema.Number,
   materialization_version: Schema.optional(Schema.String),
-  bundle_checkpoint: Schema.optional(SourceBundleCheckpointSchema),
   metadata_only: Schema.optional(Schema.Literal(true)),
   shared_body_valid_until: Schema.optional(Schema.Number),
+  current_snapshot: Schema.optional(SnapshotSchema),
   access_denied: Schema.optional(Schema.Literals(["AUTH_REQUIRED", "ACCESS_DENIED"])),
 })
 export type AccessDenial = "AUTH_REQUIRED" | "ACCESS_DENIED"
@@ -139,6 +133,10 @@ export interface Freshness {
   readonly max_age_ms?: number
   readonly stale?: boolean
   readonly validation?: "metadata"
+  readonly policy_source?: "explicit" | "skill" | "profile" | "product"
+  readonly profile_fingerprint?: string
+  readonly full_body_max_age_ms?: number
+  readonly current_eligibility_max_age_ms?: number
 }
 export interface ObservedSnapshot extends Snapshot {
   readonly shared_body_valid_until?: number
@@ -213,7 +211,7 @@ export function validateSnapshotManifest(snapshot: Snapshot) {
     })
     if (
       snapshot.snapshot_id !==
-        `s_${yield* sha256(JSON.stringify([snapshot.scope, snapshot.historical_snapshot_id ? notionPage(snapshot.record).locator.page_id : snapshot.record.id, snapshot.version_id]))}` ||
+        `s_${yield* sha256(JSON.stringify([snapshot.scope, snapshot.record.id, snapshot.version_id]))}` ||
       alias !== snapshot.record.alias ||
       snapshot.entrypoint !== snapshot.record.entrypoint ||
       !snapshot.files.some((file) => file.path === snapshot.entrypoint) ||
@@ -236,6 +234,13 @@ export function validateSnapshotManifest(snapshot: Snapshot) {
         catch: () => fail("STATE_CORRUPT", "Snapshot file manifest is invalid."),
       })
     }
+    yield* Effect.try({
+      try: () => validateSnapshotAcquisition(snapshot),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("STATE_CORRUPT", "Invalid frozen snapshot acquisition."),
+    })
     return snapshot
   }).pipe(
     Effect.mapError((error) =>
@@ -248,10 +253,13 @@ export function validateSnapshotManifest(snapshot: Snapshot) {
 function validateSnapshotObjects(
   snapshot: Snapshot,
   files?: Array<{ readonly path: string; readonly bytes: Uint8Array }>,
+  paths?: readonly string[],
 ) {
   return Effect.gen(function* () {
     const store = yield* Store
-    for (const file of snapshot.files) {
+    for (const file of snapshot.files.filter(
+      (file) => paths === undefined || paths.includes(file.path),
+    )) {
       const bytes = yield* store.readBytes(`objects/${file.sha256}`)
       if (bytes.length !== file.bytes || (yield* sha256(bytes)) !== file.sha256)
         return yield* Effect.fail(
@@ -279,10 +287,34 @@ const SharedCurrentTreeValidationSchema = Schema.Struct({
   version_id: Schema.String,
   materialization_version: Schema.String,
   manifest_sha256: Schema.String,
+  verified_paths: Schema.optional(Schema.Array(Schema.String)),
 })
 
+function validationPaths(snapshot: Snapshot, paths?: readonly string[]) {
+  const selected = paths ?? snapshot.files.map((file) => file.path)
+  if (
+    new Set(selected).size !== selected.length ||
+    selected.some((path) => !snapshot.files.some((file) => file.path === path)) ||
+    !selected.includes(snapshot.entrypoint) ||
+    snapshot.files.some(
+      (file) =>
+        !selected.includes(file.path) &&
+        !snapshot.shared_acquisition?.files.some((route) => route.path === file.path),
+    )
+  )
+    throw fail(
+      "STATE_CORRUPT",
+      "Partial validation requires the current entry and an exact acquisition route for every omitted file.",
+    )
+  return selected
+}
+
 /** Content proof only: this never renews a current observation or its body deadline. */
-function validateSharedCurrentTree(snapshot: Snapshot, reuseReceipt = false) {
+function validateSharedCurrentTree(
+  snapshot: Snapshot,
+  reuseReceipt = false,
+  selectedPaths?: readonly string[],
+) {
   return Effect.gen(function* () {
     yield* validateSnapshotManifest(snapshot)
     const store = yield* Store
@@ -297,7 +329,7 @@ function validateSharedCurrentTree(snapshot: Snapshot, reuseReceipt = false) {
       record_identity: snapshot.record.id,
       snapshot_id: snapshot.snapshot_id,
       version_id: snapshot.version_id,
-      materialization_version: currentMaterializationVersion(snapshot.record.id),
+      materialization_version: CURRENT_MATERIALIZATION_VERSION,
       manifest_sha256: yield* sha256(manifest),
     }
     const key = `cache/shared-current-tree-validation/${snapshot.scope}/${snapshot.snapshot_id}.json`
@@ -305,20 +337,48 @@ function validateSharedCurrentTree(snapshot: Snapshot, reuseReceipt = false) {
       const previous = yield* store
         .readJson(key, SharedCurrentTreeValidationSchema)
         .pipe(Effect.catch(() => Effect.succeed(undefined)))
-      if (previous && canonicalSharedJson(previous) === canonicalSharedJson(receipt))
-        return snapshot
+      if (previous) {
+        const { verified_paths, ...identity } = previous
+        if (canonicalSharedJson(identity) === canonicalSharedJson(receipt)) {
+          yield* Effect.try({
+            try: () => validationPaths(snapshot, verified_paths),
+            catch: (error) =>
+              error instanceof SkillsError
+                ? error
+                : fail("STATE_CORRUPT", "Invalid shared validation selection."),
+          })
+          return snapshot
+        }
+      }
     }
+    const paths = yield* Effect.try({
+      try: () => validationPaths(snapshot, selectedPaths),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("STATE_CORRUPT", "Invalid shared validation selection."),
+    })
     const files: Array<{ readonly path: string; readonly bytes: Uint8Array }> = []
-    yield* validateSnapshotObjects(snapshot, files)
+    yield* validateSnapshotObjects(snapshot, files, paths)
+    // Source bytes retain their repository-relative links; current author content
+    // is checked against the complete Skill directory.
     yield* Effect.try({
-      try: () => assertSharedFileReferences(files),
+      try: () =>
+        assertSelectedSharedFileReferences(
+          currentAuthoredReferenceFiles(files, snapshot.shared_acquisition?.files),
+          snapshot.files.map((file) => file.path),
+        ),
       catch: (error) =>
         error instanceof SkillsError
           ? error
           : fail("STATE_CORRUPT", "Shared snapshot references failed validation."),
     })
-    // A receipt can only be issued after the actual full bytes/hash and reference gates succeed.
-    yield* store.writeJson(key, receipt)
+    // Only these bodies have been verified against the complete directory.
+    // Omitted bytes need a still-current route and validation when acquired.
+    yield* store.writeJson(key, {
+      ...receipt,
+      ...(paths.length === snapshot.files.length ? {} : { verified_paths: [...paths].sort() }),
+    })
     return snapshot
   })
 }
@@ -333,13 +393,14 @@ export function publishSnapshotObservation(
   startedAt: number,
   generation: number,
   options: {
-    readonly bundleCheckpoint?: SourceBundleCheckpoint
     readonly metadataOnly?: true
     readonly sharedBodyValidUntil?: number
+    readonly sharedMaterializedPaths?: readonly string[]
   } = {},
 ) {
   return Effect.gen(function* () {
-    if (snapshot.record.locator.type === "shared_skill") yield* validateSharedCurrentTree(snapshot)
+    if (snapshot.record.locator.type === "shared_skill")
+      yield* validateSharedCurrentTree(snapshot, false, options.sharedMaterializedPaths)
     else yield* validateSnapshot(snapshot)
     const store = yield* Store
     const validatedAt = yield* Clock.currentTimeMillis
@@ -381,12 +442,12 @@ export function publishSnapshotObservation(
       scope: snapshot.scope,
       started_at: startedAt,
       generation,
-      materialization_version: currentMaterializationVersion(snapshot.record.id),
+      materialization_version: CURRENT_MATERIALIZATION_VERSION,
       validated_at: validatedAt,
       snapshot_id: snapshot.snapshot_id,
       default_context: snapshot.record.default_context,
+      ...(snapshot.record.locator.type === "shared_skill" ? { current_snapshot: snapshot } : {}),
       invalidated: false,
-      ...(options.bundleCheckpoint ? { bundle_checkpoint: options.bundleCheckpoint } : {}),
       ...(options.metadataOnly ? { metadata_only: true } : {}),
       ...(options.sharedBodyValidUntil === undefined
         ? {}
@@ -396,6 +457,16 @@ export function publishSnapshotObservation(
     return {
       ...snapshot,
       source: "notion" as const,
+      ...(options.sharedMaterializedPaths === undefined
+        ? {}
+        : {
+            materialization: {
+              manifest_complete: true as const,
+              local_files_ready: options.sharedMaterializedPaths.length === snapshot.files.length,
+              materialized_paths: [...options.sharedMaterializedPaths],
+              loaded: false as const,
+            },
+          }),
       ...(options.sharedBodyValidUntil === undefined
         ? {}
         : { shared_body_valid_until: options.sharedBodyValidUntil }),
@@ -423,9 +494,7 @@ const SharedPageAliasSchema = Schema.Struct({
 })
 function cachedRecordIdentity(selector: string, scope: string) {
   return Effect.gen(function* () {
-    const id = pageId(
-      selector.startsWith("notion_page:") ? selector.slice("notion_page:".length) : selector,
-    )
+    const id = pageId(selector)
     if (!id) return { identity: selector, page: undefined }
     const saved = yield* (yield* Store).readJson(
       `cache/shared-page-identities/${scope}/${id}.json`,
@@ -440,7 +509,7 @@ function cachedRecordIdentity(selector: string, scope: string) {
       return yield* Effect.fail(
         fail("STATE_CORRUPT", "Cached page alias differs from the selected scope or page."),
       )
-    return { identity: saved?.record_identity ?? `notion_page:${id}`, page: id }
+    return { identity: saved?.record_identity ?? id, page: id }
   })
 }
 function latestObservation(page: string, scope: string) {
@@ -509,20 +578,19 @@ export function recordScopeAccess(scope: string, generation: number, denied?: Ac
   )
 }
 /** This checks known denials only. Hashes never become a new permission grant. */
-export function assertKnownSnapshotAccess(snapshot: Snapshot, offline = false) {
+export function assertKnownSnapshotAccess(snapshot: Snapshot) {
   return Effect.gen(function* () {
     const scope = yield* latestObservation(scopeAccessIdentity, snapshot.scope)
     const target = yield* latestObservation(snapshot.record.id, snapshot.scope)
     const denied = scope?.access_denied ?? target?.access_denied
-    if (denied !== undefined && !offline)
+    if (denied !== undefined)
       return yield* Effect.fail(
         fail(
           denied,
-          "Known access rejection prevents an online fixed read; revalidate the selected authority or explicitly read historical bytes offline.",
+          "Known access rejection prevents reading these selected bytes; revalidate the current authority.",
           { record_id: snapshot.record.id, snapshot_id: snapshot.snapshot_id },
         ),
       )
-    return denied
   })
 }
 export function cachedRemoteObservation(
@@ -540,7 +608,7 @@ export function cachedRemoteObservation(
     const latest = yield* latestObservation(page, scope)
     if (!latest || (latest.invalidated && (!options.offline || !latest.snapshot_id)))
       return undefined
-    if (latest.materialization_version !== currentMaterializationVersion(page))
+    if (latest.materialization_version !== CURRENT_MATERIALIZATION_VERSION)
       return yield* Effect.fail(
         fail(
           "CACHE_REFRESH_REQUIRED",
@@ -560,11 +628,13 @@ export function cachedRemoteObservation(
       snapshot.record.locator.type === "shared_skill" &&
       (options.access === "manifest" || options.access === "metadata")
     // Existing callers still perform the original full-object validation in its original order.
-    if (!sharedSelective) yield* validateSnapshot(snapshot)
+    if (!sharedSelective)
+      yield* snapshot.shared_acquisition !== undefined
+        ? validateCachedSharedCurrentTree(snapshot)
+        : validateSnapshot(snapshot)
     if (
       selected.page &&
-      ((snapshot.record.locator.type !== "shared_skill" &&
-        snapshot.record.locator.type !== "notion_page") ||
+      (snapshot.record.locator.type !== "shared_skill" ||
         snapshot.record.locator.page_id !== selected.page)
     )
       return yield* Effect.fail(
@@ -585,26 +655,43 @@ export function cachedRemoteObservation(
       if (options.access === "metadata") yield* validateSnapshotManifest(snapshot)
       else yield* validateCachedSharedCurrentTree(snapshot)
     }
+    const current = latest.current_snapshot ?? snapshot
+    yield* validateSnapshotManifest(current)
+    const fileIdentities = (value: Snapshot) =>
+      value.file_bindings?.map(({ file_id, path }) => ({ file_id, path })) ?? []
+    if (
+      current.snapshot_id !== snapshot.snapshot_id ||
+      current.scope !== snapshot.scope ||
+      current.version_id !== snapshot.version_id ||
+      current.record.id !== snapshot.record.id ||
+      canonicalSharedJson(current.record.locator) !==
+        canonicalSharedJson(snapshot.record.locator) ||
+      canonicalSharedJson(fileIdentities(current)) !==
+        canonicalSharedJson(fileIdentities(snapshot)) ||
+      canonicalSharedJson(current.files) !== canonicalSharedJson(snapshot.files)
+    )
+      return yield* Effect.fail(
+        fail("STATE_CORRUPT", "Current cache metadata differs from its selected content."),
+      )
     return {
       snapshot:
         latest.default_context === undefined
-          ? snapshot
+          ? current
           : {
-              ...snapshot,
-              record: { ...snapshot.record, default_context: latest.default_context },
+              ...current,
+              record: { ...current.record, default_context: latest.default_context },
             },
-      // Verification and same-pin recovery must use the immutable manifest, not current preferences.
+      // Local object verification uses the originally selected content manifest.
       ...(options.access === "metadata" ? { stored_snapshot: snapshot } : {}),
       validated_at: latest.validated_at,
-      bundle_checkpoint: latest.bundle_checkpoint,
       metadata_only: latest.metadata_only,
       shared_body_valid_until: latest.shared_body_valid_until,
       invalidated: latest.invalidated,
     }
   })
 }
-/** Retire directory observations affected by a subscription, including cached absence. */
-export function invalidateSubscriptionCatalog(scope: string, targetDatabase: string) {
+/** Retire current library directory and View observations, including cached absence. */
+export function invalidateCurrentLibraryCatalog(scope: string, targetDatabase: string) {
   return Effect.gen(function* () {
     const store = yield* Store
     const keys = new Set(yield* store.listKeys(`cache/catalogs/${scope}`))
@@ -638,7 +725,6 @@ export function invalidateSnapshotCache(
   scope?: string,
   options: { readonly retainForOffline?: boolean; readonly accessDenied?: AccessDenial } = {},
 ) {
-  if (pageId(page)) page = `notion_page:${pageId(page)}`
   return Effect.gen(function* () {
     const store = yield* Store
     const scopes = scope
@@ -770,7 +856,7 @@ function cachedTarget(target: string, database?: string) {
         return yield* Effect.fail(
           fail("SKILL_NOT_FOUND", "Target is outside the selected database."),
         )
-      return { page: observed?.snapshot.record.id ?? `notion_page:${id}`, scope: scope! }
+      return { page: observed?.snapshot.record.id ?? id, scope: scope! }
     }
     const directory = yield* catalog({ database, offline: true })
     if (directory.scope !== scope || directory.coverage.failed_sources.length)
@@ -931,7 +1017,7 @@ function collectRefs(value: unknown, snapshots: Set<string>, objects: Set<string
 function property(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {}
 }
-/** Explicit historical-byte collection. It never retires observations or changes freshness. */
+/** Explicit unreferenced-byte collection. It never retires observations or changes freshness. */
 export function garbageCollectCache(
   options: { dryRun?: boolean; database?: string; online?: boolean } = {},
 ) {
@@ -963,14 +1049,7 @@ export function garbageCollectCache(
       if (value !== undefined) collectRefs(value, protectedSnapshots, referencedObjects)
     }
     const referencedSnapshots = new Set(protectedSnapshots)
-    for (const prefix of [
-      "snapshots",
-      "cache",
-      "sync",
-      "publications",
-      "operation-reviews",
-      "database-init",
-    ]) {
+    for (const prefix of ["snapshots", "cache"]) {
       for (const key of yield* store.listKeys(prefix)) {
         const value = yield* store.readJson(key, Schema.Unknown)
         if (

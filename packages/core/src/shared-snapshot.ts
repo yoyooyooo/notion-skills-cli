@@ -1,144 +1,79 @@
+import { Clock, Effect, Schema } from "effect"
+import {
+  invalidateScopeCache,
+  invalidateSnapshotCache,
+  publishSnapshotObservation,
+} from "./cache.ts"
 import {
   localContentRestrictedHashes,
   markLocalContentRestriction,
 } from "./content-restrictions.ts"
-import {
-  loadPendingSharedFileManagement,
-  reconcileSharedFileManagement,
-  type SharedFileManagementPlan,
-} from "./shared-file-management.ts"
-import { Clock, Effect, Schema } from "effect"
-import {
-  effectiveCachePolicy,
-  invalidateSnapshotCache,
-  publishSnapshotObservation,
-  type ObservedSnapshot,
-} from "./cache.ts"
-import { importDocument } from "./import.ts"
 import { decode, fail, SkillsError, SnapshotSchema, type Snapshot, type Source } from "./model.ts"
 import { Notion } from "./notion.ts"
-import { canonicalMain } from "./portable.ts"
-import { materializeSharedNativeFile, parseSharedFileLinks } from "./shared-native-file-content.ts"
-import { compileSharedNativeReferences } from "./shared-native-references.ts"
-import { NativeBodyCompletionSchema } from "./shared-native-body-completion.ts"
-import { pageId } from "./ref.ts"
-import { sharedRecordFromPage } from "./shared-content.ts"
+import { withReadOnlyNotion } from "./notion-readonly.ts"
+import { normalizePath, pageId } from "./ref.ts"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
+import { sharedRecordFromPage } from "./shared-content.ts"
+import { queryCurrentSkillIndex, type CurrentSkillIndex } from "./shared-current-index.ts"
 import {
-  assertSharedNativeAdoptionComplete,
-  reconcileSharedNativeAdoption,
-} from "./shared-native-adoption.ts"
-import { type CompositionFile, type CompositionOverride } from "./shared-composition.ts"
-import { loadRetainedBody, observeSharedFile } from "./shared-file-observer.ts"
+  resolveCurrentSkillConsumption,
+  type CurrentSkillConsumption,
+} from "./shared-current-consumption.ts"
+import { requireCurrentSkillReady } from "./shared-current-file.ts"
+import { readCurrentSharedResourceBytes } from "./shared-current-resource.ts"
 import {
-  composeSharedFilePlacements,
-  planSharedFilePlacements,
-  sharedFileSourcePath,
-} from "./shared-file-placement.ts"
-import { gitBlobOid } from "./shared-github-source.ts"
-import type { PlannedSharedSource, PlannedSharedSourceFile } from "./shared-selected-source.ts"
-import { assertSharedFileReferences } from "./shared-file-references.ts"
-import { sharedSnapshotVersion } from "./shared-snapshot-identity.ts"
-import {
-  planFileValidation,
-  refreshMetadataObservation,
-  type FileMetadataInput,
-  type LocalFileObservation,
-} from "./shared-file-observation.ts"
-import {
-  FileEventSchema,
-  resolveFileState,
-  type FileEvent,
-  type ResolvedFileState,
-} from "./shared-file-state.ts"
-import type { SharedLibrary } from "./shared-library-model.ts"
-import {
-  loadPendingSharedObservationPlans,
-  type SharedObservationPlan,
-} from "./shared-observation-operation.ts"
-import {
-  canonicalSharedJson,
-  querySharedRecords,
-  withSharedRecordPayloadCache,
-} from "./shared-records.ts"
-import {
-  loadPendingSharedBodyWrites,
-  reconcileSharedBodyWrite,
-  type SharedBodyWritePlan,
-} from "./shared-body-write.ts"
-import { reconcileSharedBodyWriteReview } from "./shared-body-write-review.ts"
-import { bodyWriteOutcomeId, bodyWriteOutcomesEntity } from "./shared-body-write-model.ts"
-import type { SharedBodyWriteReviewPlan } from "./shared-body-write-review-model.ts"
-import {
-  loadPendingSharedMetadataWrites,
-  reconcileSharedMetadataWrite,
-  type SharedMetadataWritePlan,
-} from "./shared-metadata-write.ts"
-import { sharedMetadataEntity } from "./shared-metadata-write-model.ts"
-import { querySharedOperationIndex } from "./shared-operation-index.ts"
-import {
-  loadPendingSharedCreates,
-  pendingSharedCreatePlans,
-  reconcileSharedCreate,
-  type SharedCreatePlan,
-} from "./shared-create.ts"
-import { loadPendingSharedSkillApplies, reconcileSharedSkillApply } from "./shared-skill-apply.ts"
-import type { SharedSkillApplyPlan } from "./shared-skill-apply-model.ts"
-import {
-  pendingFileOperations,
-  pendingFileOperationKey,
-  retainPendingFileOperation,
-  sharedPendingObservationPrefix,
-} from "./shared-pending-file-operations.ts"
-export { sharedPendingObservationPrefix } from "./shared-pending-file-operations.ts"
-import { querySharedSkillIndex, type SharedBodyBinding } from "./shared-skill-index.ts"
-import {
-  querySharedRouterMembers,
-  querySharedSkillRelation,
-  renderSharedRouterMembers,
-  type SharedRouterMember,
-} from "./shared-router-members.ts"
-import { sha256, Store } from "./store.ts"
-import type { SharedAuthoringEvidence } from "./shared-authoring.ts"
+  assertSelectedSharedFileReferences,
+  assertSelectedSharedSourceReferences,
+  currentAuthoredReferenceFiles,
+} from "./shared-file-references.ts"
 import { sharedGraphInventory, sharedGraphMetadata } from "./shared-graph-read-context.ts"
+import type { SharedLibrary } from "./shared-library-model.ts"
 import {
   sharedSkillMetadataFor,
   type SharedSkillMetadataObservation,
 } from "./shared-metadata-inventory.ts"
+import { NativeBodyCompletionSchema } from "./shared-native-body-completion.ts"
+import { materializeSharedNativeFile } from "./shared-native-file-content.ts"
+import { compileSharedNativeReferences } from "./shared-native-references.ts"
+import { observeSharedBody } from "./shared-page-body.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
+import {
+  querySharedRouterMembers,
+  querySharedSkillRelation,
+  type SharedRouterMember,
+} from "./shared-router-members.ts"
+import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
+import { sha256, Store } from "./store.ts"
+
+export type FixedSharedSource = {
+  readonly source_id: string
+  readonly revision: string
+  readonly files: readonly import("./shared-composition.ts").CompositionFile[]
+  readonly local_paths?: readonly string[]
+}
 
 export const SHARED_FULL_BODY_MAX_AGE_MS = 24 * 60 * 60 * 1000
-const MAX_OBJECT_BYTES = 64 * 1024 * 1024
 const encoder = new TextEncoder()
-
-const LocalFileObservationSchema = Schema.Struct({
+const NativeObservationSchema = Schema.Struct({
   file_id: Schema.String,
   page_id: Schema.String,
   path: Schema.String,
+  descriptor: Schema.String,
   last_edited_time: Schema.String,
-  management_revision: Schema.String,
   body_sha256: Schema.String,
   body_verified_at: Schema.Number,
-  metadata_validated_at: Schema.Number,
   native_body_completion: Schema.optional(NativeBodyCompletionSchema),
 })
-const SharedObservationCacheSchema = Schema.Struct({
+const CurrentObservationSchema = Schema.Struct({
   version: Schema.Literal(1),
+  generation: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
   scope: Schema.String,
   library_id: Schema.String,
   skill_id: Schema.String,
   skill_page_id: Schema.String,
-  generation: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1)),
-  snapshot_id: Schema.String,
-  observations: Schema.Array(LocalFileObservationSchema),
+  files: Schema.Array(NativeObservationSchema),
 })
-export type FixedSharedSource = {
-  readonly source_id: string
-  readonly revision: string
-  /** Already resolved, selected immutable bytes. This builder never resolves a branch or downloads. */
-  readonly files: readonly CompositionFile[]
-  /** Conservative restriction follows a source path through rendering and logical moves. */
-  readonly local_paths?: readonly string[]
-}
+
 export type OpenSharedSnapshotInput = {
   readonly library: SharedLibrary
   readonly target: string
@@ -148,183 +83,99 @@ export type OpenSharedSnapshotInput = {
   readonly skillsMetadata?: SharedSkillMetadataObservation
   readonly startedAt: number
   readonly forceFull?: boolean
-  readonly fixedSource?: FixedSharedSource | PlannedSharedSource
+  readonly maxAge?: number
+  readonly requestedPaths?: readonly string[]
+  readonly requestedFileIds?: readonly string[]
+  readonly sourceOptions?: SharedSourcePlanOptions
   readonly routerMembers?: readonly SharedRouterMember[]
   readonly relations?: {
     readonly members?: readonly SharedRouterMember[]
     readonly required?: readonly SharedRouterMember[]
   }
-  /** Internal authoring preflight: never retain/adopt a newly observed body. */
-  readonly readOnly?: boolean
 }
 
-function checked<A>(run: () => A): Effect.Effect<A, SkillsError> {
-  return Effect.try({
-    try: run,
+const checked = <A>(action: () => A) =>
+  Effect.try({
+    try: action,
     catch: (error) =>
       error instanceof SkillsError
         ? error
-        : fail(
-            "SHARED_SNAPSHOT_INVALID",
-            error instanceof Error ? error.message : "Invalid shared snapshot input.",
-          ),
+        : fail("CURRENT_TREE_INVALID", "The current file tree is invalid."),
+  })
+const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+
+function consumptionFence(index: CurrentSkillIndex, consumption: CurrentSkillConsumption) {
+  return canonicalSharedJson({
+    skill_id: index.skill_id,
+    page_id: index.page_id,
+    kind: index.kind,
+    enabled: index.enabled,
+    entrypoint: index.main.path,
+    files: consumption.files,
+    source_fingerprint: consumption.source_fingerprint,
+    notion_authority: [index.main, ...index.files]
+      .filter((file) => file.content.kind !== "source")
+      .sort((a, b) => compare(a.path, b.path))
+      .map((file) => ({
+        file_id: file.file_id,
+        page_id: file.page_id,
+        path: file.path,
+        content: file.content,
+        ...(file.content.kind === "native" ? { last_edited_time: file.last_edited_time } : {}),
+      })),
   })
 }
 
-function objectSize(bytes: Uint8Array, path: string): void {
-  if (bytes.byteLength > MAX_OBJECT_BYTES)
-    throw fail(
-      "SHARED_OBJECT_TOO_LARGE",
-      "This shared snapshot path supports native body observations up to 64 MiB.",
-      {
-        path,
-        bytes: bytes.byteLength,
-        max_bytes: MAX_OBJECT_BYTES,
-      },
-    )
-}
-
-function loadFileObservations(
-  prefix: string,
-  input: {
-    readonly scope: string
-    readonly library_id: string
-    readonly skill_id: string
-  },
-) {
-  return Effect.gen(function* () {
-    const store = yield* Store
-    const keys = (yield* store.listKeys(prefix))
-      .filter((key) => key.endsWith(".json"))
-      .sort()
-      .reverse()
-    const key = keys[0]
-    if (key === undefined) return [] satisfies LocalFileObservation[]
-    const saved = yield* store.readJson(key, SharedObservationCacheSchema)
-    if (saved === undefined) return [] satisfies LocalFileObservation[]
-    if (
-      saved.scope !== input.scope ||
-      saved.library_id !== input.library_id ||
-      saved.skill_id !== input.skill_id ||
-      key !== `${prefix}/${String(saved.generation).padStart(20, "0")}.json`
-    )
-      return yield* Effect.fail(
-        fail("STATE_CORRUPT", "Shared file observations have a different scope or generation."),
-      )
-    return [...saved.observations]
-  })
-}
-
-function fileRevision(
-  binding: SharedBodyBinding,
-  events: readonly FileEvent[],
-  source:
-    | { readonly path_hash: string }
-    | { readonly git_oid: string; readonly bytes: number }
-    | undefined,
-) {
-  return sha256(
-    canonicalSharedJson({
-      version: 1,
-      file_id: binding.file_id,
-      page_id: binding.page_id,
-      path: binding.path,
-      events: [...events].sort((a, b) =>
-        a.event_id < b.event_id ? -1 : a.event_id > b.event_id ? 1 : 0,
-      ),
-      source: source ?? null,
-    }),
-  )
-}
-
-/**
- * Current shared-library consumer. Shared facts determine ownership on every invocation.
- * The caller owns zero-network TTL/pinned/offline fast paths; this invocation revalidates
- * the selected Skills row, Files membership and shared facts through batched metadata.
- */
+/** Current facts only. This boundary never reconciles a management operation,
+ * adopts a body, or reads historical Records. Native bodies have a disposable
+ * local observation; source and resource bodies remain exact bytes. */
 export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
-  const consume = Effect.gen(function* () {
-    const skillsMetadata = input.skillsMetadata
-    const skillsInventory =
-      skillsMetadata === undefined
-        ? undefined
-        : yield* checked(() => sharedSkillMetadataFor(skillsMetadata, input.library, input.scope))
-    const store = yield* Store
-    const api = yield* Notion
+  return Effect.gen(function* () {
     const selected = yield* checked(() => {
-      const id = pageId(input.target)
-      if (!id || !input.scope || !Number.isFinite(input.startedAt) || input.startedAt < 0)
-        throw fail(
-          "INVALID_ARGUMENT",
-          "Shared consumption requires an exact page, account scope and valid start time.",
-        )
-      return id
+      const selected = pageId(input.target)
+      if (!selected || !input.scope || !Number.isFinite(input.startedAt) || input.startedAt < 0)
+        throw fail("INVALID_ARGUMENT", "Select an exact Skill page and authenticated scope.")
+      return selected
     })
-    const plannedSource =
-      input.fixedSource !== undefined && "manifest" in input.fixedSource
-        ? input.fixedSource
-        : undefined
-    // Eager authoring callers still supply complete resolved bytes. Current consumption
-    // supplies a complete immutable directory and acquires bytes after the shared barriers.
-    let sourceFiles = yield* checked(() =>
-      (input.fixedSource !== undefined && "files" in input.fixedSource
-        ? input.fixedSource.files
-        : []
-      ).map((file) => {
-        if (!(file.bytes instanceof Uint8Array))
-          throw fail("INVALID_SOURCE", "A fixed source must contain resolved bytes.")
-        return { path: file.path, bytes: new Uint8Array(file.bytes) }
-      }),
-    )
-    const sourceManifest: readonly PlannedSharedSourceFile[] =
-      plannedSource === undefined
-        ? yield* Effect.forEach(sourceFiles, (file) =>
-            Effect.gen(function* () {
-              return {
-                path: file.path,
-                bytes: file.bytes.byteLength,
-                identity: { kind: "sha256" as const, sha256: yield* sha256(file.bytes) },
-              }
-            }),
-          )
-        : yield* checked(() =>
-            plannedSource.manifest.map((file) => ({
-              ...file,
-              identity: { ...file.identity },
-            })),
-          )
+    const api = yield* Notion
+    const store = yield* Store
     const raw =
       input.rawPage === undefined ? yield* api.request(`v1/pages/${selected}`) : input.rawPage
     const source: Source = {
       alias: input.library.library_id,
-      database_id: input.library.skills.database_id,
       title: "",
-      data_source_ids: [input.library.skills.data_source_id],
       role: "content",
+      database_id: input.library.skills.database_id,
+      data_source_ids: [input.library.skills.data_source_id],
       shared_library: input.library,
     }
     const record = yield* checked(() =>
       sharedRecordFromPage(raw, source, input.library.skills.data_source_id),
     )
-    if (record.locator.page_id !== selected)
+    if (
+      record.locator.page_id !== selected ||
+      (input.expectedSkillId !== undefined && record.locator.skill_id !== input.expectedSkillId)
+    )
       return yield* Effect.fail(
-        fail("SHARED_FILE_SCOPE", "The supplied Skill page differs from the selected target."),
-      )
-    if (input.expectedSkillId !== undefined && record.locator.skill_id !== input.expectedSkillId)
-      return yield* Effect.fail(
-        fail(
-          "SHARED_SKILL_ID_CONFLICT",
-          "The selected Skill identity changed after directory resolution.",
-        ),
+        fail("SHARED_SKILL_ID_CONFLICT", "The selected current Skill changed identity."),
       )
     if (!record.enabled && !(yield* isSharedAuthoringTarget(selected)))
       return yield* Effect.fail(
-        fail("CONTENT_DISABLED", "The selected Skill is disabled in Notion.", { id: record.id }),
+        fail("CONTENT_DISABLED", "The selected Skill is disabled.", { id: record.id }),
       )
     if (!record.enabled)
       yield* invalidateSnapshotCache(record.id, input.scope, { retainForOffline: true })
-    const graphInventory = yield* sharedGraphInventory(input.library)
-    const routerMembers =
+    // Reserve before dependent metadata/body reads. The native-body slot and the
+    // current snapshot observation use this same owner and causal generation.
+    const generation = yield* store.reserveCacheGeneration(input.scope, record.id)
+    const inventory =
+      (yield* sharedGraphInventory(input.library)) ??
+      (input.skillsMetadata === undefined
+        ? undefined
+        : yield* checked(() =>
+            sharedSkillMetadataFor(input.skillsMetadata!, input.library, input.scope),
+          ))
+    const members =
       record.kind === "router" ||
       (record.kind === "skill" && input.library.skills.property_ids.Members !== undefined)
         ? (input.relations?.members ??
@@ -332,10 +183,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           (yield* querySharedRouterMembers(input.library, {
             router: record,
             rawPage: raw,
-            inventory: graphInventory ?? skillsInventory,
+            inventory,
           })))
         : undefined
-    const frozenMembers = routerMembers?.map(({ id, ref, metadata }) => ({ id, ref, metadata }))
     const required =
       record.kind !== "prompt" && input.library.skills.property_ids.Requires !== undefined
         ? (input.relations?.required ??
@@ -343,1047 +193,431 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             record,
             rawPage: raw,
             field: "Requires",
-            inventory: graphInventory ?? skillsInventory,
+            inventory,
           })))
         : undefined
-    const frozenRequired = required?.map(({ id, ref, metadata }) => ({ id, ref, metadata }))
-    const generation = yield* store.reserveCacheGeneration(input.scope, record.id)
-    const graphMetadata = yield* sharedGraphMetadata(
-      input.library,
-      record,
-      required ?? [],
-      input.scope,
-    )
-    const index = yield* querySharedSkillIndex(input.library, selected, raw, graphMetadata?.files)
-    const fileLinks = yield* checked(() =>
-      parseSharedFileLinks(index.file_links, input.library.library_id),
-    )
-    if (index.skill_id !== record.locator.skill_id)
-      return yield* Effect.fail(
-        fail("SHARED_FILE_SCOPE", "Shared Skill identity changed during metadata decoding."),
-      )
-    if (index.source_reference !== (input.fixedSource?.source_id ?? ""))
-      return yield* Effect.fail(
-        fail(
-          "SHARED_SOURCE_UNAVAILABLE",
-          "Resolve the exact source selected in Notion before consumption; no current-body or Git fallback is allowed.",
-          {
-            source_id: index.source_reference,
-          },
-        ),
-      )
-    if (
-      input.fixedSource !== undefined &&
-      (!input.fixedSource.source_id || !input.fixedSource.revision)
-    )
-      return yield* Effect.fail(
-        fail("INVALID_SOURCE", "A resolved source requires a fixed identity and revision."),
-      )
-    const bindings: readonly SharedBodyBinding[] = [index.main, ...index.files]
-    const bindingById = new Map(bindings.map((file) => [file.file_id, file]))
-    const sourceByPath = new Map<string, PlannedSharedSourceFile>()
-    const sourceHashes = new Map<string, string>()
-    for (const file of sourceManifest) {
-      if (sourceByPath.has(file.path))
-        return yield* Effect.fail(
-          fail("COMPOSITION_SOURCE_COLLISION", "Fixed source paths must be unique.", {
-            path: file.path,
-          }),
-        )
-      sourceByPath.set(file.path, file)
-      if (
-        !Number.isSafeInteger(file.bytes) ||
-        file.bytes < 0 ||
-        (file.identity.kind === "sha256"
-          ? !/^[a-f0-9]{64}$/u.test(file.identity.sha256)
-          : !/^[a-f0-9]{40}$/u.test(file.identity.git_oid))
-      )
-        return yield* Effect.fail(
-          fail("INVALID_SOURCE", "The complete fixed source has an invalid file identity."),
-        )
-      if (file.identity.kind === "sha256") sourceHashes.set(file.path, file.identity.sha256)
-    }
-    const localSourcePaths = new Set(input.fixedSource?.local_paths ?? [])
-    for (const path of localSourcePaths) {
-      if (!sourceByPath.has(path))
-        return yield* Effect.fail(
-          fail(
-            "INVALID_SOURCE",
-            "A restricted source path is absent from the complete fixed source tree.",
-          ),
-        )
-    }
-    const sourceRestrictions = new Set(
-      yield* localContentRestrictedHashes([...sourceHashes.values()]),
-    )
-    for (const [path, hash] of sourceHashes)
-      if (sourceRestrictions.has(hash)) localSourcePaths.add(path)
-    const scopeIdentity = yield* sha256(
-      canonicalSharedJson([input.scope, input.library.library_id, index.skill_id]),
-    )
-    // Pending intent is a replay barrier, not a discardable body cache or an ownership authority.
-    const pendingScope = {
-      prefix: yield* sharedPendingObservationPrefix(
-        input.scope,
-        input.library.library_id,
-        index.skill_id,
-      ),
-      scope: input.scope,
-      library_id: input.library.library_id,
-      skill_id: index.skill_id,
-      skill_page_id: selected,
-    }
-    const facts =
-      graphMetadata?.facts ??
-      (yield* querySharedRecords(input.library, {
-        skillPageId: selected,
-        kind: "file_event",
-      }))
-    const eventsByFile = new Map<string, FileEvent[]>()
-    for (const fact of facts) {
-      const event = yield* checked(() => decode(FileEventSchema, fact.payload))
-      if (fact.record_id !== event.event_id || fact.entity_id !== event.file_id)
-        return yield* Effect.fail(
-          fail(
-            "SHARED_STATE_SCOPE",
-            "An event payload differs from its immutable record identity.",
-          ),
-        )
-      if (!bindingById.has(event.file_id))
-        return yield* Effect.fail(
-          fail(
-            "UNBOUND_FILE_STATE",
-            "A shared file fact has no current binding; reconcile membership before creating a complete snapshot.",
-            { file_id: event.file_id },
-          ),
-        )
-      const events = eventsByFile.get(event.file_id) ?? []
-      events.push(event)
-      eventsByFile.set(event.file_id, events)
-    }
-    const allEvents = [...eventsByFile.values()].flat()
-    const eventById = new Map(allEvents.map((event) => [event.event_id, event]))
-    const plans = new Map<string, SharedObservationPlan>()
-    const localPending = yield* pendingFileOperations(pendingScope)
-    const operationHeaders =
-      graphMetadata?.operations ?? (yield* querySharedOperationIndex(input.library, selected))
-    yield* assertSharedNativeAdoptionComplete(input.library, selected, operationHeaders)
-    const creates = new Map<string, SharedCreatePlan>()
-    for (const plan of yield* pendingSharedCreatePlans(
-      input.scope,
-      input.library.library_id,
-      index.skill_id,
-    ))
-      creates.set(plan.operation_id, plan)
-    for (const plan of yield* loadPendingSharedCreates(input.library, {
-      skillPageId: selected,
-      events: allEvents,
-      headers: operationHeaders,
-    })) {
-      const original = creates.get(plan.operation_id)
-      if (original !== undefined && canonicalSharedJson(original) !== canonicalSharedJson(plan))
-        return yield* Effect.fail(
-          fail("SHARED_RECORD_CONFLICT", "The shared and local original create plans disagree."),
-        )
-      creates.set(plan.operation_id, plan)
-    }
-    for (const plan of creates.values()) {
-      const result = yield* reconcileSharedCreate(input.library, plan)
-      return yield* Effect.fail(
-        fail(
-          "SHARED_CREATE_RECONCILED",
-          "The original native create outcome is verified. Read current metadata again before publishing.",
-          {
-            create_operation_id: plan.operation_id,
-            status: result.status,
-            read_again: true,
-          },
-        ),
-      )
-    }
-    const bodyWrites = new Map<string, SharedBodyWritePlan>()
-    const bodyReviews = new Map<string, SharedBodyWriteReviewPlan>()
-    const metadataWrites = new Map<string, SharedMetadataWritePlan>()
-    const fileManagements = new Map<string, SharedFileManagementPlan>()
-    const skillApplies = new Map<string, SharedSkillApplyPlan>()
-    for (const entry of localPending) {
-      if (entry.plan.kind === "native_adoption") {
-        yield* reconcileSharedNativeAdoption(entry.plan)
-        yield* store.retireKeys([entry.key])
-        return yield* Effect.fail(
-          fail(
-            "SHARED_ADOPTION_RECONCILED",
-            "The original native adoption is verified. Read the current page again before authoring.",
-            { adoption_operation_id: entry.plan.operation_id, read_again: true },
-          ),
-        )
-      }
-      if (entry.plan.kind === "body_write_review") {
-        bodyReviews.set(entry.plan.operation_id, entry.plan)
-        continue
-      }
-      if (entry.plan.kind === "skill_apply") {
-        skillApplies.set(entry.plan.operation_id, entry.plan)
-        continue
-      }
-      if (entry.plan.kind === "body_write") {
-        bodyWrites.set(entry.plan.operation_id, entry.plan)
-        continue
-      }
-      if (entry.plan.kind === "metadata_write") {
-        metadataWrites.set(entry.plan.operation_id, entry.plan)
-        continue
-      }
-      if (entry.plan.kind === "file_management") {
-        fileManagements.set(entry.plan.operation_id, entry.plan)
-        continue
-      }
-      const completed = eventById.get(entry.plan.event.event_id)
-      if (completed !== undefined) {
-        if (canonicalSharedJson(completed) !== canonicalSharedJson(entry.plan.event))
-          return yield* Effect.fail(
-            fail(
-              "SHARED_RECORD_CONFLICT",
-              "The shared event differs from the original pending observation.",
-            ),
+    const graph = yield* sharedGraphMetadata(input.library, record, required ?? [], input.scope)
+    const index = yield* queryCurrentSkillIndex(input.library, selected, raw, graph?.files)
+    yield* checked(() => requireCurrentSkillReady(index.state, index.page_id))
+    const bindings = [index.main, ...index.files].sort((a, b) => compare(a.path, b.path))
+    const consumption = yield* resolveCurrentSkillConsumption(input.library, index, {
+      sourceOptions: input.sourceOptions,
+    })
+    const currentFiles = consumption.files
+    const sources = consumption.sources
+    const byPath = new Map(currentFiles.map((file) => [file.path, file]))
+    const paths = currentFiles.map((file) => file.path)
+    const requested = yield* checked(() => {
+      if (input.requestedPaths === undefined && input.requestedFileIds === undefined)
+        return new Set(paths)
+      const selectedPaths = new Set([record.entrypoint])
+      for (const path of input.requestedPaths ?? []) {
+        if (normalizePath(path) !== path || !byPath.has(path))
+          throw fail(
+            "FILE_NOT_FOUND",
+            "The requested path is absent from the current complete tree.",
+            { path },
           )
-        yield* store.retireKeys([entry.key])
-      } else plans.set(entry.plan.operation_id, entry.plan)
-    }
-    // Reconcile a frozen batch before its children. A partial terminal outcome
-    // defines which remaining children were never dispatched; absence alone does not.
-    for (const plan of yield* loadPendingSharedSkillApplies(input.library, {
-      skillPageId: selected,
-      headers: operationHeaders,
-    })) {
-      const original = skillApplies.get(plan.operation_id)
-      if (original !== undefined && canonicalSharedJson(original) !== canonicalSharedJson(plan))
-        return yield* Effect.fail(
-          fail("SHARED_RECORD_CONFLICT", "The shared and local original apply plans disagree."),
+        selectedPaths.add(path)
+      }
+      for (const id of input.requestedFileIds ?? []) {
+        const binding = bindings.find((file) => file.file_id === id)
+        if (
+          binding === undefined ||
+          canonicalSharedJson(byPath.get(binding.path)?.content) !==
+            canonicalSharedJson(binding.content)
         )
-      skillApplies.set(plan.operation_id, plan)
-    }
-    for (const plan of skillApplies.values()) {
-      const result = yield* reconcileSharedSkillApply(input.library, plan)
-      return yield* Effect.fail(
-        fail(
-          "SHARED_APPLY_RECONCILED",
-          "The original apply outcome is verified. Read current metadata again before publishing.",
-          { apply_operation_id: plan.operation_id, status: result.status, read_again: true },
-        ),
-      )
-    }
-    for (const plan of yield* loadPendingSharedObservationPlans(input.library, {
-      skillPageId: selected,
-      events: allEvents,
-      headers: operationHeaders,
-    })) {
-      const existing = plans.get(plan.operation_id)
-      if (existing !== undefined && canonicalSharedJson(existing) !== canonicalSharedJson(plan))
-        return yield* Effect.fail(
-          fail("SHARED_RECORD_CONFLICT", "Shared and local frozen observation plans disagree."),
-        )
-      plans.set(plan.operation_id, plan)
-    }
-    const bodyOutcomeIds = new Set(
-      operationHeaders
-        .filter((header) => header.record_id.startsWith("body-write-"))
-        .map((header) => bodyWriteOutcomeId(header.record_id)),
+          throw fail("FILE_NOT_FOUND", "The selected File ID is not current.", { file_id: id })
+        selectedPaths.add(binding.path)
+      }
+      return selectedPaths
+    })
+    for (const file of currentFiles)
+      if (file.content.kind === "source") {
+        const content = file.content
+        const selectedSource = sources.get(content.source_id)
+        if (selectedSource?.local_paths.includes(content.source_path))
+          yield* markLocalContentRestriction(content.sha256)
+      }
+    const observationKey = `cache/current-native-bodies/${yield* sha256(canonicalSharedJson([input.scope, input.library.library_id, index.skill_id]))}/latest.json`
+    const previous = yield* store.readJson(observationKey, CurrentObservationSchema)
+    if (
+      previous !== undefined &&
+      (previous.scope !== input.scope ||
+        previous.library_id !== input.library.library_id ||
+        previous.skill_id !== index.skill_id)
     )
-    const pendingWriteRecords =
-      operationHeaders.some((header) => header.entity_id === sharedMetadataEntity) &&
-      operationHeaders.some(
-        (header) =>
-          header.entity_id === bodyWriteOutcomesEntity && bodyOutcomeIds.has(header.record_id),
+      return yield* Effect.fail(
+        fail("STATE_CORRUPT", "The current body cache belongs to another owner."),
       )
-        ? yield* Effect.cached(
-            querySharedRecords(input.library, {
-              skillPageId: selected,
-              kind: "operation",
-              entityIds: [bodyWriteOutcomesEntity, sharedMetadataEntity],
-            }),
+    // The ready current index may identify a rebuilt page for the same logical
+    // Skill. None of the former physical owner's native observations remain fresh.
+    const previousFiles = previous?.skill_page_id === selected ? previous.files : []
+    const now = yield* Clock.currentTimeMillis
+    const observations: Array<typeof NativeObservationSchema.Type> = []
+    const nativeBodies: Array<{
+      path: string
+      markdown: string
+      body_sha256: string
+      page_id: string
+      native_body_completion?: typeof NativeBodyCompletionSchema.Type
+    }> = []
+    const materialized = new Map<string, Uint8Array>()
+    let bodyReads = 0
+    for (const binding of bindings) {
+      const content = binding.content
+      if (content.kind !== "native") continue
+      const descriptor = canonicalSharedJson(content)
+      const prior = previousFiles.find((file) => file.file_id === binding.file_id)
+      const fresh =
+        !input.forceFull &&
+        prior !== undefined &&
+        prior.page_id === binding.page_id &&
+        prior.path === binding.path &&
+        prior.descriptor === descriptor &&
+        prior.last_edited_time === binding.last_edited_time &&
+        prior.body_verified_at <= now &&
+        now - prior.body_verified_at < SHARED_FULL_BODY_MAX_AGE_MS
+      const cached = fresh
+        ? yield* store.readBytes(`objects/${prior.body_sha256}`).pipe(
+            Effect.catchIf(
+              (error) => error.code === "SNAPSHOT_MISSING",
+              () => Effect.succeed(undefined),
+            ),
           )
         : undefined
-    // One complete observation serves both existing validators. The lazy read
-    // starts only if needed and never escapes this pre-reconciliation phase.
-    for (const plan of yield* loadPendingSharedBodyWrites(input.library, {
-      skillPageId: selected,
-      events: allEvents,
-      headers: operationHeaders,
-      outcomeRecords: pendingWriteRecords?.pipe(
-        Effect.map((rows) => rows.filter((row) => row.entity_id === bodyWriteOutcomesEntity)),
-      ),
-    })) {
-      const existing = bodyWrites.get(plan.operation_id)
-      if (existing !== undefined && canonicalSharedJson(existing) !== canonicalSharedJson(plan))
-        return yield* Effect.fail(
-          fail("SHARED_RECORD_CONFLICT", "Shared and local original body-write plans disagree."),
-        )
-      bodyWrites.set(plan.operation_id, plan)
-    }
-    for (const plan of yield* loadPendingSharedMetadataWrites(input.library, {
-      skillPageId: selected,
-      headers: operationHeaders,
-      records: pendingWriteRecords?.pipe(
-        Effect.map((rows) => rows.filter((row) => row.entity_id === sharedMetadataEntity)),
-      ),
-    })) {
-      const original = metadataWrites.get(plan.operation_id)
-      if (original !== undefined && canonicalSharedJson(original) !== canonicalSharedJson(plan))
-        return yield* Effect.fail(
-          fail(
-            "SHARED_RECORD_CONFLICT",
-            "The shared and local original metadata operations disagree.",
-          ),
-        )
-      metadataWrites.set(plan.operation_id, plan)
-    }
-    for (const plan of yield* loadPendingSharedFileManagement(input.library, {
-      skillPageId: selected,
-      events: allEvents,
-      headers: operationHeaders,
-    })) {
-      const original = fileManagements.get(plan.operation_id)
-      if (original !== undefined && canonicalSharedJson(original) !== canonicalSharedJson(plan))
-        return yield* Effect.fail(
-          fail("SHARED_RECORD_CONFLICT", "The shared and local original file operations disagree."),
-        )
-      fileManagements.set(plan.operation_id, plan)
-    }
-    for (const plan of fileManagements.values()) {
-      const result = yield* reconcileSharedFileManagement(input.library, plan)
-      return yield* Effect.fail(
-        fail(
-          "SHARED_FILE_MANAGEMENT_RECONCILED",
-          "The original file lifecycle outcome is verified. Read current metadata again before publishing.",
-          {
-            file_management_operation_id: plan.operation_id,
-            status: result.status,
-            read_again: true,
-          },
-        ),
-      )
-    }
-    for (const plan of metadataWrites.values()) {
-      const result = yield* reconcileSharedMetadataWrite(input.library, plan)
-      yield* invalidateSnapshotCache(record.id, input.scope)
-      const local = localPending.find((entry) => entry.plan.operation_id === plan.operation_id)
-      if (local !== undefined) yield* store.retireKeys([local.key])
-      return yield* Effect.fail(
-        fail(
-          "SHARED_METADATA_WRITE_RECONCILED",
-          "The original metadata outcome is verified. Read current metadata again before publishing.",
-          { metadata_operation_id: plan.operation_id, status: result.status, read_again: true },
-        ),
-      )
-    }
-    for (const plan of bodyReviews.values()) {
-      const result = yield* reconcileSharedBodyWriteReview(input.library, plan)
-      yield* invalidateSnapshotCache(record.id, input.scope)
-      yield* store.retireKeys(
-        localPending
-          .filter(
-            (entry) =>
-              entry.plan.operation_id === plan.operation_id ||
-              entry.plan.operation_id === plan.original_operation_id,
-          )
-          .map((entry) => entry.key),
-      )
-      return yield* Effect.fail(
-        fail(
-          "SHARED_BODY_REVIEW_RECONCILED",
-          "The independent review is verified; the original write remains needs_review. Read current metadata again before publishing.",
-          {
-            review_operation_id: plan.operation_id,
-            original_operation_id: plan.original_operation_id,
-            status: result.status,
-            decision: result.decision,
-            original_status: result.original_status,
-            read_again: true,
-          },
-        ),
-      )
-    }
-    // Explicit system candidates must never be observed as natural user edits.
-    // Completion requires the exact operation outcome, not a content event alone.
-    for (const plan of bodyWrites.values()) {
-      const binding = bindingById.get(plan.file_id)
-      if (
-        binding === undefined ||
-        binding.page_id !== plan.page_id ||
-        plan.skill_id !== index.skill_id
-      )
-        return yield* Effect.fail(
-          fail(
-            "UNBOUND_FILE_STATE",
-            "The original pending body write no longer has its exact file binding.",
-            { body_write_operation_id: plan.operation_id },
-          ),
-        )
-      const result = yield* reconcileSharedBodyWrite(input.library, plan)
-      yield* invalidateSnapshotCache(record.id, input.scope)
-      const local = localPending.find((entry) => entry.plan.operation_id === plan.operation_id)
-      if (local !== undefined) yield* store.retireKeys([local.key])
-      return yield* Effect.fail(
-        fail(
-          "SHARED_BODY_WRITE_RECONCILED",
-          result.status === "reviewed"
-            ? "The independent accepted-observed review is verified; the original write remains needs_review. Read the current page again."
-            : "The original body write is now verified. Read the current page again before publishing a new snapshot.",
-          {
-            body_write_operation_id: plan.operation_id,
-            status: result.status,
-            original_downloaded_at: plan.before.downloaded_at,
-            read_again: true,
-          },
-        ),
-      )
-    }
-    // Resolve old intent before consulting current bodies or publishing cached bytes.
-    // Even an invisible first POST is fenced by the original local journal.
-    for (const plan of plans.values()) {
-      const binding = bindingById.get(plan.file_id)
-      if (binding === undefined || binding.page_id !== plan.page_id)
-        return yield* Effect.fail(
-          fail(
-            "UNBOUND_FILE_STATE",
-            "A pending observation has no matching current file binding; preserve its original plan.",
-            { operation_id: plan.operation_id },
-          ),
-        )
-      const reconciled = yield* observeSharedFile({
-        library: input.library,
-        skillPageId: selected,
-        fileId: binding.file_id,
-        pageId: binding.page_id,
-        events: eventsByFile.get(binding.file_id) ?? [],
-        plans: [plan],
-        bodyWrites: [],
-        readOnly: input.readOnly,
-      }).pipe(Effect.result)
-      if (reconciled._tag === "Failure") {
-        if (reconciled.failure.code === "SHARED_OBSERVATION_RECONCILED") {
-          yield* invalidateSnapshotCache(record.id, input.scope)
-          const local = localPending.find((entry) => entry.plan.operation_id === plan.operation_id)
-          if (local !== undefined) yield* store.retireKeys([local.key])
-        }
-        return yield* Effect.fail(reconciled.failure)
-      }
-      return yield* Effect.fail(
-        fail(
-          "SHARED_OBSERVATION_UNRESOLVED",
-          "The original observation must be reconciled before a new snapshot can be published.",
-        ),
-      )
-    }
-    const states = new Map<string, ResolvedFileState>()
-    // Validate every graph and baseline before observing or adopting any body.
-    for (const binding of bindings) {
-      const events = eventsByFile.get(binding.file_id) ?? []
-      if (events.length === 0) {
-        if (index.source_reference || binding.baseline !== undefined)
+      let observed: typeof NativeObservationSchema.Type
+      let markdown: string
+      if (cached !== undefined && prior !== undefined) {
+        if ((yield* sha256(cached)) !== prior.body_sha256)
           return yield* Effect.fail(
-            fail(
-              "BASELINE_MISSING",
-              "Shared projected state is absent; reads cannot reconstruct a following fact from display metadata.",
-              { file_id: binding.file_id },
-            ),
+            fail("STATE_CORRUPT", "The current body cache failed its checksum."),
           )
-        continue
-      }
-      const state = yield* checked(() => resolveFileState(binding.file_id, events))
-      if (state.placement !== undefined && state.placement.path !== binding.path)
-        return yield* Effect.fail(
-          fail(
-            "SHARED_PATH_CONFLICT",
-            "The current Path property differs from the exact shared file placement.",
-            { file_id: binding.file_id, path: binding.path, expected_path: state.placement.path },
-          ),
-        )
-      if (
-        state.ownership.kind === "following" &&
-        !(yield* checked(() => sourceByPath.has(sharedFileSourcePath(binding.path, state))))
-      )
-        return yield* Effect.fail(
-          fail(
-            "SHARED_SOURCE_FILE_MISSING",
-            "A following file is absent from the exact selected source directory.",
-            { file_id: binding.file_id, path: binding.path },
-          ),
-        )
-      states.set(binding.file_id, state)
-    }
-    const prefix = `cache/shared-file-observations/${scopeIdentity}`
-    const previous = yield* loadFileObservations(prefix, {
-      scope: input.scope,
-      library_id: input.library.library_id,
-      skill_id: index.skill_id,
-    })
-    const missingMembership = previous.filter(
-      (observation) => !bindingById.has(observation.file_id),
-    )
-    if (missingMembership.length > 0)
-      return yield* Effect.fail(
-        fail(
-          "UNBOUND_FILE_STATE",
-          "Previously observed file membership is missing; absence cannot authorize deleting it from a complete snapshot.",
-          {
-            files: missingMembership.map((file) => ({
-              file_id: file.file_id,
-              page_id: file.page_id,
-              path: file.path,
-            })),
-            deletion_authorized: false,
-          },
-        ),
-      )
-    if (plannedSource !== undefined) {
-      // Shared membership, every event graph and original-operation barriers precede
-      // provider acquisition. Obtain required bytes before observing a new user edit:
-      // a failed required provider must not first publish an adoption side effect.
-      const placement = yield* checked(() =>
-        planSharedFilePlacements({
-          source: sourceManifest,
-          overrides: bindings.flatMap((binding) => {
-            const state = states.get(binding.file_id)
-            if (state === undefined)
-              throw fail("BASELINE_MISSING", "The complete source plan lacks a file state.")
-            return state.ownership.kind === "following"
-              ? []
-              : [{ kind: state.ownership.kind, file_id: binding.file_id, path: binding.path }]
-          }),
-          bindings: bindings.map((binding) => ({
-            file_id: binding.file_id,
-            path: binding.path,
-            state: states.get(binding.file_id)!,
-          })),
-          entrypoint: record.entrypoint,
-        }),
-      )
-      const requested = new Set(placement.source_paths)
-      // Native custom main pages omit the fixed source's additional YAML fields.
-      if (sourceByPath.has(record.entrypoint)) requested.add(record.entrypoint)
-      // Durable privacy markers use SHA-256. A Git-only identity cannot prove that
-      // an overridden original is unrestricted, so retain its classification read.
-      for (const provenance of placement.provenance.values()) {
-        if (provenance.kind !== "custom" || provenance.replaces === undefined) continue
-        const path = provenance.replaces.source_path
-        if (sourceByPath.get(path)?.identity.kind === "git") requested.add(path)
-      }
-      const materialized = yield* plannedSource.materialize([...requested].sort())
-      sourceFiles = yield* checked(() => {
-        const paths = new Set<string>()
-        const files = materialized.files.map((file) => {
-          if (!requested.has(file.path) || paths.has(file.path))
-            throw fail(
-              "SOURCE_MATERIALIZATION_INCOMPLETE",
-              "Source bytes differ from the selected paths.",
-            )
-          paths.add(file.path)
-          if (!(file.bytes instanceof Uint8Array))
-            throw fail("INVALID_SOURCE", "Selected source content must contain actual bytes.")
-          return { path: file.path, bytes: new Uint8Array(file.bytes) }
-        })
-        if (paths.size !== requested.size)
-          throw fail("SOURCE_MATERIALIZATION_INCOMPLETE", "Selected source bytes are missing.")
-        return files
-      })
-      for (const file of sourceFiles) {
-        const expected = sourceByPath.get(file.path)!
-        const hash = yield* sha256(file.bytes)
-        if (
-          file.bytes.byteLength !== expected.bytes ||
-          (expected.identity.kind === "sha256"
-            ? hash !== expected.identity.sha256
-            : (yield* gitBlobOid(file.bytes)) !== expected.identity.git_oid)
-        )
-          return yield* Effect.fail(
-            fail(
-              "SHARED_SOURCE_CONFLICT",
-              "Selected source bytes differ from their immutable identity.",
-            ),
-          )
-        sourceHashes.set(file.path, hash)
-      }
-      for (const path of materialized.local_paths) {
-        if (!sourceByPath.has(path))
-          return yield* Effect.fail(
-            fail(
-              "INVALID_SOURCE",
-              "A restricted path is absent from the complete source directory.",
-            ),
-          )
-        localSourcePaths.add(path)
-      }
-      const restricted = new Set(yield* localContentRestrictedHashes([...sourceHashes.values()]))
-      for (const [path, hash] of sourceHashes) if (restricted.has(hash)) localSourcePaths.add(path)
-    }
-    const activeBindings = bindings.filter(
-      (file) => states.get(file.file_id)?.ownership.kind !== "tombstone",
-    )
-    const activeIds = new Set(activeBindings.map((file) => file.file_id))
-    const observations = previous.filter((value) => activeIds.has(value.file_id))
-    const cachedBodies = new Map<string, Uint8Array>()
-    for (const observation of observations) {
-      if (!/^[a-f0-9]{64}$/.test(observation.body_sha256))
-        return yield* Effect.fail(
-          fail("STATE_CORRUPT", "Cached body has an invalid checksum identity."),
-        )
-      if (cachedBodies.has(observation.body_sha256)) continue
-      const cached = yield* store
-        .readBytes(`objects/${observation.body_sha256}`)
-        .pipe(Effect.result)
-      if (cached._tag === "Failure") {
-        if (cached.failure.code === "SNAPSHOT_MISSING") continue
-        return yield* Effect.fail(cached.failure)
-      }
-      if ((yield* sha256(cached.success)) !== observation.body_sha256)
-        return yield* Effect.fail(
-          fail(
-            "STATE_CORRUPT",
-            "A cached observed body failed checksum validation; it cannot establish ownership.",
-          ),
-        )
-      cachedBodies.set(observation.body_sha256, cached.success)
-    }
-    const metadata: FileMetadataInput[] = []
-    const sourceIdentity = (binding: SharedBodyBinding) => {
-      if (
-        input.fixedSource === undefined ||
-        states.get(binding.file_id)?.ownership.kind !== "following"
-      )
-        return undefined
-      const state = states.get(binding.file_id)!
-      const file = sourceByPath.get(sharedFileSourcePath(binding.path, state))
-      if (file === undefined) return undefined
-      // Keep the same identity before/after materialization and on later reads.
-      return file.identity.kind === "sha256"
-        ? { path_hash: file.identity.sha256 }
-        : { git_oid: file.identity.git_oid, bytes: file.bytes }
-    }
-    for (const binding of activeBindings)
-      metadata.push({
-        file_id: binding.file_id,
-        page_id: binding.page_id,
-        path: binding.path,
-        last_edited_time: binding.last_edited_time,
-        management_revision: yield* fileRevision(
-          binding,
-          eventsByFile.get(binding.file_id) ?? [],
-          yield* checked(() => sourceIdentity(binding)),
-        ),
-      })
-    const metadataObservedAt = yield* Clock.currentTimeMillis
-    const cachePolicy = yield* effectiveCachePolicy
-    const plan = yield* checked(() =>
-      planFileValidation({
-        files: metadata,
-        observations,
-        now: metadataObservedAt,
-        metadataTtlMs: cachePolicy.read_max_age_ms,
-        fullBodyMaxAgeMs: SHARED_FULL_BODY_MAX_AGE_MS,
-        forceFull: input.forceFull,
-        availableObjectHashes: new Set(cachedBodies.keys()),
-        membershipComplete: true,
-      }),
-    )
-    const previousById = new Map(observations.map((value) => [value.file_id, value]))
-    const nextObservations: LocalFileObservation[] = []
-    const overrides: CompositionOverride[] = []
-    let bodyReads = 0
-    for (const item of plan.files) {
-      const binding = bindingById.get(item.file.file_id)
-      if (binding === undefined)
-        return yield* Effect.fail(
-          fail("SHARED_FILE_SCOPE", "Validation lost its exact file binding."),
-        )
-      let state = states.get(binding.file_id)
-      let body: Uint8Array
-      let next: LocalFileObservation
-      // A following projection may not have retained Markdown. Re-observe current
-      // presentation when that cache is absent; effective bytes still come from
-      // the exact selected source. This is never a historical-pin recovery path.
-      if (
-        item.action === "body_read" ||
-        (item.action === "recover_fixed" && state?.ownership.kind === "following")
-      ) {
-        const events = eventsByFile.get(binding.file_id) ?? []
-        const observed = yield* observeSharedFile({
-          library: input.library,
-          skillPageId: selected,
-          fileId: binding.file_id,
-          pageId: binding.page_id,
-          events,
-          plans: [],
-          bodyWrites: [],
-          readOnly: input.readOnly,
-          beforePlanWrite: (plan) => retainPendingFileOperation(pendingScope, plan),
-          ...(events.length === 0 ? { initialNative: true } : {}),
-        })
-        bodyReads += 1
-        state = observed.state
-        states.set(binding.file_id, state)
-        if (observed.changed) {
-          eventsByFile.set(binding.file_id, [...events, observed.event])
-          // Successful observation verified its shared event; local intent can now retire.
-          yield* store.retireKeys([
-            yield* pendingFileOperationKey(pendingScope.prefix, observed.operation),
-          ])
-        }
-        body = encoder.encode(observed.body.markdown)
-        yield* checked(() => objectSize(body, binding.path))
-        yield* store.writeBytes(`objects/${observed.body.fingerprint.sha256}`, body)
-        next = {
-          ...item.file,
-          management_revision: yield* fileRevision(
-            binding,
-            eventsByFile.get(binding.file_id) ?? [],
-            yield* checked(() => sourceIdentity(binding)),
-          ),
-          body_sha256: observed.body.fingerprint.sha256,
-          body_verified_at: observed.body.downloaded_at,
-          metadata_validated_at: metadataObservedAt,
-          ...(observed.body.native_body_completion === undefined
-            ? {}
-            : { native_body_completion: observed.body.native_body_completion }),
-        }
+        markdown = yield* checked(() => new TextDecoder("utf-8", { fatal: true }).decode(cached))
+        observed = prior
       } else {
-        const observed = previousById.get(binding.file_id)
-        if (observed === undefined)
-          return yield* Effect.fail(
-            fail("STATE_CORRUPT", "A cached file has no validated observation."),
-          )
-        if (item.action === "recover_fixed") {
-          if (
-            state?.ownership.kind !== "custom" ||
-            state.ownership.content.sha256 !== item.body_sha256
-          )
-            return yield* Effect.fail(
-              fail(
-                "RETAINED_BODY_MISSING",
-                "The exact observed object is unavailable; a current body cannot replace a fixed cache identity.",
-                { sha256: item.body_sha256 },
-              ),
-            )
-          const retained = yield* loadRetainedBody(input.library, selected, state.ownership.content)
-          body = encoder.encode(retained.markdown)
-          yield* store.writeBytes(`objects/${item.body_sha256}`, body)
-        } else {
-          const bytes = cachedBodies.get(item.body_sha256)
-          if (bytes === undefined)
-            return yield* Effect.fail(
-              fail("SNAPSHOT_MISSING", "The validated cached body became unavailable."),
-            )
-          body = bytes
+        const body = yield* observeSharedBody(binding.page_id).pipe(
+          Effect.tapError((error) =>
+            Effect.gen(function* () {
+              if (
+                error.code !== "ACCESS_DENIED" &&
+                error.code !== "NOT_FOUND" &&
+                error.code !== "AUTH_REQUIRED"
+              )
+                return
+              // A rejected body must not become readable again through an older
+              // native observation. Publish an empty current slot, including on
+              // a cold read, so an earlier in-flight completion cannot restore it.
+              const deniedGeneration = yield* store.reserveCacheGeneration(input.scope, record.id)
+              yield* store.writeJson(observationKey, {
+                version: 1,
+                generation: deniedGeneration,
+                scope: input.scope,
+                library_id: input.library.library_id,
+                skill_id: index.skill_id,
+                skill_page_id: selected,
+                files: [],
+              })
+              if (error.code === "AUTH_REQUIRED") yield* invalidateScopeCache(input.scope)
+              else
+                yield* invalidateSnapshotCache(record.id, input.scope, {
+                  retainForOffline: true,
+                  ...(error.code === "ACCESS_DENIED" ? { accessDenied: error.code } : {}),
+                })
+            }).pipe(Effect.uninterruptible),
+          ),
+        )
+        bodyReads++
+        markdown = body.markdown
+        yield* store.writeBytes(`objects/${body.fingerprint.sha256}`, encoder.encode(markdown))
+        observed = {
+          file_id: binding.file_id,
+          page_id: binding.page_id,
+          path: binding.path,
+          descriptor,
+          last_edited_time: binding.last_edited_time,
+          body_sha256: body.fingerprint.sha256,
+          body_verified_at: body.downloaded_at,
+          ...(body.native_body_completion === undefined
+            ? {}
+            : { native_body_completion: body.native_body_completion }),
         }
-        next = yield* checked(() =>
-          refreshMetadataObservation({
-            file: item.file,
-            observation: observed,
-            now: metadataObservedAt,
-          }),
-        )
       }
-      if (state === undefined)
-        return yield* Effect.fail(
-          fail("BASELINE_MISSING", "No shared ownership fact exists after body observation."),
-        )
-      nextObservations.push(next)
-      switch (state.ownership.kind) {
-        case "following":
-          if (!(yield* checked(() => sourceByPath.has(sharedFileSourcePath(binding.path, state)))))
-            return yield* Effect.fail(
-              fail(
-                "SHARED_SOURCE_FILE_MISSING",
-                "Selected source no longer contains a following file.",
-                { path: binding.path },
-              ),
-            )
-          break
-        case "custom":
-          if (
-            (yield* sha256(body)) !== state.ownership.content.sha256 ||
-            body.byteLength !== state.ownership.content.bytes
-          )
-            return yield* Effect.fail(
-              fail(
-                "SHARED_BODY_CONFLICT",
-                "Observed bytes differ from the selected shared custom version.",
-              ),
-            )
-          overrides.push({
-            kind: "custom",
-            file_id: binding.file_id,
-            path: binding.path,
-            bytes: body,
-          })
-          break
-        case "tombstone":
-          overrides.push({ kind: "tombstone", file_id: binding.file_id, path: binding.path })
-          break
-      }
+      observations.push(observed)
+      nativeBodies.push({
+        path: binding.path,
+        markdown,
+        body_sha256: observed.body_sha256,
+        page_id: binding.page_id,
+        ...(observed.native_body_completion === undefined
+          ? {}
+          : { native_body_completion: observed.native_body_completion }),
+      })
     }
-    for (const binding of bindings)
-      if (
-        states.get(binding.file_id)?.ownership.kind === "tombstone" &&
-        !activeIds.has(binding.file_id)
-      )
-        overrides.push({ kind: "tombstone", file_id: binding.file_id, path: binding.path })
-    const composed = yield* checked(() =>
-      composeSharedFilePlacements({
-        source: sourceFiles,
-        manifest: sourceManifest,
-        overrides,
-        bindings: bindings.map((binding) => {
-          const state = states.get(binding.file_id)
-          if (state === undefined)
-            throw fail(
-              "BASELINE_MISSING",
-              "No shared ownership fact exists for the complete file tree.",
-            )
-          return { file_id: binding.file_id, path: binding.path, state }
-        }),
-        entrypoint: record.entrypoint,
-      }),
-    )
-    const nativeSources = yield* checked(() =>
-      composed.files
-        .filter((file) => /\.md$/iu.test(file.path))
-        .map((file) => {
-          const binding = activeBindings.find((value) => value.path === file.path)
-          const observation =
-            binding === undefined
-              ? undefined
-              : nextObservations.find((value) => value.file_id === binding.file_id)
-          return {
-            path: file.path,
-            markdown: new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
-            observation,
-            page_id: binding?.page_id,
-          }
-        }),
-    )
+    const frozenMembers = members?.map(({ id, ref, metadata }) => ({ id, ref, metadata }))
+    const frozenRequired = required?.map(({ id, ref, metadata }) => ({ id, ref, metadata }))
     const native = yield* compileSharedNativeReferences({
       library: input.library,
       record,
-      inventory:
-        graphInventory === undefined && skillsInventory === undefined
-          ? undefined
-          : { skills: graphInventory ?? skillsInventory },
-      bindings: activeBindings,
-      files: yield* Effect.forEach(nativeSources, (source) =>
-        Effect.gen(function* () {
-          return {
-            path: source.path,
-            markdown: source.markdown,
-            body_sha256: source.observation?.body_sha256 ?? (yield* sha256(source.markdown)),
-            ...(source.page_id === undefined ? {} : { page_id: source.page_id }),
-            ...(source.observation?.native_body_completion === undefined
-              ? {}
-              : { native_body_completion: source.observation.native_body_completion }),
-          }
-        }),
-      ),
-      relations: {
-        members: frozenMembers ?? [],
-        required: frozenRequired ?? [],
-        file_links: fileLinks,
-      },
+      bindings,
+      files: nativeBodies,
+      inventory: inventory === undefined ? undefined : { skills: inventory },
+      relations: { members: frozenMembers ?? [], required: frozenRequired ?? [] },
     })
-    const resolvedLinks = [...fileLinks, ...native.links]
-    const fileBindings = activeBindings
-      .filter((binding) => composed.files.some((file) => file.path === binding.path))
-      .map(({ file_id, page_id, path }) => ({ file_id, page_id, path }))
-      .sort((a, b) => (a.file_id < b.file_id ? -1 : a.file_id > b.file_id ? 1 : 0))
-    const completeFiles = yield* checked(() =>
-      composed.files.map((file) => {
-        if (file.path !== record.entrypoint)
-          return /\.md$/iu.test(file.path)
-            ? {
-                ...file,
-                bytes: encoder.encode(
-                  materializeSharedNativeFile(
-                    new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
-                    file.path,
-                    activeBindings,
-                    resolvedLinks,
-                    native.linkedPages.get(file.path),
-                    native.completions.get(file.path),
-                  ),
-                ),
-              }
-            : file
-        const document = importDocument(file, {
-          name: record.name,
-          description: record.description,
-        })
-        const body =
-          materializeSharedNativeFile(
-            document.body,
-            file.path,
-            activeBindings,
-            resolvedLinks,
-            native.linkedPages.get(file.path),
-            native.completions.get(file.path),
-          ) +
-          (routerMembers === undefined || (record.kind === "skill" && routerMembers.length === 0)
-            ? ""
-            : renderSharedRouterMembers(routerMembers))
-        // Native main pages carry their editable body, not the source's YAML
-        // header. Keep extra fixed-source metadata when the body is customized.
-        return canonicalMain(
-          record.name,
-          record.description,
-          body,
-          file,
-          sourceFiles.find((source) => source.path === record.entrypoint),
+    for (const body of nativeBodies) {
+      const binding = byPath.get(body.path)
+      if (binding?.content.kind !== "native")
+        return yield* Effect.fail(
+          fail("CURRENT_TREE_INVALID", "Native content lost its current owner."),
         )
+      const markdown = yield* checked(() =>
+        materializeSharedNativeFile(
+          body.markdown,
+          body.path,
+          bindings,
+          native.links,
+          native.linkedPages.get(body.path),
+          native.completions.get(body.path),
+        ),
+      )
+      materialized.set(body.path, encoder.encode(binding.content.frontmatter + markdown))
+    }
+    for (const binding of currentFiles) {
+      const content = binding.content
+      if (content.kind === "native" || !requested.has(binding.path)) continue
+      const cached = yield* store.readBytes(`objects/${content.sha256}`).pipe(
+        Effect.catchIf(
+          (error) => error.code === "SNAPSHOT_MISSING",
+          () => Effect.succeed(undefined),
+        ),
+      )
+      if (cached !== undefined) {
+        if (cached.length !== content.bytes || (yield* sha256(cached)) !== content.sha256)
+          return yield* Effect.fail(
+            fail("STATE_CORRUPT", "A selected current object failed its checksum.", {
+              path: binding.path,
+            }),
+          )
+        materialized.set(binding.path, cached)
+      }
+    }
+    for (const selectedSource of sources.values()) {
+      const needed = currentFiles.filter(
+        (file) =>
+          file.content.kind === "source" &&
+          file.content.source_id === selectedSource.source_id &&
+          requested.has(file.path) &&
+          !materialized.has(file.path),
+      )
+      if (needed.length === 0) continue
+      const sourcePaths = needed.flatMap((file) =>
+        file.content.kind === "source" ? [file.content.source_path] : [],
+      )
+      const acquired = yield* selectedSource.materialize([...new Set(sourcePaths)])
+      for (const binding of needed) {
+        const content = binding.content
+        if (content.kind !== "source") continue
+        const sourceFile = acquired.files.find((file) => file.path === content.source_path)
+        if (
+          !sourceFile ||
+          sourceFile.bytes.length !== content.bytes ||
+          (sourceFile.mode ?? "100644") !== content.mode ||
+          (yield* sha256(sourceFile.bytes)) !== content.sha256
+        )
+          return yield* Effect.fail(
+            fail(
+              "CURRENT_SOURCE_CONFLICT",
+              "The selected current Source bytes failed verification.",
+              { path: binding.path },
+            ),
+          )
+        if (acquired.local_paths.includes(content.source_path))
+          yield* markLocalContentRestriction(content.sha256)
+        materialized.set(binding.path, sourceFile.bytes)
+      }
+    }
+    for (const binding of currentFiles)
+      if (
+        binding.content.kind === "resource" &&
+        requested.has(binding.path) &&
+        !materialized.has(binding.path)
+      ) {
+        const loaded = yield* readCurrentSharedResourceBytes(input.library, {
+          owner: { kind: "skill", page_id: selected },
+          content: binding.content,
+        })
+        materialized.set(binding.path, loaded)
+      }
+    const files: Snapshot["files"][number][] = []
+    const routes: NonNullable<Snapshot["shared_acquisition"]>["files"][number][] = []
+    for (const binding of currentFiles) {
+      const content = binding.content
+      const bytes = materialized.get(binding.path)
+      if (content.kind === "native" && bytes === undefined)
+        return yield* Effect.fail(
+          fail("BODY_INCOMPLETE", "The current native body is incomplete.", { path: binding.path }),
+        )
+      const hash = content.kind === "native" ? yield* sha256(bytes!) : content.sha256
+      files.push({
+        path: binding.path,
+        sha256: hash,
+        bytes: content.kind === "native" ? bytes!.length : content.bytes,
+        mode: content.mode,
+      })
+      if (bytes !== undefined) yield* store.writeBytes(`objects/${hash}`, bytes)
+      if (content.kind === "source")
+        routes.push({
+          kind: "source",
+          path: binding.path,
+          source_id: content.source_id,
+          revision: content.revision,
+          source_path: content.source_path,
+        })
+      if (content.kind === "resource")
+        routes.push({ kind: "resource", path: binding.path, object_id: content.object_id })
+    }
+    const restricted = new Set(
+      yield* localContentRestrictedHashes(files.map((file) => file.sha256)),
+    )
+    for (const file of files)
+      if (restricted.has(file.sha256)) yield* markLocalContentRestriction(file.sha256)
+    for (const selectedSource of sources.values())
+      yield* checked(() => {
+        const selectedFiles = currentFiles.flatMap((file) => {
+          const bytes = materialized.get(file.path)
+          return file.content.kind === "source" &&
+            file.content.source_id === selectedSource.source_id &&
+            bytes !== undefined
+            ? [{ path: file.path, source_path: file.content.source_path, bytes }]
+            : []
+        })
+        return selectedSource.git_origin === undefined
+          ? assertSelectedSharedFileReferences(
+              selectedFiles,
+              currentFiles.map((file) => file.path),
+            )
+          : assertSelectedSharedSourceReferences(
+              selectedFiles,
+              selectedSource.manifest.map((file) => file.path),
+            )
+      })
+    yield* checked(() =>
+      assertSelectedSharedFileReferences(
+        currentAuthoredReferenceFiles(
+          [...materialized].map(([path, bytes]) => ({ path, bytes })),
+          routes,
+        ),
+        paths,
+      ),
+    )
+    // A current writer marks the owner before changing its files. Check that
+    // boundary again after all body/provider requests, including a writer that
+    // completed and returned to ready. This is a change detector, not a CAS.
+    const finalRaw = yield* api.request(`v1/pages/${selected}`)
+    const finalIndex = yield* queryCurrentSkillIndex(input.library, selected, finalRaw)
+    yield* checked(() => requireCurrentSkillReady(finalIndex.state, finalIndex.page_id))
+    const finalConsumption = yield* resolveCurrentSkillConsumption(input.library, finalIndex, {
+      sourceOptions: input.sourceOptions,
+    })
+    if (consumptionFence(finalIndex, finalConsumption) !== consumptionFence(index, consumption))
+      return yield* Effect.fail(
+        fail(
+          "CURRENT_TREE_CHANGED",
+          "The current owner changed while its files were being read. Select current content again.",
+          { skill_page_id: selected, next: "reselect_current" },
+        ),
+      )
+    const fileBindings = bindings
+      .filter((file) => file.content.kind !== "source")
+      .map(({ file_id, page_id, path }) => ({ file_id, page_id, path }))
+    const acquisition: Snapshot["shared_acquisition"] = {
+      version: 5,
+      library: input.library,
+      files: routes,
+    }
+    // Content identity excludes display fields, property IDs, page projections,
+    // body-observation timestamps and operation history. Physical authorization
+    // bindings remain authoritative for Notion-owned files. Source projections
+    // can be pruned or rebuilt without changing the complete selected Git tree.
+    const version = yield* sha256(
+      canonicalSharedJson({
+        contract: 1,
+        record_id: record.id,
+        locator: record.locator,
+        kind: record.kind,
+        files,
+        authority: currentFiles.map((file) => ({
+          ...(file.content.kind === "source"
+            ? {}
+            : fileBindings.find((binding) => binding.path === file.path)),
+          path: file.path,
+          kind: file.content.kind,
+          ...(file.content.kind === "source"
+            ? {
+                source_id: file.content.source_id,
+                revision: file.content.revision,
+                source_path: file.content.source_path,
+              }
+            : {}),
+        })),
+        members: (frozenMembers ?? []).map(({ id, ref }) => ({ id, ref })),
+        required: (frozenRequired ?? []).map(({ id, ref }) => ({ id, ref })),
       }),
     )
-    // Only the final tree can resolve references: native custom files may repair
-    // or replace provider links, while tombstones and moves may break them.
-    yield* checked(() => assertSharedFileReferences(completeFiles))
-    const files: Snapshot["files"][number][] = []
-    for (const file of completeFiles) {
-      const hash = yield* sha256(file.bytes)
-      const provenance = composed.provenance.get(file.path)
-      const original = provenance?.kind === "custom" ? provenance.replaces : provenance
-      const sourcePath =
-        original === undefined
-          ? undefined
-          : original.kind === "mount"
-            ? (original.mount_path ? original.mount_path + "/" : "") + original.source_path
-            : original.source_path
-      if (
-        localSourcePaths.has(file.path) ||
-        (sourcePath !== undefined && localSourcePaths.has(sourcePath))
-      )
-        yield* markLocalContentRestriction(hash)
-      yield* store.writeBytes(`objects/${hash}`, file.bytes)
-      files.push({ path: file.path, bytes: file.bytes.length, sha256: hash })
-    }
-    const version = yield* sharedSnapshotVersion({
-      record,
-      files,
-      ...(record.kind === "router"
-        ? { router_members: frozenMembers }
-        : { members: frozenMembers }),
-      required: frozenRequired,
-      file_bindings: fileBindings,
-      native_references: native.index,
-      source:
-        input.fixedSource === undefined
-          ? null
-          : { source_id: input.fixedSource.source_id, revision: input.fixedSource.revision },
-      ownership: bindings.map((binding) => ({
-        file_id: binding.file_id,
-        path: binding.path,
-        state: states.get(binding.file_id),
-      })),
-    })
     const snapshotId = `s_${yield* sha256(JSON.stringify([input.scope, record.id, version]))}`
-    const saved = yield* store.readJson(`snapshots/${snapshotId}.json`, SnapshotSchema)
-    const snapshot =
-      saved ??
-      (yield* checked(() =>
-        decode(SnapshotSchema, {
-          snapshot_id: snapshotId,
-          scope: input.scope,
-          record,
-          entrypoint: record.entrypoint,
-          version_id: version,
-          created_at: metadataObservedAt,
-          files,
-          file_bindings: fileBindings,
-          ...(native.index === undefined ? {} : { native_references: native.index }),
-          ...(frozenMembers === undefined
-            ? {}
-            : record.kind === "router"
-              ? { router_members: frozenMembers }
-              : { members: frozenMembers }),
-          ...(frozenRequired === undefined ? {} : { required: frozenRequired }),
-        }),
-      ))
-    if (
-      snapshot.snapshot_id !== snapshotId ||
-      snapshot.scope !== input.scope ||
-      snapshot.record.id !== record.id ||
-      snapshot.version_id !== version
+    const current = yield* checked(() =>
+      decode(SnapshotSchema, {
+        snapshot_id: snapshotId,
+        scope: input.scope,
+        record,
+        entrypoint: record.entrypoint,
+        version_id: version,
+        created_at: now,
+        files,
+        file_bindings: fileBindings,
+        shared_acquisition: acquisition,
+        ...(native.index === undefined ? {} : { native_references: native.index }),
+        ...(frozenMembers === undefined
+          ? {}
+          : record.kind === "router"
+            ? { router_members: frozenMembers }
+            : { members: frozenMembers }),
+        ...(frozenRequired === undefined ? {} : { required: frozenRequired }),
+      }),
     )
-      return yield* Effect.fail(
-        fail("STATE_CORRUPT", "The immutable shared snapshot has a different identity."),
-      )
-    yield* store.writeJson(`snapshots/${snapshotId}.json`, snapshot)
-    yield* store.writeJson(`${prefix}/${String(generation).padStart(20, "0")}.json`, {
+    // The local selection keeps its original metadata; a current observation is
+    // free to return newer display data without altering that selected artifact.
+    if ((yield* store.readJson(`snapshots/${snapshotId}.json`, SnapshotSchema)) === undefined)
+      yield* store.writeJson(`snapshots/${snapshotId}.json`, current)
+    yield* store.writeJson(observationKey, {
       version: 1,
+      generation,
       scope: input.scope,
       library_id: input.library.library_id,
       skill_id: index.skill_id,
       skill_page_id: selected,
-      generation,
-      snapshot_id: snapshotId,
-      observations: nextObservations,
+      files: observations,
     })
-    const bodyValidUntil = Math.min(
-      ...nextObservations.map((file) => file.body_verified_at + SHARED_FULL_BODY_MAX_AGE_MS),
-    )
-    if (!Number.isFinite(bodyValidUntil))
-      return yield* Effect.fail(
-        fail("SHARED_SNAPSHOT_INVALID", "A complete Skill requires a validated main body."),
-      )
-    // A disabled authoring observation may retain immutable files and history,
-    // but it must never qualify a current consumer cache entry.
-    const published: ObservedSnapshot = record.enabled
-      ? yield* publishSnapshotObservation(snapshot, input.startedAt, generation, {
-          ...(bodyReads < activeBindings.length ? { metadataOnly: true } : {}),
-          sharedBodyValidUntil: bodyValidUntil,
-        })
-      : {
-          ...snapshot,
-          source: "notion",
-          freshness: {
-            policy: "refresh",
-            validated_at: new Date(metadataObservedAt).toISOString(),
-            age_ms: 0,
-          },
-        }
-    const shared_authoring = yield* checked(
-      () =>
-        ({
-          version: 1 as const,
-          scope: input.scope,
-          snapshot_id: snapshotId,
-          library_id: input.library.library_id,
-          skill_id: index.skill_id,
-          skill_page_id: selected,
-          source_id: index.source_reference,
-          source_revision: input.fixedSource?.revision ?? "",
-          read_only: input.readOnly === true,
-          files: activeBindings.map((binding) => {
-            const state = states.get(binding.file_id)
-            const observation = nextObservations.find((value) => value.file_id === binding.file_id)
-            if (state === undefined || observation === undefined)
-              throw fail(
-                "SHARED_SNAPSHOT_INVALID",
-                "Fresh shared authoring evidence is missing an exact active file.",
-              )
-            return {
-              file_id: binding.file_id,
-              page_id: binding.page_id,
-              path: binding.path,
-              heads: state.heads,
-              body_sha256: observation.body_sha256,
-              last_edited_time: binding.last_edited_time,
-              metadata_validated_at: observation.metadata_validated_at,
-              body_verified_at: observation.body_verified_at,
-              ...(observation.native_body_completion === undefined
-                ? {}
-                : { native_body_completion: observation.native_body_completion }),
-            }
-          }),
-        }) satisfies SharedAuthoringEvidence,
-    )
-    return { ...published, shared_authoring }
-  })
-  return input.readOnly === true ? consume : withSharedRecordPayloadCache(consume, input.scope)
+    const bodyValidUntil =
+      observations.length === 0
+        ? now + SHARED_FULL_BODY_MAX_AGE_MS
+        : Math.min(
+            ...observations.map((file) => file.body_verified_at + SHARED_FULL_BODY_MAX_AGE_MS),
+          )
+    if (!record.enabled)
+      return {
+        ...current,
+        source: "notion" as const,
+        freshness: {
+          policy: "refresh" as const,
+          validated_at: new Date(now).toISOString(),
+          age_ms: 0,
+        },
+      }
+    return yield* publishSnapshotObservation(current, input.startedAt, generation, {
+      ...(bodyReads === 0 ? { metadataOnly: true as const } : {}),
+      sharedBodyValidUntil: bodyValidUntil,
+      sharedMaterializedPaths: [...materialized.keys()].sort(compare),
+    })
+  }).pipe(withReadOnlyNotion)
 }

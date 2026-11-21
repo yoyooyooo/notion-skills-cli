@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { Crypto, Deferred, Effect, Fiber, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
-import { recordScope } from "../src/cache.ts"
-import { type ContentRecord, type Snapshot } from "../src/model.ts"
+import { invalidateScopeCache, invalidateSnapshotCache, recordScope } from "../src/cache.ts"
+import { property, type ContentRecord, type Snapshot } from "../src/model.ts"
+import { noConsumptionWrites, type ConsumptionEffects } from "../src/consumption-effects.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
 import {
@@ -12,83 +13,35 @@ import {
   type ResourceReadReady,
   type ResourceReadResult,
 } from "../src/resource-read.ts"
-import { registerRetainedSnapshot } from "../src/shared-history-materialization.ts"
-import { sharedSkillId } from "../src/shared-content.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
-import {
-  prepareSharedSnapshotHistory,
-  retainSharedSnapshotHistory,
-  SHARED_HISTORY_CHUNK_BYTES,
-  type SharedSnapshotHistoryPlan,
-} from "../src/shared-snapshot-history.ts"
 import { Store } from "../src/store.ts"
 import {
-  digest,
-  encode,
-  id,
-  library,
-  sharedSnapshotFixture,
-  skillPage,
-} from "./shared-snapshot-fixture.ts"
+  currentDigest as digest,
+  currentBytes as encode,
+  currentId as id,
+  currentSnapshotFixture,
+  currentScope as scope,
+  currentSkillPage as skillPage,
+} from "./shared-current-fixture.ts"
 
-const scope = digest(
-  JSON.stringify(["fixture-user", "", "https://api.notion.com", "controlled-credential"]),
-)
 const binary = new Uint8Array([0, 255, 1, 2, 128, 13, 10])
-async function fixture(retained = false, large = false) {
-  const f = sharedSnapshotFixture({ fileCount: 1 })
-  const original = await f.open()
-  const largeBytes = new Uint8Array(SHARED_HISTORY_CHUNK_BYTES * 81)
-  for (let chunk = 0; chunk < 81; chunk++)
-    largeBytes.fill(
-      chunk,
-      chunk * SHARED_HISTORY_CHUNK_BYTES,
-      (chunk + 1) * SHARED_HISTORY_CHUNK_BYTES,
-    )
+async function fixture(
+  modes: Readonly<Record<string, NonNullable<Snapshot["files"][number]["mode"]>>> = {},
+) {
+  const f = currentSnapshotFixture({ fileCount: 6 })
   const resources = [
     { path: "references/a.txt", bytes: encode("完整 resource\n") },
     { path: "references/bom.txt", bytes: encode("\uFEFF第一行\r\nSecond line\r\n") },
     { path: "empty.txt", bytes: new Uint8Array() },
-    { path: "assets/raw.bin", bytes: large ? largeBytes : binary },
+    { path: "assets/raw.bin", bytes: binary },
     { path: "references/shared.txt", bytes: encode("完整 resource\n") },
     { path: "unselected.txt", bytes: encode("Unselected unique object\n") },
   ]
-  const files = [
-    ...original.files,
-    ...resources.map((file) => ({
-      path: file.path,
-      bytes: file.bytes.length,
-      sha256: digest(file.bytes),
-    })),
-  ]
-  const version = digest(canonicalSharedJson(files))
-  let snapshot: Snapshot = {
-    ...original,
-    scope,
-    version_id: version,
-    snapshot_id: "s_" + digest(JSON.stringify([scope, original.record.id, version])),
-    files,
-    file_bindings: [
-      { file_id: "file-main", page_id: skillPage, path: original.entrypoint },
-      ...resources.map((file, index) => ({
-        file_id: "resource-" + index,
-        page_id: id(300 + index),
-        path: file.path,
-      })),
-    ],
-  }
+  for (const [n, file] of resources.entries())
+    await f.resource(n, file.path, file.bytes, modes[file.path] ?? "100644")
+  const snapshot = await f.open()
   for (const file of resources) f.objects.set("objects/" + digest(file.bytes), file.bytes)
-  let plan: SharedSnapshotHistoryPlan | undefined
-  if (retained) {
-    plan = await f.run(prepareSharedSnapshotHistory(library, snapshot))
-    await f.run(retainSharedSnapshotHistory(library, { plan, mode: "create" }))
-    const saved = await f.run(registerRetainedSnapshot(scope, library, plan.pin_id, plan.manifest))
-    snapshot = saved.snapshot
-    f.objects.clear()
-  } else {
-    f.json.set("snapshots/" + snapshot.snapshot_id + ".json", snapshot)
-    await f.run(recordScope(scope))
-  }
+  await f.run(recordScope(scope))
   f.clearCalls()
   const jsonReads = new Map<string, number>()
   const objectReads = new Map<string, number>()
@@ -130,7 +83,7 @@ async function fixture(retained = false, large = false) {
     refs: paths.map(ref),
     ...(budget === undefined ? {} : { budget }),
   })
-  return { ...f, run, snapshot, resources, ref, input, plan, jsonReads, objectReads }
+  return { ...f, run, snapshot, resources, ref, input, jsonReads, objectReads }
 }
 
 function ready(result: ResourceReadResult): ResourceReadReady {
@@ -139,6 +92,101 @@ function ready(result: ResourceReadResult): ResourceReadReady {
 }
 
 describe("fixed resource batch", () => {
+  for (const code of ["ACCESS_DENIED", "AUTH_REQUIRED"] as const)
+    test(`known ${code} rejects online and offline complete resource bytes before object reads`, async () => {
+      const f = await fixture()
+      await f.run(
+        code === "ACCESS_DENIED"
+          ? invalidateSnapshotCache(f.snapshot.record.id, scope, {
+              retainForOffline: true,
+              accessDenied: code,
+            })
+          : invalidateScopeCache(scope),
+      )
+      f.objectReads.clear()
+      for (const offline of [true, false]) {
+        const result = await f.run(readResources(f.input(), { offline }))
+        expect(result).toMatchObject({ status: "failed", error: { code } })
+        expect("files" in result).toBe(false)
+        expect(await f.run(decodeResourceReadResult(result, f.input()))).toEqual(result)
+      }
+      expect(f.objectReads.size).toBe(0)
+      expect(f.calls).toHaveLength(0)
+    })
+
+  test("strict resource batches retain exact selected bytes and observed effects", async () => {
+    const f = await fixture(),
+      observed: ConsumptionEffects[] = []
+    const result = ready(
+      await f.run(
+        readResources(f.input(), {
+          onEffects: (effects) => observed.push(effects),
+        }),
+      ),
+    )
+    expect(property(result).effects).toEqual(noConsumptionWrites())
+    expect(observed).toEqual([noConsumptionWrites()])
+    expect(result.files.map((file) => file.sha256)).toEqual(
+      [f.resources[1]!, f.resources[0]!, f.resources[2]!, f.resources[3]!].map((file) =>
+        digest(file.bytes),
+      ),
+    )
+    expect(await f.run(decodeResourceReadResult(result, f.input()))).toEqual(result)
+    const { effects: _effects, ...legacy } = result
+    expect(await f.run(decodeResourceReadResult(legacy, f.input()))).toEqual(legacy)
+    expect(f.calls.some((call) => call.path === "v1/pages" || call.method === "PATCH")).toBe(false)
+  })
+
+  test("strict batch guards descendant semantic writes before the actual transport", async () => {
+    {
+      const f = await fixture(),
+        observed: ConsumptionEffects[] = []
+      let writes = 0
+      const result = await f.run(
+        Effect.gen(function* () {
+          const api = yield* Notion,
+            store = yield* Store
+          return yield* readResources(f.input(["references/a.txt"]), {
+            onEffects: (effects) => observed.push(effects),
+          }).pipe(
+            Effect.provideService(Notion, {
+              ...api,
+              request: (path, body, options) => {
+                if (path === "v1/pages")
+                  return Effect.sync(() => {
+                    writes++
+                    return { id: "controlled-write" }
+                  })
+                return api.request(path, body, options)
+              },
+            }),
+            Effect.provideService(Store, {
+              ...store,
+              readBytes: (key) =>
+                Effect.gen(function* () {
+                  const descendant = yield* Notion
+                  yield* descendant.request(
+                    "v1/pages",
+                    { parent: { page_id: skillPage } },
+                    { method: "POST" },
+                  )
+                  return yield* store.readBytes(key)
+                }),
+            }),
+          )
+        }),
+      )
+      expect(writes).toBe(0)
+      expect(result).toMatchObject({
+        status: "failed",
+        effects: noConsumptionWrites(),
+        error: { code: "NOTION_READ_ONLY", details: { effects: noConsumptionWrites() } },
+      })
+      expect("files" in result).toBe(false)
+      expect(observed).toEqual([result.effects])
+    }
+  })
+
   test("one manifest read preserves selected order and exact text/binary bytes without reading the main or unselected files", async () => {
     const f = await fixture()
     const main = f.snapshot.files.find((file) => file.path === f.snapshot.entrypoint)!
@@ -180,13 +228,63 @@ describe("fixed resource batch", () => {
     expect(f.calls).toHaveLength(0)
   })
 
+  test("current file modes bind exact CRLF and binary bytes", async () => {
+    const f = await fixture({
+      "references/bom.txt": "100755",
+      "assets/raw.bin": "100644",
+    })
+    const input = f.input(["references/bom.txt", "assets/raw.bin", "empty.txt"])
+    const result = ready(await f.run(readResources(input)))
+    expect(result.files[0]).toMatchObject({
+      mode: "100755",
+      encoding: "utf8",
+      content: "\uFEFF第一行\r\nSecond line\r\n",
+      sha256: digest(f.resources[1]!.bytes),
+    })
+    expect(result.files[1]).toMatchObject({
+      mode: "100644",
+      encoding: "base64",
+      content: Buffer.from(binary).toString("base64"),
+      sha256: digest(binary),
+    })
+    expect(result.files[2]?.mode).toBe("100644")
+    expect(
+      await f.run(decodeResourceReadResult(JSON.parse(JSON.stringify(result)), input)),
+    ).toEqual(result)
+
+    const { mode: _knownMode, ...withoutMode } = result.files[0]!
+    const mutations = [
+      { index: 0, file: { ...result.files[0]!, mode: "100644" } },
+      { index: 0, file: withoutMode },
+      { index: 2, file: { ...result.files[2]!, mode: "100755" } },
+    ]
+    for (const mutation of mutations) {
+      const proof = await f.run(
+        decodeResourceReadResult(
+          {
+            ...result,
+            files: result.files.map((file, index) =>
+              index === mutation.index ? mutation.file : file,
+            ),
+          },
+          input,
+        ).pipe(Effect.result),
+      )
+      expect(proof._tag).toBe("Failure")
+      if (proof._tag === "Failure") expect(proof.failure.code).toBe("RESOURCE_INVALID_PROOF")
+    }
+    f.clearCalls()
+    expect(ready(await f.run(readResources(input, { offline: true })))).toEqual(result)
+    expect(f.calls).toHaveLength(0)
+  })
+
   test("stable File identity corrects an old path hint and duplicate aliases fail before any bytes", async () => {
     const f = await fixture()
     const target = fileRef(
       f.snapshot.record.id,
       "former/path.txt",
       f.snapshot.snapshot_id,
-      "resource-0",
+      "support-0",
     )
     const result = ready(await f.run(readResources({ version: 1, refs: [target] })))
     expect(result.files[0]).toMatchObject({
@@ -254,48 +352,6 @@ describe("fixed resource batch", () => {
     expect(boundary.totals).toEqual({ files: 1, bytes: f.resources[0]!.bytes.length })
   })
 
-  test("cold retained selection admits its owner once, queries one object set, deduplicates shared chunks and leaves unselected bytes missing", async () => {
-    const f = await fixture(true)
-    const input = f.input(["references/a.txt", "references/shared.txt", "assets/raw.bin"])
-    const result = ready(await f.run(readResources(input)))
-    expect(result.files.map((file) => file.path)).toEqual([
-      "references/a.txt",
-      "references/shared.txt",
-      "assets/raw.bin",
-    ])
-    expect(f.calls.filter((call) => call.path === "v1/pages/" + skillPage)).toHaveLength(1)
-    const queries = f.calls.filter((call) =>
-      call.path.includes(library.records.data_source_id + "/query"),
-    )
-    expect(queries).toHaveLength(1)
-    const query = JSON.stringify(queries)
-    expect(query.match(new RegExp("chunk-" + digest(f.resources[0]!.bytes), "g"))).toHaveLength(1)
-    expect(query).not.toContain("chunk-" + digest(f.resources.at(-1)!.bytes))
-    expect(f.calls.filter((call) => call.path.includes("/markdown"))).toHaveLength(0)
-    expect(f.objectReads.get("objects/" + f.snapshot.files[0]!.sha256)).toBeUndefined()
-    expect(f.objects.has("objects/" + digest(f.resources.at(-1)!.bytes))).toBe(false)
-    expect(
-      [...f.jsonReads.entries()]
-        .filter(([key]) => key.startsWith("cache/shared-history-manifests/"))
-        .map(([, count]) => count),
-    ).toEqual([1])
-    f.clearCalls()
-    const warm = ready(await f.run(readResources(input, { offline: true })))
-    expect(warm).toEqual(result)
-    expect(f.calls).toHaveLength(0)
-  })
-
-  test("more than 80 distinct retained chunks are batched and source bytes remain bounded", async () => {
-    const f = await fixture(true, true)
-    const result = ready(
-      await f.run(readResources(f.input(["assets/raw.bin"], { maxBytes: 3_000_000 }))),
-    )
-    expect(result.files[0]?.bytes).toBe(SHARED_HISTORY_CHUNK_BYTES * 81)
-    expect(
-      f.calls.filter((call) => call.path.includes(library.records.data_source_id + "/query")),
-    ).toHaveLength(2)
-  })
-
   test("a corrupt selected object produces no partial ready and never substitutes current bodies", async () => {
     const f = await fixture()
     f.objects.set("objects/" + digest(binary), new Uint8Array(binary.length))
@@ -303,12 +359,6 @@ describe("fixed resource batch", () => {
     expect(result).toMatchObject({ status: "failed", error: { code: "STATE_CORRUPT" } })
     expect("files" in result).toBe(false)
     expect(f.calls).toHaveLength(0)
-    const cold = await fixture(true)
-    cold.records.clear()
-    const missing = await cold.run(readResources(cold.input()))
-    expect(missing.status).toBe("failed")
-    expect("files" in missing).toBe(false)
-    expect(cold.calls.filter((call) => call.path.includes("/markdown"))).toHaveLength(0)
   })
 
   test("a local locator cannot impersonate a remote resource owner in a proof or cached manifest", async () => {
@@ -343,169 +393,45 @@ describe("fixed resource batch", () => {
     expect(read).toMatchObject({ error: { code: "STATE_CORRUPT" } })
   })
 
-  test("remote locator domains require canonical database identities and subscription router kind", async () => {
+  test("remote current locators require canonical physical identities and reject retired protocols", async () => {
     const f = await fixture()
     const original = ready(await f.run(readResources(f.input(["references/a.txt"]))))
-    const { file_bindings: _bindings, ...withoutBindings } = original.manifest
-    const { file_id: _fileId, ...file } = original.files[0]!
-    const wire = (record: ContentRecord) => {
-      const snapshot_id =
-        "s_" +
-        digest(JSON.stringify([original.selection.scope, record.id, original.selection.version_id]))
-      const ref = fileRef(record.id, file.path, snapshot_id)
-      const manifest = {
-        ...withoutBindings,
-        record,
-        snapshot_id,
-        entrypoint: record.entrypoint,
-        files: original.manifest.files.map((entry) =>
-          entry.path === original.manifest.entrypoint
-            ? { ...entry, path: record.entrypoint }
-            : entry,
-        ),
-      }
-      return {
-        input: { version: 1 as const, refs: [ref] },
-        result: {
-          ...original,
-          manifest,
-          manifest_sha256: digest(canonicalSharedJson(manifest)),
-          selection: { ...original.selection, owner: record.id, snapshot_id },
-          files: [{ ...file, requested_ref: ref, ref }],
-        },
+    expect(await f.run(decodeResourceReadResult(original, f.input(["references/a.txt"])))).toEqual(
+      original,
+    )
+    const record = original.manifest.record
+    if (record.locator.type !== "shared_skill") throw new Error("Expected a current shared owner")
+    const rehash = (manifest: unknown) => ({
+      ...original,
+      manifest,
+      manifest_sha256: digest(canonicalSharedJson(manifest)),
+    })
+    for (const field of ["page_id", "database_id", "data_source_id"] as const) {
+      for (const identifier of ["x", "ABCDEF01-0000-4000-8000-000000000003"]) {
+        const manifest = {
+          ...original.manifest,
+          record: { ...record, locator: { ...record.locator, [field]: identifier } },
+        }
+        await expect(f.run(decodeResourceReadResult(rehash(manifest)))).rejects.toMatchObject({
+          code: "RESOURCE_INVALID_PROOF",
+        })
       }
     }
-    const page: ContentRecord = {
-      ...original.manifest.record,
-      id: "notion_page:" + id(501),
-      ref: fileRef("notion_page:" + id(501), "SKILL.md"),
-      locator: {
-        type: "notion_page",
-        page_id: id(501),
-        database_id: id(502),
-        data_source_id: id(503),
-      },
-    }
-    const subscription: ContentRecord = {
-      ...page,
-      id: "notion_subscription:" + id(504),
-      kind: "router",
-      entrypoint: "ROUTER.md",
-      ref: fileRef("notion_subscription:" + id(504), "ROUTER.md"),
-      locator: {
+    for (const locator of [
+      { type: "notion_page", page_id: id(501), database_id: id(502), data_source_id: id(503) },
+      {
         type: "notion_subscription",
         subscription_id: id(504),
         database_id: id(502),
         data_source_id: id(503),
         target_database_id: id(505),
       },
+    ]) {
+      const manifest = { ...original.manifest, record: { ...record, locator } }
+      await expect(f.run(decodeResourceReadResult(rehash(manifest)))).rejects.toMatchObject({
+        code: "RESOURCE_INVALID_PROOF",
+      })
     }
-    for (const record of [page, subscription]) {
-      const valid = wire(record)
-      expect(await f.run(decodeResourceReadResult(valid.result, valid.input))).toEqual(valid.result)
-      for (const field of [
-        "database_id",
-        "data_source_id",
-        ...(record.locator.type === "notion_subscription" ? ["target_database_id"] : []),
-      ]) {
-        for (const identifier of ["x", id(502).toUpperCase()]) {
-          const malformed = wire({ ...record, locator: { ...record.locator, [field]: identifier } })
-          await expect(
-            f.run(decodeResourceReadResult(malformed.result, malformed.input)),
-          ).rejects.toMatchObject({ code: "RESOURCE_INVALID_PROOF" })
-        }
-      }
-    }
-    const wrongKind = wire({
-      ...subscription,
-      kind: "skill",
-      entrypoint: "SKILL.md",
-      ref: fileRef(subscription.id, "SKILL.md"),
-    })
-    await expect(
-      f.run(decodeResourceReadResult(wrongKind.result, wrongKind.input)),
-    ).rejects.toMatchObject({ code: "RESOURCE_INVALID_PROOF" })
-  })
-
-  test("encoded stable shared identities remain valid for batch reads and the pure decoder", async () => {
-    const f = await fixture()
-    if (f.snapshot.record.locator.type !== "shared_skill")
-      throw new Error("Expected shared fixture")
-    const identity = sharedSkillId("org:team", "guide:v1")
-    expect(identity).toBe("shared_skill:org%3Ateam:guide%3Av1")
-    const snapshot: Snapshot = {
-      ...f.snapshot,
-      snapshot_id:
-        "s_" + digest(JSON.stringify([f.snapshot.scope, identity, f.snapshot.version_id])),
-      record: {
-        ...f.snapshot.record,
-        id: identity,
-        ref: fileRef(identity, f.snapshot.entrypoint),
-        locator: { ...f.snapshot.record.locator, library_id: "org:team", skill_id: "guide:v1" },
-      },
-    }
-    f.json.set("snapshots/" + snapshot.snapshot_id + ".json", snapshot)
-    const input: ResourceReadInput = {
-      version: 1,
-      refs: [fileRef(identity, "references/a.txt", snapshot.snapshot_id, "resource-0")],
-    }
-    const result = ready(await f.run(readResources(input)))
-    expect(result.selection.owner).toBe(identity)
-    expect(await f.run(decodeResourceReadResult(result, input))).toEqual(result)
-    expect(f.calls).toHaveLength(0)
-  })
-
-  test("a partial cache restores only missing selected objects from the same retained manifest", async () => {
-    const f = await fixture(true)
-    f.json.set("snapshots/" + f.snapshot.snapshot_id + ".json", f.snapshot)
-    f.objects.set("objects/" + digest(f.resources[0]!.bytes), f.resources[0]!.bytes)
-    const main = f.snapshot.files.find((file) => file.path === f.snapshot.entrypoint)!
-    f.objects.set("objects/" + main.sha256, encode("unselected corrupt main"))
-    const result = ready(
-      await f.run(readResources(f.input(["references/a.txt", "assets/raw.bin"]))),
-    )
-    expect(result.files.map((file) => file.path)).toEqual(["references/a.txt", "assets/raw.bin"])
-    expect(f.objectReads.get("objects/" + digest(f.resources[0]!.bytes))).toBe(1)
-    expect(f.objectReads.get("objects/" + main.sha256)).toBeUndefined()
-    expect(f.objectReads.get("objects/" + digest(f.resources.at(-1)!.bytes))).toBeUndefined()
-    expect(f.calls.filter((call) => call.path === "v1/pages/" + skillPage)).toHaveLength(1)
-    const queries = f.calls.filter((call) =>
-      call.path.includes(library.records.data_source_id + "/query"),
-    )
-    expect(queries).toHaveLength(1)
-    expect(JSON.stringify(queries)).toContain("chunk-" + digest(binary))
-    expect(JSON.stringify(queries)).not.toContain("chunk-" + digest(f.resources[0]!.bytes))
-    expect(JSON.stringify(queries)).not.toContain("chunk-" + main.sha256)
-    expect(f.calls.filter((call) => call.path.includes("/markdown"))).toHaveLength(0)
-
-    const corrupt = await fixture(true)
-    corrupt.json.set("snapshots/" + corrupt.snapshot.snapshot_id + ".json", corrupt.snapshot)
-    const corruptedBytes = new Uint8Array(corrupt.resources[0]!.bytes.length)
-    const corruptedKey = "objects/" + digest(corrupt.resources[0]!.bytes)
-    corrupt.objects.set(corruptedKey, corruptedBytes)
-    expect(
-      await corrupt.run(readResources(corrupt.input(["assets/raw.bin", "references/a.txt"]))),
-    ).toMatchObject({ status: "failed", error: { code: "STATE_CORRUPT" } })
-    expect(corrupt.objects.get(corruptedKey)).toEqual(corruptedBytes)
-    expect(corrupt.calls).toHaveLength(0)
-
-    const conflict = await fixture(true)
-    conflict.json.set("snapshots/" + conflict.snapshot.snapshot_id + ".json", {
-      ...conflict.snapshot,
-      files: conflict.snapshot.files.map((file) =>
-        file.path === "unselected.txt" ? { ...file, sha256: "a".repeat(64) } : file,
-      ),
-    })
-    expect(await conflict.run(readResources(conflict.input(["assets/raw.bin"])))).toMatchObject({
-      status: "failed",
-      error: { code: "STATE_CORRUPT" },
-    })
-    expect(
-      conflict.calls.filter((call) =>
-        call.path.includes(library.records.data_source_id + "/query"),
-      ),
-    ).toHaveLength(0)
-    expect(conflict.calls.filter((call) => call.path === "v1/pages/" + skillPage)).toHaveLength(1)
   })
 
   test("the pure decoder rejects tampered content, selection, order, completeness and budgets", async () => {
@@ -559,6 +485,7 @@ describe("fixed resource batch", () => {
       version: 1,
       status: "cancelled",
       reason: "interrupted",
+      effects: noConsumptionWrites(),
     })
     expect(f.jsonReads.size).toBe(0)
     expect(f.objectReads.size).toBe(0)
@@ -597,6 +524,7 @@ describe("fixed resource batch", () => {
           : { status: "failed", error: { code: "RESOURCE_TIME_BUDGET" } },
       )
       expect("files" in result).toBe(false)
+      expect(property(result).effects).toEqual(noConsumptionWrites())
     }
   })
 })

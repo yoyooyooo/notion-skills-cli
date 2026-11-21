@@ -12,6 +12,7 @@ import {
 } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
+import { isGitOnlyProjection } from "./shared-git-only-marker.ts"
 import type { SharedLibrary } from "./shared-library.ts"
 import {
   querySkillFiles,
@@ -110,7 +111,12 @@ export function querySharedSkillIndex(
           !Number.isFinite(Date.parse(row.last_edited_time))
         )
           throw fail("SHARED_METADATA_INVALID", "The main body has no valid observation timestamp.")
-        const projection = readProjectionBaseline(rich("Projection"))
+        // A Git-only member has no native Markdown projection. Its raw bytes
+        // are owned by the selected immutable source, not the Notion page.
+        const projectionText = rich("Projection")
+        const projection = isGitOnlyProjection(projectionText)
+          ? undefined
+          : readProjectionBaseline(projectionText)
         return {
           skill_id: identity(rich("Skill ID"), "Skill ID"),
           page_id: id,

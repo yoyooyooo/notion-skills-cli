@@ -1,54 +1,44 @@
 import { Clock, Effect, Schema } from "effect"
 import {
-  DatabaseSchema,
+  CatalogObservationSchema,
+  effectiveCachePolicy,
+  freshness,
+  invalidateScopeCache,
+  locallySelectedScope,
+  recordScope,
+  recordScopeAccess,
+  reserveScopeAccess,
+  validateReadPolicy,
+  type ReadPolicyOptions,
+} from "./cache.ts"
+import type { ContentRecord } from "./model.ts"
+import {
   DataSourceSchema,
-  UserSchema,
+  DatabaseSchema,
   PageSchema,
-  listSchema,
+  SkillsError,
+  UserSchema,
+  aliasFor,
   decode,
   fail,
-  aliasFor,
-  SkillsError,
-  recordFromPage,
+  listSchema,
   property,
   text,
   validateDescription,
   type Catalog,
   type Source,
-  type CatalogSource,
-  type NotionPageRecord,
   type SourceFailure,
 } from "./model.ts"
 import { Notion } from "./notion.ts"
-import { Store, configuration, configuredSources, sha256 } from "./store.ts"
 import { pageId } from "./ref.ts"
-import { fileRef } from "./ref.ts"
-import { libraryFromDatabase } from "./shared-library.ts"
-import { LIBRARY_MARKER } from "./shared-library-model.ts"
 import { sharedMetadataEntryFromPage, validateSharedRecordIdentity } from "./shared-content.ts"
 import { sharedGraphInventory } from "./shared-graph-read-context.ts"
+import { libraryFromDatabase } from "./shared-library.ts"
 import {
   directorySkillMetadata,
   type SharedSkillMetadataObservation,
 } from "./shared-metadata-inventory.ts"
-import {
-  publishedSubscriptionFromPage,
-  validatePublishedMember,
-  SUBSCRIPTION_ROUTER_MIN_MEMBERS,
-} from "./upstream-router.ts"
-import type { ContentRecord } from "./model.ts"
-import {
-  CatalogObservationSchema,
-  effectiveCachePolicy,
-  freshness,
-  locallySelectedScope,
-  invalidateScopeCache,
-  reserveScopeAccess,
-  recordScopeAccess,
-  recordScope,
-  validateReadPolicy,
-  type ReadPolicyOptions,
-} from "./cache.ts"
+import { Store, configuration, configuredSources, sha256 } from "./store.ts"
 
 export const authScope = Effect.gen(function* () {
   const local = yield* locallySelectedScope().pipe(Effect.result)
@@ -144,312 +134,97 @@ export function databaseId(input: string, sources?: readonly Source[]) {
   })
 }
 
-export function explicitSource(
-  input: string,
-  sources?: readonly Source[],
-  options: { readonly allowShared?: boolean } = {},
-) {
+export function explicitSource(input: string, sources?: readonly Source[]) {
   return Effect.gen(function* () {
     const configured = sources ?? (yield* configuredSources)
     const id = yield* databaseId(input, configured)
-    if ((yield* configuration).upstream_database === id)
-      return yield* Effect.fail(
-        fail(
-          "NOT_CONTENT_DATABASE",
-          "The upstream subscription database is not a content source.",
-          { database_id: id },
-        ),
-      )
     const registered = configured.find((source) => source.database_id === id)
     const api = yield* Notion
-    const observed = yield* Effect.gen(function* () {
-      const value = yield* api.request(`v1/databases/${id}`)
-      return yield* Effect.try({
-        try: () => {
-          if (
-            options.allowShared !== true &&
-            text(property(value).description).startsWith(LIBRARY_MARKER)
-          )
-            throw fail(
-              "SHARED_LIBRARY_CONSUMER_PENDING",
-              "This entry uses shared Files. Legacy creation and publication cannot mutate its shared content model.",
-              { database_id: id },
+    return yield* api.request(`v1/databases/${id}`).pipe(
+      Effect.flatMap((raw) =>
+        Effect.try({
+          try: () => {
+            const db = decode(DatabaseSchema, raw)
+            if (db.id !== id || db.in_trash)
+              throw fail("INVALID_RESPONSE", "The selected library identity is unavailable.")
+            const library = libraryFromDatabase(raw)
+            if (library === undefined)
+              throw fail(
+                "CURRENT_SCHEMA_REQUIRED",
+                "Select a current Skill library entry. Legacy page and subscription sources are not supported.",
+              )
+            if (
+              db.data_sources.length !== 1 ||
+              db.data_sources[0]?.id !== library.skills.data_source_id
             )
-          const library = libraryFromDatabase(value)
-          if (library && options.allowShared !== true)
-            throw fail(
-              "SHARED_LIBRARY_CONSUMER_PENDING",
-              "This entry uses shared Files. Legacy creation and publication cannot mutate its shared content model.",
-              { database_id: id },
-            )
-          const db = decode(DatabaseSchema, value)
-          if (db.id !== id)
-            throw fail(
-              "INVALID_RESPONSE",
-              "The returned database identity differs from the selected entry.",
-            )
-          if (
-            library &&
-            (db.data_sources.length !== 1 ||
-              db.data_sources[0]?.id !== library.skills.data_source_id)
-          )
-            throw fail(
-              "LIBRARY_SCHEMA_CONFLICT",
-              "The shared entry's current data source differs from its descriptor.",
-            )
-          return { db, library }
-        },
-        catch: (error) =>
-          error instanceof SkillsError
-            ? error
-            : fail("INVALID_RESPONSE", "Invalid database response."),
-      })
-    }).pipe(
+              throw fail(
+                "LIBRARY_SCHEMA_CONFLICT",
+                "The current library data source differs from its descriptor.",
+              )
+            return {
+              alias: registered?.alias ?? id,
+              database_id: id,
+              title: text(db.title),
+              data_source_ids: [library.skills.data_source_id],
+              role: "content" as const,
+              shared_library: library,
+            } satisfies Source
+          },
+          catch: (error) =>
+            error instanceof SkillsError
+              ? error
+              : fail("INVALID_RESPONSE", "Invalid current library response."),
+        }),
+      ),
       Effect.mapError((error) =>
         fail(error.code, error.message, {
           ...property(error.details),
           database_id: id,
           alias: registered?.alias ?? id,
-          ...(registered ? { title: registered.title } : {}),
+          ...(registered === undefined ? {} : { title: registered.title }),
         }),
       ),
     )
-    const { db, library } = observed
-    let referencesDatabase = false
-    if (!library && db.database_type !== "skills" && !db.in_trash) {
-      referencesDatabase = db.data_sources.length > 0
-      for (const source of db.data_sources) {
-        const raw = yield* api.request(`v1/data_sources/${source.id}`)
-        const props = property(property(raw).properties)
-        if (
-          property(props.References).type !== "rich_text" ||
-          property(props.Description).type !== "rich_text"
-        )
-          referencesDatabase = false
-      }
-    }
-    if (db.in_trash || (!library && db.database_type !== "skills" && !referencesDatabase))
-      return yield* Effect.fail(
-        fail(
-          "NOT_SKILLS_DATABASE",
-          "A skill database needs rich-text Description and References properties, or the native Skills type.",
-          { database_id: id, alias: registered?.alias ?? id, title: text(db.title) },
-        ),
-      )
-    return {
-      alias: registered?.alias ?? id,
-      database_id: id,
-      title: text(db.title),
-      data_source_ids: db.data_sources.map((s) => s.id),
-      role: "content",
-      ...(library === undefined ? {} : { shared_library: library }),
-    } satisfies Source
   })
 }
 
-export function discoverDatabases(options: { readonly allowShared?: boolean } = {}) {
+export function discoverDatabases() {
   return Effect.gen(function* () {
-    const databases = new Map<string, Source>()
-    const managementSources = new Map<string, Set<string>>()
-    const rememberManagementSources = (source: NonNullable<Source["shared_library"]>) => {
-      for (const table of [
-        source.files,
-        source.records,
-        ...(source.sources ? [source.sources] : []),
-      ]) {
-        const ids = managementSources.get(table.database_id) ?? new Set<string>()
-        ids.add(table.data_source_id)
-        managementSources.set(table.database_id, ids)
-      }
-    }
-    const failures: SourceFailure[] = []
     const configured = yield* configuredSources
-    const inspected = new Map<string, Source>()
-    const rejected = new Set<string>()
-    const upstreamDatabase = (yield* configuration).upstream_database
-    const sources = yield* paginate("v1/search", DataSourceSchema, {
+    const candidates = new Map<string, { alias: string; title: string }>()
+    const found = yield* paginate("v1/search", DataSourceSchema, {
       filter: { property: "object", value: "data_source" },
     })
-    for (const source of sources) {
+    for (const source of found) {
+      if (source.in_trash) continue
       const props = property(source.properties)
       const id = source.parent.database_id
       const registered = configured.find((entry) => entry.database_id === id)
-      const referencesCandidate =
-        property(props.References).type === "rich_text" &&
-        property(props.Description).type === "rich_text"
-      const sharedCandidate =
-        registered?.shared_library !== undefined ||
-        (property(props["Skill ID"]).type === "rich_text" &&
-          property(props["Main File ID"]).type === "rich_text")
       if (
-        source.in_trash ||
-        id === upstreamDatabase ||
-        rejected.has(id) ||
-        (source.database_type !== "skills" && !referencesCandidate && !sharedCandidate)
+        registered === undefined &&
+        (property(props["Skill ID"]).type !== "rich_text" ||
+          property(props["Main File ID"]).type !== "rich_text")
       )
         continue
-
-      // References libraries can also be shared libraries. Resolve the parent
-      // descriptor once per database before choosing their business model.
-      if (source.database_type !== "skills" || sharedCandidate) {
-        let resolved = inspected.get(id)
-        if (resolved === undefined) {
-          const result = yield* Effect.gen(function* () {
-            const raw = yield* (yield* Notion).request(`v1/databases/${id}`)
-            return yield* Effect.try({
-              try: () => {
-                const db = decode(DatabaseSchema, raw)
-                if (db.id !== id || db.in_trash)
-                  throw fail("INVALID_RESPONSE", "Discovered database identity is unavailable.")
-                const library = libraryFromDatabase(raw)
-                if (
-                  library &&
-                  (db.data_sources.length !== 1 ||
-                    db.data_sources[0]?.id !== library.skills.data_source_id)
-                )
-                  throw fail(
-                    "LIBRARY_SCHEMA_CONFLICT",
-                    "Discovered shared data source differs from its descriptor.",
-                  )
-                if (library) rememberManagementSources(library)
-                if (library && options.allowShared !== true)
-                  throw fail(
-                    "SHARED_LIBRARY_CONSUMER_PENDING",
-                    "Shared library content requires the shared consumer; legacy creation and publication remain disabled.",
-                    { database_id: id },
-                  )
-                return {
-                  alias: registered?.alias ?? id,
-                  database_id: id,
-                  title: text(db.title),
-                  data_source_ids: db.data_sources.map((entry) => entry.id),
-                  role: "content",
-                  ...(library === undefined ? {} : { shared_library: library }),
-                } satisfies Source
-              },
-              catch: (error) =>
-                error instanceof SkillsError
-                  ? error
-                  : fail("INVALID_RESPONSE", "Invalid discovered library descriptor."),
-            })
-          }).pipe(Effect.result)
-          if (result._tag === "Failure") {
-            rejected.add(id)
-            failures.push({
-              id,
-              code: result.failure.code,
-              database_id: id,
-              alias: registered?.alias ?? id,
-              title: text(source.title),
-            })
-            continue
-          }
-          resolved = result.success
-          inspected.set(id, resolved)
-        }
-        if (!resolved.data_source_ids.includes(source.id)) {
-          rejected.add(id)
-          databases.delete(id)
-          failures.push({
-            id: source.id,
-            code: "LIBRARY_SCHEMA_CONFLICT",
-            database_id: id,
-            data_source_id: source.id,
-            alias: resolved.alias,
-            title: resolved.title,
-          })
-          continue
-        }
-        if (resolved.shared_library !== undefined) {
-          databases.set(id, resolved)
-          continue
-        }
-        if (!referencesCandidate) continue
-      }
-      const previous = databases.get(id)
-      databases.set(id, {
-        alias: registered?.alias ?? id,
-        database_id: id,
-        title: previous?.title ?? text(source.title),
-        data_source_ids: [...new Set([...(previous?.data_source_ids ?? []), source.id])],
-        role: "content",
-      })
+      candidates.set(id, { alias: registered?.alias ?? id, title: text(source.title) })
     }
-    for (const source of configured) {
-      if (rejected.has(source.database_id)) continue
-      const observed = databases.get(source.database_id)
-      if (observed?.shared_library !== undefined) {
-        databases.set(source.database_id, { ...observed, alias: source.alias })
-        continue
-      }
-      const result = yield* explicitSource(source.database_id, configured, options).pipe(
-        Effect.result,
-      )
-      if (result._tag === "Failure")
-        failures.push({
-          id: source.database_id,
-          code: result.failure.code,
-          database_id: source.database_id,
-          alias: source.alias,
-          title: source.title,
-        })
-      else {
-        if (result.success.shared_library) rememberManagementSources(result.success.shared_library)
-        databases.set(source.database_id, result.success)
-      }
+    for (const source of configured)
+      candidates.set(source.database_id, { alias: source.alias, title: source.title })
+    const databases: Source[] = []
+    const failures: SourceFailure[] = []
+    for (const [id, candidate] of candidates) {
+      const result = yield* explicitSource(id, configured).pipe(Effect.result)
+      if (result._tag === "Success") databases.push(result.success)
+      else failures.push({ id, database_id: id, code: result.failure.code, ...candidate })
     }
-    // A management table can retain Description/References from an older schema.
-    // Its exact role in a freshly verified descriptor takes precedence over that
-    // loose legacy candidate shape, regardless of search order or configured alias.
-    for (const [id, source] of databases) {
-      if (source.shared_library !== undefined) continue
-      const managed = managementSources.get(id)
-      if (managed === undefined) continue
-      const content = source.data_source_ids.filter((id) => !managed.has(id))
-      if (content.length === 0) databases.delete(id)
-      else databases.set(id, { ...source, data_source_ids: content })
-    }
-    return { databases: [...databases.values()], failures }
-  })
-}
-
-export function creationSource(
-  database?: string,
-  options: { readonly allowShared?: boolean } = {},
-) {
-  return Effect.gen(function* () {
-    if (database !== undefined) return yield* explicitSource(database, undefined, options)
-    const config = yield* configuration
-    if (config.default_database !== undefined)
-      return yield* explicitSource(config.default_database, undefined, options)
-    const discovered = yield* discoverDatabases(options)
-    if (discovered.failures.length)
-      return yield* Effect.fail(
-        fail(
-          "CATALOG_INCOMPLETE",
-          "Database discovery failed; specify --database or configure a default.",
-          discovered,
-        ),
-      )
-    if (discovered.databases.length !== 1)
-      return yield* Effect.fail(
-        fail(
-          discovered.databases.length ? "DATABASE_AMBIGUOUS" : "DATABASE_NOT_FOUND",
-          "Create requires one discovered Skills Database, a configured default, or --database.",
-          { candidates: discovered.databases },
-        ),
-      )
-    return yield* explicitSource(discovered.databases[0]!.database_id, undefined, options)
+    return { databases, failures }
   })
 }
 
 export function setDefaultDatabase(database?: string) {
   return Effect.gen(function* () {
     const config = yield* configuration
-    const source =
-      database === undefined
-        ? undefined
-        : yield* explicitSource(database, undefined, { allowShared: true })
+    const source = database === undefined ? undefined : yield* explicitSource(database, undefined)
     const { default_database: _previous, ...rest } = config
     const next = { ...rest, ...(source ? { default_database: source.database_id } : {}) }
     const store = yield* Store
@@ -461,23 +236,28 @@ export function setDefaultDatabase(database?: string) {
 export interface CatalogOptions extends ReadPolicyOptions {
   readonly database?: string
 }
-export function catalog(options: CatalogOptions = {}, selection: "all" | "content" = "all") {
-  return readCatalog(options, selection)
+export function catalog(options: CatalogOptions = {}) {
+  return readCatalog(options)
 }
 
 /** Internal scalar-read handoff; raw inventories never enter the public catalog or its cache. */
 export function freshCatalogForRead(options: Pick<CatalogOptions, "database"> = {}) {
   return Effect.gen(function* () {
     const sharedSkills = new Map<string, SharedSkillMetadataObservation>()
-    const directory = yield* readCatalog({ ...options, refresh: true }, "all", sharedSkills)
-    return { catalog: directory, sharedSkills }
+    const exactSharedRecords = new Map<string, ContentRecord>()
+    const directory = yield* readCatalog(
+      { ...options, refresh: true },
+      sharedSkills,
+      exactSharedRecords,
+    )
+    return { catalog: directory, sharedSkills, exactSharedRecords }
   })
 }
 
 function readCatalog(
   options: CatalogOptions,
-  selection: "all" | "content",
   observations?: Map<string, SharedSkillMetadataObservation>,
+  exactSharedRecords?: Map<string, ContentRecord>,
 ) {
   return Effect.gen(function* () {
     yield* Effect.try({
@@ -490,12 +270,7 @@ function readCatalog(
     const scope = selectedScope ?? (yield* authScope)
     const store = yield* Store
     const configured = yield* configuredSources
-    const catalogSelection = [
-      "database-selection-v6-shared",
-      options.database ?? "auto",
-      configured,
-    ]
-    if (selection === "content") catalogSelection.push("content-only")
+    const catalogSelection = ["current-library-directory", options.database ?? "auto", configured]
     const key = `cache/catalogs/${scope}/${yield* sha256(JSON.stringify(catalogSelection))}.json`
     const now = yield* Clock.currentTimeMillis
     const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).catalog_max_age_ms
@@ -522,13 +297,13 @@ function readCatalog(
                   "INVALID_SKILL_NAME",
                   "Cached skill name differs from its Notion Name.",
                   {
-                    page_id:
-                      skill.locator.type === "notion_page" ? skill.locator.page_id : skill.id,
+                    page_id: skill.id,
                     name: skill.name,
                   },
                 )
-              if (skill.locator.type === "notion_page" || skill.locator.type === "shared_skill")
-                validateDescription(skill.description)
+              if (skill.locator.type !== "shared_skill")
+                throw fail("STATE_CORRUPT", "The catalog contains a noncurrent remote record.")
+              validateDescription(skill.description)
               validateSharedRecordIdentity(skill)
               if (skill.locator.type === "shared_skill") {
                 const locator = skill.locator
@@ -557,33 +332,16 @@ function readCatalog(
             catch: (error) =>
               error instanceof SkillsError
                 ? fail(error.code, error.message, {
-                    page_id:
-                      skill.locator.type === "notion_page" ? skill.locator.page_id : skill.id,
+                    page_id: skill.id,
                     name: skill.name,
                   })
                 : fail("STATE_CORRUPT", "Cached Skill title failed validation.", {
-                    page_id:
-                      skill.locator.type === "notion_page" ? skill.locator.page_id : skill.id,
+                    page_id: skill.id,
                   }),
           }).pipe(Effect.result)
           if (checked._tag === "Success") {
             if (skill.enabled !== false) records.push(skill)
-          } else if (
-            skill.locator.type === "notion_subscription" ||
-            (skill.locator.type === "notion_page" && checked.failure.code === "INVALID_SKILL")
-          )
-            failed.push({
-              id:
-                skill.locator.type === "notion_subscription"
-                  ? skill.locator.subscription_id
-                  : skill.id,
-              code: checked.failure.code,
-              database_id: skill.locator.database_id,
-              data_source_id: skill.locator.data_source_id,
-              alias: skill.locator.database_id,
-              title: skill.name,
-            })
-          else return yield* Effect.fail(checked.failure)
+          } else return yield* Effect.fail(checked.failure)
         }
         const { invalidated, ...retained } = cached
         return {
@@ -619,10 +377,10 @@ function readCatalog(
     const databases = new Map<string, Source>()
     const failures: SourceFailure[] = []
     if (options.database !== undefined) {
-      const db = yield* explicitSource(options.database, configured, { allowShared: true })
+      const db = yield* explicitSource(options.database, configured)
       databases.set(db.database_id, db)
     } else {
-      const discovered = yield* discoverDatabases({ allowShared: true })
+      const discovered = yield* discoverDatabases()
       for (const source of discovered.databases) databases.set(source.database_id, source)
       failures.push(...discovered.failures)
     }
@@ -662,7 +420,9 @@ function readCatalog(
       for (const id of new Set(db.data_source_ids)) {
         const result = yield* Effect.gen(function* () {
           if (db.shared_library === undefined)
-            return yield* paginate(`v1/data_sources/${id}/query`, InventoryPageSchema, {})
+            return yield* Effect.fail(
+              fail("CURRENT_SCHEMA_REQUIRED", "The current library descriptor is missing."),
+            )
           const shared =
             (yield* sharedGraphInventory(db.shared_library)) ??
             (yield* directorySkillMetadata(db.shared_library, validatedScope, maxAge, "catalog"))
@@ -701,7 +461,8 @@ function readCatalog(
           if (row.in_trash || row.archived || row.is_archived) continue
           const checked = yield* Effect.try({
             try: () => {
-              if (db.shared_library === undefined) return recordFromPage(row, db, id)
+              if (db.shared_library === undefined)
+                throw fail("CURRENT_SCHEMA_REQUIRED", "The current library descriptor is missing.")
               const entry = sharedMetadataEntryFromPage(row, db, id)
               return entry.state === "registered" ? entry.record : undefined
             },
@@ -735,172 +496,19 @@ function readCatalog(
                 ),
               )
             sharedIdentities.set(record.id, record.locator.page_id)
+            // A private scalar-read handoff preserves the exact registered
+            // identity, including disabled records. Public discovery still
+            // excludes them; their body/permission gate remains authoritative.
+            exactSharedRecords?.set(record.id, record)
             if (record.enabled !== false) skills.set(record.id, record)
           } else skills.set(row.id, record)
-        }
-      }
-    }
-    const upstream = (yield* configuration).upstream_database
-    const catalogDatabases: CatalogSource[] = [...databases.values()]
-    const includeLegacyUpstream =
-      options.database === undefined ||
-      [...databases.values()].some((database) => database.shared_library === undefined)
-    if (upstream && selection === "all" && includeLegacyUpstream) {
-      const database = yield* Effect.gen(function* () {
-        const raw = yield* (yield* Notion).request(`v1/databases/${upstream}`)
-        return yield* Effect.try({
-          try: () => {
-            const db = decode(DatabaseSchema, raw)
-            if (db.id !== upstream || db.in_trash)
-              throw fail("INVALID_RESPONSE", "Subscription database identity is unavailable.")
-            return db
-          },
-          catch: () => fail("INVALID_RESPONSE", "Invalid subscription database response."),
-        })
-      }).pipe(Effect.result)
-      if (database._tag === "Failure")
-        failures.push({
-          id: upstream,
-          code: database.failure.code,
-          database_id: upstream,
-          alias: upstream,
-          title: "Upstream subscriptions",
-        })
-      else {
-        catalogDatabases.push({
-          alias: upstream,
-          database_id: upstream,
-          title: text(database.success.title),
-          data_source_ids: database.success.data_sources.map((source) => source.id),
-          role: "upstream",
-        })
-        for (const source of database.success.data_sources) {
-          const rows = yield* Effect.gen(function* () {
-            const raw = yield* (yield* Notion).request(`v1/data_sources/${source.id}`)
-            const ds = yield* Effect.try({
-              try: () => decode(DataSourceSchema, raw),
-              catch: () => fail("INVALID_RESPONSE", "Invalid subscription data source."),
-            })
-            if (ds.id !== source.id || ds.parent.database_id !== upstream || ds.in_trash)
-              return yield* Effect.fail(
-                fail("INVALID_RESPONSE", "Subscription data source identity does not match."),
-              )
-            return yield* paginate(`v1/data_sources/${source.id}/query`, InventoryPageSchema, {})
-          }).pipe(Effect.result)
-          if (rows._tag === "Failure") {
-            failures.push({
-              id: source.id,
-              code: rows.failure.code,
-              database_id: upstream,
-              data_source_id: source.id,
-              alias: upstream,
-              title: "Upstream subscriptions",
-            })
-            continue
-          }
-          queried.push(source.id)
-          for (const row of rows.success) {
-            if (row.in_trash) continue
-            const status = property(property(row.properties.Status).select).name
-            if (status !== "verified" && status !== "partial" && status !== "disabled") continue
-            const result = yield* Effect.try({
-              try: () => {
-                const subscription = publishedSubscriptionFromPage(
-                  upstream,
-                  database.success,
-                  row,
-                  row.id,
-                )
-                if (subscription.data_source_id !== source.id)
-                  throw fail(
-                    "INVALID_RESPONSE",
-                    "Subscription locator differs from its queried source.",
-                  )
-                // An explicit content scope must not fail on another target's members.
-                if (
-                  options.database !== undefined &&
-                  !databases.has(subscription.target_database_id)
-                )
-                  return undefined
-                for (const member of subscription.published.members) {
-                  const observed = inventory.get(member.page_id)
-                  const target = databases.get(subscription.target_database_id)
-                  if (
-                    !observed ||
-                    !target ||
-                    observed.database_id !== target.database_id ||
-                    !target.data_source_ids.includes(observed.data_source_id)
-                  )
-                    throw fail(
-                      "UPSTREAM_ROUTER_UNAVAILABLE",
-                      "An active member is absent from its target inventory.",
-                      { page_id: member.page_id },
-                    )
-                  const parent = property(property(observed.page).parent)
-                  if (
-                    parent.data_source_id !== observed.data_source_id ||
-                    (parent.database_id !== undefined && parent.database_id !== target.database_id)
-                  )
-                    throw fail(
-                      "UPSTREAM_ROUTER_UNAVAILABLE",
-                      "An active member belongs to another target.",
-                      { page_id: member.page_id },
-                    )
-                  validatePublishedMember(subscription, member, observed.page)
-                }
-                return subscription
-              },
-              catch: (e) =>
-                e instanceof SkillsError
-                  ? e
-                  : fail("INVALID_RESPONSE", "Invalid subscription Router metadata."),
-            }).pipe(Effect.result)
-            if (result._tag === "Failure") {
-              failures.push({
-                id: row.id,
-                code: result.failure.code,
-                database_id: upstream,
-                data_source_id: source.id,
-                alias: upstream,
-                title: text(property(row.properties.Name).title),
-              })
-              continue
-            }
-            const subscription = result.success
-            if (!subscription) continue
-            const repo = aliasFor(subscription.name)
-            for (const member of subscription.published.members) {
-              const record = skills.get(member.page_id)
-              if (record?.kind === "skill")
-                skills.set(member.page_id, { ...record, upstream: { repo } })
-            }
-            if (subscription.published.members.length < SUBSCRIPTION_ROUTER_MIN_MEMBERS) continue
-            const id = `notion_subscription:${subscription.subscription_id}`
-            skills.set(id, {
-              id,
-              kind: "router",
-              locator: {
-                type: "notion_subscription",
-                subscription_id: subscription.subscription_id,
-                database_id: subscription.database_id,
-                data_source_id: subscription.data_source_id,
-                target_database_id: subscription.target_database_id,
-              },
-              name: subscription.name,
-              alias: aliasFor(subscription.name),
-              description: subscription.description,
-              default_context: subscription.default_context,
-              entrypoint: "ROUTER.md",
-              ref: fileRef(`upstream:${subscription.subscription_id}`, "ROUTER.md"),
-            })
-          }
         }
       }
     }
     const output: Catalog = {
       scope: validatedScope,
       fetched_at: yield* Clock.currentTimeMillis,
-      databases: catalogDatabases,
+      databases: [...databases.values()],
       records: [...skills.values()].sort(
         (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
       ),
@@ -927,7 +535,7 @@ export function addSource(alias: string, input: string) {
   return Effect.gen(function* () {
     if (!alias.trim())
       return yield* Effect.fail(fail("INVALID_SOURCE", "Source alias must not be empty."))
-    const source = { ...(yield* explicitSource(input, undefined, { allowShared: true })), alias }
+    const source = { ...(yield* explicitSource(input, undefined)), alias }
     const config = yield* configuration
     const configured = config.sources ?? []
     const sameAlias = configured.find((s) => s.alias === alias)

@@ -1,9 +1,73 @@
-import { publicSourceResourceConfiguration } from "./shared-source-config-model.ts"
 import { Config, Context, Crypto, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
-import { ConfigSchema, SnapshotSchema, decode, fail, property, SkillsError } from "./model.ts"
-import type { Base, SyncBinding, SyncReceipt } from "./sync.ts"
-import type { UpstreamRepository } from "./upstream-state.ts"
-import type { PublicationIntegrityRepository } from "./publication-integrity-state.ts"
+import { cacheCapacity, DEFAULT_CACHE_CAPACITY } from "./cache-retention-model.ts"
+import { ConfigSchema, decode, fail, property, SkillsError, SnapshotSchema } from "./model.ts"
+import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
+import { publicSourceResourceConfiguration } from "./shared-source-config-model.ts"
+
+/** A current v5 selection freezes content and authority, while observations own
+ * display/discovery fields and property bindings. An atomic install keeps the
+ * first complete manifest; a same-content publisher must not overwrite it or
+ * fail merely because it observed newer display metadata. Older contracts keep
+ * their original full-payload comparison. */
+function comparableSnapshotContent(input: unknown): string {
+  const snapshot = decode(SnapshotSchema, input)
+  const { created_at: _createdAt, ...content } = snapshot
+  const acquisition = content.shared_acquisition
+  if (content.record.locator.type !== "shared_skill" || acquisition?.version !== 5) {
+    const { created_at: _createdAt, ...original } = property(input)
+    return JSON.stringify(original)
+  }
+  const {
+    name: _name,
+    alias: _alias,
+    description: _description,
+    default_context: _defaultContext,
+    enabled: _enabled,
+    ...record
+  } = content.record
+  const library = acquisition.library
+  const location = (table: typeof library.skills) => ({
+    database_id: table.database_id,
+    data_source_id: table.data_source_id,
+  })
+  const relations = (items: NonNullable<typeof snapshot.members>) =>
+    items.map(({ id, ref }) => ({ id, ref }))
+  const native = content.native_references
+  return JSON.stringify({
+    ...content,
+    record,
+    shared_acquisition: {
+      ...acquisition,
+      library: {
+        ...library,
+        skills: location(library.skills),
+        files: location(library.files),
+        records: location(library.records),
+        ...(library.sources === undefined ? {} : { sources: location(library.sources) }),
+      },
+    },
+    ...(content.members === undefined ? {} : { members: relations(content.members) }),
+    ...(content.router_members === undefined
+      ? {}
+      : { router_members: relations(content.router_members) }),
+    ...(content.required === undefined ? {} : { required: relations(content.required) }),
+    ...(native === undefined
+      ? {}
+      : {
+          // The resolver's current names, availability and observation hashes do
+          // not alter its link destinations. Compare the actual routing facts;
+          // exact delivered bytes remain bound by the file manifest above.
+          native_references: {
+            parent_id: native.parent_id,
+            entries: native.entries.map(
+              ({ name: _name, description: _description, availability: _availability, ...link }) =>
+                link,
+            ),
+            unresolved: native.unresolved.map(({ availability: _availability, ...link }) => link),
+          },
+        }),
+  })
+}
 
 export class Store extends Context.Service<
   Store,
@@ -11,8 +75,6 @@ export class Store extends Context.Service<
     readonly root: string
     readonly configRoot: string
     readonly cacheRoot: string
-    readonly upstream: UpstreamRepository
-    readonly integrity: PublicationIntegrityRepository
     readonly reserveCacheGeneration: (
       scope: string,
       pageId: string,
@@ -21,23 +83,39 @@ export class Store extends Context.Service<
     readonly retireKeys: (
       keys: readonly string[],
     ) => Effect.Effect<readonly { key: string; retention_path: string }[], SkillsError>
+    readonly reclaimDerived?: (
+      entries: readonly { readonly key: string; readonly sha256: string }[],
+    ) => Effect.Effect<
+      {
+        readonly reclaimed: readonly string[]
+        readonly archive: {
+          readonly original_path: string
+          readonly sha256: string
+          readonly trash_confirmed: true
+        } | null
+      },
+      SkillsError
+    >
+    readonly rebuildableCacheRecords?: () => Effect.Effect<
+      readonly {
+        readonly key: string
+        readonly payload: string
+        readonly retired: number
+        readonly admitted_at: number | null
+      }[],
+      SkillsError
+    >
     readonly readJson: <S extends Schema.ConstraintDecoder<unknown>>(
       key: string,
       schema: S,
     ) => Effect.Effect<S["Type"] | undefined, SkillsError>
-    readonly writeJson: (key: string, value: unknown) => Effect.Effect<void, SkillsError>
+    readonly writeJson: (
+      key: string,
+      value: unknown,
+      options?: { readonly expectedCurrentWritePending: unknown },
+    ) => Effect.Effect<void, SkillsError>
     readonly readBytes: (key: string) => Effect.Effect<Uint8Array, SkillsError>
     readonly writeBytes: (key: string, bytes: Uint8Array) => Effect.Effect<void, SkillsError>
-    readonly registerBindingWithBase: (
-      binding: SyncBinding,
-      base: Base,
-    ) => Effect.Effect<void, SkillsError>
-    readonly advanceBaseAndReceipt: (
-      bindingId: string,
-      expectedGeneration: number,
-      next: Base,
-      receipt: SyncReceipt,
-    ) => Effect.Effect<void, SkillsError>
     readonly backup: (
       destination: string,
     ) => Effect.Effect<{ directory: string; database: string }, SkillsError>
@@ -80,22 +158,33 @@ export const StoreLive = Layer.effect(
     const root = yield* resolveRoot(settings.state, settings.xdgState, [".local", "state"])
     const configRoot = yield* resolveRoot(settings.config, settings.xdgConfig, [".config"])
     const cacheRoot = yield* resolveRoot(settings.cache, settings.xdgCache, [".cache"])
+    let capacity = DEFAULT_CACHE_CAPACITY
     if (yield* fs.exists(path.join(configRoot, "config.json"))) {
       const rawConfig = yield* fs.readFileString(path.join(configRoot, "config.json"))
+      capacity = yield* Effect.try({
+        try: () => cacheCapacity(property(JSON.parse(rawConfig)).cache_capacity),
+        catch: (error) =>
+          error instanceof SkillsError
+            ? error
+            : fail("STATE_CORRUPT", "Cache capacity configuration is invalid."),
+      })
       const oldBindings = yield* Effect.try({
-        try: () => property(JSON.parse(rawConfig)).sync_bindings,
+        try: () => {
+          const value = property(JSON.parse(rawConfig))
+          return value.sync_bindings ?? value.upstream_database
+        },
         catch: () => fail("STATE_CORRUPT", "Configuration JSON is corrupt."),
       })
       if (oldBindings !== undefined)
         return yield* Effect.fail(
           fail(
-            "STATE_MIGRATION_REQUIRED",
-            "Stop old writers and migrate the retained bindings before creating SQLite state.",
+            "STATE_CUTOVER_REQUIRED",
+            "The configuration contains retired bindings. Use explicit new current roots; retain old roots for read-only extraction.",
           ),
         )
     }
     const { sqliteState } = yield* Effect.promise(() => import("./sqlite-state.ts"))
-    const state = yield* sqliteState(root, fs)
+    const state = yield* sqliteState(root, fs, capacity)
     const location = (key: string) =>
       key === "config.json" ? path.join(configRoot, key) : path.join(root, key)
     // Sync every ancestor, including existing directories: another publisher may have
@@ -126,17 +215,14 @@ export const StoreLive = Layer.effect(
               try: () => {
                 const actual = JSON.parse(new TextDecoder().decode(existing)) as unknown
                 const proposed = JSON.parse(new TextDecoder().decode(bytes)) as unknown
-                decode(SnapshotSchema, actual)
-                decode(SnapshotSchema, proposed)
-                return [property(actual), property(proposed)] as const
+                return [
+                  comparableSnapshotContent(actual),
+                  comparableSnapshotContent(proposed),
+                ] as const
               },
               catch: () => fail("STATE_CORRUPT", "Snapshot manifest is invalid.", { key }),
             })
-            const identity = (snapshot: Record<string, unknown>) => {
-              const { created_at: _createdAt, ...content } = snapshot
-              return JSON.stringify(content)
-            }
-            equivalentSnapshot = identity(pair[0]) === identity(pair[1])
+            equivalentSnapshot = pair[0] === pair[1]
           }
           if (
             !equivalentSnapshot &&
@@ -197,9 +283,19 @@ export const StoreLive = Layer.effect(
         )
     const validateObjects = (snapshot: typeof SnapshotSchema.Type) =>
       Effect.gen(function* () {
+        const deferred = yield* Effect.try({
+          try: () => validateSnapshotAcquisition(snapshot),
+          catch: (error) =>
+            error instanceof SkillsError
+              ? error
+              : fail("STATE_CORRUPT", "Invalid frozen snapshot acquisition."),
+        })
         for (const file of snapshot.files) {
           if (!/^[a-f0-9]{64}$/.test(file.sha256))
             return yield* Effect.fail(fail("STATE_CORRUPT", "Snapshot object identity is invalid."))
+          // A frozen raw acquisition is a complete manifest fact, not a claim
+          // that its bytes are local. Selected/full readers verify actual bytes.
+          if (deferred.has(file.path)) continue
           const bytes = yield* readBytes(`objects/${file.sha256}`)
           const hash = yield* crypto.digest("SHA-256", bytes)
           if (
@@ -224,13 +320,7 @@ export const StoreLive = Layer.effect(
         const digest = yield* crypto.digest(
           "SHA-256",
           new TextEncoder().encode(
-            JSON.stringify([
-              snapshot.scope,
-              snapshot.historical_snapshot_id
-                ? property(snapshot.record.locator).page_id
-                : snapshot.record.id,
-              snapshot.version_id,
-            ]),
+            JSON.stringify([snapshot.scope, snapshot.record.id, snapshot.version_id]),
           ),
         )
         const id = `s_${Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("")}`
@@ -244,23 +334,43 @@ export const StoreLive = Layer.effect(
         return snapshot
       })
     return {
-      upstream: state.upstream,
-      integrity: state.integrity,
       root,
       configRoot,
       cacheRoot,
       reserveCacheGeneration: state.reserve,
       listKeys: state.list,
       retireKeys: state.retire,
-      registerBindingWithBase: state.registerBindingWithBase,
-      advanceBaseAndReceipt: state.advanceBaseAndReceipt,
+      reclaimDerived: state.reclaimDerived,
+      rebuildableCacheRecords: state.rebuildableCacheRecords,
       backup: state.backup,
       writeBytes,
       readBytes,
-      writeJson: (key: string, value: unknown) =>
+      writeJson: (
+        key: string,
+        value: unknown,
+        options?: { readonly expectedCurrentWritePending: unknown },
+      ) =>
         Effect.gen(function* () {
+          if (
+            options !== undefined &&
+            !/^operations\/current-write-pending\/[a-f0-9]{64}\/pending\.json$/u.test(key)
+          )
+            return yield* Effect.fail(
+              fail(
+                "INVALID_ARGUMENT",
+                "Expected-current replacement only addresses a current write pending key.",
+                { key },
+              ),
+            )
           if (key === "config.json") {
-            const { sync_bindings: _bindings, ...config } = property(value)
+            const config = property(value)
+            if (config.sync_bindings !== undefined || config.upstream_database !== undefined)
+              return yield* Effect.fail(
+                fail(
+                  "STATE_CUTOVER_REQUIRED",
+                  "Retired binding and subscription configuration is not accepted by current state.",
+                ),
+              )
             return yield* writeBytes(key, new TextEncoder().encode(JSON.stringify(config)))
           }
           if (key.startsWith("snapshots/")) {
@@ -270,7 +380,8 @@ export const StoreLive = Layer.effect(
             })
             yield* validateObjects(snapshot)
             // File publication precedes pointer registration. A crash can leave an unreferenced file,
-            // never a committed successful snapshot whose objects have not been made durable.
+            // Materialized document objects are durable; declared raw acquisition
+            // locations may remain unavailable locally until explicitly selected.
             yield* writeBytes(key, new TextEncoder().encode(JSON.stringify(value)))
             const bytes = yield* readBytes(key)
             const canonical = yield* Effect.try({
@@ -298,7 +409,7 @@ export const StoreLive = Layer.effect(
               )
             return
           }
-          yield* state.write(key, value)
+          yield* state.write(key, value, options)
         }).pipe(
           Effect.mapError((e) =>
             e instanceof SkillsError
@@ -317,16 +428,15 @@ export const StoreLive = Layer.effect(
                 try: () => property(JSON.parse(raw)),
                 catch: () => fail("STATE_CORRUPT", "Configuration JSON is corrupt."),
               })
-              if (config.sync_bindings !== undefined)
+              if (config.sync_bindings !== undefined || config.upstream_database !== undefined)
                 return yield* Effect.fail(
                   fail(
-                    "STATE_MIGRATION_REQUIRED",
-                    "Configuration still contains old bindings; run ntn-skills-migrate after stopping old writers.",
+                    "STATE_CUTOVER_REQUIRED",
+                    "The configuration contains retired bindings. Use explicit new current roots; retain old roots for read-only extraction.",
                   ),
                 )
             }
-            const bindings = yield* state.bindings()
-            value = { ...config, ...(bindings.length ? { sync_bindings: bindings } : {}) }
+            value = config
           } else {
             value = yield* state.read(key)
             if (

@@ -6,42 +6,146 @@ import { decode, property, SnapshotSchema } from "../src/model.ts"
 import { fileRef, parseRef, parseTarget, resolveRef } from "../src/ref.ts"
 import { readSkill, listSkill, resolveSkillRef } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
-import {
-  prepareSharedSnapshotHistory,
-  retainSharedSnapshotHistory,
-} from "../src/shared-snapshot-history.ts"
-import { restoreSharedHistory } from "../src/shared-history-workflow.ts"
+import { readResources } from "../src/resource-read.ts"
+import { sharedRecordFromPage } from "../src/shared-content.ts"
+import { compileSharedNativeReferences } from "../src/shared-native-references.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import {
-  digest,
-  encode,
-  id,
-  library,
-  sharedSnapshotFixture,
-  skillPage,
-} from "./shared-snapshot-fixture.ts"
+  currentDigest as digest,
+  currentBytes as encode,
+  currentId as id,
+  currentLibrary as library,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+  currentRich as rich,
+} from "./shared-current-fixture.ts"
+import { currentSourceConsumerFixture } from "./shared-current-source-consumer-fixture.ts"
 
 const options = { database: library.skills.database_id }
 const url = (page: string) => "https://www.notion.so/" + page.replaceAll("-", "")
 const mention = (page: string) => '<mention url="' + url(page) + '">Guide</mention>\n'
-const owner = "shared_skill:library-snapshot:stable-skill"
+const owner = "shared_skill:library-current:demo"
+
+test("native same-Skill Source reading links retain relative text and usable path references", async () => {
+  const f = await currentSourceConsumerFixture()
+  await f.select(
+    [
+      { path: "SKILL.md", bytes: encode("# Provider main\n"), mode: "100644" },
+      { path: "references/guide.md", bytes: encode("# Provider guide\n"), mode: "100644" },
+    ],
+    "git",
+  )
+  const guidePage = f.bind("references/guide.md")
+  f.native("SKILL.md", mention(guidePage))
+  f.contribute([
+    { member_key: ".", skill_id: "demo", mount_path: "", mapping: {}, exclude: ["SKILL.md"] },
+  ])
+  const main = await f.run(readSkill(skillPage, options))
+  expect("content" in main && main.content).toContain("[Guide](references/guide.md)")
+  const reference = main.native_references?.entries[0]
+  if (reference === undefined) throw new Error("Expected same-Skill Source reference")
+  expect(reference.file_id).toBeUndefined()
+  expect(parseRef(reference.ref)).toEqual({ selector: owner, path: "references/guide.md" })
+  const guide = await f.run(readSkill(reference.ref, options))
+  expect("content" in guide && guide.content).toBe("# Provider guide\n")
+  expect(f.semanticWrites()).toEqual([])
+})
+
+test("cross-Skill native Source reading references support public reads and cold resource batches without projection File IDs", async () => {
+  const f = await currentSourceConsumerFixture()
+  const guideBody = "# Complete Source guide\n"
+  await f.select(
+    [
+      { path: "SKILL.md", bytes: encode("# Provider main\n"), mode: "100644" },
+      { path: "references/guide.md", bytes: encode(guideBody), mode: "100644" },
+    ],
+    "git",
+  )
+  f.bind("SKILL.md")
+  const guidePage = f.bind("references/guide.md")
+  const author = {
+    ...structuredClone(f.main),
+    id: id(77),
+    properties: {
+      ...f.main.properties,
+      "Skill ID": rich("skill-id", "native-author"),
+      Content: rich("content", JSON.stringify({ kind: "native", mode: "100644", frontmatter: "" })),
+    },
+  }
+  const record = sharedRecordFromPage(
+    author,
+    {
+      alias: library.library_id,
+      title: "",
+      role: "content",
+      database_id: library.skills.database_id,
+      data_source_ids: [library.skills.data_source_id],
+      shared_library: library,
+    },
+    library.skills.data_source_id,
+  )
+  const markdown = mention(guidePage)
+  const compiled = await f.run(
+    compileSharedNativeReferences({
+      library,
+      record,
+      bindings: [],
+      files: [
+        {
+          path: "SKILL.md",
+          markdown,
+          body_sha256: digest(markdown),
+          page_id: author.id,
+        },
+      ],
+      relations: { members: [], required: [] },
+      inventory: {
+        skills: {
+          data_source_id: library.skills.data_source_id,
+          complete: true,
+          pages: [author, f.main],
+        },
+        files: { data_source_id: library.files.data_source_id, complete: true, pages: f.files },
+      },
+    }),
+  )
+  const reference = compiled.index?.entries[0]
+  if (reference === undefined) throw new Error("Expected cross-Skill Source reference")
+  expect(reference).toMatchObject({ kind: "file", skill_id: "demo", availability: "metadata_only" })
+  expect(reference.file_id).toBeUndefined()
+  expect(parseRef(reference.ref)).toEqual({ selector: owner, path: "references/guide.md" })
+  const read = await f.run(readSkill(reference.ref, options))
+  expect("content" in read && read.content).toBe(guideBody)
+  expect(parseRef(read.ref).file_id).toBeUndefined()
+  f.objects.delete("objects/" + digest(guideBody))
+  f.clearCalls()
+  f.requests.length = 0
+  const batch = await f.run(readResources({ version: 1, refs: [read.ref] }, options))
+  expect(batch.status, JSON.stringify(batch)).toBe("ready")
+  if (batch.status !== "ready") throw new Error("Expected exact Source resource batch")
+  expect(batch.files[0]?.content).toBe(guideBody)
+  expect(f.requests).toHaveLength(1)
+  expect(f.requests[0]).toEndWith("/references/guide.md")
+  expect(f.bodyCalls()).toEqual([])
+  expect(f.semanticWrites()).toEqual([])
+})
 
 test("public read and exported snapshot expose compiled native references and preserve the original native hash", async () => {
-  const f = sharedSnapshotFixture()
-  const raw = "# Instructions\n\n" + mention(id(11))
+  const f = currentSnapshotFixture()
+  const raw = "# Instructions\n\n" + mention(id(100))
   f.bodies.set(skillPage, raw)
   const read = await f.run(readSkill(skillPage, options))
-  expect("content" in read && read.content).toContain("[Guide](references/1.md)")
+  expect("content" in read && read.content).toContain("[Guide](references/0.md)")
   expect(read.native_references?.entries[0]).toMatchObject({
     kind: "file",
-    file_id: "file-1",
-    skill_id: "stable-skill",
+    file_id: "support-0",
+    skill_id: "demo",
   })
   expect(
     read.native_references?.source_files.find((file) => file.path === "SKILL.md")?.body_sha256,
   ).toBe(digest(raw))
   expect(f.objects.get("objects/" + digest(raw))).toEqual(encode(raw))
-  expect(read).not.toHaveProperty("required")
+  expect(read.required).toEqual([])
   const pinned = fileRef(owner, "SKILL.md", read.snapshot_id)
   let archive: Uint8Array | undefined
   f.clearCalls()
@@ -51,7 +155,6 @@ test("public read and exported snapshot expose compiled native references and pr
       return yield* exportSkill(pinned, {
         output: "/unused/native-links.zip",
         format: "zip",
-        projection: "snapshot",
         offline: true,
       }).pipe(
         Effect.provideService(Store, {
@@ -69,71 +172,58 @@ test("public read and exported snapshot expose compiled native references and pr
   expect(archive).toBeDefined()
   const files = readImportZip(archive!)
   const main = files.find((file) => file.path.endsWith("SKILL.md"))!
-  expect(new TextDecoder().decode(main.bytes)).toContain("[Guide](references/1.md)")
+  expect(new TextDecoder().decode(main.bytes)).toContain("[Guide](references/0.md)")
   expect(f.calls).toHaveLength(0)
 })
 
 test("body and relation-derived changes replace current index while exact parent pins retain their old bytes", async () => {
-  const f = sharedSnapshotFixture()
-  f.bodies.set(skillPage, mention(id(11)))
+  const f = currentSnapshotFixture()
+  f.bodies.set(skillPage, mention(id(100)))
   const first = await f.target(parseTarget(skillPage), options)
   const original = structuredClone(f.json.get("snapshots/" + first.snapshot_id + ".json"))
-  f.bodies.set(skillPage, mention(id(12)))
+  f.bodies.set(skillPage, mention(id(101)))
   f.main.last_edited_time = new Date(Date.now() - 500).toISOString()
   for (const [key, value] of f.json)
     if (key.startsWith("cache/latest/")) property(value).validated_at = Date.now() - 300_001
   f.clearCalls()
   const current = await f.target(parseTarget(skillPage), options)
   expect(current.native_references?.index_sha256).not.toBe(first.native_references?.index_sha256)
-  expect(current.native_references?.entries[0]?.file_id).toBe("file-2")
-  expect(f.readBodyCount()).toBe(1)
+  expect(current.native_references?.entries[0]?.file_id).toBe("support-1")
+  expect(f.bodyCalls().length).toBe(1)
   expect(f.json.get("snapshots/" + first.snapshot_id + ".json")).toEqual(original)
   f.clearCalls()
   const historical = await f.run(
     readSkill(fileRef(owner, "SKILL.md", first.snapshot_id), { offline: true }),
   )
   expect(historical.native_references).toEqual(first.native_references)
-  expect("content" in historical && historical.content).toContain("references/1.md")
+  expect("content" in historical && historical.content).toContain("references/0.md")
   expect(f.calls).toHaveLength(0)
 })
 
 test("stable File references use the selected owner snapshot binding after moves and never choose a replacement at the old path", async () => {
-  const f = sharedSnapshotFixture()
+  const f = currentSnapshotFixture()
   const first = await f.target(parseTarget(skillPage), options)
-  const selected = first.files.find((file) => file.path === "references/1.md")!
+  const selected = first.files.find((file) => file.path === "references/0.md")!
   const replacement = encode("A different File now occupies the original path\n")
-  f.objects.set("objects/" + digest(replacement), replacement)
-  const movedFiles = [
-    ...first.files.filter((file) => file.path !== selected.path),
-    { ...selected, path: "moved/guide.md" },
-    { path: selected.path, bytes: replacement.length, sha256: digest(replacement) },
-  ]
-  const bindings = [
-    ...first.file_bindings!.map((binding) =>
-      binding.file_id === "file-1" ? { ...binding, path: "moved/guide.md" } : binding,
-    ),
-    { file_id: "replacement", page_id: id(88), path: selected.path },
-  ]
-  const version = digest(canonicalSharedJson({ files: movedFiles, file_bindings: bindings }))
-  const snapshotId = "s_" + digest(JSON.stringify([first.scope, first.record.id, version]))
-  const moved = decode(SnapshotSchema, {
-    ...first,
-    snapshot_id: snapshotId,
-    version_id: version,
-    files: movedFiles,
-    file_bindings: bindings,
-  })
-  f.json.set("snapshots/" + snapshotId + ".json", moved)
-  for (const [key, value] of f.json)
-    if (key.startsWith("cache/latest/")) property(value).snapshot_id = snapshotId
-  const stable = fileRef(owner, selected.path, undefined, "file-1")
+  f.files[0]!.properties.Path = rich("path", "moved/guide.md")
+  const replacementRow = structuredClone(f.files[0]!)
+  replacementRow.id = id(88)
+  replacementRow.properties.Path = rich("path", selected.path)
+  replacementRow.properties["File ID"] = rich("file-id", "replacement")
+  f.files.push(replacementRow)
+  f.bodies.set(replacementRow.id, new TextDecoder().decode(replacement))
+  const moved = await f.target(parseTarget(skillPage), { ...options, refresh: true })
+  const snapshotId = moved.snapshot_id
+  const stable = fileRef(owner, selected.path, undefined, "support-0")
   f.clearCalls()
   const current = await f.run(readSkill(stable, { offline: true }))
   expect(current.path).toBe("moved/guide.md")
-  expect("content" in current && current.content).toBe("Reference one\n")
+  expect("content" in current && current.content).toBe(
+    "# Supporting 0\n\nComplete supporting text 0.\n",
+  )
   expect(parseRef(current.ref)).toMatchObject({
     snapshot: snapshotId,
-    file_id: "file-1",
+    file_id: "support-0",
     path: "moved/guide.md",
   })
   expect(
@@ -143,10 +233,12 @@ test("stable File references use the selected owner snapshot binding after moves
     "/moved/guide.md?snapshot=",
   )
   const historical = await f.run(
-    readSkill(fileRef(owner, selected.path, first.snapshot_id, "file-1"), { offline: true }),
+    readSkill(fileRef(owner, selected.path, first.snapshot_id, "support-0"), { offline: true }),
   )
-  expect(historical.path).toBe("references/1.md")
-  expect("content" in historical && historical.content).toBe("Reference one\n")
+  expect(historical.path).toBe("references/0.md")
+  expect("content" in historical && historical.content).toBe(
+    "# Supporting 0\n\nComplete supporting text 0.\n",
+  )
   const missing = await f.run(
     Effect.flip(readSkill(fileRef(owner, selected.path, snapshotId, "absent"), { offline: true })),
   )
@@ -155,76 +247,70 @@ test("stable File references use the selected owner snapshot binding after moves
 })
 
 test("File IDs cannot cross owners and sibling relative refs drop the original File identity", async () => {
-  const f = sharedSnapshotFixture()
+  const f = currentSnapshotFixture()
   const snapshot = await f.target(parseTarget(skillPage), options)
-  const base = fileRef(owner, "references/1.md", snapshot.snapshot_id, "file-1")
-  expect(parseRef(resolveRef(base, "2.md"))).toEqual({
+  const base = fileRef(owner, "references/0.md", snapshot.snapshot_id, "support-0")
+  expect(parseRef(resolveRef(base, "1.md"))).toEqual({
     selector: owner,
-    path: "references/2.md",
+    path: "references/1.md",
     snapshot: snapshot.snapshot_id,
   })
   const wrong = fileRef(
-    "shared_skill:library-snapshot:other",
-    "references/1.md",
+    "shared_skill:library-current:other",
+    "references/0.md",
     snapshot.snapshot_id,
-    "file-1",
+    "support-0",
   )
   expect((await f.run(Effect.flip(readSkill(wrong, { offline: true })))).code).toBe(
     "SNAPSHOT_CONFLICT",
   )
-  expect(() => parseRef("skill://name/SKILL.md?file_id=file-1")).toThrow()
+  expect(() => parseRef("skill://name/SKILL.md?file_id=support-0")).toThrow()
   expect(() => parseRef(fileRef(owner, "SKILL.md") + "?file_id=a&file_id=b")).toThrow()
   expect(() => parseRef(fileRef(owner, "SKILL.md") + "?file_id=%00")).toThrow()
 })
 
-test("shared Records retain and restore the frozen native reference directory without current body reads", async () => {
-  const f = sharedSnapshotFixture()
-  f.bodies.set(skillPage, mention(id(11)))
+test("a missing fixed native reference manifest requires current reselection without remote recovery", async () => {
+  const f = currentSnapshotFixture()
+  f.bodies.set(skillPage, mention(id(100)))
   const snapshot = await f.target(parseTarget(skillPage), options)
-  const plan = await f.run(prepareSharedSnapshotHistory(library, snapshot))
-  expect(plan.manifest.native_references).toEqual(snapshot.native_references)
-  expect(plan.manifest.file_bindings).toEqual(snapshot.file_bindings)
-  await f.run(retainSharedSnapshotHistory(library, { plan, mode: "create" }))
+  const selected = fileRef(owner, "SKILL.md", snapshot.snapshot_id)
   f.json.delete("snapshots/" + snapshot.snapshot_id + ".json")
   f.objects.clear()
-  f.bodies.set(skillPage, mention(id(12)))
+  f.bodies.set(skillPage, mention(id(101)))
   f.clearCalls()
-  const restored = await f.run(
-    restoreSharedHistory(library, { skillPageId: skillPage, pinId: plan.pin_id }),
-  )
-  expect(restored.native_references).toEqual(snapshot.native_references)
-  expect(restored.file_bindings).toEqual(snapshot.file_bindings)
-  expect(f.readBodyCount()).toBe(0)
-  expect(f.writeCount()).toBe(0)
-  const read = await f.run(readSkill(restored.ref, { offline: true }))
-  expect("content" in read && read.content).toContain("references/1.md")
+  for (const offline of [false, true]) {
+    const error = await f.run(Effect.flip(readSkill(selected, { ...options, offline })))
+    expect(error.code).toBe("SNAPSHOT_MISSING")
+    expect(error.details).toMatchObject({ next: "reselect_current" })
+  }
+  expect(f.calls).toHaveLength(0)
+  expect(f.records.size).toBe(0)
 })
 
-test("legacy pins without the new optional fields preserve their original manifest shape and path reads", async () => {
-  const f = sharedSnapshotFixture()
+test("a current selected directory without exact File bindings is rejected without upgrading its cache", async () => {
+  const f = currentSnapshotFixture()
   const current = await f.target(parseTarget(skillPage), options)
-  const { file_bindings: _bindings, native_references: _references, ...legacy } = current
-  const version = digest("legacy version without native reference index")
-  const snapshotId = "s_" + digest(JSON.stringify([legacy.scope, legacy.record.id, version]))
+  const { file_bindings: _bindings, ...unbound } = current
+  const version = digest("corrupt current directory without physical File bindings")
+  const snapshotId = "s_" + digest(JSON.stringify([unbound.scope, unbound.record.id, version]))
   const snapshot = decode(SnapshotSchema, {
-    ...legacy,
+    ...unbound,
     snapshot_id: snapshotId,
     version_id: version,
   })
   f.json.set("snapshots/" + snapshotId + ".json", snapshot)
-  const plan = await f.run(prepareSharedSnapshotHistory(library, snapshot))
-  expect(plan.manifest).not.toHaveProperty("file_bindings")
-  expect(plan.manifest).not.toHaveProperty("native_references")
   const original = canonicalSharedJson(snapshot)
-  await f.run(readSkill(fileRef(owner, "references/1.md", snapshotId), { offline: true }))
+  f.clearCalls()
+  for (const fileId of [undefined, "support-0"]) {
+    const result = await f.run(
+      readSkill(fileRef(owner, "references/0.md", snapshotId, fileId), { offline: true }).pipe(
+        Effect.result,
+      ),
+    )
+    expect(result._tag).toBe("Failure")
+    if (result._tag === "Failure")
+      expect(["STATE_CORRUPT", "SHARED_FILE_BINDING_UNAVAILABLE"]).toContain(result.failure.code)
+  }
   expect(canonicalSharedJson(f.json.get("snapshots/" + snapshotId + ".json"))).toBe(original)
-  expect(
-    (
-      await f.run(
-        Effect.flip(
-          readSkill(fileRef(owner, "references/1.md", snapshotId, "file-1"), { offline: true }),
-        ),
-      )
-    ).code,
-  ).toBe("SHARED_FILE_BINDING_UNAVAILABLE")
+  expect(f.calls).toHaveLength(0)
 })
