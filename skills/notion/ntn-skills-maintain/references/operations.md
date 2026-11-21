@@ -335,7 +335,7 @@ child cannot be superseded independently through local import. Use the owning
 Source action. Supersede and resume are mutually exclusive and both refuse dry-run.
 Failure before handoff still belongs to the predecessor; after handoff, resume the
 new operation with its complete input. Preserve the returned exact error context.
-For a native semantic mismatch, preserve the failed input bytes and hash.
+For a semantic mismatch in a complete native import, preserve the failed input bytes and hash.
 Accepting changed meaning requires a separate complete input and explicit successor;
 format-only normalization already belongs to the shared native write contract.
 Complete import has no general cancel command. The projection-only cancel route

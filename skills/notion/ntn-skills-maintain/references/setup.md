@@ -65,7 +65,7 @@ ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID
 
 Markdown becomes editable native content; other files use exact resources. No
 artificial Source or manually authored descriptor is needed. Read the returned
-Skill. Use `skill register PAGE_ID --entry ENTRY` for a page already authored in
+Skill only for requested review or consumption. Use `skill register PAGE_ID --entry ENTRY` for a page already authored in
 the current Skills table, and `skill update` for later changes. Complete-tree
 replacement remains `ctl library import`; it defaults to exact resources and
 requires explicit projection for generated reading text. None of these commands
