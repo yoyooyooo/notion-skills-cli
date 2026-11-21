@@ -299,7 +299,10 @@ matching result; it cannot be retried merely because a query found nothing.
 Require scope:skill/status:complete and a complete projection result. Its
 restoration.status is restored or unchanged, with an optional restore operation_id.
 Restoring the owner makes the overall result applied even if text is unchanged.
-Repeat on the live complete page to establish zero semantic writes.
+This is the terminal success receipt. For requested readback, use read-only
+`read`, `ctl library files` or `export` on the returned page. Do not rerun a completed
+write to verify it. Repeat a completed write only for a new user request or an
+explicit idempotence test.
 
 Refuse foreign or duplicate live identities, unavailable/permanently lost pages
 or originals and unfinished content work. If an older projection was pending

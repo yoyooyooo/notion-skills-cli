@@ -166,6 +166,37 @@ test("consumption and Profile guidance preserve zero-write reads and complete cu
   expect(details).toContain("A metadata toggle cannot clear an unfinished multi-target refresh")
 })
 
+test("projection completion ends routine writes without blocking requested repeat work or recovery", () => {
+  const maintain = fileText("notion/ntn-skills-maintain", "SKILL.md")
+  const operations = fileText("notion/ntn-skills-maintain", "references/operations.md")
+  const sync = fileText("notion/ntn-skills-sync", "SKILL.md")
+  const synchronization = fileText("notion/ntn-skills-sync", "references/synchronization.md")
+  for (const guide of [maintain, operations, sync, synchronization]) {
+    const prose = guide.replace(/\s+/g, " ")
+    expect(prose).toContain("scope:skill/status:complete")
+    expect(prose).toContain("complete projection")
+    expect(prose).toMatch(/restoration\.status.{0,12}restored or unchanged/)
+    expect(prose).toContain("read-only")
+    expect(prose).toContain("new user request or an explicit idempotence test")
+    expect(prose).not.toContain(
+      "Repeat on the live complete page to establish zero semantic writes",
+    )
+  }
+  for (const guide of [operations, synchronization]) {
+    const restore = guide.split("## Restore a trashed Skill\n")[1]!.split("\n## ")[0]!
+    const prose = restore.replace(/\s+/g, " ")
+    expect(prose).toContain("terminal success receipt")
+    expect(prose).toContain("read-only `read`, `ctl library files` or `export`")
+    expect(prose).toContain("Do not rerun a completed write to verify it")
+    expect(prose).toContain(
+      "Repeat the same command after its own restore or later projection interruption",
+    )
+  }
+  expect(operations).toContain("Unknown CREATE/append still needs an observable")
+  expect(operations).toContain("Preserve original state and credential scope")
+  expect(synchronization).toContain("Uncertain actions remain pending")
+})
+
 test("connected maintenance guidance reads projected workflows and preserves their selected references", () => {
   const consumer = fileText("notion/ntn-skills", "SKILL.md")
   const maintain = fileText("notion/ntn-skills-maintain", "SKILL.md")

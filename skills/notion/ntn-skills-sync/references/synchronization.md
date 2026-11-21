@@ -248,9 +248,14 @@ do not refresh or rediscover upstream HEAD to restore a reading page.
 Allow reading filters and budget flags. Reject --daily, --dry-run, --operation,
 --resume and --cancel. Repeat the same command after its own restore or later
 projection interruption; restore recovery coordinates retain --restore, frozen
-policy and budgets. A live complete page makes zero semantic writes. Require a
-complete projection result with restoration.status restored or unchanged;
-untrashing alone is not a completed projection.
+policy and budgets.
+
+Require scope:skill/status:complete and a complete projection result with
+restoration.status restored or unchanged. This is the terminal success receipt;
+untrashing alone is not a completed projection. For requested readback, use
+read-only `read`, `ctl library files` or `export` on the returned page. Do not rerun
+a completed write to verify it. Repeat a completed write only for a new user
+request or an explicit idempotence test; a live complete page makes zero semantic writes.
 
 Refuse unavailable/permanently lost originals or pages, foreign/duplicate live
 identities and unfinished content work. Also refuse an older projection whose

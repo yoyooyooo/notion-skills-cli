@@ -67,6 +67,9 @@ Skill; upstream content does not reconstruct human checkbox or relation choices.
 For an existing completed Skill moved to Trash, prefer the original exact page:
 `ctl library projection PAGE_ID --restore --entry ENTRY`. It restores the same
 owner and current reading projection, preserving identity and human choices.
+The terminal success receipt is scope:skill/status:complete with a complete projection
+and restoration.status restored or unchanged. Use read-only review after completion;
+repeat completed work only for a new user request or an explicit idempotence test.
 Use [Trash recovery](references/synchronization.md#restore-a-trashed-skill) for its
 limits and repeat the same command after its own interrupted stages.
 For daily batches, combine Source 日用 (all real members), Skill 日用 and Default

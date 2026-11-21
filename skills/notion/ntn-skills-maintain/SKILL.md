@@ -11,7 +11,7 @@ metadata:
 Use the task's executable and library, with Read and for writes Insert/Update access.
 Select an exact page ID, URL or stable Skill ID, never a fuzzy title.
 
-Read only inspects. To apply, use this source's exact ref via `notion_use(ref)`
+Read inspects. To apply, use this source's exact ref via `notion_use(ref)`
 or CLI `use REF` with Requires unless already prepared. Report unavailable adoption.
 Inspect edited targets; local/package workflows stay native.
 
@@ -27,8 +27,7 @@ Report progress before writes and during long verification.
 
 ## Prepare local input
 
-Writers require physical paths, including parents. Prepare temporary input before
-writing files:
+Use physical input paths, including parents. Prepare temporary input:
 
 ```sh
 skill_dir=$(mktemp -d)
@@ -36,7 +35,7 @@ skill_dir=$(cd "$skill_dir" && pwd -P)
 printf '%s\n' "$skill_dir"
 ```
 
-Use that physical path; links inside it remain rejected.
+Input links remain rejected.
 
 ## Create or edit a native Skill
 
@@ -58,7 +57,7 @@ property; actual default visibility follows the View. Source-owned changes use
 ntn-skills-sync.
 
 Native writes verify complete text, code, links and structure; formatting may
-normalize. Resources stay byte-exact. Native bodies are editable in Notion;
+normalize. Resources stay byte-exact. Native bodies stay editable;
 no projection is needed. See [native management](references/operations.md#manage-native-skills).
 
 ## Register or remove an existing page
@@ -83,17 +82,19 @@ A preview is not a completed edit. See [removal boundaries](references/operation
 
 ## Verify and continue
 
-A successful `ready` result or `removed` with `cleanup_verified: true` includes
-complete CLI verification. Continue only for requested review or
-consumption; extra reads are not routine cleanup.
+`ready`, `removed` with `cleanup_verified: true`, or complete projection
+with `scope:skill/status:complete` includes complete CLI verification. A restore
+reports restoration.status restored or unchanged. Continue only for requested review or
+consumption, using read-only paths. Repeat completed work only for a new user
+request or an explicit idempotence test.
 
-For a requested Pi consumption test after writing, refresh that source's directory
+For requested Pi inspection, refresh that source's directory
 with `notion_list({query: SKILL_ID, source: SOURCE_ID, refresh: true})`, then use
 ordinary `read` on its returned exact ref. This refreshes discovery, not adopted
-versions. Inspect the edited target; do not activate it. Repeating an unchanged
-empty query or running CLI list does not refresh the host directory.
+versions. Inspect the edited target; do not activate it. Empty queries or CLI list
+do not refresh the host directory.
 
-For a CLI readback or metadata inspection:
+For CLI readback:
 
 ```sh
 ntn-skills ctl library files PAGE_ID --entry ENTRY
@@ -112,7 +113,7 @@ unresolved writes follow [unfinished work](references/operations.md#incomplete-c
 
 ## Other management
 
-Complete import intentionally replaces the tree, removing omitted Notion-owned files:
+Complete import replaces the tree, removing omitted Notion-owned files:
 
 ```sh
 ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
