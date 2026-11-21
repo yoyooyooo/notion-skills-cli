@@ -8,7 +8,7 @@ metadata:
 
 # Maintain the current library
 
-Requires ntn-skills and library Read access; import and restoration also need Insert and Update.
+Requires ntn-skills and library Read access; writes also need Insert and Update.
 
 Use the task's executable and library. Import replaces a complete local tree;
 manage Sources through notion/ntn-skills-sync.
