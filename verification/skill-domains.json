@@ -774,11 +774,11 @@
       "precondition": "current读开始取得owner/index A，暂停body/provider response。",
       "events": [
         "管理writer完整B并回ready，或直接改变file/Source descriptor。",
-        "释放A response；另一分支固定pin缺字节下载期间改变owner。"
+        "释放A response；另一分支fixed缺字节完成准入后暂停provider，改变Source Enabled/revision，分别返回原字节和不同字节。"
       ],
       "oracle": [
         "current读必须final consumption fence报CURRENT_TREE_CHANGED，不能因final ready而过关。",
-        "固定字节必须仍通过exact hash/bytes/mode；但下载后是否再次要求current ready尚未约定。",
+        "fixed缺字节下载前完成当前资格与原固定descriptor准入；准入后只交付原revision/path/hash/bytes/mode对应字节，不再次要求末尾current ready或升级latest。后续新acquisition重新核当前资格；精确字节校验不是新的权限证明。",
         "无论分支不执行管理repair。"
       ],
       "minimum_layer": "sdk",
@@ -786,7 +786,7 @@
       "entrypoints": [
         {
           "repository": "cli",
-          "command": "bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-consumption.test.ts packages/core/test/shared-current-projection-write.test.ts --timeout 60000",
+          "command": "bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-consumption.test.ts packages/core/test/shared-current-projection-write.test.ts packages/core/test/shared-acquisition-contract.test.ts --timeout 60000",
           "required_inputs": []
         }
       ]

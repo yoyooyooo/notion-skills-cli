@@ -64,8 +64,10 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN"
 - 当前 source/resource bytes 与 hash/size/mode 相同；native 使用明确 frontmatter 与当前规范化正文。Name/Description 不改 authored bytes。
 - Native 正文和 resource 原件必须完整。日用 main 与选中的 Source 阅读文档须有完整 Notion 正文；默认 Markdown 且排除测试/fixture/依赖/生成目录。missing selected pages 重建，excluded Source 行归档，Notion authority 不裁剪。metadata、外链和 SHA/Bytes 占位不算 selected 全文。Excluded 与非文本 skipped 分开报告，仍核完整原件消费。
 - generated body 编辑不自动接管；native 直接编辑不生成远端 object/adoption。多 Source 的逐文件声明不混 revision。
-- 权限、partial pagination、missing/truncated body、非 ready、当前 descriptor 变化均阻止完整结果。末尾再次确认 owner，不能在获取期间停用后仍交付。
+- 建立或复核 current snapshot 时，权限失败、partial pagination、missing/truncated body、非 ready、当前 descriptor 变化均阻止完整结果。正文/provider 读取完成后重读 owner/index 和完整消费描述，比较 current fence；末尾观察到资格或描述变化时不发布 current 结果。这是变化检测，不是 CAS，不能声称观察到获取期间所有瞬时变化。
 - 完整 export 与单文件 read --output 各按实际需求核对；任意多路径 export 尚未公开，不伪造该能力。
+
+固定 pin 缺字节补取使用另一条已有路径：下载前核当前资格与原固定 descriptor，准入后只完成原 revision/path/hash/bytes/mode 对应的字节；后到的业务管理变化不把本次补取变成 latest read，也没有末尾再次要求 current ready。下一次新的 acquisition 重新核资格。已有完整本地字节保持固定语义；已知真实权限拒绝仍按既有访问检查处理，精确字节校验不授予权限。native 原正文缺失没有旧版远端恢复路线。复验入口是 `shared-acquisition-contract.test.ts` 的 provider 暂停用例，其实际交错是 Source Enabled/revision 变化，不代称所有 owner 或撤权交错。
 
 获得整个日用范围授权后，用公开 `ctl library projection --daily --entry DB`
 执行同一路径，记录 full tree、selected、excluded、row changes、正文读回和非文本跳过，再重复确认零语义写。Disabled
