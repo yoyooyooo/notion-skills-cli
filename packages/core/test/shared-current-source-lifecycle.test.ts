@@ -133,6 +133,233 @@ const sourceContent = (revision: string) => ({
   mode: "100644",
 })
 
+function seedUnrelatedLegacy(f: Fixture) {
+  const legacySkill = structuredClone(f.table("skills")[0]!)
+  const legacyFile = structuredClone(f.table("files")[0]!)
+  legacySkill.id = id(8000)
+  const skillFields = property(legacySkill.properties)
+  property(skillFields["skill-id"]).rich_text = sourceRich("unrelated-legacy")
+  property(skillFields.content).rich_text = []
+  property(skillFields["current-state"]).select = null
+  legacyFile.id = id(8001)
+  const fileFields = property(legacyFile.properties)
+  property(fileFields.skill).relation = [{ id: legacySkill.id }]
+  property(fileFields.content).rich_text = []
+  f.pages.set(String(legacySkill.id), legacySkill)
+  f.pages.set(String(legacyFile.id), legacyFile)
+  return { legacySkill, legacyFile }
+}
+function clearContributions(f: Fixture, sourcePage: string) {
+  property(property(f.pages.get(sourcePage)!.properties).contributions).rich_text = sourceRich("[]")
+}
+
+test("Source removal leaves unrelated legacy Skill and File metadata untouched", async () => {
+  const f = currentWriteFixture(parent)
+  await seedSkill(f)
+  const source = await seedSource(f)
+  const { legacySkill, legacyFile } = seedUnrelatedLegacy(f)
+  const before = structuredClone([legacySkill, legacyFile])
+  f.clearCalls()
+
+  expect(
+    await f.run(
+      removeCurrentSource(library, {
+        source_id: "managed",
+        operation_id: "unrelated-legacy-inspect",
+        dry_run: true,
+      }),
+    ),
+  ).toMatchObject({ status: "inspected", remote_writes: 0 })
+  expect(f.mutations()).toEqual([])
+  expect(
+    await f.run(
+      removeCurrentSource(library, {
+        source_id: "managed",
+        operation_id: "unrelated-legacy-remove",
+      }),
+    ),
+  ).toMatchObject({ state: "removed", source_page_id: source.page_id })
+  expect([f.pages.get(String(legacySkill.id)), f.pages.get(String(legacyFile.id))]).toEqual(before)
+  expect(f.pages.get(source.page_id)?.in_trash).toBe(true)
+})
+
+test("Source scope decodes selected File bindings with either UUID spelling", async () => {
+  const f = currentWriteFixture(parent)
+  await seedSkill(f)
+  await seedSource(f)
+  f.clearCalls()
+  expect(
+    await f.run(
+      removeCurrentSource(
+        {
+          ...library,
+          files: {
+            ...library.files,
+            data_source_id: library.files.data_source_id.replaceAll("-", ""),
+          },
+        },
+        { source_id: "managed", operation_id: "compact-data-source-id", dry_run: true },
+      ),
+    ),
+  ).toMatchObject({ status: "inspected", affected_skill_ids: ["human"] })
+  expect(f.mutations()).toEqual([])
+})
+
+test("unrelated current authority does not require valid bytes, registration or state for Source retirement", async () => {
+  const f = currentWriteFixture(parent)
+  await seedSkill(f)
+  const source = await seedSource(f)
+  clearContributions(f, source.page_id)
+  const { legacySkill, legacyFile } = seedUnrelatedLegacy(f)
+  property(property(legacySkill.properties).content).rich_text = sourceRich(
+    JSON.stringify({
+      ...sourceContent(source.revision),
+      source_id: "another-source",
+      revision: "",
+    }),
+  )
+  property(property(legacyFile.properties).content).rich_text = sourceRich(
+    JSON.stringify({ kind: "native", mode: "invalid", frontmatter: "" }),
+  )
+  property(property(legacyFile.properties)["file-id"]).rich_text = []
+  const before = structuredClone([legacySkill, legacyFile])
+  f.clearCalls()
+  expect(
+    await f.run(
+      removeCurrentSource(library, {
+        source_id: "managed",
+        operation_id: "other-authority",
+        dry_run: true,
+      }),
+    ),
+  ).toMatchObject({ status: "inspected", targets: [] })
+  expect(f.mutations()).toEqual([])
+  expect([f.pages.get(String(legacySkill.id)), f.pages.get(String(legacyFile.id))]).toEqual(before)
+})
+
+for (const association of ["contribution", "origin", "main", "file"] as const)
+  test(`related legacy metadata blocks Source removal through ${association}`, async () => {
+    const f = currentWriteFixture(parent)
+    await seedSkill(f)
+    const source = await seedSource(f)
+    clearContributions(f, source.page_id)
+    const { legacySkill, legacyFile } = seedUnrelatedLegacy(f)
+    switch (association) {
+      case "contribution":
+        property(property(f.pages.get(source.page_id)!.properties).contributions).rich_text =
+          sourceRich(
+            JSON.stringify([
+              {
+                member_key: "member",
+                skill_id: "unrelated-legacy",
+                mount_path: "",
+                mapping: {},
+                exclude: [],
+              },
+            ]),
+          )
+        break
+      case "origin":
+        property(property(legacySkill.properties).origin).relation = [
+          ...Array.from({ length: 101 }, (_, n) => ({ id: id(10000 + n) })),
+          { id: source.page_id },
+        ]
+        break
+      case "main":
+        property(property(legacySkill.properties).content).rich_text = sourceRich(
+          JSON.stringify(sourceContent(source.revision)),
+        )
+        break
+      case "file":
+        property(property(legacyFile.properties).content).rich_text = sourceRich(
+          JSON.stringify(sourceContent(source.revision)),
+        )
+        break
+    }
+    f.clearCalls()
+    expect(
+      await f.run(
+        removeCurrentSource(library, { source_id: "managed", operation_id: "related-legacy" }).pipe(
+          Effect.result,
+        ),
+      ),
+    ).toMatchObject({ _tag: "Failure", failure: { code: "CURRENT_SCHEMA_REQUIRED" } })
+    expect(f.mutations()).toEqual([])
+    expect(pendingKeys(f)).toEqual([])
+    if (association === "origin")
+      expect(
+        f.calls.filter((call) =>
+          call.path.startsWith(`v1/pages/${legacySkill.id}/properties/origin?`),
+        ),
+      ).toHaveLength(2)
+  })
+
+for (const content of ['{"kind":"unknown"}', '{"kind":"source","source_id":', '{"kind":"source"}'])
+  test(`unclassifiable Content cannot prove that a Source is unreferenced: ${content}`, async () => {
+    const f = currentWriteFixture(parent)
+    await seedSkill(f)
+    const source = await seedSource(f)
+    clearContributions(f, source.page_id)
+    const { legacyFile } = seedUnrelatedLegacy(f)
+    property(property(legacyFile.properties).content).rich_text = sourceRich(content)
+    f.clearCalls()
+    expect(
+      await f.run(
+        removeCurrentSource(library, {
+          source_id: "managed",
+          operation_id: "unknown-authority",
+        }).pipe(Effect.result),
+      ),
+    ).toMatchObject({ _tag: "Failure", failure: { code: "CURRENT_CONTENT_INVALID" } })
+    expect(f.mutations()).toEqual([])
+  })
+
+test("an orphan legacy File still prevents a complete Source reference census", async () => {
+  const f = currentWriteFixture(parent)
+  await seedSkill(f)
+  const source = await seedSource(f)
+  clearContributions(f, source.page_id)
+  const { legacyFile } = seedUnrelatedLegacy(f)
+  property(property(legacyFile.properties).skill).relation = [{ id: id(9000) }]
+  f.clearCalls()
+  expect(
+    await f.run(
+      removeCurrentSource(library, { source_id: "managed", operation_id: "orphan-legacy" }).pipe(
+        Effect.result,
+      ),
+    ),
+  ).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      code: "CURRENT_INDEX_INVALID",
+      details: { page_id: legacyFile.id, skill_page_id: id(9000) },
+    },
+  })
+  expect(f.mutations()).toEqual([])
+})
+
+test("a Source reference selects every row claiming its stable Skill identity", async () => {
+  const f = currentWriteFixture(parent)
+  const skill = await seedSkill(f)
+  const source = await seedSource(f)
+  clearContributions(f, source.page_id)
+  const duplicate = structuredClone(f.pages.get(skill.page_id)!)
+  duplicate.id = id(8100)
+  f.pages.set(String(duplicate.id), duplicate)
+  property(property(duplicate.properties).content).rich_text = sourceRich(
+    JSON.stringify(sourceContent(source.revision)),
+  )
+  f.clearCalls()
+  expect(
+    await f.run(
+      removeCurrentSource(library, { source_id: "managed", operation_id: "duplicate-target" }).pipe(
+        Effect.result,
+      ),
+    ),
+  ).toMatchObject({ _tag: "Failure", failure: { code: "CURRENT_INDEX_INVALID" } })
+  expect(f.mutations()).toEqual([])
+})
+
 test("Source disable/enable preserves Skill metadata and exposes exact affected bindings; equal toggle writes nothing", async () => {
   const f = currentWriteFixture(parent)
   const skill = await seedSkill(f),
@@ -272,6 +499,7 @@ test("Source removal finds semantic Main/Files references even without Origin, a
   const f = currentWriteFixture(parent)
   const skill = await seedSkill(f),
     source = await seedSource(f)
+  clearContributions(f, source.page_id)
   const index = await f.run(queryCurrentSkillIndex(library, skill.page_id))
   for (const binding of [index.main, ...index.files]) {
     const fields = property(f.pages.get(binding.page_id)!.properties)

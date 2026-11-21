@@ -1,7 +1,11 @@
 import { Effect } from "effect"
 import { fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
-import { queryCurrentLibraryIndex } from "./shared-current-index.ts"
+import {
+  currentFileRecord,
+  queryCurrentLibraryCensus,
+  queryCurrentSkillIndex,
+} from "./shared-current-index.ts"
 import { currentSourceContributionFiles } from "./shared-current-consumption.ts"
 import { withCurrentInvocationBudget } from "./shared-current-invocation.ts"
 import {
@@ -64,15 +68,56 @@ export function queryCurrentSourceReferences(
   })
 }
 
+/** Authority alone establishes the Source scope; bytes and registration are
+ * validated for the whole selected Skill below. Unrelated legacy rows are not
+ * admitted to current consumption. Unknown nonempty authority cannot prove absence. */
+function contentReferencesSource(encoded: string, sourceId: string): boolean {
+  if (encoded === "") return false
+  let raw: unknown
+  try {
+    raw = JSON.parse(encoded)
+  } catch {
+    throw fail("CURRENT_CONTENT_INVALID", "Content must contain one complete JSON descriptor.")
+  }
+  const content = property(raw)
+  switch (content.kind) {
+    case "native":
+    case "resource":
+      return false
+    case "source":
+      if (typeof content.source_id === "string")
+        return validateCurrentSourceId(content.source_id) === sourceId
+      break
+  }
+  throw fail("CURRENT_CONTENT_INVALID", "Content does not identify an exact current authority.")
+}
+
 function querySourceReferences(
   library: SharedLibrary,
   source: Pick<CurrentSourceManagement, "page_id" | "declaration">,
   selection: Pick<CurrentSharedSource, "source_id" | "revision" | "manifest">,
 ) {
   return Effect.gen(function* () {
-    const inventory = yield* queryCurrentLibraryIndex(library)
+    const census = yield* queryCurrentLibraryCensus(library)
     const sourceId = source.declaration.definition.source_id
-    const selected = new Set(source.declaration.contributions.map((entry) => entry.skill_id))
+    const selectedIds = new Set(source.declaration.contributions.map((entry) => entry.skill_id))
+    const selectedPages = new Set<string>()
+    const originPages = new Set<string>()
+    for (const [page, metadata] of census) {
+      const origin = yield* currentSourceOriginContains(library, page, metadata.raw, source.page_id)
+      if (origin) originPages.add(page)
+      const contentReference = yield* checked(() =>
+        [metadata, ...metadata.files].some((file) =>
+          contentReferencesSource(file.content, sourceId),
+        ),
+      )
+      if (origin || contentReference) {
+        selectedPages.add(page)
+        if (metadata.skill_id !== "") selectedIds.add(metadata.skill_id)
+      }
+    }
+    const targets: { skill_id: string; skill_page_id: string }[] = []
+    const identities = new Set<string>()
     const references: {
       skill_id: string
       skill_page_id: string
@@ -87,7 +132,27 @@ function querySourceReferences(
       path: string
       source_path: string
     }[] = []
-    for (const skill of inventory.skills.values()) {
+    for (const [page, metadata] of census) {
+      if (!selectedIds.has(metadata.skill_id) && !selectedPages.has(page)) continue
+      const files = yield* checked(() =>
+        metadata.files.map((file) =>
+          currentFileRecord(
+            file.raw,
+            page,
+            library.files.data_source_id,
+            library.files.property_ids,
+          ),
+        ),
+      )
+      const skill = yield* queryCurrentSkillIndex(library, page, metadata.raw, files)
+      if (identities.has(skill.skill_id))
+        return yield* Effect.fail(
+          fail("CURRENT_INDEX_INVALID", "Several current Skills claim the same stable identity.", {
+            skill_id: skill.skill_id,
+          }),
+        )
+      identities.add(skill.skill_id)
+      targets.push({ skill_id: skill.skill_id, skill_page_id: skill.page_id })
       const owned = new Set(
         [skill.main, ...skill.files]
           .filter((file) => file.content.kind !== "source")
@@ -106,7 +171,6 @@ function querySourceReferences(
           })
       for (const file of [skill.main, ...skill.files])
         if (file.content.kind === "source" && file.content.source_id === sourceId) {
-          selected.add(skill.skill_id)
           references.push({
             skill_id: skill.skill_id,
             skill_page_id: skill.page_id,
@@ -115,22 +179,10 @@ function querySourceReferences(
             path: file.path,
           })
         }
-      if (
-        yield* currentSourceOriginContains(
-          library,
-          skill.page_id,
-          inventory.pages.get(skill.page_id),
-          source.page_id,
-        )
-      ) {
-        selected.add(skill.skill_id)
+      if (originPages.has(page))
         origins.push({ skill_id: skill.skill_id, skill_page_id: skill.page_id })
-      }
     }
-    const targets = [...inventory.skills.values()]
-      .filter((skill) => selected.has(skill.skill_id))
-      .map((skill) => ({ skill_id: skill.skill_id, skill_page_id: skill.page_id }))
-      .sort((a, b) => a.skill_id.localeCompare(b.skill_id, "en"))
+    targets.sort((a, b) => a.skill_id.localeCompare(b.skill_id, "en"))
     return { references, contributions, origins, targets }
   })
 }

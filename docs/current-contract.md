@@ -575,11 +575,17 @@ original from a disabled but complete Source through the management reader.
 
 `source enable|disable SOURCE_ID` changes only Source consumption eligibility.
 `source remove SOURCE_ID` first enumerates this library's complete Skills and Files
-metadata independently. Semantic Content decoding finds references even when
-Origin or Source reading rows are absent; complete contribution membership also
-counts as a live reference. Orphan Files, incomplete pagination and stale Origin links
-prevent a clean-removal claim. Referenced files must first be explicitly taken
-over. An unreferenced Source retires its owned resources and page, then the finite
+metadata independently. It locates exact Source authority in Content, complete
+Origin relations and declared contribution identities before requiring a complete
+current Skill directory. This finds references even when Origin or Source reading
+rows are absent; complete contribution membership also counts as a live reference.
+Unrelated legacy rows with empty Content do not require migration for this Source
+action and remain untouched. This scope check does not admit them to consumption.
+Unknown nonempty Content authority, incomplete relations or pagination, orphan Files
+and stale Origin links prevent a clean-removal claim. Every row claiming a selected
+stable Skill identity remains in scope, and related legacy or invalid metadata still
+fails current validation. Referenced files must first be explicitly taken over.
+An unreferenced Source retires its owned resources and page, then the finite
 operation. Its terminal state is removed; it is never temporarily republished
 ready during retirement. A metadata action does not generate per-Skill writes.
 
