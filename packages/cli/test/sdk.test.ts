@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import * as publicSdk from "../src/sdk.ts"
-import { Effect, Path } from "effect"
+import { Config, ConfigProvider, Effect, Path } from "effect"
+import { ChildProcess, ChildProcessSpawner } from "effect/process"
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { runSourceGit } from "../../core/src/upstream-source.ts"
 import {
   consume,
   decodeConsumeResult,
@@ -208,6 +213,125 @@ describe("Promise SDK boundary", () => {
       { absolute: "/owned/two/state", relative: "../b", file: "/owned/two/result.bin" },
     ])
     expect(process.cwd()).toBe(cwd)
+  })
+
+  test("interleaved SDK environments bind ConfigProvider and actual Git children independently", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sdk-child-environments-"))
+    const parent = { path: process.env.PATH, value: process.env.NTN_SDK_TEST_VALUE }
+    let entered = 0
+    let release!: () => void
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const cases = await Promise.all(
+      ["one", "two"].map(async (value) => {
+        const directory = join(root, value)
+        await mkdir(directory)
+        await writeFile(
+          join(directory, "git"),
+          `#!${process.execPath}\nconsole.log(JSON.stringify({
+        executable: ${JSON.stringify(value)}, value: process.env.NTN_SDK_TEST_VALUE,
+        terminal: process.env.GIT_TERMINAL_PROMPT, trace: process.env.GIT_TRACE2_EVENT,
+        gitDirCleared: process.env.GIT_DIR === undefined
+      }));\n`,
+          { mode: 0o700 },
+        )
+        return {
+          value,
+          env: {
+            PATH: directory,
+            NTN_SDK_TEST_VALUE: value,
+            GIT_DIR: "/controlled/must-be-cleared",
+            GIT_TRACE2_EVENT: "/controlled/must-not-be-opened",
+          },
+        }
+      }),
+    )
+    const results = await Promise.all(
+      cases.map(({ value, env }) =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const configured = yield* Config.String("NTN_SDK_TEST_VALUE")
+            yield* Effect.promise(async () => {
+              if (++entered === 2) release()
+              await barrier
+            })
+            const bytes = yield* runSourceGit(root, ["--version"])
+            return { configured, actual: JSON.parse(new TextDecoder().decode(bytes)), value }
+          }).pipe(
+            Effect.provide(nodeRuntime(root, env).local),
+            Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(env))),
+          ),
+        ),
+      ),
+    )
+    expect(entered).toBe(2)
+    for (const { configured, actual, value } of results) {
+      expect(configured).toBe(value)
+      expect(actual).toEqual({
+        executable: value,
+        value,
+        terminal: "0",
+        trace: "0",
+        gitDirCleared: true,
+      })
+    }
+    expect({ path: process.env.PATH, value: process.env.NTN_SDK_TEST_VALUE }).toEqual(parent)
+  })
+
+  test("runtime env capture preserves default inheritance and explicit child replacements", async () => {
+    const query = ChildProcess.make(process.execPath, [
+      "-e",
+      "console.log(JSON.stringify({path:process.env.PATH??null,value:process.env.NTN_SDK_TEST_VALUE??null}))",
+    ])
+    const read = (runtime: ReturnType<typeof nodeRuntime>, command: ChildProcess.Command = query) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+          return JSON.parse(yield* spawner.string(command))
+        }).pipe(Effect.provide(runtime.local)),
+      )
+    expect(await read(nodeRuntime())).toEqual({
+      path: process.env.PATH ?? null,
+      value: process.env.NTN_SDK_TEST_VALUE ?? null,
+    })
+    const env = { PATH: "/controlled/captured", NTN_SDK_TEST_VALUE: "captured" }
+    const runtime = nodeRuntime(undefined, env)
+    env.NTN_SDK_TEST_VALUE = "changed-after-capture"
+    expect(await read(runtime)).toEqual({ path: "/controlled/captured", value: "captured" })
+    expect(
+      await read(
+        runtime,
+        ChildProcess.make(query.command, query.args, {
+          env: { NTN_SDK_TEST_VALUE: "explicit" },
+          extendEnv: false,
+        }),
+      ),
+    ).toEqual({ path: null, value: "explicit" })
+    const pipeline = ChildProcess.pipeTo(
+      ChildProcess.make(process.execPath, [
+        "-e",
+        "process.stdout.write(process.env.NTN_SDK_TEST_VALUE)",
+      ]),
+      ChildProcess.make(
+        process.execPath,
+        [
+          "-e",
+          "let input='';for await(const data of process.stdin)input+=data;console.log(JSON.stringify({input,value:process.env.NTN_SDK_TEST_VALUE}))",
+        ],
+        { env: { NTN_SDK_TEST_VALUE: "right" }, extendEnv: true },
+      ),
+    )
+    expect(await read(runtime, pipeline)).toEqual({ input: "captured", value: "right" })
+    const code = await Effect.runPromise(
+      Effect.gen(function* () {
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+        return yield* spawner.exitCode(
+          ChildProcess.make(process.execPath, ["-e", "process.exit(7)"]),
+        )
+      }).pipe(Effect.provide(runtime.local)),
+    )
+    expect(Number(code)).toBe(7)
   })
 
   test("duration rules are the public CLI rules", () => {

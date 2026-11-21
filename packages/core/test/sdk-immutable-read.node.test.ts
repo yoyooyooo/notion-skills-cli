@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
-import { mkdtemp, readFile, realpath, rename } from "node:fs/promises"
+import { spawn, spawnSync } from "node:child_process"
+import { mkdir, mkdtemp, readFile, realpath, rename, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, test, vi } from "vitest"
@@ -17,6 +18,7 @@ import { nodeRuntime } from "../../cli/src/runtime.ts"
 import { clearCache } from "../src/cache.ts"
 import { property } from "../src/model.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
+import { currentSourceConsumerFixture } from "./shared-current-source-consumer-fixture.ts"
 import {
   currentSnapshotFixture,
   currentId,
@@ -31,6 +33,192 @@ type Source = Awaited<ReturnType<typeof startSdkSourceFixture>>
 const raw = new TextEncoder().encode("#!/bin/sh\nprintf 'immutable bytes only\\n'\n")
 const hash = createHash("sha256").update(raw).digest("hex")
 const recordsPath = `/v1/data_sources/${library.records.data_source_id}/query`
+
+test("public consume binds each complete SDK env to its actual Git executable", async () => {
+  const root = await mkdtemp(join(await realpath(tmpdir()), "sdk-public-git-env-"))
+  const sdk = join(root, "sdk.mjs")
+  // Build only this test-owned SDK; shared dist and installed packages stay untouched.
+  const build = spawnSync(
+    "bun",
+    [
+      "build",
+      new URL("../../cli/src/sdk.ts", import.meta.url).pathname,
+      "--target=node",
+      "--format=esm",
+      "--outfile",
+      sdk,
+    ],
+    { encoding: "utf8" },
+  )
+  expect(build.status, build.stderr).toBe(0)
+  const f = await currentSourceConsumerFixture()
+  await f.select(
+    [
+      {
+        path: "SKILL.md",
+        bytes: new TextEncoder().encode("# Controlled Source\n"),
+        mode: "100644",
+      },
+    ],
+    "git",
+  )
+  f.bind("SKILL.md")
+  const main = {
+    ...structuredClone(f.main),
+    parent: { ...f.main.parent, database_id: library.skills.database_id },
+  }
+  const service = await startSdkSourceFixture(
+    {
+      notion: {
+        library,
+        main,
+        skills: [main],
+        files: structuredClone(f.files),
+        records: [],
+        sources: structuredClone([...f.sources.values()]),
+        bodies: Object.fromEntries(f.bodies),
+        database: {
+          object: "database",
+          id: library.skills.database_id,
+          database_type: null,
+          title: [{ plain_text: "SDK child environment fixture" }],
+          description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(library) }],
+          data_sources: [{ id: library.skills.data_source_id, name: "Skills" }],
+        },
+      },
+    },
+    join(root, "requests.jsonl"),
+  )
+  try {
+    const ledger = join(root, "git-children.jsonl")
+    for (const name of ["parent", "one", "two"]) {
+      const bin = join(root, name, "bin")
+      await mkdir(bin, { recursive: true })
+      // Even a regression runs the parent's denying shim, never a real Git fetch.
+      await writeFile(
+        join(bin, "git"),
+        `#!${process.execPath}\nconst fs=require('node:fs'),args=process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(ledger)},JSON.stringify({executable:${JSON.stringify(name)},value:process.env.NTN_SDK_TEST_VALUE??null,terminal:process.env.GIT_TERMINAL_PROMPT,trace:process.env.GIT_TRACE2_EVENT,gitDirCleared:process.env.GIT_DIR===undefined,operation:args.includes('fetch')?'fetch':args.includes('--version')?'version':'local'})+'\\n');
+if(${JSON.stringify(name)}==='parent')process.exit(129);
+if(args.includes('--version'))console.log('git version controlled-sdk-env');
+process.exit(args.includes('fetch')?17:0);\n`,
+        { mode: 0o700 },
+      )
+    }
+    const cases = ["one", "two"].map((name) => ({
+      name,
+      options: {
+        cwd: root,
+        database: library.skills.database_id,
+        env: {
+          PATH: join(root, name, "bin"),
+          HOME: root,
+          NTN_SDK_TEST_VALUE: name,
+          GIT_DIR: "/controlled/cleared",
+          GIT_TRACE2_EVENT: "/controlled/not-opened",
+          NOTION_API_TOKEN: "controlled-sdk-env-token",
+          NOTION_API_BASE_URL: service.origin,
+          NTN_SKILLS_HOME: join(root, name, "state"),
+          NTN_SKILLS_CONFIG_HOME: join(root, name, "config"),
+          NTN_SKILLS_CACHE_HOME: join(root, name, "cache"),
+          NTN_SKILLS_SCHEDULER_ROOT: join(root, name, "scheduler"),
+          NTN_SKILLS_FIXED_GIT_TRANSPORT: "git",
+          NTN_SKILLS_NOTION_INTERVAL_MS: "100",
+        },
+      },
+    }))
+    await writeFile(
+      join(root, "input.json"),
+      JSON.stringify({ sdk, cases, ledger, target: skillPage }),
+    )
+    const runner = join(root, "run.mjs")
+    await writeFile(
+      runner,
+      `import {readFile,writeFile} from 'node:fs/promises';import {pathToFileURL} from 'node:url';
+const input=JSON.parse(await readFile(process.argv[2],'utf8'));const sdk=await import(pathToFileURL(input.sdk));
+const rows=await Promise.all(input.cases.map(async c=>({name:c.name,result:await sdk.consume({version:1,purpose:'use',targets:[input.target]}, {...c.options,signal:AbortSignal.timeout(10000)})})));
+const explicitCalls=(await readFile(input.ledger,'utf8')).trim().split('\\n').length;
+const inherited=await sdk.consume({version:1,purpose:'use',targets:[input.target]}, {database:input.cases[0].options.database,cwd:input.cases[0].options.cwd,signal:AbortSignal.timeout(10000)});
+await writeFile(process.argv[3],JSON.stringify({rows,explicitCalls,inherited}));\n`,
+    )
+    const child = spawn(
+      process.execPath,
+      [runner, join(root, "input.json"), join(root, "result.json")],
+      {
+        cwd: root,
+        env: {
+          ...cases[0]!.options.env,
+          PATH: join(root, "parent", "bin"),
+          TMPDIR: root,
+          NTN_SDK_TEST_VALUE: "inherited",
+          NTN_SKILLS_HOME: join(root, "parent", "state"),
+          NTN_SKILLS_CONFIG_HOME: join(root, "parent", "config"),
+          NTN_SKILLS_CACHE_HOME: join(root, "parent", "cache"),
+          NTN_SKILLS_SCHEDULER_ROOT: join(root, "parent", "scheduler"),
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    )
+    const stdout: Buffer[] = [],
+      stderr: Buffer[] = []
+    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk))
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk))
+    const code = await new Promise<number | null>((resolve, reject) => {
+      child.once("error", reject)
+      child.once("close", resolve)
+    })
+    expect(code, Buffer.concat(stderr).toString()).toBe(0)
+    const { rows, explicitCalls, inherited } = JSON.parse(
+      await readFile(join(root, "result.json"), "utf8"),
+    )
+    for (const row of rows)
+      expect(row.result).toMatchObject({
+        status: "failed",
+        error: {
+          code: "UPSTREAM_GIT_FAILED",
+          details: { operation: "fetch", exit_code: 17 },
+        },
+      })
+    expect(inherited).toMatchObject({
+      status: "failed",
+      error: { code: "UPSTREAM_GIT_RUNTIME_UNSUPPORTED" },
+    })
+    const calls = (await readFile(ledger, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    expect(calls.slice(0, explicitCalls).some((call) => call.executable === "parent")).toBe(false)
+    expect(calls.slice(explicitCalls)).toHaveLength(2)
+    expect(
+      calls
+        .slice(explicitCalls)
+        .every((call) => call.executable === "parent" && call.value === "inherited"),
+    ).toBe(true)
+    for (const name of ["one", "two"]) {
+      const own = calls.filter((call) => call.executable === name)
+      expect(own.some((call) => call.operation === "fetch")).toBe(true)
+      expect(
+        own.every(
+          (call) =>
+            call.value === name &&
+            call.terminal === "0" &&
+            call.trace === "0" &&
+            call.gitDirCleared,
+        ),
+      ).toBe(true)
+    }
+    expect(service.unexpected).toEqual([])
+    expect(
+      service.requests.every(
+        (request: { method: string; path: string }) =>
+          request.method === "GET" || request.path.endsWith("/query"),
+      ),
+    ).toBe(true)
+  } finally {
+    await service.close()
+    console.info(JSON.stringify({ publicSdkGitEnvironmentEvidence: root }))
+  }
+})
 
 async function sample() {
   const f = currentSnapshotFixture({ fileCount: 1 })

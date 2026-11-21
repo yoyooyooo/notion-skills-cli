@@ -167,7 +167,7 @@ async function runOperation<A>(
       requestMetrics = notion.requestMetrics
       return yield* effect
     }).pipe(
-      Effect.provide(nodeRuntime(cwd).live),
+      Effect.provide(nodeRuntime(cwd, env).live),
       Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(env))),
       Effect.scoped,
     )
