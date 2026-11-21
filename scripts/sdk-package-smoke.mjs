@@ -261,7 +261,7 @@ try {
           (row) =>
             row.path === `/v1/data_sources/${fixture.notion.library.files.data_source_id}/query`,
         ).length,
-      2,
+      4, // Initial enumeration and the final authority fence each traverse both pages.
     )
     assert.equal(recordsSince(start).length, 0)
     const beforeWarm = source.requests.length

@@ -10,8 +10,8 @@ The work is tracked by [AH-499](https://linear.app/yoyooyooo/issue/AH-499) and i
 defines the current behavior and its remaining delivery scope. The installed Pro
 CLI/SDK/Broker already has a bounded native, Git and resource consumption baseline.
 That baseline does not establish that every daily Skill or the long tail has been
-converted. Daily acceptance also requires complete readable main and supporting
-text in Notion. The last section separates that work from non-daily projection,
+converted. Daily acceptance also requires complete main bodies and selected human-readable
+Markdown supporting documents in Notion. The last section separates that work from non-daily projection,
 binary presentation and unrelated cleanup.
 
 ## One current owner for each fact
@@ -19,7 +19,7 @@ binary presentation and unrelated cleanup.
 | Table | Current responsibility | Authoritative writer | Rebuildable display |
 | --- | --- | --- | --- |
 | Skills | Stable Skill/Router/Prompt identity, management metadata, enablement, default discovery, main-file binding, Members and Requires | Human metadata edits and the current management kernel; identity and relationship changes use that kernel | Source-backed main-body rendering and supporting-file navigation |
-| Files | Every supporting file, stable File ID, exact Skill owner, logical path, authority and current content locator | Current management kernel; native author bodies remain directly editable in Notion | Full source/resource text rendering, attachments and reading status |
+| Files | Notion-owned supporting files and selected Source reading documents, with exact Skill owner, File ID, path and Content | Current management kernel; native author bodies remain directly editable in Notion | Rebuildable Source reading rows and bodies; resource text rendering |
 | Sources | Current provider, location, selected revision, selected members, target mappings and file exclusions | Current source-management kernel | Last-check result and reciprocal navigation |
 | Records | Necessary current exact-byte objects, one current Profile configuration, and unfinished management intents | The corresponding resource, Profile or operation writer | Human labels; no content history |
 
@@ -31,9 +31,11 @@ read-only extractor does not admit it into the current runtime.
 
 The main document lives on the Skills page. Its stable `Main File ID` participates
 in the same file namespace, but Files does not contain another editable main
-document. Every other effective path has one Files row, including files supplied
-entirely by Git. A complete local or SDK directory is not a substitute for those
-human-readable rows.
+document. Every Notion-owned supporting path has one authoritative Files row.
+Source supporting rows are a reading selection: they may be absent, stale or
+rebuilt without removing files from consumption. The complete Source manifest and
+current Contributions define all effective Git paths, including scripts and tests.
+The consumer merges that tree with native/resource authority in the same namespace.
 
 Use registered property IDs for access. Display names, including names ending in
 `1`, are not identities or sufficient evidence for deletion. The cutover resolves
@@ -85,7 +87,7 @@ Authority or Status column cannot drift from the locator:
 | --- | --- | --- |
 | Notion native Markdown | Current page body plus explicitly stored current file metadata | Editable author content |
 | Notion exact resource | Current Records resource locator and exact size/hash/mode | Generated full text for readable resources; non-text display is optional |
-| Selected Source file | Current Source contribution, exact selected revision and source path | Generated full text; non-text display is optional |
+| Selected Source file | Complete current Source manifest and contribution mapping/exclusions | Generated full text for selected reading documents; no row is required for other Git files |
 
 The one accepted descriptor union is:
 
@@ -125,8 +127,10 @@ BOM, line ending or executable mode. An explicitly requested conversion is a new
 current edit, not a reason to keep both past and present content.
 
 `following/custom/tombstone` event-derived status is retired. Authority is direct.
-Deletion removes the active row. If an upstream path still exists, its exclusion
-is kept in the current Source contribution so refresh cannot resurrect it. This
+An explicit consumption deletion records the exact upstream path exclusion in
+the current Source contribution so refresh cannot resurrect it. Archiving a Source
+reading row only removes its presentation; it does not exclude that path from
+consumption or change the contribution. This
 exclusion contains no old file bytes. Renaming a source-backed file updates its
 current mapping while preserving File ID; it does not leave an old-path file row.
 
@@ -170,7 +174,7 @@ a current exact-resource locator for a large manifest; do not add a manifest-his
 table. Shared targets retain each Source's separate contribution. Enabled controls
 ordinary consumption eligibility. Disabling a Source preserves file authority,
 reading projections and each Skill's enabled value. It does not mean pausing a
-scheduler. Removal requires no current Source Content or Origin references and
+scheduler. Removal requires no effective Source contributions, current Content or Origin references and
 never silently deletes Skills or converts their files.
 
 The current reader decodes Sources `Content` as `{version: 1, plan}`. The plan owns
@@ -296,23 +300,36 @@ monotonic generation fence apply: an older completion cannot overwrite the newer
 page, and equal generations cannot name different pages. Scope, library and stable
 Skill mismatches remain errors. Fixed local selections retain their original
 bindings; ordinary current refresh does not require clearing the Store.
-The consumption version includes the exact owner locator and physical File
-bindings, so recreating a page produces a new version and fixed snapshot even
-when its original bytes are unchanged. Stable Skill identity, Source revision
-and file hashes retain their own meanings. The snapshot-ID formula is unchanged;
-previous fixed references keep their original authorized bindings.
+The consumption version includes the exact Skill owner locator and physical
+Notion-owned File bindings. Source identity is its current contribution, revision,
+source path and exact bytes/mode; Source reading page IDs do not enter content
+identity. Source fixed refs use paths without a presentation File ID. Rebuilding
+a Source supporting projection leaves its selected consumption identity unchanged.
+Rebuilding an authoritative Notion owner or File still creates a new selection.
+The snapshot-ID formula is unchanged; previous fixed references retain their
+selected exact bytes and authorization scope.
 
-Every supporting file has complete current Files metadata. Source and resource
-consumption reads its declared exact original without requiring a generated page
-body. Native author bodies remain necessary current content and are verified before
-ready. Generated projections are not a commit gate for synchronization or import.
-Explicit `ctl library projection` generates them after current content is ready.
-Daily acceptance requires every selected Skill main and text supporting file to
-have its complete readable body on the existing Skills or Files page. Truncation,
-hash-only notes, a download link or a cache path do not count as text coverage.
-Native author bodies are verified without replacement. Non-text files are
-reported as skipped and retain their exact original consumption route; generated
-image, font or other binary bodies are not required for daily text acceptance.
+Source manifests and Contributions define the complete consumption directory.
+Source reading rows and generated bodies are not required for list/read/use/export
+or cold acquisition. Cold Source reads validate current contribution membership,
+authority, revision and exact path/hash/bytes/mode; a native takeover invalidates
+the former Source route even when the Source revision itself did not change.
+Native/resource files retain their physical Notion authority. Native bodies are
+necessary current content and are verified before ready.
+
+Explicit `ctl library projection` runs after synchronization or import. It always
+retains the main document. For Source supporting files it includes `**/*.md` by
+default and excludes test, fixture, dependency and generated directories. Repeated
+`--include` and `--exclude` globs replace their respective defaults. This reading
+policy never changes Contributions.exclude or the Git consumption tree. Notion-owned
+native/resource files are outside this filter: native bodies are verified without
+replacement and readable resources retain complete text.
+
+Daily acceptance requires complete main and selected reading document bodies,
+including missing-page reconstruction and readback. Truncation, hash-only notes,
+a download link or a cache path do not count as selected text coverage. Excluded
+Source paths are reported separately and remain fully consumable. Non-text
+Notion-owned originals are reported as skipped; binary presentation is optional.
 
 Explicit export supports a whole Skill or an explicit path set, preserving complete
 selected bytes and modes. Missing paths, unsafe paths, collisions and cancellation
@@ -380,8 +397,9 @@ First daily use does not close the separate Pro-wide migration task.
 
 ## Implementation status and remaining cutover blockers
 
-Current tree assembly now reads Skills/Files `Content`, complete current membership
-and current Source plans. Native reads use a disposable local body observation.
+Current tree assembly reads complete Source manifests and Contributions, then
+merges Notion-owned Skills/Files `Content`. Physical Source rows only describe
+reading projections. Native reads use a disposable local body observation.
 They never query event DAGs, adopt edits, reconcile operations or require original
 completion records. Current native alias completion remains a read-only fidelity
 check for actual unsupported Notion export nodes; it is not a historical operation
@@ -437,7 +455,11 @@ Discovery reconciles the full selected set, including additions, removals and an
 empty result. Existing contributions override stable member identities; unassigned
 new members receive deterministic identities. Incomplete discovery or a provider
 failure never means deletion. Unsupported transformations and symlinks are refused.
-Mappings retain File identity on rename. Explicit desired paths can replace matching
+The Source manifest and contributions retain the full tree. Source apply/refresh
+creates the main page and updates existing supporting pages; the projection
+command creates newly selected reading pages. It does not recreate an unprojected
+script or test row on every refresh. Reports separate `source_files` from
+`notion_pages`. Mappings retain existing File identity on rename. Explicit desired paths can replace matching
 native/resource files, and dry-run reports that authority replacement. Exact
 contribution exclusions preserve intentional native/resource files; other Sources
 cannot be overwritten. When a removed member is wholly owned by this Source, its
@@ -459,7 +481,8 @@ original from a disabled but complete Source through the management reader.
 `source enable|disable SOURCE_ID` changes only Source consumption eligibility.
 `source remove SOURCE_ID` first enumerates this library's complete Skills and Files
 metadata independently. Semantic Content decoding finds references even when
-Origin is absent; orphan Files, incomplete pagination and stale Origin links
+Origin or Source reading rows are absent; complete contribution membership also
+counts as a live reference. Orphan Files, incomplete pagination and stale Origin links
 prevent a clean-removal claim. Referenced files must first be explicitly taken
 over. An unreferenced Source retires its owned resources and page, then the finite
 operation. Its terminal state is removed; it is never temporarily republished
@@ -471,9 +494,12 @@ consumption. Source manifest resources belong to that Source and are collected
 after the current manifest changes. The full effective tree, native references
 and exact target scope are checked before completion.
 
-`ctl library projection PAGE_ID --entry DB` generates complete current source/resource
-text on one Skill and its existing supporting Files. `--dry-run` reads current
-originals and projected bodies without writes. Equal complete text is a zero-write
+`ctl library projection PAGE_ID --entry DB` reconciles the selected Source reading
+rows and complete bodies on one Skill. It creates missing selected Files, updates
+stale Source descriptors and archives excluded or upstream-removed Source rows,
+then renders text. Notion-owned rows are never pruned by this selection. Links to
+unprojected Git files use the fixed GitHub commit/path. `--dry-run` reports full
+consumption count, selected/excluded paths, row changes and body changes without writes. Equal complete text is a zero-write
 no-op. `--daily` replaces PAGE_ID with Source 日用 members ∪ Skill 日用 ∪ Default
 Context, using current Source contributions and complete metadata pagination.
 Enabled and 期望删除 are preserved and reported, including disabled daily choices.
@@ -482,13 +508,17 @@ an omitted or successful target.
 
 Projection uses the same finite operation kernel with a `projection: true` intent.
 It leaves the real Skill ready and does not bind generated-body recovery to
-ordinary consumption. The intent freezes the current file bindings and content;
-native bodies are checked without writing them. Single-Skill recovery uses the
-same `--operation ID --resume`. There is no projection supersede mode. Daily runs
-execute one Skill intent at a time and stop on the first failure, returning
-completed/remaining scope and the exact failed-Skill operation. Resume that Skill,
-then rerun daily; `--daily` rejects `--operation` and `--resume`. All targets share
-one invocation budget, with the same defaults and limit flags as import.
+ordinary consumption. The intent freezes authoritative consumption facts, Source
+fingerprint and reading policy; disposable row allocation and rewritten links do
+not change its input identity. Each actual mutation still freezes its exact request.
+Native bodies are checked without writing them. Single-Skill recovery uses the
+same `--operation ID --resume`. To stop that intent, `--operation ID --cancel`
+reconciles only its pending action and retires the intent without executing its
+remaining work or claiming complete projection. Uncertain outcomes remain pending.
+There is no projection supersede mode. Daily runs execute one Skill intent at a
+time and stop on the first failure with completed/remaining scope and exact recovery
+coordinates. `--daily` rejects `--operation`, `--resume` and `--cancel`. All targets
+share one invocation budget, with the same defaults and limit flags as import.
 
 One finite parent intent freezes its action and affected Skill IDs. Declaration
 actions also freeze effective configuration, Git commit and the exact physical
@@ -571,7 +601,7 @@ complete discovery recalculates that number when upstream changes.
 - AH-617: update only SDK/Broker behavior actually changed by this implementation,
   pair the built artifacts, and verify necessary real Pi samples. The first native,
   Git and resource daily baselines are already recorded in AH-1063/AH-516.
-- AH-501/AH-1141: complete daily main/supporting text in Notion through the public
+- AH-501/AH-1141: complete daily main/selected reading documents in Notion through the public
   projection command, including readback and same-version zero writes. Non-daily
   text and additional binary presentation remain deferred. Code availability is
   not evidence that the live daily batch has already been projected.

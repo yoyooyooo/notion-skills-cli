@@ -176,11 +176,12 @@ describe("standard targetSnapshot shared-library integration", () => {
     expect(checked.freshness?.validation).toBe("metadata")
     expect(f.bodyCalls().length).toBe(0)
     expect(f.semanticWrites().length).toBe(0)
+    // Revalidation reads the current Files inventory and checks it again before publication.
     expect(
       f.calls.filter((call) =>
         call.path.startsWith(`v1/data_sources/${library.files.data_source_id}/query`),
       ),
-    ).toHaveLength(1)
+    ).toHaveLength(2)
     expect(
       f.calls.filter((call) =>
         call.path.startsWith(`v1/data_sources/${library.records.data_source_id}/query`),

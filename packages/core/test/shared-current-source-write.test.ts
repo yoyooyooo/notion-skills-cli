@@ -20,6 +20,7 @@ import { queryCurrentSkillIndex, type CurrentSkillIndex } from "../src/shared-cu
 import {
   prepareCurrentSourceFromDiscovery,
   type CurrentSourceDeclaration,
+  type PreparedCurrentSourceInput,
 } from "../src/shared-current-source-input.ts"
 import { queryCurrentSourceManagement } from "../src/shared-current-source-management.ts"
 import { prepareCurrentSharedSourceContent } from "../src/shared-current-source.ts"
@@ -31,6 +32,7 @@ import { sourceRich } from "../src/shared-source-definitions.ts"
 import type { SourceSnapshot } from "../src/upstream-source.ts"
 import {
   currentWriteFixture,
+  seedSourceFileRows,
   id,
   library,
   testBytes,
@@ -237,7 +239,7 @@ async function assertReady(f: ReturnType<typeof currentWriteFixture>) {
   expect(operationRecords(f)).toEqual([])
 }
 
-test("a complete Source successor replaces an uncertain child File creation while keeping existing identities and human native edits", async () => {
+test("a complete Source successor replaces an uncertain child Skill creation while keeping existing identities and human native edits", async () => {
   const f = currentWriteFixture(parent),
     native = await seedNative(f)
   const observed = observation(),
@@ -245,7 +247,7 @@ test("a complete Source successor replaces an uncertain child File creation whil
   const http = provider([observed, nextObserved])
   const original = await f.run(prepareCurrentSourceFromDiscovery(declaration, observed))
   const successor = await f.run(prepareCurrentSourceFromDiscovery(declaration, nextObserved))
-  f.failNext({ kind: "file-create", outcome: "accepted" })
+  f.failNext({ kind: "skill-create", outcome: "accepted" })
   await expect(
     f.run(
       http.use(
@@ -272,11 +274,7 @@ test("a complete Source successor replaces an uncertain child File creation whil
   )!
   expect(firstAlpha).toBeDefined()
   expect(childRecord).toBeDefined()
-  const uncertainFile = f.table("files").find((row) => {
-    const owners = property(property(row.properties)[library.files.property_ids.Skill!]).relation
-    return Array.isArray(owners) && owners.some((item) => property(item).id === firstAlpha.id)
-  })!
-  expect(uncertainFile).toBeDefined()
+  expect(f.table("files")).toHaveLength(1)
   expect(f.blocks.get(String(firstAlpha.id))).toEqual([])
   const humanBody = "# Human edit while the Source is interrupted\n\nThis stays current.\n"
   await f.run(
@@ -340,10 +338,10 @@ test.each(["before-child", "after-child"] as const)(
     const thirdCommit = "f".repeat(40)
     const snapshots = [observation(), observation(secondCommit), observation(thirdCommit)]
     const http = provider(snapshots)
-    const plans = []
+    const plans: PreparedCurrentSourceInput[] = []
     for (const snapshot of snapshots)
       plans.push(await f.run(prepareCurrentSourceFromDiscovery(declaration, snapshot)))
-    f.failNext({ kind: "file-create", outcome: "accepted" })
+    f.failNext({ kind: "skill-create", outcome: "accepted" })
     await expect(
       f.run(
         http.use(
@@ -354,18 +352,44 @@ test.each(["before-child", "after-child"] as const)(
         ),
       ),
     ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
-    f.failNext(
-      stage === "before-child"
-        ? { kind: "source-properties", outcome: "accepted" }
-        : { kind: "file-create", outcome: "accepted" },
-    )
+    if (stage === "before-child") f.failNext({ kind: "source-properties", outcome: "accepted" })
+    const alphaPage = String(skillPage(f, "skill-alpha")!.id)
     await expect(
       f.run(
         http.use(
-          writePreparedCurrentSource(library, {
-            prepared: plans[1]!,
-            operation_id: "handoff-p2",
-            mode: { kind: "supersede", operation_id: "handoff-p1" },
+          Effect.gen(function* () {
+            const api = yield* Notion
+            let interrupted = false
+            return yield* writePreparedCurrentSource(library, {
+              prepared: plans[1]!,
+              operation_id: "handoff-p2",
+              mode: { kind: "supersede", operation_id: "handoff-p1" },
+            }).pipe(
+              Effect.provideService(Notion, {
+                ...api,
+                request: (path, body, options) =>
+                  api.request(path, body, options).pipe(
+                    Effect.flatMap((response) => {
+                      if (
+                        stage === "after-child" &&
+                        !interrupted &&
+                        path === `v1/pages/${alphaPage}` &&
+                        options?.method === "PATCH" &&
+                        library.skills.property_ids.Content! in property(property(body).properties)
+                      ) {
+                        interrupted = true
+                        return Effect.fail(
+                          fail(
+                            "WRITE_OUTCOME_UNKNOWN",
+                            "The accepted child Content response was lost.",
+                          ),
+                        )
+                      }
+                      return Effect.succeed(response)
+                    }),
+                  ),
+              }),
+            )
           }),
         ),
       ),
@@ -513,11 +537,26 @@ test("one Source writes two current Skills, preserves native authorship and reso
     },
     source_id: "team-skills",
     operation_id: "source-create",
+    source_files: 6,
     affected_skill_ids: ["skill-alpha", "skill-beta"],
   })
   await assertReady(f)
   expect(f.table("sources")).toHaveLength(1)
   expect(f.table("skills")).toHaveLength(2)
+  expect(
+    property(property(f.pages.get(native.page_id)!.properties)[library.skills.property_ids.Origin!])
+      .relation,
+  ).toEqual([{ id: result.source_page_id }])
+  expect(f.table("files").map((row) => fieldText(row, library.files.property_ids.Path!))).toEqual([
+    "local.json",
+  ])
+  expect(result.targets).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ skill_id: "skill-alpha", source_files: 4, notion_pages: 1 }),
+      expect.objectContaining({ skill_id: "skill-beta", source_files: 2, notion_pages: 2 }),
+    ]),
+  )
+  await seedSourceFileRows(f, prepared)
   const alphaPage = String(
       f
         .table("skills")
@@ -776,8 +815,8 @@ test("an absent parent ready response resumes only its complete original child s
   ).rejects.toBeDefined()
   expect(f.mutations()).toEqual([])
   operation.rich_text = ownOperation
-  const file = f.pages.get(files[0]!)!
-  const content = property(property(file.properties)[library.files.property_ids.Content!])
+  const file = f.pages.get(skills[0]!)!
+  const content = property(property(file.properties)[library.skills.property_ids.Content!])
   const ownContent = structuredClone(content.rich_text)
   content.rich_text = sourceRich(
     JSON.stringify({ ...JSON.parse(text(ownContent)), source_id: "foreign-source" }),
@@ -980,7 +1019,7 @@ test.each(["accepted", "absent"] as const)(
     expect(f.pages.get(String(childRecord.id))?.in_trash).toBe(true)
     expect(f.table("skills")).toHaveLength(2)
     const beta = await f.run(queryCurrentSkillIndex(library, native.page_id))
-    expect(beta.files.filter((file) => file.content.kind === "source")).toHaveLength(2)
+    expect(beta.files.filter((file) => file.content.kind === "source")).toHaveLength(0)
     await assertReady(f)
   },
 )
@@ -1086,6 +1125,7 @@ test("a Source refresh does not read or rewrite an existing generated projection
   await f.run(
     http.use(writePreparedCurrentSource(library, { prepared, operation_id: "seed-projection" })),
   )
+  await seedSourceFileRows(f, prepared)
   const beta = await f.run(queryCurrentSkillIndex(library, native.page_id)),
     file = beta.files.find((item) => item.path === "vendor/guide.md")!,
     block = {
@@ -1272,7 +1312,8 @@ test("one declaration discovers additions, retires upstream removals and converg
         page_id: gammaPage,
         status: "removed",
         state: "removed",
-        files: 0,
+        source_files: 0,
+        notion_pages: 0,
       }),
     ]),
   })
@@ -1321,6 +1362,7 @@ test.each(["accepted", "absent"] as const)(
         writePreparedCurrentSource(library, { prepared: initial, operation_id: "retirement-seed" }),
       ),
     )
+    await seedSourceFileRows(f, initial)
     const betaPage = String(skillPage(f, "skill-beta")!.id),
       beta = await f.run(queryCurrentSkillIndex(library, betaPage)),
       prepared = await f.run(prepareCurrentSourceFromDiscovery(initial.declaration, second)),
@@ -1439,8 +1481,9 @@ test.each(["skill", "source-and-skills"] as const)(
       prepared = await f.run(prepareCurrentSourceFromDiscovery(directDeclaration, observed)),
       first = await f.run(
         http.use(writePreparedCurrentSource(library, { prepared, operation_id: "rebuild-seed" })),
-      ),
-      alphaPage = String(skillPage(f, "skill-alpha")!.id),
+      )
+    await seedSourceFileRows(f, prepared)
+    const alphaPage = String(skillPage(f, "skill-alpha")!.id),
       alpha = await f.run(queryCurrentSkillIndex(library, alphaPage)),
       oldFiles = new Set(
         f
@@ -1453,6 +1496,7 @@ test.each(["skill", "source-and-skills"] as const)(
           .map((row) => String(row.id)),
       )
     f.pages.get(alphaPage)!.in_trash = true
+    expect(oldFiles.size).toBeGreaterThan(0)
     if (removed === "source-and-skills") {
       for (const row of f.table("skills")) row.in_trash = true
       f.pages.get(first.source_page_id!)!.in_trash = true
@@ -1474,11 +1518,7 @@ test.each(["skill", "source-and-skills"] as const)(
       allFiles(rebuilt)
         .map((file) => file.file_id)
         .sort(),
-    ).toEqual(
-      allFiles(alpha)
-        .map((file) => file.file_id)
-        .sort(),
-    )
+    ).toEqual([alpha.main].map((file) => file.file_id).sort())
     for (const page of oldFiles) expect(f.pages.get(page)?.in_trash).toBe(true)
     expect(f.table("files").some((row) => oldFiles.has(String(row.id)))).toBe(false)
     expect(
@@ -1562,6 +1602,7 @@ test("generated supporting reading content cannot block upstream File retirement
       }),
     ),
   )
+  await seedSourceFileRows(f, initial)
   const alpha = await f.run(
     queryCurrentSkillIndex(library, String(skillPage(f, "skill-alpha")!.id)),
   )
@@ -1612,6 +1653,18 @@ test("Source resume verifies its completed prefix once and reaches the unfinishe
     })),
   }
   const prepared = await f.run(prepareCurrentSourceFromDiscovery(selected, observed))
+  const initial = await f.run(
+    prepareCurrentSourceFromDiscovery(selected, observation(firstCommit, names.slice(0, -1))),
+  )
+  await f.run(
+    http.use(
+      writePreparedCurrentSource(library, {
+        prepared: initial,
+        operation_id: "bounded-prefix-seed",
+      }),
+    ),
+  )
+  await seedSourceFileRows(f, initial)
   const operation_id = "bounded-prefix-resume"
   let stopped = false
   await expect(
@@ -1757,13 +1810,15 @@ test("Source resume verifies its completed prefix once and reaches the unfinishe
         skill_id: "skill-alpha",
         page_id: alpha.page_id,
         status: "unchanged",
-        files: 4,
+        source_files: 4,
+        notion_pages: 4,
       }),
       expect.objectContaining({
         skill_id: "skill-beta",
         page_id: native.page_id,
         status: "unchanged",
-        files: 4,
+        source_files: 2,
+        notion_pages: 4,
       }),
       expect.objectContaining({ skill_id: "skill-zeta", state: "ready" }),
     ]),
@@ -1771,6 +1826,85 @@ test("Source resume verifies its completed prefix once and reaches the unfinishe
   expect(f.mutations().some((call) => call.path === `v1/pages/${native.page_id}/markdown`)).toBe(
     false,
   )
+  await assertReady(f)
+})
+
+test("a preserved native reference uses the complete Source tree even without a supporting page", async () => {
+  const f = currentWriteFixture(parent),
+    native = await seedNative(f)
+  const first = observation(),
+    second = observation(secondCommit),
+    http = provider([first, second])
+  const initial = await f.run(prepareCurrentSourceFromDiscovery(declaration, first))
+  await f.run(
+    http.use(
+      writePreparedCurrentSource(library, {
+        prepared: initial,
+        operation_id: "sparse-native-seed",
+      }),
+    ),
+  )
+  expect(f.table("files").map((row) => fieldText(row, library.files.property_ids.Path!))).toEqual([
+    "local.json",
+  ])
+  const authored = "# Human main\n\nRead [the complete guide](vendor/guide.md).\n"
+  await f.run(
+    Effect.flatMap(Notion, (api) =>
+      api.request(
+        `v1/pages/${native.page_id}/markdown`,
+        {
+          type: "replace_content",
+          replace_content: { new_str: authored },
+        },
+        { method: "PATCH" },
+      ),
+    ),
+  )
+  const refreshed = await f.run(prepareCurrentSourceFromDiscovery(declaration, second))
+  f.clearCalls()
+  expect(
+    await f.run(
+      http.use(
+        writePreparedCurrentSource(library, {
+          prepared: refreshed,
+          operation_id: "sparse-native-refresh",
+        }),
+      ),
+    ),
+  ).toMatchObject({ status: "applied", state: "ready" })
+  expect(f.table("files").map((row) => fieldText(row, library.files.property_ids.Path!))).toEqual([
+    "local.json",
+  ])
+  expect(f.mutations().some((call) => call.path === `v1/pages/${native.page_id}/markdown`)).toBe(
+    false,
+  )
+  const removed: SourceSnapshot = {
+    ...second,
+    members: second.members.map((member) => ({
+      ...member,
+      portable: {
+        ...member.portable,
+        files: member.portable.files.filter((file) => file.path !== "guide.md"),
+      },
+      git_manifest: {
+        ...member.git_manifest!,
+        files: member.git_manifest!.files.filter((file) => file.path !== "guide.md"),
+      },
+    })),
+  }
+  const missing = await f.run(prepareCurrentSourceFromDiscovery(declaration, removed))
+  f.clearCalls()
+  await expect(
+    f.run(
+      http.use(
+        writePreparedCurrentSource(library, {
+          prepared: missing,
+          operation_id: "sparse-native-missing",
+        }),
+      ),
+    ),
+  ).rejects.toMatchObject({ code: "SHARED_REFERENCE_BROKEN" })
+  expect(f.mutations()).toEqual([])
   await assertReady(f)
 })
 
@@ -1858,17 +1992,19 @@ test("an unchanged 58-target 515-file Source completes a new apply within the de
     status: "unchanged",
     state: "ready",
     operation_id: "daily-scale-new-apply",
+    source_files: 515,
   })
   expect(result.targets).toHaveLength(58)
   expect(usage.attempts).toBeLessThan(DEFAULT_CURRENT_INVOCATION_BUDGET.requests)
   expect(usage.exhausted).toBeNull()
   expect(f.mutations()).toEqual([])
   expect(f.table("skills").map((row) => String(row.id))).toEqual(pages)
-  expect(f.table("files")).toHaveLength(457)
+  expect(f.table("files")).toHaveLength(0)
+  expect(result.targets.every((target) => target.notion_pages === 1)).toBe(true)
   await assertReady(f)
 }, 60_000)
 
-test("a new same-version Source apply still repairs Origin, recreates missing Files and collects unreferenced resources", async () => {
+test("a same-version Source apply repairs Origin and resources without recreating a removed projection File", async () => {
   const f = currentWriteFixture(parent),
     observed = observation(),
     http = provider([observed])
@@ -1878,6 +2014,7 @@ test("a new same-version Source apply still repairs Origin, recreates missing Fi
       writePreparedCurrentSource(library, { prepared, operation_id: "same-version-repair-seed" }),
     ),
   )
+  await seedSourceFileRows(f, prepared)
   const page = String(skillPage(f, "skill-alpha")!.id)
   const before = await f.run(queryCurrentSkillIndex(library, page))
   const missing = before.files[0]!
@@ -1912,12 +2049,18 @@ test("a new same-version Source apply still repairs Origin, recreates missing Fi
       .sort(),
   ).toEqual(
     allFiles(before)
+      .filter((file) => file.file_id !== missing.file_id)
       .map((file) => file.file_id)
       .sort(),
   )
-  expect(after.files.find((file) => file.file_id === missing.file_id)?.page_id).not.toBe(
-    missing.page_id,
-  )
+  expect(after.files.some((file) => file.file_id === missing.file_id)).toBe(false)
+  expect(
+    f.calls.filter(
+      (call) =>
+        call.path === "v1/pages" &&
+        property(property(call.body).parent).data_source_id === library.files.data_source_id,
+    ),
+  ).toEqual([])
   expect(
     property(property(f.pages.get(page)!.properties)[library.skills.property_ids.Origin!]).relation,
   ).toEqual([{ id: seed.source_page_id }])
@@ -1950,6 +2093,7 @@ test.each(["source", "skill"] as const)(
           }),
         ),
       )
+      await seedSourceFileRows(f, prepared)
       const current = await f.run(
         queryCurrentSkillIndex(library, String(skillPage(f, "skill-alpha")!.id)),
       )

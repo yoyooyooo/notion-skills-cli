@@ -7,7 +7,11 @@ import { Notion } from "../../core/src/notion.ts"
 import { pageId } from "../../core/src/ref.ts"
 import { loadCurrentDailySkills } from "../../core/src/shared-current-daily.ts"
 import { withCurrentInvocationBudget } from "../../core/src/shared-current-invocation.ts"
-import { projectCurrentSkill } from "../../core/src/shared-current-projection-write.ts"
+import {
+  currentProjectionPolicy,
+  projectCurrentSkill,
+} from "../../core/src/shared-current-projection-write.ts"
+import { cancelCurrentSkillProjection } from "../../core/src/shared-current-projection-cancel.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { emit, requiredSingleton, singleton, switchFlag } from "./command-options.ts"
 import { selectCurrentWriteMode } from "./current-write-options.ts"
@@ -19,6 +23,9 @@ export function prepareCurrentProjectionOptions(input: {
   readonly entry: string
   readonly operation?: string
   readonly resume: boolean
+  readonly cancel?: boolean
+  readonly include?: readonly string[]
+  readonly exclude?: readonly string[]
   readonly dryRun: boolean
   readonly maxRequests?: number
   readonly maxBytes?: number
@@ -31,10 +38,22 @@ export function prepareCurrentProjectionOptions(input: {
     (/^[a-z][a-z\d+.-]*:\/\//iu.test(input.entry) && !/^https?:\/\//iu.test(input.entry))
   )
     throw fail("INVALID_ARGUMENT", "Projection requires a current Skills database entry.")
-  if (input.daily && (input.operation !== undefined || input.resume))
+  if (input.daily && (input.operation !== undefined || input.resume || input.cancel))
     throw fail(
       "INVALID_ARGUMENT",
       "Daily projection uses one finite intent per Skill. Resume an exact failed Skill page with its own --operation, then run --daily again.",
+    )
+  if (
+    input.cancel &&
+    (input.operation === undefined ||
+      input.resume ||
+      input.dryRun ||
+      input.include !== undefined ||
+      input.exclude !== undefined)
+  )
+    throw fail(
+      "INVALID_ARGUMENT",
+      "--cancel requires an exact --operation and cannot change policy, resume or dry-run.",
     )
   selectCurrentWriteMode({
     operation: input.operation,
@@ -59,7 +78,12 @@ export function prepareCurrentProjectionOptions(input: {
           throw fail("INVALID_ARGUMENT", "Use an exact Skill page ID or Notion page URL.")
         return { kind: "skill", page_id: page } as const
       })()
-  return { scope, limits, mode: input.resume ? ("resume" as const) : ("apply" as const) }
+  return {
+    scope,
+    limits,
+    policy: currentProjectionPolicy(input),
+    mode: input.resume ? ("resume" as const) : ("apply" as const),
+  }
 }
 
 const budgetFlag = (name: string, description: string) =>
@@ -126,9 +150,25 @@ export const currentProjectionCommand = defineCommand(
     ),
     operation: singleton(
       "operation",
-      "Exact single-Skill projection intent; required with --resume",
+      "Exact single-Skill projection intent; required with --resume or --cancel",
     ),
     resume: switchFlag("resume", "Reconcile and continue this exact Skill's projection intent"),
+    cancel: switchFlag(
+      "cancel",
+      "Reconcile only the pending action and retire this exact reading intent without continuing it",
+    ),
+    include: Flag.String("include").pipe(
+      Flag.atLeast(0),
+      Flag.withDescription(
+        "Source reading path glob; repeat to replace the default **/*.md selection. Main and Notion-owned files remain included",
+      ),
+    ),
+    exclude: Flag.String("exclude").pipe(
+      Flag.atLeast(0),
+      Flag.withDescription(
+        "Source reading path glob; repeat to replace default test, fixture, dependency and generated-directory exclusions. Consumption is unchanged",
+      ),
+    ),
     dryRun: switchFlag(
       "dry-run",
       "Read exact originals and current full bodies, reporting missing or stale text without writes",
@@ -154,6 +194,9 @@ export const currentProjectionCommand = defineCommand(
             daily: options.daily,
             operation,
             resume: options.resume,
+            cancel: options.cancel,
+            include: options.include.length === 0 ? undefined : options.include,
+            exclude: options.exclude.length === 0 ? undefined : options.exclude,
             dryRun: options.dryRun,
             maxRequests: Option.getOrUndefined(options.maxRequests),
             maxBytes: Option.getOrUndefined(options.maxBytes),
@@ -167,6 +210,22 @@ export const currentProjectionCommand = defineCommand(
       const invocation = yield* withCurrentInvocationBudget(
         Effect.gen(function* () {
           const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
+          if (options.cancel) {
+            if (prepared.scope.kind !== "skill" || operation === undefined)
+              return yield* Effect.fail(
+                fail("INVALID_ARGUMENT", "Cancel one exact Skill projection operation."),
+              )
+            const cancelled = yield* cancelCurrentSkillProjection(library, {
+              target: prepared.scope.page_id,
+              operation_id: operation,
+            })
+            return {
+              ...cancelled,
+              library_id: library.library_id,
+              scope: "skill",
+              request_metrics: (yield* Notion).requestMetrics?.(),
+            }
+          }
           const selected = yield* prepared.scope.kind === "skill"
             ? Effect.succeed({ targets: [prepared.scope.page_id], selection: undefined })
             : loadCurrentDailySkills(library).pipe(
@@ -203,6 +262,8 @@ export const currentProjectionCommand = defineCommand(
               operation_id: intent,
               mode: prepared.mode,
               dry_run: options.dryRun,
+              include: prepared.policy.include,
+              exclude: prepared.policy.exclude,
             }).pipe(
               Effect.mapError((error) => {
                 const next = currentProjectionRecoveryNext(error.details, target, options.entry)
@@ -242,15 +303,16 @@ export const currentProjectionCommand = defineCommand(
 ).pipe(
   withConstraints([
     { kind: "exactly_one", flags: ["target", "daily"] },
-    { kind: "requires_absent", flag: "daily", absent: ["operation", "resume"] },
+    { kind: "requires_absent", flag: "daily", absent: ["operation", "resume", "cancel"] },
+    { kind: "requires_absent", flag: "cancel", absent: ["resume", "dryRun", "include", "exclude"] },
   ]),
   Command.withDescription(
-    "Generate or rebuild full readable text on an existing Skill page and all its text Files. Source/resource originals keep their authority, exact bytes and upstream following; native author bodies are verified without replacement. Opaque files are reported as skipped. --daily resolves the current union of Source 日用 members, Skill 日用 and Default Context with complete pagination; Enabled and 期望删除 values are reported and preserved. Each Skill uses the existing finite operation kernel, while projection failures leave current consumption ready. --dry-run compares full current bodies without writes. An equal result performs zero semantic writes. Daily execution stops at the first failure and reports completed and remaining targets; resume the exact pending Skill operation before rerunning --daily. Budgets cover the entire batch, including reads, writes and retries; Git internal wire traffic is not counted. Ordinary list/read/use/export/SDK/Pi never generate projections.",
+    "Reconcile human-readable Source projections: retain the main body, include Markdown by default, and exclude test, fixture, dependency and generated directories. Repeated --include/--exclude globs replace their respective defaults. Create missing selected Files, update their Source descriptors, retire excluded or upstream-removed Source rows, then render complete selected text. Source manifests and Contributions retain every consumption file regardless of reading selection. Native/resource Files remain Notion authority and are preserved; native bodies are verified without replacement. Links to unprojected Source files use the fixed GitHub commit. --daily selects Source 日用 current members, Skill 日用 and Default Context; Enabled and 期望删除 are preserved. --dry-run reports full-tree counts, selection, exclusions and planned row/body changes. An equal result performs zero semantic writes. Each Skill uses one finite operation; failures leave consumption ready. --resume continues that exact intent; --cancel reconciles its pending action and retires only that intent, without claiming the projection is complete. Daily execution stops at the first failure with exact recovery coordinates. Invocation budgets cover reads, writes and retries; Git internal wire traffic is not counted. Ordinary list/read/use/export/SDK/Pi never generate projections.",
   ),
   Command.withExamples([
     {
       command: "ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ID --dry-run",
-      description: "Inspect the complete main and supporting text bodies",
+      description: "Inspect selected reading documents and planned Source row changes",
     },
     {
       command: "ntn-skills ctl library projection --daily --entry LIBRARY_ID",
@@ -260,6 +322,16 @@ export const currentProjectionCommand = defineCommand(
       command:
         "ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ID --operation PROJECTION_ID --resume",
       description: "Reconcile and continue one unfinished projection",
+    },
+    {
+      command:
+        "ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ID --operation PROJECTION_ID --cancel",
+      description: "Retire an exact interrupted reading intent before selecting a new policy",
+    },
+    {
+      command:
+        "ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ID --include '**/*.md' --exclude '**/tests/**' --dry-run",
+      description: "Inspect an explicit reading policy without changing consumption files",
     },
   ]),
 )

@@ -24,7 +24,7 @@
 
 普通 list/read/use/资源读取/export 对 Notion 的语义写入为零。直接修改 native 作者正文后，读取会取得当前内容，不创建 adoption event，也不保留远端内容版本。Source/resource 的生成阅读页即使被编辑，也不会自动取得作者权威。
 
-当前导入默认写入精确 resource 原件；重复 `--native PATH` 可将所选文本交给可编辑的 Notion 正文。完整文件目录和原件先保证可消费；导入或 Source 刷新后，用 `ctl library projection` 生成阅读正文。日用 Skill 主文及全部文本子文件必须在 Notion 中完整可读，非文本文件明确报告跳过；投影失败不阻断已就绪的消费。Portable Members/Requires 支持导出再导入，核完整目标与依赖关系；库查询、写入和清理共用一次有界 HTTP 预算。Source apply/refresh 自动发现完整选中成员，接入新增、更新原文件并清退上游已移除的纯 Source 成员。既有映射保留稳定身份，新成员获得确定身份。保存声明文件后，即使 Notion Source 被删，也可用 `source apply` 重建。GitHub 和实际私有 HTTP(S) Git 共用该路径及本机认证。
+当前导入默认写入精确 resource 原件；重复 `--native PATH` 可将所选文本交给可编辑的 Notion 正文。完整文件目录和原件先保证可消费；导入或 Source 刷新后，用 `ctl library projection` 生成阅读正文。日用主文与选中的阅读文档须在 Notion 中完整可读。Source 默认仅投影 Markdown，并排除测试、fixture、依赖和生成目录；缺页重建，多余 Source 行归档。完整 Git 消费目录由 manifest 与 Contributions 决定，脚本和测试仍可消费。Native/resource 行保持 Notion 权威，非文本无需正文；投影失败不阻断已就绪的消费。Portable Members/Requires 支持导出再导入，核完整目标与依赖关系；库查询、写入和清理共用一次有界 HTTP 预算。Source apply/refresh 自动发现完整选中成员，接入新增、更新原文件并清退上游已移除的纯 Source 成员。既有映射保留稳定身份，新成员获得确定身份。保存声明文件后，即使 Notion Source 被删，也可用 `source apply` 重建。GitHub 和实际私有 HTTP(S) Git 共用该路径及本机认证。
 
 `source takeover` 和 `source restore-follow` 保留 File ID、Notion 页面及路径，同时调整当前贡献的精确排除规则。它们使用 Source 已选定的原件，不顺便刷新 Git。`source enable/disable` 控制消费资格；`source remove` 只有在文件与 Origin 引用都已解除后才清退 Source 及其资源。未完成写入可重传原输入 resume，也可在原 writer 停止后用 `--operation NEW --supersede OLD` 明确提交完整新意图。完成后不保留前意图或内容历史。
 
@@ -79,11 +79,11 @@ ntn-skills export SNAPSHOT_ID_FROM_READ --output ./selected-skill
 | 表 | 当前职责 |
 | --- | --- |
 | Skills | 身份、发现元数据、启停、Members/Requires、主文 Content、当前操作状态 |
-| Files | 每个子文件的一行，精确 owner、稳定 File ID、路径和 Content |
+| Files | Notion 自有子文件及选中的 Source 阅读文档，精确 owner、File ID、路径和 Content |
 | Sources | 稳定 Source 定义、完整当前选定计划、目标贡献和在途操作 |
 | Records | 当前精确资源、唯一当前 Profile、未完成管理意图 |
 
-`Content` 明确选择 native 作者 Markdown、Notion 管理的精确资源，或当前 Source 文件。主文在 Skills，其他文件在 Files。原生正文保持作者权威，只读验证而不覆盖。Source/resource 通过所声明的精确原件消费；显式投影将完整文本写入现有页面，不改变来源或跟随关系。图片、字体等非文本保留原件消费方式，无需生成正文。日用覆盖边界见[当前合同](docs/current-contract.md)。
+`Content` 明确选择 native 作者 Markdown、Notion 管理的精确资源，或当前 Source 文件。主文在 Skills，Notion 自有子文件及选中的 Source 阅读文档在 Files。原生正文保持作者权威，只读验证而不覆盖。Source/resource 通过所声明的精确原件消费；显式投影筛选有人类阅读价值的文档并生成全文，不改变来源、完整消费目录或跟随关系。重复 --include/--exclude glob 可替换各自默认筛选；这些规则不能写入会影响消费的 Contributions.exclude。图片、字体等非文本保留原件消费方式，无需生成正文。日用覆盖边界见[当前合同](docs/current-contract.md)。
 
 只检查当前目录和权威，不读取正文：
 
@@ -102,7 +102,7 @@ ntn-skills ctl library projection --daily --entry ENTRY_DATABASE_ID --dry-run
 ntn-skills ctl library projection --daily --entry ENTRY_DATABASE_ID
 ```
 
-日用是 Source 日用的当前成员、Skill 日用与 Default Context 的并集；现有 Enabled、期望删除只报告，不修改。单项处理时，将 `--daily` 换成精确 Skill page ID。完整正文相同时零语义写。日用批次中断会返回已完成目标及失败单项的精确恢复命令，先恢复该意图，再重跑 `--daily`；投影失败仍保留已就绪的消费。步骤见[正文生成](docs/shared-authoring.md#generate-readable-text-in-notion)。
+日用是 Source 日用的当前成员、Skill 日用与 Default Context 的并集；现有 Enabled、期望删除只报告，不修改。单项处理时，将 `--daily` 换成精确 Skill page ID。完整正文相同时零语义写。日用批次中断会返回已完成目标及失败单项的精确恢复命令，先恢复该意图，再重跑 `--daily`。需变更阅读范围时，用原 `--operation ID --cancel` 仅核对在途动作并关闭旧意图，不继续其余投影；未确认动作仍保留。投影失败仍保留已就绪的消费。步骤见[正文生成](docs/shared-authoring.md#generate-readable-text-in-notion)。
 
 ## 建库和 Profile
 

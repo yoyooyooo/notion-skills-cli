@@ -221,6 +221,7 @@ export function currentSnapshotFixture(
       const selector = property(filter.rich_text),
         value = text(field.rich_text)
       if (typeof selector.starts_with === "string") return value.startsWith(selector.starts_with)
+      if (typeof selector.contains === "string") return value.includes(selector.contains)
       return value === selector.equals
     }
     if (filter.select !== undefined)

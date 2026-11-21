@@ -116,9 +116,8 @@ function validateManifest(entry: ConsumeEntry, node: PreparedNode, scope: string
   const mainBinding = bindings.find((binding) => binding.path === manifest.entrypoint)
   if (
     manifest.file_bindings !== undefined &&
-    (mainBinding === undefined ||
-      locator.type !== "shared_skill" ||
-      mainBinding.page_id !== locator.page_id)
+    (locator.type !== "shared_skill" ||
+      (mainBinding !== undefined && mainBinding.page_id !== locator.page_id))
   )
     throw invalid()
   if (

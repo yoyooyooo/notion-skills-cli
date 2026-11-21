@@ -8,11 +8,7 @@ import { trashPath } from "../src/local-locks.ts"
 import { fileRef } from "../src/ref.ts"
 import { readSkill } from "../src/snapshot.ts"
 import { bindSharedLocalResource } from "../src/shared-source-config.ts"
-import {
-  currentBytes as bytes,
-  currentDigest as digest,
-  currentRich as rich,
-} from "./shared-current-fixture.ts"
+import { currentBytes as bytes, currentDigest as digest } from "./shared-current-fixture.ts"
 import {
   currentSourceConsumerFixture,
   sourceLibrary,
@@ -20,17 +16,28 @@ import {
 } from "./shared-current-source-consumer-fixture.ts"
 
 const binary = new Uint8Array([255, 0, 128, 13, 10, 0])
+const contribution = (
+  mapping: Readonly<Record<string, string>> = {},
+  exclude: readonly string[] = [],
+) => ({
+  member_key: ".",
+  skill_id: "demo",
+  mount_path: "",
+  mapping,
+  exclude,
+})
 
 test("a mixed current tree lists every File and downloads only selected Source bytes", async () => {
   const f = await currentSourceConsumerFixture()
   const large = Uint8Array.from({ length: 131_077 }, (_, n) => n % 251)
-  const unbound = bytes("Provider content without a current File must not enter this Skill.\n")
+  const unbound = bytes("An explicit contribution exclusion removes this provider file.\n")
   const files: readonly SourceFile[] = [
     { path: "a.bin", bytes: binary, mode: "100644" },
     { path: "b.bin", bytes: large, mode: "100755" },
     { path: "unbound.md", bytes: unbound, mode: "100644" },
   ]
   await f.select(files)
+  f.contribute([contribution({ "a.bin": "assets/a.bin", "b.bin": "assets/b.bin" }, ["unbound.md"])])
   f.native("SKILL.md", "# Mixed current author\n")
   f.native("references/guide.md", "# Native guide\n")
   f.bind("assets/a.bin", "a.bin")
@@ -62,6 +69,7 @@ test("a mixed current tree lists every File and downloads only selected Source b
 test("a partial provider response cannot publish a complete current snapshot or change Notion", async () => {
   const f = await currentSourceConsumerFixture()
   await f.select([{ path: "a.bin", bytes: binary, mode: "100644" }])
+  f.contribute([contribution({ "a.bin": "assets/a.bin" })])
   f.bind("assets/a.bin", "a.bin")
   f.response(
     (_url, value) =>
@@ -90,6 +98,7 @@ test("selected Source references validate against the complete explicit native a
   ]
   const invalid = bytes(missing.map((path) => `[Resource](./${path})`).join("\n"))
   await f.select([{ path: "README.md", bytes: invalid, mode: "100644" }])
+  f.contribute([contribution({ "README.md": "mounted/http/README.md" })])
   f.bind("mounted/http/README.md", "README.md")
   f.native("references/independent.md", "Independent authored resource.\n")
   const error = await f.target().then(
@@ -133,11 +142,12 @@ test("an explicit current path move cannot silently break an authored reference 
   const f = await currentSourceConsumerFixture()
   const script = bytes("console.log('owned script')\n")
   await f.select([{ path: "tool.ts", bytes: script, mode: "100644" }])
+  f.contribute([contribution({ "tool.ts": "scripts/tool.ts" })])
   f.bind("scripts/tool.ts", "tool.ts")
   f.native("SKILL.md", "[Required script](scripts/tool.ts)\n")
   const first = await f.target()
   const snapshots = [...f.json.entries()].filter(([key]) => key.startsWith("snapshots/"))
-  f.files[0]!.properties.Path = rich("path", "scripts/renamed.ts")
+  f.contribute([contribution({ "tool.ts": "scripts/renamed.ts" })])
   f.clearCalls()
   f.requests.length = 0
   await expect(f.target({ refresh: true })).rejects.toMatchObject({
@@ -153,13 +163,14 @@ test("an explicit current path move cannot silently break an authored reference 
   expect(f.calls).toHaveLength(0)
 })
 
-test("an explicit native override does not acquire unused provider bytes or infer tombstones", async () => {
+test("an explicit native takeover and contribution exclusions do not acquire excluded provider bytes", async () => {
   const f = await currentSourceConsumerFixture()
   const unused = bytes("[Broken provider-only link](missing.md)\n")
   await f.select([
     { path: "SKILL.md", bytes: unused, mode: "100644" },
     { path: "unselected.bin", bytes: new Uint8Array(2 * 1024 * 1024), mode: "100644" },
   ])
+  f.contribute([contribution({}, ["SKILL.md", "unselected.bin"])])
   f.bind("SKILL.md")
   f.native("SKILL.md", "# Explicit native replacement\n")
   f.objects.set(`objects/${digest(unused)}`, bytes("damaged unselected source cache"))
@@ -174,7 +185,7 @@ test("an explicit native override does not acquire unused provider bytes or infe
     f.calls.some((call) =>
       call.path.includes(`/data_sources/${sourceLibrary.sources.data_source_id}/`),
     ),
-  ).toBe(false)
+  ).toBe(true)
   expect(f.semanticWrites()).toHaveLength(0)
   expect(f.records.size).toBe(0)
 })

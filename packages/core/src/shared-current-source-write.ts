@@ -4,6 +4,7 @@ import { Notion } from "./notion.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256, type Store } from "./store.ts"
 import { withCurrentInvocationBudget } from "./shared-current-invocation.ts"
+import { resolveCurrentSourceConsumption } from "./shared-current-consumption.ts"
 import {
   prepareCurrentSource,
   validateCurrentSourceInput,
@@ -393,6 +394,10 @@ function executeCurrentSource(
               source_id: samePath.content.source_id,
             }),
           )
+        // Source owns the complete manifest, while support pages are a sparse
+        // reading inventory. Only projection creates a new supporting File page.
+        if (file.path !== "SKILL.md" && selected[0] === undefined && samePath === undefined)
+          continue
         files.push({
           kind: "write",
           file: {
@@ -413,11 +418,28 @@ function executeCurrentSource(
         })
       }
       const defaults = desired.defaults
+      const otherSources = yield* resolveCurrentSourceConsumption(library, skill_id, {
+        excludeSourceIds: [source_id],
+      })
+      const consumption_paths = [...desired.files, ...otherSources.files].map((file) => file.path)
+      const consumption_sources = [
+        ...new Map(
+          [
+            ...desired.files.map((file) => file.authority),
+            ...otherSources.files.map((file) => file.content),
+          ].map(({ source_id, revision }) => [source_id, { source_id, revision }]),
+        ).values(),
+      ]
+      for (const file of files)
+        if (file.kind === "preserve" && file.binding.content.kind !== "source")
+          consumption_paths.push(file.binding.path)
       plans.push(
         yield* prepareCoordinatedSkillWrite({
           skill_id,
           kind: previous?.kind ?? desired.kind,
           source: { source_id, revision: source.revision },
+          consumption_paths,
+          consumption_sources,
           create: { name: defaults.name, description: defaults.description },
           files,
         }),
@@ -451,11 +473,22 @@ function executeCurrentSource(
     >()
     for (const plan of plans) {
       const target = yield* inspectCoordinatedSkillWrite(library, plan, source)
-      inspected.push(target)
+      inspected.push({
+        ...target,
+        source_files: desiredBySkill.get(plan.skill_id)!.files.length,
+        notion_pages: target.files.length,
+      })
       inspectedPlans.set(plan.skill_id, target)
     }
     for (const target of retirements)
-      inspected.push({ contract: "current", ...target, action: "retire", remote_writes: 0 })
+      inspected.push({
+        contract: "current",
+        ...target,
+        action: "retire",
+        remote_writes: 0,
+        source_files: 0,
+        notion_pages: 0,
+      })
     const resultBase = {
       version: 1 as const,
       contract: "current" as const,
@@ -473,6 +506,7 @@ function executeCurrentSource(
       revision: source.revision,
       resolved_commit: prepared.resolved_commit,
       affected_skill_ids: affected,
+      source_files: source.manifest.length,
     }
     if (options.dry_run)
       return {
@@ -737,7 +771,8 @@ function executeCurrentSource(
                 input_sha256: intent.input_sha256,
                 state: "removed" as const,
                 status: "removed" as const,
-                files: 0,
+                source_files: 0,
+                notion_pages: 0,
               })
               changed = true
               if ((session.sourceProgress?.next_index ?? -1) <= affected.indexOf(skill_id))
@@ -757,7 +792,8 @@ function executeCurrentSource(
                 skill_id,
                 page_id: verified.page_id,
                 input_sha256: plan.input_sha256,
-                files: verified.files.length + 1,
+                source_files: desiredBySkill.get(skill_id)!.files.length,
+                notion_pages: verified.files.length + 1,
                 relations: {},
                 state: "ready",
                 request_metrics: api.requestMetrics?.(),
@@ -778,7 +814,12 @@ function executeCurrentSource(
               mode: typeof options.mode === "object" ? "apply" : options.mode,
               authorization,
             })
-            results.push(result)
+            const { files: notion_pages, ...targetResult } = result
+            results.push({
+              ...targetResult,
+              source_files: desiredBySkill.get(skill_id)!.files.length,
+              notion_pages,
+            })
             if (result.status !== "unchanged") changed = true
             if (!authorization.completed) yield* session.markSourceChildComplete(plan.skill_id)
           }

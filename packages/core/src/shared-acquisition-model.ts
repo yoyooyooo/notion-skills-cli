@@ -19,7 +19,11 @@ export function validateSnapshotAcquisition(snapshot: Snapshot): ReadonlySet<str
     throw fail("STATE_CORRUPT", "Shared acquisition differs from the exact selected owner.")
   const bindings = snapshot.file_bindings ?? []
   if (
-    bindings.length !== snapshot.files.length ||
+    snapshot.files.some(
+      (file) =>
+        !acquisition.files.some((route) => route.path === file.path && route.kind === "source") &&
+        !bindings.some((binding) => binding.path === file.path),
+    ) ||
     new Set(bindings.map((file) => file.file_id)).size !== bindings.length ||
     new Set(bindings.map((file) => file.page_id)).size !== bindings.length ||
     new Set(bindings.map((file) => file.path)).size !== bindings.length ||
@@ -31,7 +35,7 @@ export function validateSnapshotAcquisition(snapshot: Snapshot): ReadonlySet<str
         (file.path === snapshot.entrypoint) !== (file.page_id === locator.page_id),
     )
   )
-    throw fail("STATE_CORRUPT", "Current acquisition requires one exact binding for every file.")
+    throw fail("STATE_CORRUPT", "Notion-owned files require unique exact physical bindings.")
   const revisions = new Map<string, string>()
   for (const route of acquisition.files) {
     if (

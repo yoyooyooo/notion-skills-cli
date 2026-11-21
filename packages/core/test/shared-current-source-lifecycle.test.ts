@@ -215,6 +215,59 @@ for (const outcome of ["accepted", "absent"] as const)
     expect(operations(f)).toEqual([])
   })
 
+test("Source removal protects an unprojected contribution with no Origin until explicitly excluded", async () => {
+  const f = currentWriteFixture(parent),
+    skill = await seedSkill(f),
+    source = await seedSource(f)
+  const sourcePage = f.pages.get(source.page_id)!
+  const contributions = property(
+    property(sourcePage.properties)[library.sources.property_ids.Contributions!],
+  )
+  const contribution = {
+    member_key: "member",
+    skill_id: "human",
+    mount_path: "",
+    mapping: { "SKILL.md": "scripts/run.sh" },
+    exclude: [],
+  }
+  contributions.rich_text = sourceRich(JSON.stringify([contribution]))
+  f.clearCalls()
+  const result = await f.run(
+    removeCurrentSource(library, {
+      source_id: "managed",
+      operation_id: "unprojected-reference",
+    }).pipe(Effect.result),
+  )
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      code: "CURRENT_SOURCE_REFERENCED",
+      details: {
+        files: [],
+        origins: [],
+        contributions: [
+          {
+            skill_id: "human",
+            skill_page_id: skill.page_id,
+            path: "scripts/run.sh",
+            source_path: "member/SKILL.md",
+          },
+        ],
+      },
+    },
+  })
+  expect(f.mutations()).toEqual([])
+  expect(pendingKeys(f)).toEqual([])
+  contributions.rich_text = sourceRich(JSON.stringify([{ ...contribution, exclude: ["SKILL.md"] }]))
+  expect(
+    await f.run(
+      removeCurrentSource(library, { source_id: "managed", operation_id: "excluded-reference" }),
+    ),
+  ).toMatchObject({ state: "removed" })
+  expect(f.pages.get(source.page_id)?.in_trash).toBe(true)
+  expect(f.mutations().some((call) => call.path === `v1/pages/${skill.page_id}`)).toBe(false)
+})
+
 test("Source removal finds semantic Main/Files references even without Origin, and refuses stale Origin alone", async () => {
   const f = currentWriteFixture(parent)
   const skill = await seedSkill(f),

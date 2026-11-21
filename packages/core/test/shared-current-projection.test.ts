@@ -6,6 +6,7 @@ import {
   applyCurrentProjection,
   assertCurrentBodyReplaceable,
   currentProjectionBatches,
+  currentProjectionPendingAction,
   decodeCurrentProjectionText,
   inspectCurrentProjection,
   isCurrentProjectionBinary,
@@ -44,6 +45,26 @@ const planText = (plan: CurrentProjectionPlan) =>
         : []
     })
     .join("")
+
+function observedOriginSlash(block: unknown): Record<string, unknown> {
+  const value = property(block),
+    type = String(value.type),
+    body = property(value[type])
+  if (!Array.isArray(body.rich_text)) return value
+  return {
+    ...value,
+    [type]: {
+      ...body,
+      rich_text: body.rich_text.map((raw) => {
+        const span = property(raw),
+          text = property(span.text)
+        return property(text.link).url === "https://mem.nowledge.co"
+          ? { ...span, text: { ...text, link: { url: "https://mem.nowledge.co/" } } }
+          : span
+      }),
+    },
+  }
+}
 
 function fixture(initial: readonly CurrentProjectionBlock[] = [], original = attachment()) {
   let next = 100,
@@ -468,6 +489,155 @@ describe("complete current reading projections", () => {
     ])
     expect((await f.apply(plan)).changed).toBe(false)
     expect(f.writes()).toHaveLength(0)
+  })
+
+  test("equivalent HTTP origin URLs in append ACKs preserve the original render plan", async () => {
+    const plan = renderCurrentProjection({
+      path: "SKILL.md",
+      bytes: bytes("- [Nowledge Mem](https://mem.nowledge.co)\n"),
+    })
+    const original = JSON.stringify(plan)
+    const f = fixture()
+    const normalizedAck: CurrentProjectionDispatch<never> = (action) =>
+      f.dispatch({
+        ...action,
+        acknowledge: (response) => {
+          const value = property(response)
+          return action.acknowledge(
+            Array.isArray(value.results)
+              ? { ...value, results: value.results.map(observedOriginSlash) }
+              : response,
+          )
+        },
+      })
+    expect(
+      (
+        await f.run(
+          applyCurrentProjection({
+            pageId: page,
+            content,
+            plan,
+            assertCurrent: Effect.void,
+            dispatch: normalizedAck,
+          }),
+        )
+      ).changed,
+    ).toBe(true)
+    f.replace(f.originals().map(observedOriginSlash))
+    f.resetCalls()
+    expect((await f.apply(plan)).changed).toBe(false)
+    expect(f.writes()).toEqual([])
+    expect(JSON.stringify(plan)).toBe(original)
+    expect(original).toContain('"url":"https://mem.nowledge.co"')
+  })
+
+  test("equivalent HTTP origin URLs reconcile an accepted unknown append without replay", async () => {
+    const plan = renderCurrentProjection({
+      path: "SKILL.md",
+      bytes: bytes("- [Nowledge Mem](https://mem.nowledge.co)\n"),
+    })
+    const original = JSON.stringify(plan)
+    const f = fixture()
+    f.loseAppend("accepted")
+    await expect(f.apply(plan)).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    f.replace(f.originals().map(observedOriginSlash))
+    const ids = f.originals().map((block) => block.id)
+    f.resetCalls()
+    expect((await f.apply(plan)).changed).toBe(false)
+    expect(f.pending()).toBeUndefined()
+    expect(f.writes()).toEqual([])
+    expect(f.originals().map((block) => block.id)).toEqual(ids)
+    expect(JSON.stringify(plan)).toBe(original)
+  })
+
+  test("cancellation observes only its exact pending batch without finishing the body", async () => {
+    const plan = renderCurrentProjection({
+      path: "SKILL.md",
+      bytes: bytes("Paragraph.\n\n".repeat(150)),
+    })
+    const f = fixture()
+    f.loseAppend("accepted")
+    await expect(f.apply(plan)).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    const dispatched = f.writes().find((call) => call.path.endsWith("/children"))!
+    const pending = await f.run(
+      currentProjectionPendingAction({ pageId: page, key: `projection:${page}:append:0`, plan }),
+    )
+    expect(pending.request).toEqual({
+      path: dispatched.path,
+      body: dispatched.body,
+      options: { method: "PATCH", content: "body" },
+    })
+    const original = structuredClone(f.originals())
+    f.resetCalls()
+    expect(await f.run(pending.observe({ fresh: true }))).toEqual({
+      status: "complete",
+      value: undefined,
+    })
+    const next = await f.run(
+      currentProjectionPendingAction({ pageId: page, key: `projection:${page}:append:100`, plan }),
+    )
+    expect(await f.run(next.observe({ fresh: true }))).toEqual({ status: "missing" })
+    const clear = await f.run(
+      currentProjectionPendingAction({ pageId: page, key: `projection:${page}:clear`, plan }),
+    )
+    expect(await f.run(clear.observe({ fresh: true }))).toEqual({
+      status: "complete",
+      value: undefined,
+    })
+    expect(f.originals()).toEqual(original)
+    expect(f.originals()).toHaveLength(100)
+    expect(f.writes()).toEqual([])
+    await expect(
+      f.run(
+        currentProjectionPendingAction({ pageId: page, key: `projection:${page}:append:1`, plan }),
+      ),
+    ).rejects.toMatchObject({ code: "CURRENT_PROJECTION_INVALID" })
+  })
+
+  test("cancellation cannot confirm a partial or different pending prefix", async () => {
+    const plan = renderCurrentProjection({ path: "SKILL.md", bytes: bytes("First.\n\nSecond.\n") })
+    const f = fixture(plan.blocks.slice(0, 1))
+    const pending = await f.run(
+      currentProjectionPendingAction({ pageId: page, key: `projection:${page}:append:0`, plan }),
+    )
+    await expect(f.run(pending.observe({ fresh: true }))).rejects.toMatchObject({
+      code: "CURRENT_PROJECTION_CONFLICT",
+    })
+    const clear = await f.run(
+      currentProjectionPendingAction({ pageId: page, key: `projection:${page}:clear`, plan }),
+    )
+    expect(await f.run(clear.observe({ fresh: true }))).toEqual({ status: "missing" })
+    expect(f.writes()).toEqual([])
+  })
+
+  test("URL comparison retains different paths, queries, fragments, protocols and non-HTTP URLs", async () => {
+    const linked = (url: string): CurrentProjectionPlan => ({
+      path: "SKILL.md",
+      representation: "markdown",
+      blocks: [
+        {
+          object: "block",
+          type: "paragraph",
+          paragraph: {
+            rich_text: [{ type: "text", text: { content: "Target", link: { url } } }],
+          },
+        },
+      ],
+    })
+    for (const [expected, observed] of [
+      ["https://mem.nowledge.co/a", "https://mem.nowledge.co/b"],
+      ["https://mem.nowledge.co/a", "https://mem.nowledge.co/a/"],
+      ["https://mem.nowledge.co/?q=one", "https://mem.nowledge.co/?q=two"],
+      ["https://mem.nowledge.co/#one", "https://mem.nowledge.co/#two"],
+      ["http://mem.nowledge.co/", "https://mem.nowledge.co/"],
+      ["ftp://EXAMPLE.com:21", "ftp://example.com/"],
+    ]) {
+      const f = fixture(linked(observed!).blocks)
+      expect(
+        (await f.run(inspectCurrentProjection({ pageId: page, plan: linked(expected!) }))).matches,
+      ).toBe(false)
+      expect(f.writes()).toEqual([])
+    }
   })
 
   test("accepted unknown append reconciles actual blocks without replay or duplicates", async () => {

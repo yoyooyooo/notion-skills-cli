@@ -7,8 +7,8 @@ import { sharedRecordFromPage } from "./shared-content.ts"
 import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
 import { requireCurrentSkillReady } from "./shared-current-file.ts"
 import { queryCurrentSkillIndex } from "./shared-current-index.ts"
+import { resolveCurrentSkillConsumption } from "./shared-current-consumption.ts"
 import { readCurrentSharedResourceBytes } from "./shared-current-resource.ts"
-import { resolveCurrentSharedSources } from "./shared-current-source.ts"
 import { gitBlobOid } from "./shared-github-source.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
@@ -111,7 +111,9 @@ export function materializeSharedFixedAcquisition(
           ? error
           : fail("CURRENT_SKILL_NOT_READY", "The current Skill requires management attention."),
     })
-    const currentFiles = [index.main, ...index.files]
+    const bindings = [index.main, ...index.files]
+    const consumption = yield* resolveCurrentSkillConsumption(library, index)
+    const currentFiles = consumption.files
     // A local selection may keep its already materialized bytes. Missing bytes
     // can only come from a still-current exact file descriptor, not a former
     // resource pointer or a Source that merely remains remotely available.
@@ -121,14 +123,12 @@ export function materializeSharedFixedAcquisition(
           routes.map((route) => {
             const expected = snapshot.files.find((file) => file.path === route.path)
             const selectedBinding = snapshot.file_bindings?.find((file) => file.path === route.path)
+            const currentBinding = bindings.find((file) => file.path === route.path)
             const current = currentFiles.find((file) => file.path === route.path)
             const content = current?.content
             if (
               expected === undefined ||
-              selectedBinding === undefined ||
               current === undefined ||
-              current.file_id !== selectedBinding.file_id ||
-              current.page_id !== selectedBinding.page_id ||
               content === undefined ||
               content.kind === "native" ||
               content.sha256 !== expected.sha256 ||
@@ -139,7 +139,11 @@ export function materializeSharedFixedAcquisition(
                   content.source_id !== route.source_id ||
                   content.revision !== route.revision ||
                   content.source_path !== route.source_path
-                : content.kind !== "resource" || content.object_id !== route.object_id)
+                : content.kind !== "resource" ||
+                  content.object_id !== route.object_id ||
+                  selectedBinding === undefined ||
+                  currentBinding?.file_id !== selectedBinding.file_id ||
+                  currentBinding.page_id !== selectedBinding.page_id)
             )
               throw fail(
                 "SHARED_ACQUISITION_CHANGED",
@@ -156,9 +160,10 @@ export function materializeSharedFixedAcquisition(
     })
     const result: Array<{ readonly path: string; readonly bytes: Uint8Array }> = []
     const sourceRoutes = routes.filter((route) => route.kind === "source")
-    const sources = yield* resolveCurrentSharedSources(library, { selections: sourceRoutes })
+    const sources = consumption.sources
     for (const source of sources.values()) {
       const selectedRoutes = sourceRoutes.filter((route) => route.source_id === source.source_id)
+      if (selectedRoutes.length === 0) continue
       for (const route of selectedRoutes) {
         const expected = snapshot.files.find((file) => file.path === route.path)!
         const descriptor = source.manifest.find((file) => file.path === route.source_path)

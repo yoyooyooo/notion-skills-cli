@@ -2,8 +2,13 @@ import { Crypto, Effect, Schema } from "effect"
 import { withLocalLocks } from "./local-locks.ts"
 import { fail, property, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
-import { pageId } from "./ref.ts"
-import { CurrentSourceIdSchema, parseCurrentSkillState } from "./shared-current-file.ts"
+import { normalizePath, pageId } from "./ref.ts"
+import {
+  CurrentSourceIdSchema,
+  parseCurrentFileContent,
+  parseCurrentSkillState,
+} from "./shared-current-file.ts"
+import { currentFileRecord } from "./shared-current-index.ts"
 import {
   archiveCurrentSharedOperationRecord,
   assertCurrentOperationRecordSize,
@@ -53,6 +58,7 @@ export const CurrentOperationIntentSchema = Schema.Union([
   }),
 ])
 export type CurrentOperationIntent = typeof CurrentOperationIntentSchema.Type
+export type CurrentProjectionIntent = Extract<CurrentOperationIntent, { readonly projection: true }>
 const ActionSchema = Schema.Struct({
   key: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
   request_sha256: Hash,
@@ -157,6 +163,19 @@ export type CurrentOperationSession = {
     action: CurrentOperationAction<A, R>,
   ) => Effect.Effect<A, SkillsError, R | Notion | Crypto.Crypto | Store>
 }
+export type CurrentProjectionCancellationSession = Pick<
+  CurrentOperationSession,
+  "operation_id" | "intent" | "owner" | "ownerPageId" | "pendingActionKey" | "assertCurrent"
+> & {
+  readonly reconcilePendingAction: <A, R>(
+    action: CurrentOperationAction<A, R>,
+  ) => Effect.Effect<void, SkillsError, R | Notion | Crypto.Crypto | Store>
+}
+export type CurrentProjectionCancellationResult = {
+  readonly status: "cancelled" | "not_found"
+  readonly operation_id: string
+  readonly input_sha256: string
+}
 
 const invalid = (message: string, details?: unknown) =>
   fail("CURRENT_OPERATION_INVALID", message, details)
@@ -206,6 +225,128 @@ function decodePayload(value: unknown): CurrentPayload {
       throw invalid("A Skill predecessor cannot carry a Source cursor.")
   }
   return payload
+}
+
+type ProjectionFileRequest = { readonly page_id: string; readonly archive: boolean }
+
+function projectionFileRequest(
+  library: SharedLibrary,
+  owner: string | null,
+  request: {
+    readonly path: string
+    readonly method: string
+    readonly body: unknown
+    readonly file_sha256: string | null
+    readonly part_number: number | null
+  },
+): ProjectionFileRequest | undefined {
+  if (owner === null || request.file_sha256 !== null || request.part_number !== null)
+    throw invalid("A reading projection requires its current owner and a bounded JSON request.")
+  if (
+    request.method === "PATCH" &&
+    /^v1\/(?:pages\/[a-f0-9-]+\/markdown|blocks\/[a-f0-9-]+\/children)$/iu.test(request.path)
+  )
+    return undefined
+  const exactKeys = (value: Record<string, unknown>, names: readonly string[]) => {
+    if (
+      Object.keys(value).length !== names.length ||
+      names.some((name) => !Object.hasOwn(value, name))
+    )
+      throw invalid("A projection may change only the declared source File fields.")
+  }
+  const ids = library.files.property_ids
+  const field = (name: string) => {
+    const key = ids[name]
+    if (key === undefined || key === "")
+      throw invalid("A projection requires registered Files properties.", { property: name })
+    return key
+  }
+  const content = (raw: unknown) => {
+    const value = property(raw)
+    exactKeys(value, ["rich_text"])
+    if (!Array.isArray(value.rich_text)) throw invalid("A projection needs complete File Content.")
+    const selected = parseCurrentFileContent(text(value.rich_text))
+    if (selected.kind !== "source")
+      throw invalid("A projection cannot create or take over Notion-owned File content.")
+  }
+  const body = property(request.body)
+  if (request.method === "POST" && request.path === "v1/pages") {
+    exactKeys(body, ["parent", "properties"])
+    const parent = property(body.parent)
+    exactKeys(parent, ["type", "data_source_id"])
+    if (parent.type !== "data_source_id" || parent.data_source_id !== library.files.data_source_id)
+      throw invalid("A projection may create pages only in its registered Files table.")
+    const properties = property(body.properties)
+    exactKeys(properties, ["Name", "File ID", "Path", "Skill", "Content"].map(field))
+    const read = (name: string, kind: "title" | "rich_text") => {
+      const value = property(properties[field(name)])
+      exactKeys(value, [kind])
+      if (!Array.isArray(value[kind])) throw invalid("A projection needs complete File metadata.")
+      return text(value[kind])
+    }
+    if (!read("Name", "title").trim()) throw invalid("A projection File needs a title.")
+    Schema.decodeUnknownSync(StableId)(read("File ID", "rich_text"))
+    const path = read("Path", "rich_text")
+    if (
+      !path ||
+      path.length > 4096 ||
+      /[\u0000-\u001f\u007f]/u.test(path) ||
+      normalizePath(path) !== path
+    )
+      throw invalid("A projection File needs an exact relative path.")
+    const relation = property(properties[field("Skill")])
+    exactKeys(relation, ["relation"])
+    if (
+      !Array.isArray(relation.relation) ||
+      relation.relation.length !== 1 ||
+      property(relation.relation[0]).id !== owner
+    )
+      throw invalid("A projection File must belong to its exact current Skill.")
+    exactKeys(property(relation.relation[0]), ["id"])
+    content(properties[field("Content")])
+    return undefined
+  }
+  const match = /^v1\/pages\/([a-f0-9-]+)$/iu.exec(request.path)
+  if (request.method !== "PATCH" || match === null || uuid(match[1]!) === owner)
+    throw invalid("A projection may change generated bodies or its own source Files only.")
+  const archive = body.in_trash === true
+  if (archive) exactKeys(body, ["in_trash"])
+  else {
+    exactKeys(body, ["properties"])
+    const properties = property(body.properties)
+    exactKeys(properties, [field("Content")])
+    content(properties[field("Content")])
+  }
+  return { page_id: uuid(match[1]!), archive }
+}
+
+function readProjectionFile(library: SharedLibrary, owner: string, request: ProjectionFileRequest) {
+  return Effect.gen(function* () {
+    const raw = yield* (yield* Notion).request(`v1/pages/${request.page_id}`)
+    return yield* checked(() => {
+      const row = property(raw)
+      const archived = row.in_trash === true || row.archived === true || row.is_archived === true
+      // An archive whose ACK was lost is observable, but it is never a live update target.
+      const file = currentFileRecord(
+        request.archive && archived
+          ? { ...row, in_trash: false, archived: false, is_archived: false }
+          : row,
+        owner,
+        library.files.data_source_id,
+        library.files.property_ids,
+      )
+      if (file.page_id !== request.page_id || file.content.kind !== "source")
+        throw invalid("A projection may change only a bound source-owned File.")
+      return {
+        file_id: file.file_id,
+        page_id: file.page_id,
+        skill_page_id: file.skill_page_id,
+        path: file.path,
+        content: file.content,
+        archived,
+      }
+    })
+  })
 }
 
 function exactSourceFileTarget(
@@ -568,30 +709,87 @@ export type CurrentOperationInspection = Exclude<
 >
 
 /** One mutable current intent. The local lock coordinates this Store, never remote writers. */
+type CurrentOperationInput<A, R> = {
+  readonly intent: CurrentOperationIntent
+  readonly ownerPageId: string | null
+  readonly mode?: CurrentWriteMode
+  readonly completion?: "ready" | "retired"
+  readonly supersedingSourceChild?: {
+    readonly previous: CurrentSourceIntentBinding
+    readonly next: CurrentSourceIntentBinding
+  }
+  readonly assertScope?: Effect.Effect<void, SkillsError, R>
+  readonly beforeMutation?: Effect.Effect<void, SkillsError, R | Notion | Crypto.Crypto | Store>
+  readonly afterActivate?: Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>
+  readonly unstartedSourceChild?: CurrentSourceIntentBinding
+  readonly verifyCompletedResume?: (
+    session: CurrentOperationSession,
+  ) => Effect.Effect<A, SkillsError, R>
+  readonly run: (session: CurrentOperationSession) => Effect.Effect<A, SkillsError, R>
+  readonly verify: (
+    session: CurrentOperationSession,
+    value: A,
+  ) => Effect.Effect<void, SkillsError, R>
+}
+type CurrentOperationExecution<R> =
+  | { readonly kind: "write" }
+  | {
+      readonly kind: "cancel_projection"
+      readonly reconcile: (
+        session: CurrentProjectionCancellationSession,
+      ) => Effect.Effect<void, SkillsError, R | Notion | Crypto.Crypto | Store>
+    }
+
 export function withCurrentOperation<A, R>(
   library: SharedLibrary,
+  input: CurrentOperationInput<A, R>,
+): Effect.Effect<A, SkillsError, R | Notion | Crypto.Crypto | Store> {
+  return runCurrentOperation(library, input, { kind: "write" })
+}
+
+/** Close only the selected reading intent. Its observed prefix is not a completed projection. */
+export function cancelCurrentProjectionOperation<R>(
+  library: SharedLibrary,
   input: {
-    readonly intent: CurrentOperationIntent
-    readonly ownerPageId: string | null
-    readonly mode?: CurrentWriteMode
-    readonly completion?: "ready" | "retired"
-    readonly supersedingSourceChild?: {
-      readonly previous: CurrentSourceIntentBinding
-      readonly next: CurrentSourceIntentBinding
-    }
+    readonly intent: CurrentProjectionIntent
+    readonly ownerPageId: string
     readonly assertScope?: Effect.Effect<void, SkillsError, R>
-    readonly beforeMutation?: Effect.Effect<void, SkillsError, R | Notion | Crypto.Crypto | Store>
-    readonly afterActivate?: Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>
-    readonly unstartedSourceChild?: CurrentSourceIntentBinding
-    readonly verifyCompletedResume?: (
-      session: CurrentOperationSession,
-    ) => Effect.Effect<A, SkillsError, R>
-    readonly run: (session: CurrentOperationSession) => Effect.Effect<A, SkillsError, R>
-    readonly verify: (
-      session: CurrentOperationSession,
-      value: A,
-    ) => Effect.Effect<void, SkillsError, R>
+    readonly reconcile: (
+      session: CurrentProjectionCancellationSession,
+    ) => Effect.Effect<void, SkillsError, R | Notion | Crypto.Crypto | Store>
   },
+): Effect.Effect<
+  CurrentProjectionCancellationResult,
+  SkillsError,
+  R | Notion | Crypto.Crypto | Store
+> {
+  const result = (
+    status: CurrentProjectionCancellationResult["status"],
+    session: CurrentOperationSession,
+  ): CurrentProjectionCancellationResult => ({
+    status,
+    operation_id: session.intent.operation_id,
+    input_sha256: session.intent.input_sha256,
+  })
+  return runCurrentOperation(
+    library,
+    {
+      intent: input.intent,
+      ownerPageId: input.ownerPageId,
+      mode: "resume",
+      assertScope: input.assertScope,
+      verifyCompletedResume: (session) => Effect.succeed(result("not_found", session)),
+      run: (session) => Effect.succeed(result("cancelled", session)),
+      verify: () => Effect.void,
+    },
+    { kind: "cancel_projection", reconcile: input.reconcile },
+  )
+}
+
+function runCurrentOperation<A, R>(
+  library: SharedLibrary,
+  input: CurrentOperationInput<A, R>,
+  execution: CurrentOperationExecution<R>,
 ): Effect.Effect<A, SkillsError, R | Notion | Crypto.Crypto | Store> {
   return Effect.gen(function* () {
     const intent = yield* checked(() =>
@@ -614,6 +812,9 @@ export function withCurrentOperation<A, R>(
       return yield* Effect.fail(invalid("A successor requires a different operation identity."))
     const completion = yield* checked(() => strict(CompletionSchema, input.completion ?? "ready"))
     const projection = "projection" in intent
+    const cancelProjection = execution.kind === "cancel_projection"
+    if (cancelProjection && !projection)
+      return yield* Effect.fail(invalid("Only a reading projection intent can be cancelled."))
     if (
       projection &&
       (suppliedPage === null ||
@@ -1231,6 +1432,7 @@ export function withCurrentOperation<A, R>(
         let ownerRetired = false
         const notDispatched = pending?.not_dispatched
         let settled =
+          (cancelProjection && alreadyRetiring) ||
           payload.in_flight === null ||
           (notDispatched !== undefined &&
             canonicalSharedJson(notDispatched) === canonicalSharedJson(payload.in_flight))
@@ -1334,6 +1536,10 @@ export function withCurrentOperation<A, R>(
           })
         const ensureOpen = () =>
           Effect.gen(function* () {
+            if (cancelProjection)
+              return yield* Effect.fail(
+                invalid("Projection cancellation cannot activate new work."),
+              )
             if (closed || ownerReady || completedReadOnly)
               return yield* Effect.fail(
                 invalid("A completed current intent cannot begin a mutation."),
@@ -1373,57 +1579,63 @@ export function withCurrentOperation<A, R>(
             yield* confirmActivation()
             if (owner !== null && !projection) yield* changeOwner("applying")
           })
+        const identifyAction = <B, R2>(action: CurrentOperationAction<B, R2>) =>
+          Effect.gen(function* () {
+            const request = yield* checked(() => {
+              const method = action.request.options?.method ?? "GET"
+              if (
+                !action.key ||
+                action.key.length > 512 ||
+                /[\u0000-\u001f\u007f]/u.test(action.key) ||
+                !/^v1\//u.test(action.request.path) ||
+                !["POST", "PATCH"].includes(method) ||
+                (action.replay !== "never" && action.replay !== "idempotent")
+              )
+                throw invalid("Use one bounded mutating current action.")
+              if (
+                action.request.options?.file !== undefined &&
+                (action.fileSha256 === undefined || !/^[a-f0-9]{64}$/u.test(action.fileSha256))
+              )
+                throw invalid("Multipart writes need their exact input content fingerprint.")
+              return {
+                path: action.request.path,
+                method,
+                body: action.request.body ?? null,
+                file_sha256: action.fileSha256 ?? null,
+                part_number: action.request.options?.partNumber ?? null,
+              }
+            })
+            const fileRequest = projection
+              ? yield* checked(() => projectionFileRequest(library, owner, request))
+              : undefined
+            const projectionFile =
+              fileRequest === undefined
+                ? undefined
+                : yield* readProjectionFile(library, owner!, fileRequest)
+            const marker: ActionMarker = {
+              key: action.key,
+              request_sha256: yield* sha256(canonicalSharedJson(request)),
+              replay: action.replay,
+            }
+            return { request, marker, fileRequest, projectionFile }
+          })
         const dispatch = <B, R2>(
           action: CurrentOperationAction<B, R2>,
           internal = false,
         ): Effect.Effect<B, SkillsError, R2 | Notion | Crypto.Crypto | Store> =>
           Effect.gen(function* () {
             if (closed) return yield* Effect.fail(invalid("The current intent session is closed."))
+            if (cancelProjection)
+              return yield* Effect.fail(
+                invalid("Projection cancellation cannot dispatch a body request."),
+              )
             if (dispatching && !internal)
               return yield* Effect.fail(
                 invalid("Actions within one current intent must run sequentially."),
               )
             if (!internal) dispatching = true
             return yield* Effect.gen(function* () {
-              const request = yield* checked(() => {
-                const method = action.request.options?.method ?? "GET"
-                if (
-                  !action.key ||
-                  action.key.length > 512 ||
-                  /[\u0000-\u001f\u007f]/u.test(action.key) ||
-                  !/^v1\//u.test(action.request.path) ||
-                  !["POST", "PATCH"].includes(method) ||
-                  (action.replay !== "never" && action.replay !== "idempotent")
-                )
-                  throw invalid("Use one bounded mutating current action.")
-                if (
-                  action.request.options?.file !== undefined &&
-                  (action.fileSha256 === undefined || !/^[a-f0-9]{64}$/u.test(action.fileSha256))
-                )
-                  throw invalid("Multipart writes need their exact input content fingerprint.")
-                if (
-                  projection &&
-                  (method !== "PATCH" ||
-                    !/^v1\/(?:pages\/[a-f0-9-]+\/markdown|blocks\/[a-f0-9-]+\/children)$/iu.test(
-                      action.request.path,
-                    ) ||
-                    action.request.options?.file !== undefined)
-                )
-                  throw invalid("A reading projection may change generated page bodies only.")
-                return {
-                  path: action.request.path,
-                  method,
-                  body: action.request.body ?? null,
-                  file_sha256: action.fileSha256 ?? null,
-                  part_number: action.request.options?.partNumber ?? null,
-                }
-              })
-              const hash = yield* sha256(canonicalSharedJson(request))
-              const marker: ActionMarker = {
-                key: action.key,
-                request_sha256: hash,
-                replay: action.replay,
-              }
+              const { request, marker, fileRequest, projectionFile } = yield* identifyAction(action)
               const active = !settled ? payload.in_flight : null
               if (
                 payload.in_flight?.key === action.key &&
@@ -1502,6 +1714,13 @@ export function withCurrentOperation<A, R>(
                     )
                 })
               yield* ensureOpen()
+              if (fileRequest !== undefined) {
+                const current = yield* readProjectionFile(library, owner!, fileRequest)
+                if (canonicalSharedJson(current) !== canonicalSharedJson(projectionFile))
+                  return yield* Effect.fail(
+                    invalid("The projection File binding changed before its mutation."),
+                  )
+              }
               if (record === undefined)
                 return yield* Effect.fail(
                   fail(
@@ -1554,6 +1773,47 @@ export function withCurrentOperation<A, R>(
               Effect.ensuring(
                 Effect.sync(() => {
                   if (!internal) dispatching = false
+                }),
+              ),
+            )
+          })
+        const reconcilePendingAction = <B, R2>(action: CurrentOperationAction<B, R2>) =>
+          Effect.gen(function* () {
+            if (closed || !cancelProjection || dispatching)
+              return yield* Effect.fail(
+                invalid("Only one open projection cancellation may reconcile an action."),
+              )
+            const active = settled ? null : payload.in_flight
+            if (active === null)
+              return yield* Effect.fail(
+                invalid("There is no unsettled projection action to observe."),
+              )
+            dispatching = true
+            return yield* Effect.gen(function* () {
+              const { marker } = yield* identifyAction(action)
+              if (canonicalSharedJson(active) !== canonicalSharedJson(marker))
+                return yield* Effect.fail(
+                  fail(
+                    "CURRENT_OPERATION_CONFLICT",
+                    "Cancellation must observe the exact pending request.",
+                    { pending_action: active.key },
+                  ),
+                )
+              yield* observeOwner()
+              const observed = yield* action.observe({ fresh: true })
+              if (observed.status !== "complete")
+                return yield* Effect.fail(
+                  fail(
+                    "CURRENT_OPERATION_UNRESOLVED",
+                    "The pending projection action is not completely observable; cancellation cannot replay it.",
+                    { pending_action: active.key },
+                  ),
+                )
+              settled = true
+            }).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  dispatching = false
                 }),
               ),
             )
@@ -1849,18 +2109,19 @@ export function withCurrentOperation<A, R>(
               settled = true
             } else if (
               state.state === "ready" &&
-              (alreadyRetiring || payload.in_flight?.key === "$owner.ready")
+              (alreadyRetiring || (!cancelProjection && payload.in_flight?.key === "$owner.ready"))
             ) {
               ownerReady = true
               // The exact ready owner (with an empty Operation) is the actual
               // acknowledgement of a lost ready PATCH. Keep the finite Record
               // until full target verification, but allow only read-only children.
-              if (payload.in_flight?.key === "$owner.ready") settled = true
+              if (!cancelProjection && payload.in_flight?.key === "$owner.ready") settled = true
             } else if (state.state === "ready" && record !== undefined && !projection)
               yield* changeOwner("applying")
             else if (
-              payload.in_flight?.key === "$owner.applying" ||
-              payload.in_flight?.key === "$owner.attention"
+              !cancelProjection &&
+              (payload.in_flight?.key === "$owner.applying" ||
+                payload.in_flight?.key === "$owner.attention")
             ) {
               yield* changeOwner(
                 payload.in_flight.key === "$owner.applying" ? "applying" : "attention",
@@ -1868,6 +2129,20 @@ export function withCurrentOperation<A, R>(
               yield* changeOwner("applying")
             }
           }
+          if (execution.kind === "cancel_projection" && !settled)
+            yield* execution.reconcile({
+              operation_id: session.operation_id,
+              intent: session.intent,
+              owner: session.owner,
+              get ownerPageId() {
+                return session.ownerPageId
+              },
+              get pendingActionKey() {
+                return session.pendingActionKey
+              },
+              assertCurrent: session.assertCurrent,
+              reconcilePendingAction,
+            })
           const value = yield* input.run(session)
           yield* input.verify(session, value)
           if (
@@ -1897,7 +2172,7 @@ export function withCurrentOperation<A, R>(
                 ),
               )
           }
-          if (!settled && payload.in_flight?.key !== "$owner." + completion)
+          if (!settled && (cancelProjection || payload.in_flight?.key !== "$owner." + completion))
             return yield* Effect.fail(
               fail(
                 "CURRENT_OPERATION_PENDING",

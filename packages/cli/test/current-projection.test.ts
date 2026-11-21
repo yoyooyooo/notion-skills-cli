@@ -96,6 +96,11 @@ test("projection scope is explicit and a batch cannot reinterpret one Skill's re
     { ...base, target: undefined, daily: true, resume: true },
     { ...base, resume: true },
     { ...base, operation: "one-intent", resume: true, dryRun: true },
+    { ...base, cancel: true },
+    { ...base, cancel: true, operation: "one-intent", resume: true },
+    { ...base, cancel: true, operation: "one-intent", dryRun: true },
+    { ...base, cancel: true, operation: "one-intent", include: ["**/*.md"] },
+    { ...base, target: undefined, daily: true, cancel: true, operation: "one-intent" },
     { ...base, target: "https://example.com/41b5636c236e81d3ba0fc5fa3f735808" },
     { ...base, target: "statechart" },
     { ...base, operation: "invalid operation" },
@@ -107,6 +112,22 @@ test("projection scope is explicit and a batch cannot reinterpret one Skill's re
     expect(() => prepareCurrentProjectionOptions(input)).toThrow()
 })
 
+test("reading globs replace their own defaults without changing operation scope", () => {
+  const defaults = prepareCurrentProjectionOptions(base)
+  expect(defaults.policy.include).toEqual(["**/*.md"])
+  expect(defaults.policy.exclude.length).toBeGreaterThan(0)
+  expect(
+    prepareCurrentProjectionOptions({ ...base, include: ["references/**/*.md"] }).policy,
+  ).toEqual({ include: ["references/**/*.md"], exclude: defaults.policy.exclude })
+  expect(prepareCurrentProjectionOptions({ ...base, exclude: [] }).policy.exclude).toEqual([])
+  for (const include of [["/absolute.md"], ["../outside.md"], [""], ["bad\\path.md"]])
+    expect(() => prepareCurrentProjectionOptions({ ...base, include })).toThrow()
+  expect(
+    prepareCurrentProjectionOptions({ ...base, operation: "old-reading-intent", cancel: true })
+      .scope,
+  ).toEqual({ kind: "skill", page_id: target })
+})
+
 test("public projection parsing rejects an ambiguous write scope before any remote request", async () => {
   const f = currentWriteFixture(await mkdtemp(join(tmpdir(), "ntn-cli-projection-")))
   for (const args of [
@@ -114,6 +135,8 @@ test("public projection parsing rejects an ambiguous write scope before any remo
     [target, "--daily", "--entry", library.skills.database_id],
     ["--daily", "--operation", "one-intent", "--entry", library.skills.database_id],
     [target, "--resume", "--entry", library.skills.database_id],
+    [target, "--cancel", "--entry", library.skills.database_id],
+    [target, "--cancel", "--operation", "old", "--resume", "--entry", library.skills.database_id],
     [target, "--max-requests", "0", "--entry", library.skills.database_id],
   ]) {
     await expect(
@@ -130,7 +153,16 @@ test("the installed projection schema exposes bounded explicit management withou
   const schema = property(commandSchema(currentProjectionCommand))
   if (!Array.isArray(schema.parameters)) throw new Error("Missing command parameters")
   const parameters = schema.parameters.map(property)
-  for (const name of ["daily", "dry-run", "resume", "operation", "entry"])
+  for (const name of [
+    "daily",
+    "dry-run",
+    "resume",
+    "cancel",
+    "include",
+    "exclude",
+    "operation",
+    "entry",
+  ])
     expect(parameters.some((parameter) => parameter.name === name)).toBe(true)
   for (const name of ["max-requests", "max-bytes", "timeout"])
     expect(parameters.find((parameter) => parameter.name === name)?.primitive).toBe("Int")

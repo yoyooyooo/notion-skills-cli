@@ -129,14 +129,15 @@ async function joinedEligibility(source: Source, timeBudgetMs: number) {
         source.requests.filter(
           (row: { phase: string; path: string; terminal: string }) =>
             row.phase === "read" &&
-            row.path === `/v1/data_sources/${library.files.data_source_id}/query` &&
+            row.path === `/v1/data_sources/${library.sources.data_source_id}/query` &&
             row.terminal === "finished",
         ),
       ).toHaveLength(2),
     // Current eligibility uses the public SDK's budget, not vi.waitFor's 1 s default.
     { timeout: timeBudgetMs },
   )
-  // The server observes eligibility completion, while joining is local work.
+  // Contributions is the final HTTP eligibility read; Files alone leaves that check pending.
+  // The server observes its completion, while joining is local work.
   await new Promise((resolve) => setTimeout(resolve, 50))
 }
 function ready(result: Awaited<ReturnType<typeof readResources>>) {

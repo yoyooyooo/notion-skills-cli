@@ -6,6 +6,9 @@ import { decode, property, SnapshotSchema } from "../src/model.ts"
 import { fileRef, parseRef, parseTarget, resolveRef } from "../src/ref.ts"
 import { readSkill, listSkill, resolveSkillRef } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
+import { readResources } from "../src/resource-read.ts"
+import { sharedRecordFromPage } from "../src/shared-content.ts"
+import { compileSharedNativeReferences } from "../src/shared-native-references.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import {
   currentDigest as digest,
@@ -16,11 +19,116 @@ import {
   currentSkillPage as skillPage,
   currentRich as rich,
 } from "./shared-current-fixture.ts"
+import { currentSourceConsumerFixture } from "./shared-current-source-consumer-fixture.ts"
 
 const options = { database: library.skills.database_id }
 const url = (page: string) => "https://www.notion.so/" + page.replaceAll("-", "")
 const mention = (page: string) => '<mention url="' + url(page) + '">Guide</mention>\n'
 const owner = "shared_skill:library-current:demo"
+
+test("native same-Skill Source reading links retain relative text and usable path references", async () => {
+  const f = await currentSourceConsumerFixture()
+  await f.select(
+    [
+      { path: "SKILL.md", bytes: encode("# Provider main\n"), mode: "100644" },
+      { path: "references/guide.md", bytes: encode("# Provider guide\n"), mode: "100644" },
+    ],
+    "git",
+  )
+  const guidePage = f.bind("references/guide.md")
+  f.native("SKILL.md", mention(guidePage))
+  f.contribute([
+    { member_key: ".", skill_id: "demo", mount_path: "", mapping: {}, exclude: ["SKILL.md"] },
+  ])
+  const main = await f.run(readSkill(skillPage, options))
+  expect("content" in main && main.content).toContain("[Guide](references/guide.md)")
+  const reference = main.native_references?.entries[0]
+  if (reference === undefined) throw new Error("Expected same-Skill Source reference")
+  expect(reference.file_id).toBeUndefined()
+  expect(parseRef(reference.ref)).toEqual({ selector: owner, path: "references/guide.md" })
+  const guide = await f.run(readSkill(reference.ref, options))
+  expect("content" in guide && guide.content).toBe("# Provider guide\n")
+  expect(f.semanticWrites()).toEqual([])
+})
+
+test("cross-Skill native Source reading references support public reads and cold resource batches without projection File IDs", async () => {
+  const f = await currentSourceConsumerFixture()
+  const guideBody = "# Complete Source guide\n"
+  await f.select(
+    [
+      { path: "SKILL.md", bytes: encode("# Provider main\n"), mode: "100644" },
+      { path: "references/guide.md", bytes: encode(guideBody), mode: "100644" },
+    ],
+    "git",
+  )
+  f.bind("SKILL.md")
+  const guidePage = f.bind("references/guide.md")
+  const author = {
+    ...structuredClone(f.main),
+    id: id(77),
+    properties: {
+      ...f.main.properties,
+      "Skill ID": rich("skill-id", "native-author"),
+      Content: rich("content", JSON.stringify({ kind: "native", mode: "100644", frontmatter: "" })),
+    },
+  }
+  const record = sharedRecordFromPage(
+    author,
+    {
+      alias: library.library_id,
+      title: "",
+      role: "content",
+      database_id: library.skills.database_id,
+      data_source_ids: [library.skills.data_source_id],
+      shared_library: library,
+    },
+    library.skills.data_source_id,
+  )
+  const markdown = mention(guidePage)
+  const compiled = await f.run(
+    compileSharedNativeReferences({
+      library,
+      record,
+      bindings: [],
+      files: [
+        {
+          path: "SKILL.md",
+          markdown,
+          body_sha256: digest(markdown),
+          page_id: author.id,
+        },
+      ],
+      relations: { members: [], required: [] },
+      inventory: {
+        skills: {
+          data_source_id: library.skills.data_source_id,
+          complete: true,
+          pages: [author, f.main],
+        },
+        files: { data_source_id: library.files.data_source_id, complete: true, pages: f.files },
+      },
+    }),
+  )
+  const reference = compiled.index?.entries[0]
+  if (reference === undefined) throw new Error("Expected cross-Skill Source reference")
+  expect(reference).toMatchObject({ kind: "file", skill_id: "demo", availability: "metadata_only" })
+  expect(reference.file_id).toBeUndefined()
+  expect(parseRef(reference.ref)).toEqual({ selector: owner, path: "references/guide.md" })
+  const read = await f.run(readSkill(reference.ref, options))
+  expect("content" in read && read.content).toBe(guideBody)
+  expect(parseRef(read.ref).file_id).toBeUndefined()
+  f.objects.delete("objects/" + digest(guideBody))
+  f.clearCalls()
+  f.requests.length = 0
+  const batch = await f.run(readResources({ version: 1, refs: [read.ref] }, options))
+  expect(batch.status, JSON.stringify(batch)).toBe("ready")
+  if (batch.status !== "ready") throw new Error("Expected exact Source resource batch")
+  expect(batch.files[0]?.content).toBe(guideBody)
+  expect(f.requests).toHaveLength(1)
+  expect(f.requests[0]).toEndWith("/references/guide.md")
+  expect(f.bodyCalls()).toEqual([])
+  expect(f.semanticWrites()).toEqual([])
+})
 
 test("public read and exported snapshot expose compiled native references and preserve the original native hash", async () => {
   const f = currentSnapshotFixture()

@@ -143,13 +143,25 @@ ntn-skills ctl library projection --daily --entry LIBRARY_ENTRY --dry-run
 ntn-skills ctl library projection --daily --entry LIBRARY_ENTRY
 ```
 
-Open the resulting Skill page and follow Supporting Files. The main body belongs
-on Skills and each text supporting body on its existing Files page. The same
-renderer writes complete Markdown or code text from verified current originals,
-then reads the actual result back. An equal complete projection is a zero-write
-no-op. A link, hash, truncated excerpt or local cache path is not a text body.
-Non-text files, including images and fonts, are reported as skipped; their exact
-original acquisition remains available without generating a Notion body.
+Open the resulting Skill page and follow Supporting Files. The main remains on
+Skills. Source reading pages default to `**/*.md`, excluding test, fixture,
+dependency and generated directories. Repeat `--include GLOB` or `--exclude GLOB`
+to replace the respective default patterns; the core API also accepts an explicit
+empty array. Test documents under test/fixture directories are excluded too.
+
+The command creates missing selected Files, updates stale Source descriptors and
+archives excluded or upstream-removed Source rows before rendering complete text.
+Selected documents link to each other in Notion; unprojected Git files link to the
+fixed GitHub commit. Full source consumption still comes from the manifest and
+Contributions, so scripts and tests remain available to CLI/SDK/Pi. Reading filters
+never enter Contributions.exclude. Notion-owned native/resource rows are outside
+this filter. Native bodies are verified without replacement, resource text remains
+readable and non-text originals need no generated body.
+
+The actual selected bodies are read back. A link, hash, truncated excerpt or local
+cache path is not selected text coverage. Equal rows and bodies produce zero
+semantic writes. Dry-run reports full consumption count, selected/excluded paths
+and planned row/body changes.
 
 `--daily` selects current members of Sources marked 日用, Skills marked 日用 and
 Default Context. It validates the checkbox schema and complete pagination and
@@ -158,10 +170,10 @@ and 期望删除 without changing them. Daily text coverage includes disabled ch
 missing current metadata or unavailable bytes must be reported, not hidden.
 
 Each Skill uses one finite projection intent through the existing operation
-kernel. That intent changes generated bodies only. The real Skill remains ready
+kernel. That intent reconciles Source reading rows and generated bodies. The real Skill remains ready
 for ordinary consumption, including after projection failure. Native author
 bodies are verified without replacement. The command does not change content
-authority, source membership, file identities or human policies.
+authority, Source membership, retained file identities or human policies.
 
 Resume an interrupted single-Skill intent with the returned exact operation:
 
@@ -173,8 +185,11 @@ Keep its original state and credential scope. A daily run executes Skills in
 order and stops on failure, reporting completed and remaining targets plus the
 exact single-Skill recovery command. Resume that intent first, then rerun daily;
 already-complete bodies require no semantic writes. `--daily` cannot combine
-with `--operation` or `--resume`; projection has no supersede mode. Unknown
-append outcomes are reconciled, not blindly replayed.
+with `--operation`, `--resume` or `--cancel`; projection has no supersede mode.
+Use the exact `--operation ID --cancel` to stop an old intent before changing its
+policy. Cancellation reconciles only its pending action and retires the intent;
+it does not run the tail or claim complete projection. Uncertain outcomes remain
+pending. Unknown append outcomes are never blindly replayed.
 
 The whole invocation shares 1000 HTTP attempts, 512 MiB payload bytes and
 600000 ms by default, including daily selection, original acquisition, generated

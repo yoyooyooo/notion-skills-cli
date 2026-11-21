@@ -102,15 +102,22 @@ ntn-skills ctl library projection --daily --entry ENTRY --dry-run
 ntn-skills ctl library projection --daily --entry ENTRY
 ```
 
-Run after import or Source refresh. The existing renderer writes complete current
-Source/resource text to the main Skills page and every text supporting Files page,
-then reads it back. It preserves authority, file identities and human policy.
-Native bodies are verified without writes; non-text files are explicitly skipped.
-An equal complete projection makes zero semantic Notion writes.
+Run after import or Source refresh. The main stays on Skills. Source supporting
+reading defaults to **/*.md and excludes test, fixture, dependency and generated
+directories. Repeat --include GLOB or --exclude GLOB to replace that default list.
+The command creates missing selected Files, updates Source descriptors and
+archives excluded or upstream-removed Source rows, then renders and reads back
+the complete selected text. Source manifests and Contributions still supply the
+full consumption tree, including scripts and tests. Reading filters must never
+be written into Contributions.exclude. Notion-owned native/resource rows are
+preserved; native bodies are verified without writes and resource text stays
+readable. Non-text originals are skipped. An equal result makes zero semantic writes.
 
 Daily is current Source 日用 members, Skill 日用 and Default Context combined.
 Enabled and 期望删除 are reported without changing or silently excluding them.
-Missing current bindings or inaccessible bytes are failures, not completed text.
+Missing source manifests or inaccessible selected bytes are failures. Missing
+selected reading pages are reconstructed. Dry-run reports complete-tree count,
+selected/excluded paths and row/body changes.
 The whole daily invocation shares the same request, byte and deadline limits.
 
 Projection uses a finite intent while the real Skill stays ready for consumption.
@@ -122,7 +129,10 @@ ntn-skills ctl library projection PAGE_ID --entry ENTRY --operation OPERATION_ID
 ```
 
 Resume that Skill, then rerun daily. Already-complete bodies make no writes.
-Daily rejects --operation and --resume; projection has no supersede mode.
+To stop the old intent before changing policy, use its exact --operation ID
+--cancel. Only the pending action is reconciled; the remaining work is not run or
+reported complete. Daily rejects --operation, --resume and --cancel; projection
+has no supersede mode.
 Unknown append is reconciled, not blindly replayed. Ordinary reads never project.
 
 ## Incomplete current work

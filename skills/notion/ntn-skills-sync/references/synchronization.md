@@ -87,8 +87,10 @@ Each source-backed main or supporting file declares:
 
 The displayed hash placeholders must be replaced by actual lowercase 64-digit
 SHA-256 values. This file location is exact. A Skill can combine multiple
-Sources with native and resource files, and every supporting file still needs
-its own Files identity. Generated reading pages are verified separately.
+Sources with native and resource files. Complete Source manifests and Contributions
+define Git files independently of the reading rows. Only Notion-owned supporting
+files require authoritative Files identities; selected Source reading rows are
+rebuildable. Generated reading pages are verified separately.
 
 Current acquisition records each file's exact Source or resource declaration.
 Missing cached bytes require the current owner/descriptor to still match.
@@ -158,7 +160,10 @@ same desired path is a conflict. When a member disappears, archive its Files and
 Skill only if the complete target is owned by this Source. Retaining unrelated
 author content must not silently erase it. Source bytes and modes remain upstream
 exact. Generated page bodies do not gate consumption. Daily main and supporting
-text still requires the explicit projection step below; binary display is optional.
+reading documents still require the explicit projection step below; binary display
+is optional. Source refresh keeps the full manifest while updating existing pages;
+projection creates newly selected reading pages. Reports separate source_files
+from notion_pages.
 
 Save the declaration outside Notion for `source apply` after a Source deletion.
 A recreated page has a new physical page ID but the declared stable Skill identity.
@@ -187,9 +192,15 @@ ntn-skills ctl library projection PAGE_ID --entry ENTRY
 Daily combines current Source 日用 members, Skill 日用 and Default Context, using
 current contributions rather than Origin navigation. Preserve Enabled and
 期望删除; report blocked content without hiding selected targets. The main stays
-on Skills and text supporting bodies use their existing Files pages. Verify native
-bodies without writing them; report non-text files as skipped. Complete equal
-text causes zero semantic writes. Generated edits never transfer authority.
+on Skills. Source supporting reading includes **/*.md by default and excludes
+test, fixture, dependency and generated directories. Repeat --include GLOB or
+--exclude GLOB to replace that default list. Missing selected pages are created;
+excluded or upstream-removed Source rows are archived. This never changes
+Contributions.exclude or removes scripts/tests from consumption. Native/resource
+rows remain Notion authority: verify native bodies without writing and retain
+readable resource text. Non-text originals are skipped. Links to unprojected Git
+files use the fixed commit. Dry-run reports selection and row/body changes. Equal
+complete reading pages cause zero semantic writes. Generated edits never transfer authority.
 
 Each Skill uses the existing finite kernel and renderer while its real ready
 state remains available for consumption. A failed daily batch reports completed
@@ -200,7 +211,10 @@ ntn-skills ctl library projection PAGE_ID --entry ENTRY --operation OPERATION_ID
 ```
 
 Resume that intent with its original state/credential scope, then rerun daily.
-Daily rejects --operation and --resume; projection has no supersede. The entire
+Stop an old reading policy with its exact --operation ID --cancel before starting
+a new intent. Cancellation reconciles only the pending action, without running
+the remaining work. Uncertain actions remain pending. Daily rejects --operation,
+--resume and --cancel; projection has no supersede. The entire
 invocation shares 1000 HTTP attempts, 512 MiB and 600000 ms by default. Use
 --max-requests, --max-bytes and --timeout for explicit positive limits.
 
@@ -243,7 +257,7 @@ unfinished action. Takeover of a disabled Source uses explicit management of its
 exact current original; ordinary readers remain blocked.
 
 Remove scans complete Skills and Files metadata in this one library, including
-Main and bindings absent from Origin. Any current Source Content or Origin
+Main and bindings absent from Origin. Any effective Source contribution, current Source Content or Origin
 reference blocks removal with exact affected identities. Take over those files
 first; a Source main is never implicitly deleted, and another Source is never
 chosen as replacement. Correct stale Origin explicitly. The action retires only

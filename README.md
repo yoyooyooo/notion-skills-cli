@@ -132,20 +132,21 @@ file read with `--output` for one file.
 | Table | Current responsibility |
 | --- | --- |
 | Skills | Identity, discovery metadata, enablement, Members/Requires, main Content descriptor and current operation state |
-| Files | One row for every supporting file, exact owner, stable File ID, path and Content descriptor |
+| Files | Authoritative Notion-owned files and selected Source reading documents, with exact owner, File ID, path and Content |
 | Sources | Stable source definition, current selected plan, target contributions and unfinished operation |
 | Records | Necessary current exact resources, one current Profile and unfinished management intents |
 
 The `Content` descriptor selects native author Markdown, a Notion-owned exact
-resource, or a selected Source file. Main content lives on Skills; supporting files
-live on Files. Native body edits remain authoritative. Source and resource files
-are consumed from their exact declared originals. Explicit projection writes their
-complete text to the existing Skills and Files pages without changing authority.
-Native author bodies are verified without replacement. Non-text files retain
-their original acquisition route and do not require generated bodies. See the
+resource, or a selected Source file. Main content lives on Skills. Notion-owned
+supporting files retain their Files rows and native bodies remain authoritative.
+The complete Source manifest and Contributions supply every Git consumption file,
+including scripts and tests, independently of the reading rows. Explicit projection
+selects Markdown documents by default, excludes tests/fixtures and generated or
+dependency directories, and creates or prunes Source reading pages accordingly.
+Native/resource authority is preserved. Non-text display is optional. See the
 [current contract](docs/current-contract.md) for the daily coverage boundary.
 
-Inspect the current directory without fetching bodies:
+Inspect the physical Notion page inventory without fetching bodies:
 
 ```sh
 ntn-skills ctl library files SKILL_PAGE_ID --entry ENTRY_DATABASE_ID
@@ -166,9 +167,14 @@ ntn-skills ctl library projection --daily --entry ENTRY_DATABASE_ID
 
 Daily means Source 日用 members, Skill 日用 and Default Context combined. Existing
 Enabled and 期望删除 values are reported and preserved. To select one Skill, replace
-`--daily` with its exact page ID. Equal complete bodies cause zero semantic writes.
+`--daily` with its exact page ID. Repeat `--include GLOB` or `--exclude GLOB` to
+replace the respective default reading filter. These filters never change actual
+consumption exclusions. Dry-run reports selected/excluded paths and row/body
+changes. Equal complete reading pages cause zero semantic writes.
 An interrupted daily run reports completed targets and the exact single-Skill
-resume command. Resume that intent, then run `--daily` again. Native bodies remain
+resume command. Resume that intent, then run `--daily` again. To stop it before
+changing reading policy, use the exact `--operation ID --cancel`; only the pending
+action is reconciled, with no remaining projection work executed. Native bodies remain
 authoritative, and projection failure leaves already-ready consumption available.
 See [projection management](docs/shared-authoring.md#generate-readable-text-in-notion).
 

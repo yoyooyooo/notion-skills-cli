@@ -5,6 +5,7 @@ import { fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { normalizePath, pageId } from "./ref.ts"
 import type { CurrentFileContent } from "./shared-current-file.ts"
+import type { CurrentOperationAction } from "./shared-current-operation.ts"
 import { currentResourceAttachmentIdentity } from "./shared-current-resource.ts"
 
 type Rich = {
@@ -498,6 +499,18 @@ export function currentProjectionBatches(
   return batches
 }
 
+/** Notion serializes equivalent HTTP(S) URLs, including an origin's trailing slash.
+ * Compare that representation without changing the planned blocks or request identity. */
+function canonicalLink(link: string | null): string | null {
+  if (link === null) return null
+  try {
+    const url = new URL(link)
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : link
+  } catch {
+    return link
+  }
+}
+
 function canonicalRich(input: unknown) {
   if (!Array.isArray(input)) return
   const result: {
@@ -509,14 +522,15 @@ function canonicalRich(input: unknown) {
     const span = property(value),
       text = property(span.text),
       style = property(span.annotations)
-    const link = text.link == null ? null : property(text.link).url
+    const rawLink = text.link == null ? null : property(text.link).url
     if (
       span.type !== "text" ||
       typeof text.content !== "string" ||
       (span.plain_text !== undefined && span.plain_text !== text.content) ||
-      (link !== null && typeof link !== "string")
+      (rawLink !== null && typeof rawLink !== "string")
     )
       return
+    const link = canonicalLink(rawLink)
     const annotations: Record<string, boolean | string> = {}
     for (const key of ["bold", "italic", "strikethrough", "code", "underline"]) {
       if (style[key] !== undefined && typeof style[key] !== "boolean") return
@@ -725,6 +739,85 @@ export function inspectCurrentProjection(input: {
       matches:
         actual.length === expected.length &&
         actual.every((block, index) => canonicalBlock(block.value) === expected[index]),
+    }
+  })
+}
+
+/** Reconstruct only the exact pending body request for read-only cancellation. */
+export function currentProjectionPendingAction(input: {
+  readonly pageId: string
+  readonly key: string
+  readonly plan: CurrentProjectionPlan
+  readonly attachment?: unknown
+}): Effect.Effect<CurrentOperationAction<void, Notion>, SkillsError> {
+  return Effect.gen(function* () {
+    const page = yield* checked(() => exactPage(input.pageId))
+    const expected = yield* expectedProjection(input.plan, input.attachment)
+    const batches = yield* checked(() => currentProjectionBatches(input.plan.blocks))
+    const boundaries = new Set([0])
+    let offset = 0
+    const selected = batches.flatMap((batch) => {
+      const start = offset
+      offset += batch.length
+      boundaries.add(offset)
+      return input.key === `projection:${page}:append:${start}`
+        ? [{ batch, start, end: offset }]
+        : []
+    })[0]
+    const step =
+      input.key === `projection:${page}:clear`
+        ? { kind: "clear" as const }
+        : selected === undefined
+          ? undefined
+          : { kind: "append" as const, ...selected }
+    if (step === undefined)
+      return yield* Effect.fail(
+        invalid("The pending action is not a complete batch in this projection plan."),
+      )
+    return {
+      key: input.key,
+      replay: step.kind === "clear" ? "idempotent" : "never",
+      request:
+        step.kind === "clear"
+          ? {
+              path: `v1/pages/${page}/markdown`,
+              body: {
+                markdown_version: "v2",
+                type: "replace_content",
+                replace_content: { new_str: "" },
+              },
+              options: { method: "PATCH", content: "body" },
+            }
+          : {
+              path: `v1/blocks/${page}/children`,
+              body: { children: step.batch },
+              options: { method: "PATCH", content: "body" },
+            },
+      observe: () =>
+        Effect.gen(function* () {
+          const actual = yield* readProjectionBlocks(page)
+          const prefix =
+            actual.length <= expected.length &&
+            actual.every((block, index) => canonicalBlock(block.value) === expected[index])
+          if (step.kind === "clear")
+            return prefix && boundaries.has(actual.length)
+              ? ({ status: "complete", value: undefined } as const)
+              : ({ status: "missing" } as const)
+          if (
+            !prefix ||
+            actual.length < step.start ||
+            (actual.length > step.start && actual.length < step.end)
+          )
+            return yield* Effect.fail(
+              fail(
+                "CURRENT_PROJECTION_CONFLICT",
+                "Current reading blocks differ from the pending operation's complete prefix.",
+              ),
+            )
+          return actual.length >= step.end
+            ? ({ status: "complete", value: undefined } as const)
+            : ({ status: "missing" } as const)
+        }),
     }
   })
 }

@@ -293,7 +293,8 @@ describe("library-scoped graph metadata batches", () => {
       // prepared owner, so an in-flight writer cannot publish a mixed graph.
       [f.pageIds[0]!, ...f.pageIds.slice(0, 4)].map((id) => `v1/pages/${id}`).sort(),
     )
-    expect(f.calls.filter((call) => isQuery("files", call.path))).toHaveLength(2)
+    // Initial batches are followed by one complete Files fence for each prepared owner.
+    expect(f.calls.filter((call) => isQuery("files", call.path))).toHaveLength(6)
     expect(
       f.calls
         .filter((call) => isQuery("files", call.path))
@@ -302,8 +303,11 @@ describe("library-scoped graph metadata batches", () => {
     const g = nativeGraphFixture()
     await prepare(g, { purpose: "inspect" })
     const inspected = g.calls.filter((call) => isQuery("files", call.path))
-    expect(inspected).toHaveLength(1)
-    expect(ownerIds(property(inspected[0]!.body).filter)).toEqual([g.pageIds[0]!])
+    expect(inspected).toHaveLength(2)
+    expect(inspected.map((call) => ownerIds(property(call.body).filter))).toEqual([
+      [g.pageIds[0]!],
+      [g.pageIds[0]!],
+    ])
   })
 
   test("25 inline Requires, 101 complete relations and 102 inventory nodes remain complete", async () => {
@@ -312,11 +316,15 @@ describe("library-scoped graph metadata batches", () => {
     expect(result.required_closure).toHaveLength(102)
     expect(f.calls.filter((call) => isQuery("skills", call.path))).toHaveLength(2)
     expect(f.calls.filter((call) => /\/properties\/requires/u.test(call.path))).toHaveLength(2)
-    expect(
-      f.calls
-        .filter((call) => isQuery("files", call.path))
-        .map((call) => ownerIds(property(call.body).filter).length),
-    ).toEqual([80, 22])
+    const fileOwners = f.calls
+      .filter((call) => isQuery("files", call.path))
+      .map((call) => ownerIds(property(call.body).filter))
+    expect(fileOwners.map((owners) => owners.length)).toEqual([
+      80,
+      22,
+      ...Array.from({ length: 102 }, () => 1),
+    ])
+    expect(fileOwners.slice(2).flat().sort()).toEqual([...f.pageIds].sort())
   })
 
   test("a node or depth budget never admits excess Required metadata owners", async () => {
@@ -330,8 +338,11 @@ describe("library-scoped graph metadata batches", () => {
       )
       expect(result._tag).toBe("Failure")
       const files = f.calls.filter((call) => isQuery("files", call.path))
-      expect(files).toHaveLength(1)
-      expect(ownerIds(property(files[0]!.body).filter)).toEqual([f.pageIds[0]!])
+      expect(files).toHaveLength(2)
+      expect(files.map((call) => ownerIds(property(call.body).filter))).toEqual([
+        [f.pageIds[0]!],
+        [f.pageIds[0]!],
+      ])
       expect(f.readBodyCount()).toBe(1)
     }
   })

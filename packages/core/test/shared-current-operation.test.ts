@@ -9,11 +9,14 @@ import { fail, property, SkillsError, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import {
   withCurrentOperation,
+  cancelCurrentProjectionOperation,
   inspectCurrentOperation,
   readCurrentOperationIntent,
   type CurrentOperationIntent,
   type CurrentWriteMode,
   type CurrentOperationSession,
+  type CurrentOperationAction,
+  type CurrentProjectionCancellationSession,
 } from "../src/shared-current-operation.ts"
 import {
   authorizeCoordinatedSkillWrite,
@@ -78,6 +81,7 @@ function fixture(
   const root = mkdtempSync(join(parent, "case-")),
     json = new Map<string, unknown>()
   const records = new Map<string, Record<string, unknown>>(),
+    files = new Map<string, Record<string, unknown>>(),
     values: string[] = []
   const calls: { path: string; body: unknown; method: string }[] = []
   const owner: Record<string, unknown> = {
@@ -102,6 +106,7 @@ function fixture(
           | "record-replace"
           | "owner-rebind"
           | "owner-retirement"
+          | "file-retirement"
         outcome: "visible" | "absent"
         error?: SkillsError
       }
@@ -139,8 +144,13 @@ function fixture(
             parent: request.parent,
             properties: fields(request.properties),
             in_trash: false,
+            last_edited_time: "2026-11-21T00:00:00.000Z",
           }
-          if (chosen?.outcome !== "absent") records.set(row.id, row)
+          if (chosen?.outcome !== "absent")
+            (property(request.parent).data_source_id === library.files.data_source_id
+              ? files
+              : records
+            ).set(row.id, row)
           if (chosen)
             return yield* Effect.fail(
               chosen.error ?? fail("WRITE_OUTCOME_UNKNOWN", "Record CREATE response lost."),
@@ -189,11 +199,15 @@ function fixture(
           }
           return owner
         }
-        const row = records.get(path.replace("v1/pages/", ""))
+        const row =
+          records.get(path.replace("v1/pages/", "")) ?? files.get(path.replace("v1/pages/", ""))
         if (row !== undefined) {
           if (method === "PATCH") {
             const chosen =
               (request.in_trash === true && fault?.target === "retirement") ||
+              (request.in_trash === true &&
+                fault?.target === "file-retirement" &&
+                files.has(String(row.id))) ||
               (request.properties !== undefined && fault?.target === "record-replace")
                 ? fault
                 : undefined
@@ -373,6 +387,7 @@ function fixture(
     values,
     calls,
     records,
+    files,
     json,
     owner,
     observerFreshness,
@@ -428,6 +443,8 @@ async function sourceChildFixture() {
       skill_id: intent.owner.id,
       kind: "skill",
       source: { source_id: "provider", revision },
+      consumption_paths: selected.map((file) => file.path),
+      consumption_sources: [{ source_id: "provider", revision }],
       create: { name: "Example", description: "Source fixture." },
       files: selected.map((file) => ({
         kind: "write",
@@ -625,6 +642,32 @@ describe("current Source-child operation", () => {
 
 describe("finite reading projection", () => {
   const projectionIntent = { ...intent, projection: true as const }
+  const cancellationAction = (
+    f: ReturnType<typeof fixture>,
+    replay: "never" | "idempotent" = "never",
+  ): CurrentOperationAction<void> => ({
+    key: "append:first",
+    replay,
+    request: { path: productPath, body: { value: "first" }, options: { method: "PATCH" } },
+    observe: ({ fresh }) =>
+      Effect.sync(() => {
+        f.observerFreshness.push(fresh)
+        return f.values.includes("first")
+          ? { status: "complete" as const, value: undefined }
+          : { status: "missing" as const }
+      }),
+    acknowledge: () => Effect.die("Cancellation must not acknowledge a new body request"),
+  })
+  const cancel = (
+    f: ReturnType<typeof fixture>,
+    reconcile = (session: CurrentProjectionCancellationSession) =>
+      session.reconcilePendingAction(cancellationAction(f)),
+  ) =>
+    cancelCurrentProjectionOperation(library, {
+      intent: projectionIntent,
+      ownerPageId: ownerId,
+      reconcile,
+    })
   const ready = (f: ReturnType<typeof fixture>) => {
     expect(property(property(f.owner.properties).state).select).toEqual({ name: "ready" })
     expect(text(property(property(f.owner.properties).operation).rich_text)).toBe("")
@@ -712,6 +755,265 @@ describe("finite reading projection", () => {
     ready(f)
   })
 
+  test("cancellation observes only the accepted pending action and never finishes the remaining plan", async () => {
+    const f = fixture({ projection: true })
+    const before = structuredClone(f.owner)
+    f.fault({ target: "product", outcome: "visible" })
+    await f.run(
+      f.apply({ nextIntent: projectionIntent, values: ["first", "remaining"] }).pipe(Effect.result),
+    )
+    const previousObservations = f.observerFreshness.length
+    expect(
+      await f.run(
+        cancel(f, (session) => {
+          expect(Object.hasOwn(session, "dispatch")).toBe(false)
+          expect(Object.hasOwn(session, "activate")).toBe(false)
+          expect(session.pendingActionKey).toBe("append:first")
+          return session.reconcilePendingAction(cancellationAction(f))
+        }),
+      ),
+    ).toEqual({
+      status: "cancelled",
+      operation_id: intent.operation_id,
+      input_sha256: intent.input_sha256,
+    })
+    expect(f.observerFreshness.slice(previousObservations)).toEqual([true])
+    expect(f.values).toEqual(["first"])
+    expect(f.productRequests()).toBe(1)
+    expect(f.activeRecords()).toEqual([])
+    expect(f.json.size).toBe(0)
+    expect(f.owner).toEqual(before)
+    ready(f)
+    const writes = f.calls.filter(
+      (call) => call.method !== "GET" && !call.path.includes("/query"),
+    ).length
+    expect(await f.run(cancel(f, () => Effect.die("No pending action exists")))).toMatchObject({
+      status: "not_found",
+      operation_id: intent.operation_id,
+    })
+    expect(
+      f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+    ).toHaveLength(writes)
+    expect(f.json.size).toBe(0)
+  })
+
+  test("cancellation without an in-flight action retires only the existing Record", async () => {
+    const f = fixture({ projection: true })
+    await f.run(
+      withCurrentOperation(library, {
+        intent: projectionIntent,
+        ownerPageId: ownerId,
+        run: (session) =>
+          session
+            .activate()
+            .pipe(Effect.andThen(Effect.fail(fail("CANCELLED", "Stopped before body dispatch")))),
+        verify: () => Effect.void,
+      }).pipe(Effect.result),
+    )
+    expect(f.activeRecords()).toHaveLength(1)
+    expect(await f.run(cancel(f, () => Effect.die("No action needs observation")))).toMatchObject({
+      status: "cancelled",
+    })
+    expect(f.productRequests()).toBe(0)
+    expect(f.activeRecords()).toEqual([])
+    expect(f.json.size).toBe(0)
+    ready(f)
+  })
+
+  test("a matching not-dispatched proof cancels without observing or retrying the rejected request", async () => {
+    const f = fixture({ projection: true })
+    f.fault({
+      target: "product",
+      outcome: "absent",
+      error: fail("REQUEST_BUDGET_EXHAUSTED", "Budget refused dispatch."),
+    })
+    await f.run(f.apply({ nextIntent: projectionIntent }).pipe(Effect.result))
+    expect(
+      [...f.json.values()].some(
+        (value) => property(property(value).not_dispatched).key === "append:first",
+      ),
+    ).toBe(true)
+    expect(
+      await f.run(cancel(f, () => Effect.die("Rejected request needs no observation"))),
+    ).toMatchObject({ status: "cancelled" })
+    expect(f.productRequests()).toBe(1)
+    expect(f.values).toEqual([])
+    expect(f.activeRecords()).toEqual([])
+    expect(f.json.size).toBe(0)
+    ready(f)
+  })
+
+  test.each(["never", "idempotent"] as const)(
+    "cancellation never dispatches an absent %s action",
+    async (replay) => {
+      const f = fixture({ projection: true })
+      f.fault({ target: "product", outcome: "absent" })
+      await f.run(f.apply({ nextIntent: projectionIntent, replay }).pipe(Effect.result))
+      const pending = structuredClone([...f.json.entries()])
+      const calls = f.calls.length
+      expect(
+        await f.run(
+          cancel(f, (session) =>
+            session.reconcilePendingAction(cancellationAction(f, replay)),
+          ).pipe(Effect.result),
+        ),
+      ).toMatchObject({
+        _tag: "Failure",
+        failure: { code: "CURRENT_OPERATION_UNRESOLVED" },
+      })
+      expect(
+        f.calls
+          .slice(calls)
+          .filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+      ).toEqual([])
+      expect([...f.json.entries()]).toEqual(pending)
+      expect(f.activeRecords()).toHaveLength(1)
+      expect(f.productRequests()).toBe(1)
+      ready(f)
+    },
+  )
+
+  test.each(["key", "request", "replay"] as const)(
+    "cancellation rejects a different pending %s before observation",
+    async (changed) => {
+      const f = fixture({ projection: true })
+      f.fault({ target: "product", outcome: "visible" })
+      await f.run(f.apply({ nextIntent: projectionIntent }).pipe(Effect.result))
+      const original = cancellationAction(f)
+      const altered: CurrentOperationAction<void> = {
+        ...original,
+        ...(changed === "key" ? { key: "append:remaining" } : {}),
+        ...(changed === "request"
+          ? { request: { ...original.request, body: { value: "different" } } }
+          : {}),
+        ...(changed === "replay" ? { replay: "idempotent" } : {}),
+        observe: () => Effect.die("A different marker must not be observed"),
+      }
+      const calls = f.calls.length
+      expect(
+        await f.run(
+          cancel(f, (session) => session.reconcilePendingAction(altered)).pipe(Effect.result),
+        ),
+      ).toMatchObject({
+        _tag: "Failure",
+        failure: { code: "CURRENT_OPERATION_CONFLICT" },
+      })
+      expect(
+        f.calls
+          .slice(calls)
+          .filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+      ).toEqual([])
+      expect(f.activeRecords()).toHaveLength(1)
+      expect(f.json.size).toBe(1)
+      ready(f)
+    },
+  )
+
+  test("an incomplete or mismatched observed prefix keeps the cancellation pending", async () => {
+    const f = fixture({ projection: true })
+    f.fault({ target: "product", outcome: "visible" })
+    await f.run(f.apply({ nextIntent: projectionIntent }).pipe(Effect.result))
+    const calls = f.calls.length
+    expect(
+      await f.run(
+        cancel(f, (session) =>
+          session.reconcilePendingAction({
+            ...cancellationAction(f),
+            observe: () =>
+              Effect.fail(
+                fail("CURRENT_PROJECTION_CONFLICT", "The visible batch is partial or differs."),
+              ),
+          }),
+        ).pipe(Effect.result),
+      ),
+    ).toMatchObject({
+      _tag: "Failure",
+      failure: { code: "CURRENT_PROJECTION_CONFLICT" },
+    })
+    expect(
+      f.calls.slice(calls).filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+    ).toEqual([])
+    expect(f.activeRecords()).toHaveLength(1)
+    expect(f.json.size).toBe(1)
+    ready(f)
+  })
+
+  test.each(["visible", "absent"] as const)(
+    "cancel retirement %s recovers without observing or writing a body again",
+    async (outcome) => {
+      const f = fixture({ projection: true })
+      f.fault({ target: "product", outcome: "visible" })
+      await f.run(f.apply({ nextIntent: projectionIntent }).pipe(Effect.result))
+      f.fault({ target: "retirement", outcome })
+      expect(await f.run(cancel(f).pipe(Effect.result))).toMatchObject({
+        _tag: "Failure",
+        failure: { code: "WRITE_OUTCOME_UNKNOWN" },
+      })
+      expect([...f.json.values()]).toMatchObject([{ lifecycle: { phase: "retiring" } }])
+      expect(
+        await f.run(cancel(f, () => Effect.die("Retiring intent has no new body work"))),
+      ).toMatchObject({ status: "cancelled" })
+      expect(f.activeRecords()).toEqual([])
+      expect(f.json.size).toBe(0)
+      expect(f.productRequests()).toBe(1)
+      ready(f)
+    },
+  )
+
+  test("cancellation cannot retire its Record after the owner becomes unready", async () => {
+    const f = fixture({ projection: true })
+    f.fault({ target: "product", outcome: "visible" })
+    await f.run(f.apply({ nextIntent: projectionIntent }).pipe(Effect.result))
+    expect(
+      await f.run(
+        cancel(f, (session) =>
+          session.reconcilePendingAction({
+            ...cancellationAction(f),
+            observe: () =>
+              Effect.sync(() => {
+                f.owner.properties = {
+                  ...property(f.owner.properties),
+                  ...fields({
+                    state: { select: { name: "applying" } },
+                    operation: { rich_text: rich("another-operation") },
+                  }),
+                }
+                return { status: "complete" as const, value: undefined }
+              }),
+          }),
+        ).pipe(Effect.result),
+      ),
+    ).toMatchObject({
+      _tag: "Failure",
+      failure: { code: "CURRENT_OPERATION_CONFLICT" },
+    })
+    expect(f.activeRecords()).toHaveLength(1)
+    expect(f.json.size).toBe(1)
+    expect(f.productRequests()).toBe(1)
+    expect(
+      f.calls.filter((call) => call.path === "v1/pages/" + ownerId && call.method === "PATCH"),
+    ).toEqual([])
+  })
+
+  test("content intents have no cancellation route", async () => {
+    const f = fixture()
+    expect(
+      await f.run(
+        cancelCurrentProjectionOperation(library, {
+          // @ts-expect-error A content writer cannot call projection cancellation.
+          intent,
+          ownerPageId: ownerId,
+          reconcile: () => Effect.die("A content cancellation must fail before reconciliation"),
+        }).pipe(Effect.result),
+      ),
+    ).toMatchObject({
+      _tag: "Failure",
+      failure: { code: "CURRENT_OPERATION_INVALID" },
+    })
+    expect(f.calls).toEqual([])
+    expect(f.json.size).toBe(0)
+  })
+
   test("failed full readback preserves ready and resumes its existing generated body", async () => {
     const f = fixture({ projection: true })
     expect(
@@ -763,7 +1065,7 @@ describe("finite reading projection", () => {
     }
   })
 
-  test("projection dispatch cannot mutate metadata and cannot rebind its owner", async () => {
+  test("projection dispatch cannot mutate owner metadata and cannot rebind its owner", async () => {
     for (const action of ["metadata", "binding"] as const) {
       const f = fixture({ projection: true })
       expect(
@@ -792,6 +1094,244 @@ describe("finite reading projection", () => {
       expect(f.json.size).toBe(0)
       ready(f)
     }
+  })
+
+  const sourceContent = {
+    kind: "source" as const,
+    source_id: "reading-source",
+    source_path: "skills/example/references/guide.md",
+    revision: "c".repeat(64),
+    sha256: "d".repeat(64),
+    bytes: 12,
+    mode: "100644" as const,
+  }
+  const fileProperties = () => ({
+    [library.files.property_ids.Name!]: { title: rich("references/guide.md") },
+    [library.files.property_ids["File ID"]!]: { rich_text: rich("reading-guide") },
+    [library.files.property_ids.Path!]: { rich_text: rich("references/guide.md") },
+    [library.files.property_ids.Skill!]: { relation: [{ id: ownerId }] },
+    [library.files.property_ids.Content!]: { rich_text: rich(JSON.stringify(sourceContent)) },
+  })
+  const seedFile = (f: ReturnType<typeof fixture>) => {
+    const row = {
+      object: "page",
+      id: id(40),
+      parent: { type: "data_source_id", data_source_id: library.files.data_source_id },
+      in_trash: false,
+      last_edited_time: "2026-11-21T00:00:00.000Z",
+      properties: fields(fileProperties()),
+    }
+    f.files.set(row.id, row)
+    return row
+  }
+  const fileAction = (
+    f: ReturnType<typeof fixture>,
+    request: CurrentOperationAction<void>["request"],
+  ): CurrentOperationAction<void> => ({
+    key: "reading-file:" + request.path,
+    replay: request.options?.method === "POST" ? "never" : "idempotent",
+    request,
+    observe: () =>
+      Effect.sync(() => {
+        const row =
+          request.path === "v1/pages"
+            ? [...f.files.values()].find(
+                (row) =>
+                  text(
+                    property(property(row.properties)[library.files.property_ids["File ID"]!])
+                      .rich_text,
+                  ) === "reading-guide",
+              )
+            : f.files.get(request.path.replace("v1/pages/", ""))
+        const wanted = property(request.body)
+        const complete =
+          row !== undefined &&
+          (request.path === "v1/pages" ||
+            (wanted.in_trash === true
+              ? row.in_trash === true
+              : Object.entries(property(wanted.properties)).every(
+                  ([key, value]) =>
+                    text(property(property(row.properties)[key]).rich_text) ===
+                    text(property(value).rich_text),
+                )))
+        return complete
+          ? { status: "complete" as const, value: undefined }
+          : { status: "missing" as const }
+      }),
+  })
+  const writeFile = (
+    f: ReturnType<typeof fixture>,
+    action: CurrentOperationAction<void>,
+    mode?: CurrentWriteMode,
+  ) =>
+    withCurrentOperation(library, {
+      intent: projectionIntent,
+      ownerPageId: ownerId,
+      mode,
+      run: (session) => session.dispatch(action),
+      verify: () => Effect.void,
+    })
+
+  test("projection can create and remap one source File without changing its owner or binding", async () => {
+    const f = fixture({ projection: true })
+    await f.run(
+      writeFile(
+        f,
+        fileAction(f, {
+          path: "v1/pages",
+          options: { method: "POST" },
+          body: {
+            parent: { type: "data_source_id", data_source_id: library.files.data_source_id },
+            properties: fileProperties(),
+          },
+        }),
+      ),
+    )
+    const before = structuredClone([...f.files.values()][0]!)
+    const next = {
+      ...sourceContent,
+      source_id: "replacement-source",
+      source_path: "new/guide.md",
+      revision: "e".repeat(64),
+    }
+    await f.run(
+      writeFile(
+        f,
+        fileAction(f, {
+          path: `v1/pages/${before.id}`,
+          options: { method: "PATCH" },
+          body: {
+            properties: {
+              [library.files.property_ids.Content!]: { rich_text: rich(JSON.stringify(next)) },
+            },
+          },
+        }),
+      ),
+    )
+    const after = f.files.get(String(before.id))!
+    expect(
+      JSON.parse(
+        text(property(property(after.properties)[library.files.property_ids.Content!]).rich_text),
+      ),
+    ).toEqual(next)
+    for (const name of ["Name", "File ID", "Path", "Skill"])
+      expect(property(after.properties)[library.files.property_ids[name]!]).toEqual(
+        property(before.properties)[library.files.property_ids[name]!],
+      )
+    expect(f.activeRecords()).toEqual([])
+    expect(f.json.size).toBe(0)
+    ready(f)
+  })
+
+  test.each([
+    "foreign-parent",
+    "foreign-owner",
+    "native",
+    "resource",
+    "extra-property",
+    "changed-path",
+  ] as const)(
+    "projection rejects a %s File mutation before any remote mutation",
+    async (change) => {
+      const f = fixture({ projection: true }),
+        row = seedFile(f)
+      const native = { kind: "native", frontmatter: "", mode: "100644" }
+      if (change === "foreign-parent") row.parent.data_source_id = library.skills.data_source_id
+      if (change === "foreign-owner")
+        property(row.properties[library.files.property_ids.Skill!]).relation = [{ id: id(90) }]
+      if (change === "native" || change === "resource")
+        property(row.properties[library.files.property_ids.Content!]).rich_text = rich(
+          JSON.stringify(
+            change === "native"
+              ? native
+              : {
+                  kind: "resource",
+                  object_id: "resource-" + "f".repeat(64),
+                  sha256: "f".repeat(64),
+                  bytes: 12,
+                  mode: "100644",
+                },
+          ),
+        )
+      const properties: Record<string, unknown> = {
+        [library.files.property_ids.Content!]: {
+          rich_text: rich(JSON.stringify({ ...sourceContent, revision: "e".repeat(64) })),
+        },
+      }
+      if (change === "extra-property") properties["daily"] = { checkbox: true }
+      if (change === "changed-path")
+        properties[library.files.property_ids.Path!] = { rich_text: rich("different.md") }
+      const result = await f.run(
+        writeFile(
+          f,
+          fileAction(f, {
+            path: `v1/pages/${row.id}`,
+            options: { method: "PATCH" },
+            body: { properties },
+          }),
+        ).pipe(Effect.result),
+      )
+      expect(result._tag).toBe("Failure")
+      expect(
+        f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+      ).toEqual([])
+      expect(f.json.size).toBe(0)
+      ready(f)
+    },
+  )
+
+  test("projection rejects File takeover between observation and metadata dispatch", async () => {
+    const f = fixture({ projection: true }),
+      row = seedFile(f)
+    const action = fileAction(f, {
+      path: `v1/pages/${row.id}`,
+      options: { method: "PATCH" },
+      body: { in_trash: true },
+    })
+    const result = await f.run(
+      writeFile(f, {
+        ...action,
+        observe: () =>
+          Effect.sync(() => {
+            property(row.properties[library.files.property_ids.Content!]).rich_text = rich(
+              JSON.stringify({ kind: "native", frontmatter: "", mode: "100644" }),
+            )
+            return { status: "missing" as const }
+          }),
+      }).pipe(Effect.result),
+    )
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { code: "CURRENT_OPERATION_INVALID" },
+    })
+    expect(
+      f.calls.filter((call) => call.path === `v1/pages/${row.id}` && call.method === "PATCH"),
+    ).toEqual([])
+    expect(row.in_trash).toBe(false)
+    ready(f)
+  })
+
+  test("projection resumes an accepted File archive without repeating it", async () => {
+    const f = fixture({ projection: true }),
+      row = seedFile(f)
+    const action = fileAction(f, {
+      path: `v1/pages/${row.id}`,
+      options: { method: "PATCH" },
+      body: { in_trash: true },
+    })
+    f.fault({ target: "file-retirement", outcome: "visible" })
+    expect(await f.run(writeFile(f, action).pipe(Effect.result))).toMatchObject({
+      _tag: "Failure",
+      failure: { code: "WRITE_OUTCOME_UNKNOWN" },
+    })
+    expect(row.in_trash).toBe(true)
+    await f.run(writeFile(f, action, "resume"))
+    expect(
+      f.calls.filter((call) => call.path === `v1/pages/${row.id}` && call.method === "PATCH"),
+    ).toHaveLength(1)
+    expect(f.activeRecords()).toEqual([])
+    expect(f.json.size).toBe(0)
+    ready(f)
   })
 
   test("an owner becoming unready during projection cannot be republished by completion", async () => {

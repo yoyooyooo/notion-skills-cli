@@ -129,7 +129,7 @@ test.each(["read", "export", "use"] as const)(
     expect(stable.snapshot_id).toBe(currentSnapshotId)
     expect(stable.source).toBe("local_cache")
     const pinned = await f.run(
-      readSkill(fileRef(first.record.id, "SKILL.md", first.snapshot_id, "main-demo"), {
+      readSkill(fileRef(first.record.id, "SKILL.md", first.snapshot_id), {
         offline: true,
       }),
     )
@@ -137,10 +137,10 @@ test.each(["read", "export", "use"] as const)(
     expect(f.calls).toHaveLength(0)
     if (action === "read") {
       const missing = first.files.find((file) => file.path === "scripts/check.sh")!
-      const fileId = first.file_bindings!.find((file) => file.path === missing.path)!.file_id
+      expect(first.file_bindings).toEqual([])
       f.objects.delete(`objects/${missing.sha256}`)
       const acquired = await f.run(
-        readSkill(fileRef(warm.record.id, missing.path, warm.snapshot_id, fileId), {
+        readSkill(fileRef(warm.record.id, missing.path, warm.snapshot_id), {
           database: options.database,
         }),
       )
@@ -158,17 +158,17 @@ test.each(["read", "export", "use"] as const)(
         readResources(
           {
             version: 1,
-            refs: [fileRef(warm.record.id, missing.path, warm.snapshot_id, fileId)],
+            refs: [fileRef(warm.record.id, missing.path, warm.snapshot_id)],
           },
           { database: options.database },
         ),
       )
-      expect(batch.status).toBe("ready")
+      expect(batch.status, JSON.stringify(batch)).toBe("ready")
       if (batch.status !== "ready") throw new Error(JSON.stringify(batch))
       expect(batch.manifest.record.locator).toEqual(warm.record.locator)
       expect(batch.files[0]?.content).toBe(new TextDecoder().decode(gitFiles[1]!.bytes))
       expect(f.calls.some((call) => call.path === `v1/pages/${currentSkillPage}`)).toBe(false)
-      const oldRef = fileRef(first.record.id, missing.path, first.snapshot_id, fileId)
+      const oldRef = fileRef(first.record.id, missing.path, first.snapshot_id)
       f.clearCalls()
       const old = await f.run(readSkill(oldRef, { offline: true }))
       expect(old.record.locator).toEqual(first.record.locator)
@@ -203,10 +203,10 @@ test("missing or unready current Source metadata fails before bodies, providers 
     await expect(f.target()).rejects.toMatchObject({
       code: (
         {
-          missing: "SHARED_SOURCE_MISSING",
+          missing: "COMPOSITION_MISSING_ENTRYPOINT",
           pending: "CURRENT_SOURCE_NOT_READY",
           revision: "SHARED_SOURCE_CONFLICT",
-          content: "CURRENT_SOURCE_INVALID",
+          content: "CURRENT_SOURCE_MANAGEMENT_INVALID",
         } as const
       )[fault],
     })
@@ -217,21 +217,24 @@ test("missing or unready current Source metadata fails before bodies, providers 
   }
 })
 
-test("each current File must match the Source hash, size and executable mode before provider acquisition", async () => {
+test("stale Source projection hash, size and mode cannot override the complete Source manifest", async () => {
   for (const field of ["sha256", "bytes", "mode"] as const) {
     const f = await currentSourceConsumerFixture()
     await f.select(gitFiles)
+    f.bind("SKILL.md")
     f.bind("scripts/check.sh")
     const row = f.files[0]!
     const descriptor = JSON.parse(row.properties.Content.rich_text[0]!.plain_text)
     descriptor[field] = field === "sha256" ? "f".repeat(64) : field === "bytes" ? 0 : "100644"
     row.properties.Content = rich("content", JSON.stringify(descriptor))
     f.clearCalls()
-    await expect(f.target()).rejects.toMatchObject({ code: "CURRENT_SOURCE_CONFLICT" })
-    expect(f.requests).toEqual([])
+    const snapshot = await f.target()
+    expect(f.bytes(snapshot, "scripts/check.sh")).toEqual(gitFiles[1]!.bytes)
+    expect(snapshot.files.find((file) => file.path === "scripts/check.sh")?.mode).toBe("100755")
+    expect(snapshot.file_bindings).toEqual([])
     expect(f.bodyCalls()).toHaveLength(0)
     expect(f.semanticWrites()).toHaveLength(0)
-    expect([...f.json.keys()].some((key) => key.startsWith("snapshots/"))).toBe(false)
+    expect(snapshot.files).toHaveLength(gitFiles.length)
   }
 })
 
@@ -254,7 +257,7 @@ test("editing a source projection never replaces its exact current author bytes"
   expect([...f.json.keys()].filter((key) => key.startsWith("operations/"))).toEqual([])
 })
 
-test("a Source advance requires explicit current File reselection while a native takeover remains independent", async () => {
+test("an explicitly selected Source advance updates consumption without rebinding projections and preserves native takeover", async () => {
   const f = await currentSourceConsumerFixture()
   await f.select(gitFiles, "git")
   f.bind("SKILL.md")
@@ -267,10 +270,11 @@ test("a Source advance requires explicit current File reselection while a native
   await f.select(next, "git", "c".repeat(40))
   f.clearCalls()
   f.requests.length = 0
-  await expect(f.target({ refresh: true })).rejects.toMatchObject({
-    code: "SHARED_SOURCE_CONFLICT",
-  })
-  expect(f.requests).toEqual([])
+  const advanced = await f.target({ refresh: true })
+  expect(advanced.snapshot_id).not.toBe(first.snapshot_id)
+  expect(f.bytes(advanced, "scripts/check.sh")).toEqual(next[1]!.bytes)
+  expect(advanced.files).toHaveLength(gitFiles.length)
+  expect(f.requests).toHaveLength(1)
   expect(f.bodyCalls()).toHaveLength(0)
   expect(f.semanticWrites()).toHaveLength(0)
   f.clearCalls()
@@ -284,15 +288,146 @@ test("a Source advance requires explicit current File reselection while a native
     "# Explicit Notion author\n",
     "---\nname: Local author\nlicense: MIT\n---\n\n",
   )
-  f.bind("scripts/check.sh")
+  f.contribute([
+    { member_key: ".", skill_id: "demo", mount_path: "", mapping: {}, exclude: ["SKILL.md"] },
+  ])
   f.objects.clear()
+  f.requests.length = 0
   const current = await f.target({ refresh: true })
   expect(new TextDecoder().decode(f.bytes(current, "SKILL.md"))).toBe(
     "---\nname: Local author\nlicense: MIT\n---\n\n# Explicit Notion author\n",
   )
   expect(f.bytes(current, "scripts/check.sh")).toEqual(next[1]!.bytes)
-  expect(current.files.map((file) => file.path)).toEqual(["SKILL.md", "scripts/check.sh"])
+  expect(current.files.map((file) => file.path)).toEqual([
+    "SKILL.md",
+    "assets/icon.bin",
+    "scripts/check.sh",
+  ])
+  expect(f.requests).toHaveLength(2)
+  expect(f.requests.some((url) => url.endsWith("/SKILL.md"))).toBe(false)
+  expect(f.semanticWrites()).toHaveLength(0)
+})
+
+test("main plus one Markdown projection keeps scripts and tests in snapshots, cold reads and exact exports", async () => {
+  const f = await currentSourceConsumerFixture()
+  const files: readonly SourceFile[] = [
+    ...gitFiles,
+    { path: "references/guide.md", bytes: bytes("# Human guide\n"), mode: "100644" },
+    { path: "tests/corpus/example.json", bytes: bytes('{"fixture":true}\n'), mode: "100644" },
+  ]
+  await f.select(files, "git")
+  f.bind("SKILL.md")
+  f.bind("references/guide.md")
+  expect(f.files).toHaveLength(1)
+  const first = await f.target({}, "manifest")
+  expect(first.files.map((file) => file.path)).toEqual(files.map((file) => file.path).sort())
+  expect(first.file_bindings).toEqual([])
+  const script = first.files.find((file) => file.path === "scripts/check.sh")!
+  f.objects.delete("objects/" + script.sha256)
+  f.clearCalls()
+  f.requests.length = 0
+  const selected = await f.run(
+    readSkill(fileRef(first.record.id, script.path, first.snapshot_id), {
+      database: currentLibrary.skills.database_id,
+    }),
+  )
+  expect("content" in selected && selected.content).toBe(
+    new TextDecoder().decode(gitFiles[1]!.bytes),
+  )
   expect(f.requests).toHaveLength(1)
   expect(f.requests[0]).toEndWith("/scripts/check.sh")
+  expect(f.bodyCalls()).toHaveLength(0)
+  expect(f.semanticWrites()).toHaveLength(0)
+
+  const store = await f.run(Store)
+  let archive: Uint8Array | undefined
+  await f.run(
+    exportSkill(currentSkillPage, {
+      database: currentLibrary.skills.database_id,
+      output: "/complete-source.zip",
+      format: "zip",
+    }).pipe(
+      Effect.provideService(Store, {
+        ...store,
+        output: (output, value) =>
+          Effect.sync(() => {
+            archive = value
+            return { output, reused: false }
+          }),
+      }),
+    ),
+  )
+  if (archive === undefined) throw new Error("Expected complete exported source archive")
+  const exported = readPortable(readImportZip(archive))!
+  expect(exported.files.map((file) => file.path).sort()).toEqual(
+    files.map((file) => file.path).sort(),
+  )
+  for (const file of files) {
+    expect(exported.files.find((item) => item.path === file.path)?.bytes).toEqual(file.bytes)
+    expect(exported.files.find((item) => item.path === file.path)?.mode ?? "100644").toBe(file.mode)
+  }
+  expect(f.semanticWrites()).toHaveLength(0)
+
+  const previousPage = f.files[0]!.id
+  f.files.splice(0)
+  f.clearCalls()
+  f.requests.length = 0
+  const removed = await f.target({ refresh: true })
+  expect(removed.snapshot_id).toBe(first.snapshot_id)
+  expect(removed.files).toEqual(first.files)
+  expect(removed.file_bindings).toEqual([])
+  f.bind("references/guide.md")
+  expect(f.files[0]?.id).not.toBe(previousPage)
+  const rebuilt = await f.target({ refresh: true })
+  expect(rebuilt.snapshot_id).toBe(first.snapshot_id)
+  expect(rebuilt.files).toEqual(first.files)
+  expect(rebuilt.file_bindings).toEqual([])
+  expect(f.requests).toEqual([])
+  expect(f.bodyCalls()).toHaveLength(0)
+  expect(f.semanticWrites()).toHaveLength(0)
+})
+
+test("native takeover prevents a former Source path from cold acquisition and retains its real binding", async () => {
+  const f = await currentSourceConsumerFixture()
+  await f.select(gitFiles, "git")
+  f.bind("SKILL.md")
+  const first = await f.target({}, "manifest")
+  const script = first.files.find((file) => file.path === "scripts/check.sh")!
+  expect(first.file_bindings).toEqual([])
+  const nativePage = f.native("scripts/check.sh", "#!/bin/sh\nprintf 'local owner\\n'\n")
+  f.contribute([
+    {
+      member_key: ".",
+      skill_id: "demo",
+      mount_path: "",
+      mapping: {},
+      exclude: ["scripts/check.sh"],
+    },
+  ])
+  f.objects.delete("objects/" + script.sha256)
+  f.clearCalls()
+  f.requests.length = 0
+  await expect(
+    f.run(
+      readSkill(fileRef(first.record.id, script.path, first.snapshot_id), {
+        database: currentLibrary.skills.database_id,
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "SHARED_ACQUISITION_CHANGED" })
+  expect(f.requests).toEqual([])
+  expect(f.bodyCalls()).toHaveLength(0)
+  expect(f.semanticWrites()).toHaveLength(0)
+  const current = await f.target({ refresh: true })
+  expect(current.file_bindings).toEqual([
+    {
+      path: "scripts/check.sh",
+      page_id: nativePage,
+      file_id: f.files[0]!.properties["File ID"].rich_text[0]!.plain_text,
+    },
+  ])
+  expect(new TextDecoder().decode(f.bytes(current, script.path))).toBe(
+    "#!/bin/sh\nprintf 'local owner\\n'\n",
+  )
+  expect(f.requests.some((url) => url.endsWith("/scripts/check.sh"))).toBe(false)
   expect(f.semanticWrites()).toHaveLength(0)
 })

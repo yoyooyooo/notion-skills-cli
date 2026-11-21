@@ -47,7 +47,7 @@ describe("current tree consumption", () => {
     expect(f.semanticWrites()).toHaveLength(0)
   })
 
-  test("cold native consumption uses three metadata requests plus one read per body and writes no Notion state", async () => {
+  test("cold native consumption checks complete metadata before and after one read per body without Notion writes", async () => {
     const f = currentSnapshotFixture()
     f.records.set("unread-history", { malformed: "obsolete event, proof and snapshot records" })
     f.json.set("operations/shared-observation-pending/old/pending.json", { obsolete: true })
@@ -59,7 +59,7 @@ describe("current tree consumption", () => {
     ])
     expect(selected.file_bindings).toHaveLength(3)
     expect(selected.shared_acquisition).toMatchObject({ version: 5, files: [] })
-    expect(f.calls).toHaveLength(6)
+    expect(f.calls).toHaveLength(9)
     expect(f.bodyCalls()).toHaveLength(3)
     expect(f.recordCalls()).toHaveLength(0)
     expect(f.semanticWrites()).toHaveLength(0)
@@ -74,7 +74,7 @@ describe("current tree consumption", () => {
     f.clearCalls()
     const warm = await f.open()
     expect(warm.version_id).toBe(first.version_id)
-    expect(f.calls).toHaveLength(3)
+    expect(f.calls).toHaveLength(6)
     expect(f.bodyCalls()).toHaveLength(0)
     const changed = f.files[0]!
     f.bodies.set(changed.id, "# Changed by a human\n\nRead this latest content directly.\n")

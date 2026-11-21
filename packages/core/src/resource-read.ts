@@ -149,7 +149,7 @@ function validateManifestShape(snapshot: Snapshot) {
   const main = bindings.find((binding) => binding.path === entrypoint)
   if (
     snapshot.file_bindings !== undefined &&
-    (main === undefined || locator.type !== "shared_skill" || main.page_id !== locator.page_id)
+    (locator.type !== "shared_skill" || (main !== undefined && main.page_id !== locator.page_id))
   )
     throw fail("STATE_CORRUPT", "The fixed resource manifest has no exact main File binding.")
 }

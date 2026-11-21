@@ -21,7 +21,13 @@ import { queryCurrentSourceManagement } from "../src/shared-current-source-manag
 import { writePreparedCurrentSource } from "../src/shared-current-source-write.ts"
 import { readSkill } from "../src/snapshot.ts"
 import type { SourceSnapshot } from "../src/upstream-source.ts"
-import { currentWriteFixture, id, library, testBytes } from "./shared-current-write-fixture.ts"
+import {
+  currentWriteFixture,
+  seedSourceFileRows,
+  id,
+  library,
+  testBytes,
+} from "./shared-current-write-fixture.ts"
 
 const parent = mkdtempSync(join(tmpdir(), "ntn-current-source-file-"))
 afterAll(async () => {
@@ -145,6 +151,7 @@ async function seed() {
     http = provider()
   const prepared = await f.run(prepareCurrentSourceFromDiscovery(declaration, observation()))
   await f.run(http.use(writePreparedCurrentSource(library, { prepared, operation_id: "seed" })))
+  await seedSourceFileRows(f, prepared)
   const page = String(f.table("skills")[0]!.id)
   const index = await f.run(queryCurrentSkillIndex(library, page))
   f.clearCalls()

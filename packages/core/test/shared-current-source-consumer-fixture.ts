@@ -4,10 +4,15 @@ import { HttpClient, HttpClientResponse } from "effect/http"
 import { property, type Snapshot } from "../src/model.ts"
 import type { CurrentFileContent } from "../src/shared-current-file.ts"
 import {
+  validateCurrentSourceContributions,
+  type CurrentSourceContribution,
+} from "../src/shared-current-source-input.ts"
+import {
   currentSharedSourceRevision,
   validateCurrentSharedSourceContent,
 } from "../src/shared-current-source.ts"
 import { configureSharedHttpOrigins } from "../src/shared-source-config.ts"
+import { sourceRich } from "../src/shared-source-definitions.ts"
 import type { SharedSourcePlan } from "../src/shared-source-plan.ts"
 import { targetSnapshot } from "../src/snapshot.ts"
 import {
@@ -62,6 +67,13 @@ export async function currentSourceConsumerFixture() {
   let sourceFiles: readonly SourceFile[] = []
   let revision = ""
   let nextFile = 100
+  let contributions: readonly CurrentSourceContribution[] = [
+    { member_key: ".", skill_id: "demo", mount_path: "", mapping: {}, exclude: [] },
+  ]
+  const sourceText = (name: string, value: string) => ({
+    ...rich(sourceFields[name]!, value),
+    rich_text: sourceRich(value).map((part) => ({ ...part, plain_text: part.text.content })),
+  })
   const run = base.run
   await run(configureSharedHttpOrigins([sourceOrigin]))
   const install = async (plan: SharedSourcePlan, files: readonly SourceFile[]) => {
@@ -71,7 +83,18 @@ export async function currentSourceConsumerFixture() {
     source.properties = {
       Name: { id: "title", type: "title", title: [{ plain_text: "Current source" }] },
       "Source ID": rich(sourceFields["Source ID"]!, sourceId),
-      Content: rich(sourceFields.Content!, JSON.stringify(content)),
+      Description: sourceText("Description", "Complete selected source"),
+      Provider: { id: sourceFields.Provider, type: "select", select: { name: "git" } },
+      Location: sourceText("Location", "https://github.com/example/skills"),
+      Ref: sourceText("Ref", "main"),
+      Policy: { id: sourceFields.Policy, type: "select", select: { name: "manual" } },
+      Selection: sourceText(
+        "Selection",
+        JSON.stringify({ roots: ["."], include: [], exclude: [], mapping: {} }),
+      ),
+      Options: sourceText("Options", "{}"),
+      Contributions: sourceText("Contributions", JSON.stringify(contributions)),
+      Content: sourceText("Content", JSON.stringify(content)),
       "Last Revision": rich(sourceFields["Last Revision"]!, revision),
       Enabled: { id: sourceFields.Enabled, type: "checkbox", checkbox: true },
       Status: { id: sourceFields.Status, type: "select", select: { name: "ready" } },
@@ -200,6 +223,13 @@ export async function currentSourceConsumerFixture() {
     requests,
     install,
     select,
+    contribute: (entries: readonly CurrentSourceContribution[]) => {
+      contributions = validateCurrentSourceContributions(entries)
+      source.properties = {
+        ...property(source.properties),
+        Contributions: sourceText("Contributions", JSON.stringify(contributions)),
+      }
+    },
     get revision() {
       return revision
     },

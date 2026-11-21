@@ -173,6 +173,8 @@ async function coordinatedFixture() {
     skill_id: "example",
     kind: "skill" as const,
     source: { source_id: "provider", revision },
+    consumption_paths: original.files.map((file) => file.path),
+    consumption_sources: [{ source_id: "provider", revision }],
     create: { name: "New defaults only", description: "Do not replace existing metadata." },
     files,
   }
@@ -866,6 +868,32 @@ describe("complete current Skill writer", () => {
               _tag: "Failure",
               failure: { code: "CURRENT_WRITE_CONFLICT" },
             })
+            const foreignPlan = yield* prepareCoordinatedSkillWrite({
+              ...input,
+              source: { ...input.source, source_id: "different-source" },
+              consumption_sources: [{ ...input.source, source_id: "different-source" }],
+              files: input.files.map((file) =>
+                file.kind === "preserve"
+                  ? file
+                  : {
+                      ...file,
+                      file: {
+                        ...file.file,
+                        authority: { ...file.file.authority, source_id: "different-source" },
+                      },
+                    },
+              ),
+            })
+            expect(
+              yield* authorizeCoordinatedSkillWrite(session, {
+                plan: foreignPlan,
+                source,
+                assertSourceCurrent: () => Effect.void,
+              }).pipe(Effect.result),
+            ).toMatchObject({
+              _tag: "Failure",
+              failure: { code: "CURRENT_WRITE_CONFLICT" },
+            })
             yield* session.markSourceChildComplete(plan.skill_id)
           }),
         verify: () => Effect.void,
@@ -1000,6 +1028,7 @@ describe("complete current Skill writer", () => {
     const plan = await f.run(
       prepareCoordinatedSkillWrite({
         ...input,
+        consumption_paths: input.consumption_paths.filter((path) => path !== removed.path),
         files: input.files.filter(
           (file) => file.kind !== "write" || file.file.file_id !== removed.file_id,
         ),

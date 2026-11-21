@@ -116,18 +116,23 @@ ntn-skills ctl library projection --daily --entry LIBRARY_ENTRY --dry-run
 ntn-skills ctl library projection --daily --entry LIBRARY_ENTRY
 ```
 
-The main text lives on Skills; each text supporting file uses its existing Files
-page. Source/resource text is generated from verified exact originals. Native
-bodies are checked without replacement; non-text files are reported as skipped.
-Equal complete bodies produce zero semantic writes.
+The main stays on Skills. Source reading rows include Markdown by default and
+exclude test, fixture, dependency and generated directories. Repeated `--include`
+or `--exclude` globs replace that default list. The command creates selected
+missing Files, updates descriptors and archives excluded or removed Source rows.
+Full Git consumption still uses the complete manifest and Contributions; scripts
+and tests remain consumable. Native/resource rows remain Notion authority. Native
+bodies are checked without replacement; non-text originals need no body. Dry-run
+reports selected/excluded paths and row/body changes; an equal result makes zero writes.
 
 Daily combines current members of Sources marked 日用, Skills marked 日用 and
 Default Context. Enabled and 期望删除 are reported and preserved. A missing current
 binding or inaccessible original is a failure, not an omitted daily target.
 The daily run stops at the first failure and reports completed and remaining
 targets. Follow its exact single-Skill `--operation ID --resume` command, then
-rerun `--daily`. Daily does not accept `--operation` or `--resume`; projection has
-no supersede mode. Projection failure leaves already-ready consumption available.
+rerun `--daily`. To stop that exact intent before changing policy, use
+`--operation ID --cancel`; only its pending action is reconciled. Daily does not
+accept `--operation`, `--resume` or `--cancel`; projection has no supersede mode. Projection failure leaves already-ready consumption available.
 
 All selected targets share the invocation's `--max-requests`, `--max-bytes` and
 `--timeout` limits. Defaults are 1000 HTTP attempts, 512 MiB and 600000 ms. Ordinary

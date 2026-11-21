@@ -61,9 +61,9 @@ Skill ID; keep Notion originals native. Generate readable main/supporting text:
 ntn-skills ctl library projection PAGE_ID --entry ENTRY
 ```
 
-Native bodies are verified without writes; non-text is skipped. See
-[text projection](references/operations.md#generate-notion-text) for daily scope,
-resume and zero-write reruns. Projection failure does not block consumption.
+Source filters preserve Git consumption and Notion authority. See
+[reading and recovery](references/operations.md#generate-notion-text) for filters,
+page rebuild, resume/cancel and zero-write reruns. Consumption stays ready.
 
 Repeat --native PATH for editable text, such as --native SKILL.md --native
 references/guide.md. Select exact paths after any entrypoint rename. Native

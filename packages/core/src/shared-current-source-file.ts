@@ -3,6 +3,10 @@ import { fail, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { withCurrentInvocationBudget } from "./shared-current-invocation.ts"
 import {
+  currentSourceContributionFiles,
+  resolveCurrentSourceConsumption,
+} from "./shared-current-consumption.ts"
+import {
   readCurrentOperationIntent,
   withCurrentOperation,
   type CurrentOperationIntent,
@@ -471,10 +475,34 @@ export function changeCurrentSourceFileAuthority(
       return yield* Effect.fail(
         invalid("The selected Source original differs from the frozen file action."),
       )
+    const otherSources = yield* resolveCurrentSourceConsumption(library, target.skill_id, {
+      excludeSourceIds: [source.source_id],
+    })
+    const contribution = yield* checked(() =>
+      currentSourceContributionFiles(target.skill_id, changed.declaration.contributions, source),
+    )
+    const consumption_paths = [...contribution, ...otherSources.files].map((file) => file.path)
+    const consumption_sources = [
+      ...new Map(
+        [...contribution, ...otherSources.files].map(({ content: { source_id, revision } }) => [
+          source_id,
+          { source_id, revision },
+        ]),
+      ).values(),
+    ]
+    for (const file of allFiles(target))
+      if (
+        file.page_id === selected.page_id
+          ? request.action.kind === "takeover"
+          : file.content.kind !== "source"
+      )
+        consumption_paths.push(file.path)
     const plan = yield* prepareCurrentSourceFileSkillWrite({
       skill_id: target.skill_id,
       kind: target.kind,
       source: { source_id: source.source_id, revision: source.revision },
+      consumption_paths,
+      consumption_sources,
       create: { name: "Source file target", description: "Current file authority." },
       transfer,
       files: allFiles(target).map((file) =>

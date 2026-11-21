@@ -223,7 +223,12 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     if (filter.relation)
       return field.relation?.some((item) => item.id === filter.relation.contains) ?? false
     if (filter.select) return field.select?.name === filter.select.equals
-    if (filter.rich_text) return richText(field.rich_text) === filter.rich_text.equals
+    if (filter.rich_text) {
+      const value = richText(field.rich_text)
+      if (typeof filter.rich_text.contains === "string")
+        return value.includes(filter.rich_text.contains)
+      return value === filter.rich_text.equals
+    }
     if (filter.checkbox) return field.checkbox === filter.checkbox.equals
     throw new Error("Unsupported controlled inventory filter")
   }

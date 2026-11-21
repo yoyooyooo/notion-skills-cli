@@ -187,7 +187,15 @@ test("cold logical ref refresh without database resolves the shared Skill withou
   expect(
     f.calls.some((call) => call.path === `v1/pages/${f.pageIds[0]}/markdown?markdown_version=v2`),
   ).toBe(true)
-  expect(f.calls.some((call) => query(call.path, f.registered.sources!.data_source_id))).toBe(false)
+  const sourceQueries = f.calls.filter((call) =>
+    query(call.path, f.registered.sources!.data_source_id),
+  )
+  expect(sourceQueries.map((call) => property(call.body).filter)).toEqual(
+    Array.from({ length: 2 }, () => ({
+      property: f.registered.sources!.property_ids.Contributions,
+      rich_text: { contains: "a" },
+    })),
+  )
   expect(f.calls.some((call) => query(call.path, f.registered.records.data_source_id))).toBe(false)
   for (const table of [f.registered.files]) {
     const selected = f.calls.filter((call) => query(call.path, table.data_source_id))

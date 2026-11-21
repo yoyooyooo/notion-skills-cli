@@ -40,9 +40,12 @@ native/resource content; inspect the authority change in dry-run. Exclude a path
 explicitly to retain its Notion authority. Other Source content cannot be replaced.
 A removed pure Source member is archived with its Files; unrelated author content
 prevents silent deletion. Retained paths preserve File identities and human metadata.
-Every supporting file needs current Files metadata and exact declared bytes.
-After sync, projection must make every daily main and text supporting file fully
-readable in Notion. Native bodies are verified without writes; non-text is skipped.
+The complete Source manifest and Contributions own every Git consumption file;
+Source Files rows are selected reading documents. After sync, projection keeps
+the main and defaults to Markdown outside test/fixture/generated/dependency
+directories. It creates missing selected pages and retires excluded Source rows
+without removing consumption files. Notion-owned native/resource Files remain
+authoritative. Native bodies are verified without writes; non-text is skipped.
 Projection failure preserves consumption. See
 [daily text](references/synchronization.md#daily-notion-text) for preview and recovery.
 

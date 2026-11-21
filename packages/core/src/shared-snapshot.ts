@@ -14,10 +14,13 @@ import { withReadOnlyNotion } from "./notion-readonly.ts"
 import { normalizePath, pageId } from "./ref.ts"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { sharedRecordFromPage } from "./shared-content.ts"
-import { queryCurrentSkillIndex } from "./shared-current-index.ts"
+import { queryCurrentSkillIndex, type CurrentSkillIndex } from "./shared-current-index.ts"
+import {
+  resolveCurrentSkillConsumption,
+  type CurrentSkillConsumption,
+} from "./shared-current-consumption.ts"
 import { requireCurrentSkillReady } from "./shared-current-file.ts"
 import { readCurrentSharedResourceBytes } from "./shared-current-resource.ts"
-import { resolveCurrentSharedSources } from "./shared-current-source.ts"
 import {
   assertSelectedSharedFileReferences,
   assertSelectedSharedSourceReferences,
@@ -101,6 +104,28 @@ const checked = <A>(action: () => A) =>
   })
 const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
+function consumptionFence(index: CurrentSkillIndex, consumption: CurrentSkillConsumption) {
+  return canonicalSharedJson({
+    skill_id: index.skill_id,
+    page_id: index.page_id,
+    kind: index.kind,
+    enabled: index.enabled,
+    entrypoint: index.main.path,
+    files: consumption.files,
+    source_fingerprint: consumption.source_fingerprint,
+    notion_authority: [index.main, ...index.files]
+      .filter((file) => file.content.kind !== "source")
+      .sort((a, b) => compare(a.path, b.path))
+      .map((file) => ({
+        file_id: file.file_id,
+        page_id: file.page_id,
+        path: file.path,
+        content: file.content,
+        ...(file.content.kind === "native" ? { last_edited_time: file.last_edited_time } : {}),
+      })),
+  })
+}
+
 /** Current facts only. This boundary never reconciles a management operation,
  * adopts a body, or reads historical Records. Native bodies have a disposable
  * local observation; source and resource bodies remain exact bytes. */
@@ -175,8 +200,13 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const index = yield* queryCurrentSkillIndex(input.library, selected, raw, graph?.files)
     yield* checked(() => requireCurrentSkillReady(index.state, index.page_id))
     const bindings = [index.main, ...index.files].sort((a, b) => compare(a.path, b.path))
-    const byPath = new Map(bindings.map((file) => [file.path, file]))
-    const paths = bindings.map((file) => file.path)
+    const consumption = yield* resolveCurrentSkillConsumption(input.library, index, {
+      sourceOptions: input.sourceOptions,
+    })
+    const currentFiles = consumption.files
+    const sources = consumption.sources
+    const byPath = new Map(currentFiles.map((file) => [file.path, file]))
+    const paths = currentFiles.map((file) => file.path)
     const requested = yield* checked(() => {
       if (input.requestedPaths === undefined && input.requestedFileIds === undefined)
         return new Set(paths)
@@ -192,62 +222,20 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       }
       for (const id of input.requestedFileIds ?? []) {
         const binding = bindings.find((file) => file.file_id === id)
-        if (binding === undefined)
+        if (
+          binding === undefined ||
+          canonicalSharedJson(byPath.get(binding.path)?.content) !==
+            canonicalSharedJson(binding.content)
+        )
           throw fail("FILE_NOT_FOUND", "The selected File ID is not current.", { file_id: id })
         selectedPaths.add(binding.path)
       }
       return selectedPaths
     })
-    const selections = [
-      ...new Map(
-        bindings.flatMap((file) =>
-          file.content.kind === "source"
-            ? [
-                [
-                  file.content.source_id,
-                  { source_id: file.content.source_id, revision: file.content.revision },
-                ] as const,
-              ]
-            : [],
-        ),
-      ).values(),
-    ]
-    for (const file of bindings) {
-      const content = file.content
-      if (
-        content.kind === "source" &&
-        selections.find((selection) => selection.source_id === content.source_id)?.revision !==
-          content.revision
-      )
-        return yield* Effect.fail(
-          fail(
-            "CURRENT_SOURCE_CONFLICT",
-            "One Skill selects conflicting current revisions of the same Source.",
-          ),
-        )
-    }
-    const sources = yield* resolveCurrentSharedSources(input.library, {
-      selections,
-      sourceOptions: input.sourceOptions,
-    })
-    for (const file of bindings)
+    for (const file of currentFiles)
       if (file.content.kind === "source") {
         const content = file.content
         const selectedSource = sources.get(content.source_id)
-        const declared = selectedSource?.manifest.find((item) => item.path === content.source_path)
-        if (
-          !declared ||
-          declared.bytes !== content.bytes ||
-          declared.mode !== content.mode ||
-          declared.sha256 !== content.sha256
-        )
-          return yield* Effect.fail(
-            fail(
-              "CURRENT_SOURCE_CONFLICT",
-              "The File differs from its currently selected complete Source manifest.",
-              { path: file.path, source_id: content.source_id, next: "reconcile_current" },
-            ),
-          )
         if (selectedSource?.local_paths.includes(content.source_path))
           yield* markLocalContentRestriction(content.sha256)
       }
@@ -394,7 +382,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       )
       materialized.set(body.path, encoder.encode(binding.content.frontmatter + markdown))
     }
-    for (const binding of bindings) {
+    for (const binding of currentFiles) {
       const content = binding.content
       if (content.kind === "native" || !requested.has(binding.path)) continue
       const cached = yield* store.readBytes(`objects/${content.sha256}`).pipe(
@@ -414,7 +402,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       }
     }
     for (const selectedSource of sources.values()) {
-      const needed = bindings.filter(
+      const needed = currentFiles.filter(
         (file) =>
           file.content.kind === "source" &&
           file.content.source_id === selectedSource.source_id &&
@@ -448,7 +436,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         materialized.set(binding.path, sourceFile.bytes)
       }
     }
-    for (const binding of bindings)
+    for (const binding of currentFiles)
       if (
         binding.content.kind === "resource" &&
         requested.has(binding.path) &&
@@ -462,7 +450,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       }
     const files: Snapshot["files"][number][] = []
     const routes: NonNullable<Snapshot["shared_acquisition"]>["files"][number][] = []
-    for (const binding of bindings) {
+    for (const binding of currentFiles) {
       const content = binding.content
       const bytes = materialized.get(binding.path)
       if (content.kind === "native" && bytes === undefined)
@@ -495,7 +483,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       if (restricted.has(file.sha256)) yield* markLocalContentRestriction(file.sha256)
     for (const selectedSource of sources.values())
       yield* checked(() => {
-        const selectedFiles = bindings.flatMap((file) => {
+        const selectedFiles = currentFiles.flatMap((file) => {
           const bytes = materialized.get(file.path)
           return file.content.kind === "source" &&
             file.content.source_id === selectedSource.source_id &&
@@ -506,7 +494,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         return selectedSource.git_origin === undefined
           ? assertSelectedSharedFileReferences(
               selectedFiles,
-              bindings.map((file) => file.path),
+              currentFiles.map((file) => file.path),
             )
           : assertSelectedSharedSourceReferences(
               selectedFiles,
@@ -526,9 +514,12 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     // boundary again after all body/provider requests, including a writer that
     // completed and returned to ready. This is a change detector, not a CAS.
     const finalRaw = yield* api.request(`v1/pages/${selected}`)
-    const finalIndex = yield* queryCurrentSkillIndex(input.library, selected, finalRaw, index.files)
+    const finalIndex = yield* queryCurrentSkillIndex(input.library, selected, finalRaw)
     yield* checked(() => requireCurrentSkillReady(finalIndex.state, finalIndex.page_id))
-    if (canonicalSharedJson(finalIndex) !== canonicalSharedJson(index))
+    const finalConsumption = yield* resolveCurrentSkillConsumption(input.library, finalIndex, {
+      sourceOptions: input.sourceOptions,
+    })
+    if (consumptionFence(finalIndex, finalConsumption) !== consumptionFence(index, consumption))
       return yield* Effect.fail(
         fail(
           "CURRENT_TREE_CHANGED",
@@ -536,7 +527,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           { skill_page_id: selected, next: "reselect_current" },
         ),
       )
-    const fileBindings = bindings.map(({ file_id, page_id, path }) => ({ file_id, page_id, path }))
+    const fileBindings = bindings
+      .filter((file) => file.content.kind !== "source")
+      .map(({ file_id, page_id, path }) => ({ file_id, page_id, path }))
     const acquisition: Snapshot["shared_acquisition"] = {
       version: 5,
       library: input.library,
@@ -544,8 +537,8 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     }
     // Content identity excludes display fields, property IDs, page projections,
     // body-observation timestamps and operation history. Physical authorization
-    // bindings are part of the selection: a rebuilt owner or File needs distinct
-    // fixed refs even when its exact bytes and stable identities are unchanged.
+    // bindings remain authoritative for Notion-owned files. Source projections
+    // can be pruned or rebuilt without changing the complete selected Git tree.
     const version = yield* sha256(
       canonicalSharedJson({
         contract: 1,
@@ -553,9 +546,10 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         locator: record.locator,
         kind: record.kind,
         files,
-        authority: bindings.map((file) => ({
-          file_id: file.file_id,
-          page_id: file.page_id,
+        authority: currentFiles.map((file) => ({
+          ...(file.content.kind === "source"
+            ? {}
+            : fileBindings.find((binding) => binding.path === file.path)),
           path: file.path,
           kind: file.content.kind,
           ...(file.content.kind === "source"

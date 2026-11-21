@@ -1,7 +1,8 @@
-import { Crypto, Effect } from "effect"
+import { Effect } from "effect"
 import { fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { queryCurrentLibraryIndex } from "./shared-current-index.ts"
+import { currentSourceContributionFiles } from "./shared-current-consumption.ts"
 import { withCurrentInvocationBudget } from "./shared-current-invocation.ts"
 import {
   readCurrentOperationIntent,
@@ -19,12 +20,16 @@ import {
   queryCurrentSourceManagement,
   type CurrentSourceManagement,
 } from "./shared-current-source-management.ts"
-import { validateCurrentSourceId } from "./shared-current-source.ts"
+import {
+  prepareCurrentSourceManagementSelection,
+  validateCurrentSourceId,
+  type CurrentSharedSource,
+} from "./shared-current-source.ts"
 import { retireSourceManifests } from "./shared-current-source-write.ts"
 import { currentWriteIdentity } from "./shared-current-write-input.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
-import { sha256, Store } from "./store.ts"
+import { sha256 } from "./store.ts"
 
 type Options = {
   readonly source_id: string
@@ -46,7 +51,23 @@ const checked = <A>(run: () => A) =>
  * owner has lost its Origin relation. This is one library, not a workspace scan. */
 export function queryCurrentSourceReferences(
   library: SharedLibrary,
+  source: Pick<CurrentSourceManagement, "page_id" | "declaration" | "content" | "revision">,
+) {
+  return Effect.gen(function* () {
+    const selection = yield* prepareCurrentSourceManagementSelection(library, {
+      source_id: source.declaration.definition.source_id,
+      page_id: source.page_id,
+      content: source.content,
+      revision: source.revision,
+    })
+    return yield* querySourceReferences(library, source, selection)
+  })
+}
+
+function querySourceReferences(
+  library: SharedLibrary,
   source: Pick<CurrentSourceManagement, "page_id" | "declaration">,
+  selection: Pick<CurrentSharedSource, "source_id" | "revision" | "manifest">,
 ) {
   return Effect.gen(function* () {
     const inventory = yield* queryCurrentLibraryIndex(library)
@@ -60,7 +81,29 @@ export function queryCurrentSourceReferences(
       path: string
     }[] = []
     const origins: { skill_id: string; skill_page_id: string }[] = []
+    const contributions: {
+      skill_id: string
+      skill_page_id: string
+      path: string
+      source_path: string
+    }[] = []
     for (const skill of inventory.skills.values()) {
+      const owned = new Set(
+        [skill.main, ...skill.files]
+          .filter((file) => file.content.kind !== "source")
+          .map((file) => file.path),
+      )
+      const complete = yield* checked(() =>
+        currentSourceContributionFiles(skill.skill_id, source.declaration.contributions, selection),
+      )
+      for (const file of complete)
+        if (!owned.has(file.path))
+          contributions.push({
+            skill_id: skill.skill_id,
+            skill_page_id: skill.page_id,
+            path: file.path,
+            source_path: file.content.source_path,
+          })
       for (const file of [skill.main, ...skill.files])
         if (file.content.kind === "source" && file.content.source_id === sourceId) {
           selected.add(skill.skill_id)
@@ -88,22 +131,27 @@ export function queryCurrentSourceReferences(
       .filter((skill) => selected.has(skill.skill_id))
       .map((skill) => ({ skill_id: skill.skill_id, skill_page_id: skill.page_id }))
       .sort((a, b) => a.skill_id.localeCompare(b.skill_id, "en"))
-    return { references, origins, targets }
+    return { references, contributions, origins, targets }
   })
 }
 type References = Effect.Success<ReturnType<typeof queryCurrentSourceReferences>>
 function requireUnreferenced(value: References, sourceId: string) {
-  if (value.references.length || value.origins.length)
+  if (value.references.length || value.contributions.length || value.origins.length)
     throw fail(
       "CURRENT_SOURCE_REFERENCED",
-      "The Source still has current file or Origin references.",
+      "The Source still supplies current consumption paths or has File or Origin references.",
       {
         source_id: sourceId,
         files: value.references,
+        contributions: value.contributions,
         origins: value.origins,
-        next: value.references.length ? "takeover_source_files" : "correct_current_origin",
+        next: value.references.length
+          ? "takeover_source_files"
+          : value.contributions.length
+            ? "correct_current_contributions"
+            : "correct_current_origin",
         required_input:
-          "Explicitly take over referenced files and remove stale Origin links before removing this Source.",
+          "Remove effective Source contributions or take over their files, and clear stale Origin links before removing this Source.",
       },
     )
 }
@@ -212,7 +260,13 @@ function execute(library: SharedLibrary, supplied: Options, action: Action) {
           }
         : row.declaration
     const configuration = yield* sha256(canonicalSharedJson(desiredDeclaration(selected)))
-    const references = yield* queryCurrentSourceReferences(library, selected)
+    const selection = yield* prepareCurrentSourceManagementSelection(library, {
+      source_id: input.source_id,
+      page_id: selected.page_id,
+      content: selected.content,
+      revision: selected.revision,
+    })
+    const references = yield* querySourceReferences(library, selected, selection)
     if (action.kind === "remove")
       yield* checked(() => requireUnreferenced(references, input.source_id))
     const affected = references.targets.map((target) => target.skill_id)
@@ -277,7 +331,7 @@ function execute(library: SharedLibrary, supplied: Options, action: Action) {
       })
     const checkScope = () =>
       Effect.gen(function* () {
-        const actual = yield* queryCurrentSourceReferences(library, selected)
+        const actual = yield* querySourceReferences(library, selected, selection)
         if (canonicalSharedJson(actual.targets) !== canonicalSharedJson(references.targets))
           return yield* Effect.fail(invalid("The affected Source scope changed before completion."))
         if (action.kind === "remove")
@@ -326,11 +380,10 @@ function execute(library: SharedLibrary, supplied: Options, action: Action) {
           // in memory before activation, so one Source toggle does not write N cursors.
           for (const skillId of affected.slice(session.sourceProgress?.next_index ?? 0))
             yield* session.markSourceChildComplete(skillId)
-          const assertSelected: Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store> =
-            Effect.gen(function* () {
-              yield* checkSelected(yield* session.assertCurrent())
-              if (action.kind === "remove") yield* checkScope()
-            })
+          const assertSelected = Effect.gen(function* () {
+            yield* checkSelected(yield* session.assertCurrent())
+            if (action.kind === "remove") yield* checkScope()
+          })
           if (action.kind === "remove") {
             yield* checkScope()
             yield* assertCurrentBodyReplaceable(selected.page_id)

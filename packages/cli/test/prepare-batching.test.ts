@@ -196,12 +196,13 @@ test("public Node use batches current HTTPS metadata, persists derived directori
     }
     const cold = await invoke("cold")
     expect(cold.result.preparation_metrics.derived_cache_misses).toBe(4)
+    // Two batched reads discover Files; each of the four owners then checks its final fence.
     expect(
       cold.actual.filter(
         (call) =>
           call.path.split("?", 1)[0] === `v1/data_sources/${library.files.data_source_id}/query`,
       ),
-    ).toHaveLength(2)
+    ).toHaveLength(6)
     const warm = await invoke("warm")
     expect(warm.result.graph_lock).toEqual(cold.result.graph_lock)
     expect(warm.result.preparation_metrics.derived_cache_hits).toBe(4)

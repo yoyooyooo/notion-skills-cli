@@ -4,7 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Crypto, Effect, FileSystem, Path, Schema } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import { openFixedSnapshotFiles } from "../src/fixed-snapshot-files.ts"
-import { decode, fail, property, SnapshotSchema, type Snapshot } from "../src/model.ts"
+import { decode, fail, property, SnapshotSchema, text, type Snapshot } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { validateSnapshotAcquisition } from "../src/shared-acquisition-model.ts"
 import { sharedRecordFromPage } from "../src/shared-content.ts"
@@ -240,10 +240,24 @@ function fixture() {
         )
           return list([file])
         if (
-          request.startsWith(`v1/data_sources/${library.sources!.data_source_id}/query?`) &&
+          request.startsWith(`v1/data_sources/${library.sources!.data_source_id}/query`) &&
           options?.method === "POST"
-        )
-          return list(sourceRows)
+        ) {
+          const filter = property(property(body).filter)
+          return list(
+            sourceRows.filter((row) => {
+              const field = Object.values(property(property(row).properties))
+                .map(property)
+                .find((value) => value.id === filter.property)
+              if (field === undefined) return false
+              const selector = property(filter.rich_text)
+              const value = text(field.rich_text)
+              return typeof selector.contains === "string"
+                ? value.includes(selector.contains)
+                : value === selector.equals
+            }),
+          )
+        }
         return yield* Effect.die(new Error(`Unexpected remote access: ${request}`))
       }),
   }
@@ -323,7 +337,29 @@ function sourceFixture() {
     parent: parent(library.sources!),
     properties: {
       name: title("docs"),
+      description: rich(ids.Description!, "Complete current source"),
       source: rich(ids["Source ID"]!, "docs"),
+      provider: select(ids.Provider!, "git"),
+      location: rich(ids.Location!, "https://github.com/example/current"),
+      ref: rich(ids.Ref!, "main"),
+      policy: select(ids.Policy!, "manual"),
+      selection: rich(
+        ids.Selection!,
+        JSON.stringify({ roots: ["."], include: [], exclude: [], mapping: {} }),
+      ),
+      options: rich(ids.Options!, "{}"),
+      contributions: rich(
+        ids.Contributions!,
+        JSON.stringify([
+          {
+            member_key: ".",
+            skill_id: "current-skill",
+            mount_path: "",
+            mapping: { [sourcePath]: path },
+            exclude: [],
+          },
+        ]),
+      ),
       content: rich(ids.Content!, JSON.stringify(canonical)),
       revision: rich(ids["Last Revision"]!, revision),
       enabled: checkbox(ids.Enabled!, true),
@@ -338,6 +374,7 @@ function sourceFixture() {
   f.file.properties.content = rich(library.files.property_ids.Content!, JSON.stringify(descriptor))
   const snapshot: Snapshot = {
     ...f.snapshot,
+    file_bindings: f.snapshot.file_bindings!.filter((file) => file.path === "SKILL.md"),
     shared_acquisition: {
       version: 5,
       library,
@@ -359,6 +396,7 @@ describe("current acquisition contract", () => {
     })
     const snapshot = decode(SnapshotSchema, {
       ...f.snapshot,
+      file_bindings: [],
       shared_acquisition: {
         version: 5,
         library,
@@ -367,6 +405,12 @@ describe("current acquisition contract", () => {
     })
     expect([...validateSnapshotAcquisition(snapshot)]).toEqual(["SKILL.md", path])
     expect([...validateSnapshotAcquisition(f.snapshot)]).toEqual([path])
+    expect(() =>
+      validateSnapshotAcquisition({
+        ...f.snapshot,
+        file_bindings: f.snapshot.file_bindings!.filter((file) => file.path === "SKILL.md"),
+      }),
+    ).toThrow()
     expect(() =>
       decode(SnapshotSchema, {
         ...snapshot,
@@ -456,12 +500,12 @@ describe("current acquisition contract", () => {
     expect(f.calls).toEqual([])
   })
 
-  test("missing selected source bytes use the still-current file mapping and one current Source query", async () => {
+  test("missing selected source bytes use current contributions and the complete Source manifest", async () => {
     const f = sourceFixture()
     const files = await f.run(materializeSharedFixedAcquisition(f.snapshot, [path]))
     expect(files).toEqual([{ path, bytes: new TextEncoder().encode("body") }])
     expect(f.providerRequests).toEqual([f.url])
-    expect(f.calls).toHaveLength(4)
+    expect(f.calls).toHaveLength(5)
     expect(f.calls.some((request) => request.includes(library.records.data_source_id))).toBe(false)
   })
 
@@ -560,7 +604,7 @@ describe("current acquisition contract", () => {
       reason: "local_resource",
     })
     expect(f.providerRequests).toEqual([])
-    expect(f.calls).toHaveLength(4)
+    expect(f.calls).toHaveLength(5)
   })
 
   test("a changed Source stops missing-cache recovery before any provider or old Records access", async () => {
@@ -573,7 +617,7 @@ describe("current acquisition contract", () => {
     expect(error.code).toBe("SHARED_SOURCE_CONFLICT")
     expect(error.details).toMatchObject({ next: "reselect_current" })
     expect(f.providerRequests).toEqual([])
-    expect(f.calls).toHaveLength(4)
+    expect(f.calls).toHaveLength(5)
   })
 
   test("disabled owner stops before Files or resource access", async () => {
@@ -611,7 +655,7 @@ describe("current acquisition contract", () => {
       const error = await f.run(Effect.flip(materializeSharedFixedAcquisition(f.snapshot, [path])))
       expect(error.code).toBe("SHARED_ACQUISITION_CHANGED")
       expect(error.details).toMatchObject({ next: "reselect_current", path })
-      expect(f.calls).toHaveLength(3)
+      expect(f.calls).toHaveLength(4)
       expect(f.calls.some((request) => request.includes(library.records.data_source_id))).toBe(
         false,
       )

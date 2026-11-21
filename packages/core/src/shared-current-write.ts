@@ -52,6 +52,7 @@ import {
   resolveCurrentSharedSources,
   validateCurrentSourceId,
   type CurrentSharedSource,
+  type CurrentSharedSourceSelection,
 } from "./shared-current-source.ts"
 import { decodeCurrentFileContent } from "./shared-current-file.ts"
 import { planSharedFiles } from "./shared-composition.ts"
@@ -303,6 +304,8 @@ type CoordinatedSkillBase = {
   readonly relations?: never
   readonly source: { readonly source_id: string; readonly revision: string }
   readonly main: string
+  readonly consumption_paths: readonly string[]
+  readonly consumption_sources: readonly CurrentSharedSourceSelection[]
   readonly input_sha256: string
 }
 export type PreparedCoordinatedSkillWrite = CoordinatedSkillBase &
@@ -338,6 +341,8 @@ function coordinatedFingerprint(plan: Omit<PreparedCoordinatedSkillWrite, "input
     kind: plan.kind,
     source: plan.source,
     authority_transfer: plan.authority_transfer,
+    consumption_paths: plan.consumption_paths,
+    consumption_sources: plan.consumption_sources,
     create: {
       name: plan.name,
       description: plan.description,
@@ -366,6 +371,19 @@ function validateCoordinatedTree(plan: Omit<PreparedCoordinatedSkillWrite, "inpu
   )
     throw invalid("New target defaults must be boolean values.")
   planSharedFiles({ base: plan.files, mounts: [], overrides: [], entrypoint: plan.main })
+  planSharedFiles({
+    base: plan.consumption_paths.map((path) => ({ path })),
+    mounts: [],
+    overrides: [],
+    entrypoint: plan.main,
+  })
+  const sourceIds = new Set<string>()
+  for (const source of plan.consumption_sources) {
+    validateCurrentSourceId(source.source_id)
+    if (sourceIds.has(source.source_id) || !/^[a-f0-9]{64}$/u.test(source.revision))
+      throw invalid("A complete consumption tree needs one exact revision per Source.")
+    sourceIds.add(source.source_id)
+  }
   const transfer = plan.authority_transfer
   if (transfer !== null) {
     validateCurrentSourceFileInput(transfer)
@@ -433,7 +451,7 @@ function validateCoordinatedTree(plan: Omit<PreparedCoordinatedSkillWrite, "inpu
     throw invalid("One coordinated target exceeds 128 MiB of selected bytes.")
   assertSelectedSharedFileReferences(
     writablePlanFiles(plan.files).filter((file) => file.kind !== "source"),
-    plan.files.map((file) => file.path),
+    plan.consumption_paths,
   )
 }
 /** The complete directory is frozen; preserved bodies are references, never old content snapshots. */
@@ -441,6 +459,8 @@ export function prepareCoordinatedSkillWrite(input: {
   readonly skill_id: string
   readonly kind: CurrentSkillWriteInput["kind"]
   readonly source: PreparedCoordinatedSkillWrite["source"]
+  readonly consumption_paths: readonly string[]
+  readonly consumption_sources: readonly CurrentSharedSourceSelection[]
   readonly create: Pick<
     CurrentSkillWriteInput,
     "name" | "description" | "enabled" | "default_context"
@@ -464,6 +484,8 @@ export function prepareCurrentSourceFileSkillWrite(input: {
   readonly skill_id: string
   readonly kind: CurrentSkillWriteInput["kind"]
   readonly source: PreparedCoordinatedSkillWrite["source"]
+  readonly consumption_paths: readonly string[]
+  readonly consumption_sources: readonly CurrentSharedSourceSelection[]
   readonly create: Pick<CurrentSkillWriteInput, "name" | "description">
   readonly transfer: CurrentSourceFileInput
   readonly files: readonly (
@@ -479,6 +501,8 @@ function prepareCoordinatedPlan(
     readonly skill_id: string
     readonly kind: CurrentSkillWriteInput["kind"]
     readonly source: PreparedCoordinatedSkillWrite["source"]
+    readonly consumption_paths: readonly string[]
+    readonly consumption_sources: readonly CurrentSharedSourceSelection[]
     readonly create: Pick<
       CurrentSkillWriteInput,
       "name" | "description" | "enabled" | "default_context"
@@ -529,6 +553,10 @@ function prepareCoordinatedPlan(
       source: { ...input.source },
       authority_transfer: transfer,
       main: entrypointFor(input.kind),
+      consumption_paths: [...input.consumption_paths].sort(),
+      consumption_sources: input.consumption_sources
+        .map((source) => ({ ...source }))
+        .sort((a, b) => (a.source_id < b.source_id ? -1 : a.source_id > b.source_id ? 1 : 0)),
       files,
     }
     yield* checked(() => validateCoordinatedTree(plan))
@@ -606,7 +634,8 @@ function assertSourceFiles(plan: CurrentWritePlan, source: SourceSelection) {
   )
   if (
     isCoordinated(plan) &&
-    (plan.source.source_id !== source.source_id || plan.source.revision !== source.revision)
+    plan.source.source_id === source.source_id &&
+    plan.source.revision !== source.revision
   )
     throw invalid("The coordinated target belongs to another Source input.")
   for (const file of plan.files) {
@@ -637,6 +666,11 @@ function assertSourceFiles(plan: CurrentWritePlan, source: SourceSelection) {
   }
 }
 const sourceAuthorization = Symbol("current Source target authorization")
+function assertCoordinatedSource(plan: PreparedCoordinatedSkillWrite, source: SourceSelection) {
+  if (plan.source.source_id !== source.source_id || plan.source.revision !== source.revision)
+    throw invalid("The coordinated target belongs to another Source input.")
+  assertSourceFiles(plan, source)
+}
 const sourceAuthorizations = new WeakSet<object>()
 export type CurrentSourceSkillAuthorization = {
   readonly [sourceAuthorization]: true
@@ -683,7 +717,7 @@ export function authorizeCoordinatedSkillWrite(
       manifest: Object.freeze(selected.manifest.map((file) => Object.freeze(file))),
     })
     yield* checked(() => {
-      assertSourceFiles(plan, source)
+      assertCoordinatedSource(plan, source)
       if (
         session.owner.kind !== "source" ||
         session.owner.id !== source.source_id ||
@@ -982,19 +1016,27 @@ function validatePreservedCoordinatedReferences(
       const next = resolved.find((file) => file.page_id === old.page_id)
       return next === undefined || next.input.path !== old.path
     })
-    if (!topologyChanged) return
+    // A Source-only path can disappear without changing the sparse page inventory.
+    // Preserved author references must therefore use the full selected consumption tree.
     const otherSources =
       suppliedSources ??
       (yield* resolveCurrentSharedSources(library, {
         selections: plan.files.flatMap((file) =>
-          file.kind === "preserve" && file.content.kind === "source" ? [file.content] : [],
+          topologyChanged && file.kind === "preserve" && file.content.kind === "source"
+            ? [file.content]
+            : [],
         ),
       }))
-    const completePaths = plan.files.map((file) => file.path)
+    const completePaths = plan.consumption_paths
     const bodies: { path: string; bytes: Uint8Array }[] = []
     const native: NativeReferenceSource[] = []
     for (const file of plan.files) {
-      if (file.kind !== "preserve" || !/\.(?:md|markdown)$/iu.test(file.path)) continue
+      if (
+        file.kind !== "preserve" ||
+        !/\.(?:md|markdown)$/iu.test(file.path) ||
+        (file.content.kind === "source" && !topologyChanged)
+      )
+        continue
       let bytes: Uint8Array
       if (file.content.kind === "native") {
         const body = yield* observeSharedBody(file.binding.page_id)
@@ -1155,7 +1197,7 @@ export function inspectCoordinatedSkillWrite(
 ) {
   return Effect.gen(function* () {
     const plan = yield* copyCoordinatedPlan(input)
-    yield* checked(() => assertSourceFiles(plan, source))
+    yield* checked(() => assertCoordinatedSource(plan, source))
     const current = yield* loadCurrentTarget(library, yield* queryOwner(library, plan.skill_id))
     const selected = yield* resolveFiles(plan, current)
     if (current !== undefined && current.index.kind !== plan.kind)
@@ -1286,6 +1328,7 @@ export function inspectCoordinatedSkillDirectory(
   >,
 ) {
   return Effect.gen(function* () {
+    yield* checked(() => assertCoordinatedSource(plan, source))
     if (plan.authority_transfer !== null)
       return yield* Effect.fail(
         invalid("An authority transfer requires its original child writer."),
@@ -1299,18 +1342,12 @@ export function inspectCoordinatedSkillDirectory(
         throw invalid("The observed Source target changed its owner or complete directory.")
     })
     const sources = yield* resolveCurrentSharedSources(library, {
-      selections: plan.files.flatMap((file) =>
-        file.content.kind === "source" && file.content.source_id !== source.source_id
-          ? [file.content]
-          : [],
+      selections: plan.consumption_sources.filter(
+        (selected) => selected.source_id !== source.source_id,
       ),
     })
     const origins = new Map<string, SourceSelection & { readonly page_id: string }>(sources)
-    if (
-      plan.files.some(
-        (file) => file.content.kind === "source" && file.content.source_id === source.source_id,
-      )
-    )
+    if (plan.consumption_sources.some((selected) => selected.source_id === source.source_id))
       origins.set(source.source_id, source)
     for (const selected of origins.values()) yield* checked(() => assertSourceFiles(plan, selected))
     const originMatches = yield* checked(() =>
@@ -1596,9 +1633,9 @@ function applyPreparedCurrentSkillWrite(
         : {}),
     })
     const writableFiles = writablePlanFiles(plan.files)
-    const sourceSelections = plan.files.flatMap((file) =>
-      file.content.kind === "source" ? [file.content] : [],
-    )
+    const sourceSelections = isCoordinated(plan)
+      ? plan.consumption_sources
+      : plan.files.flatMap((file) => (file.content.kind === "source" ? [file.content] : []))
     const otherSources = yield* resolveCurrentSharedSources(library, {
       selections: sourceSelections.filter(
         (content) => content.source_id !== input.authorization?.source.source_id,

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { mkdtempSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import * as NodeServices from "@effect/platform-node/NodeServices"
@@ -5,6 +6,9 @@ import { ConfigProvider, Effect, Layer, Schema } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import { fail, property, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
+import { queryCurrentSkillIndex } from "../src/shared-current-index.ts"
+import type { PreparedCurrentSourceInput } from "../src/shared-current-source-input.ts"
+import { sourceRich } from "../src/shared-source-definitions.ts"
 import { LIBRARY_MARKER, type SharedLibrary } from "../src/shared-library-model.ts"
 import {
   sharedFileProperties,
@@ -782,5 +786,64 @@ export function currentWriteFixture(parent: string) {
       calls.length = 0
       downloads.length = 0
     },
+  }
+}
+
+/** Existing reading rows are explicit fixture state, independent of Source apply. */
+export async function seedSourceFileRows(
+  f: ReturnType<typeof currentWriteFixture>,
+  prepared: PreparedCurrentSourceInput,
+) {
+  for (const target of prepared.targets) {
+    const owner = f
+      .table("skills")
+      .find(
+        (row) =>
+          text(
+            property(property(row.properties)[library.skills.property_ids["Skill ID"]!]).rich_text,
+          ) === target.skill_id,
+      )
+    if (owner === undefined) continue
+    const index = await f.run(queryCurrentSkillIndex(library, String(owner.id)))
+    for (const file of target.files) {
+      if (file.path === "SKILL.md" || index.files.some((binding) => binding.path === file.path))
+        continue
+      const fields = library.files.property_ids
+      const content = {
+        ...file.authority,
+        sha256: createHash("sha256").update(file.bytes).digest("hex"),
+        bytes: file.bytes.byteLength,
+        mode: file.mode ?? "100644",
+      }
+      const fileId =
+        "projected-" +
+        createHash("sha256")
+          .update(
+            JSON.stringify([
+              prepared.declaration.definition.source_id,
+              target.skill_id,
+              file.authority.source_path,
+            ]),
+          )
+          .digest("hex")
+      await f.run(
+        Effect.flatMap(Notion, (api) =>
+          api.request(
+            "v1/pages",
+            {
+              parent: { type: "data_source_id", data_source_id: library.files.data_source_id },
+              properties: {
+                [fields.Name!]: { title: sourceRich(file.path) },
+                [fields["File ID"]!]: { rich_text: sourceRich(fileId) },
+                [fields.Path!]: { rich_text: sourceRich(file.path) },
+                [fields.Skill!]: { relation: [{ id: index.page_id }] },
+                [fields.Content!]: { rich_text: sourceRich(JSON.stringify(content)) },
+              },
+            },
+            { method: "POST" },
+          ),
+        ),
+      )
+    }
   }
 }

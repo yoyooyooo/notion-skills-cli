@@ -13,7 +13,7 @@
 | 5 | HTTP、字节、分页与取消有界 | AH-503 | TTL 命中、metadata 复核、body 读取 |
 | 6 | 配对安装与真实 Pro Pi | AH-1063 | 准备、投递、模型实际使用 |
 
-AH-516 先对账日用集合：Source 日用的真实上游成员、Skill 日用与 Default Context 的并集。日用 Skill 主文与全部文本 supporting Files 的完整 Notion 正文由 AH-501/AH-1141 验收。非日用内容与额外二进制呈现后置；不删除 agent-kit 主路径的 Skill。日用不等于全部进入 Default Context，OMP/Tern 宿主适配仍延期。
+AH-516 先对账日用集合：Source 日用的真实上游成员、Skill 日用与 Default Context 的并集。日用 Skill 主文与选中的阅读文档正文由 AH-501/AH-1141 验收；Source 默认仅 Markdown，排除测试、fixture、依赖和生成目录，完整 Git 消费树不受投影过滤影响。非日用内容与额外二进制呈现后置；不删除 agent-kit 主路径的 Skill。日用不等于全部进入 Default Context，OMP/Tern 宿主适配仍延期。
 
 ## 开始前
 
@@ -43,7 +43,7 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 
 修改日用投影入口时，复用 `shared-current-daily.test.ts`、
 `shared-current-projection-write.test.ts` 和 CLI 对应测试。核日用并集的完整
-分页、无 Origin 仍选到真实成员、native 不覆盖、非文本跳过、同版零写和
+分页、无 Origin 仍选到真实成员、Source include/exclude 与缺页重建、native 不覆盖、非文本跳过、同版零写和
 投影未完成仍可消费，不增加新的 runner 或矩阵。
 
 对实际已是 current schema 的授权对象，使用实际返回的身份：
@@ -60,18 +60,18 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN"
 
 必须分别确认：
 
-- main 唯一，全部 supporting Files 身份/owner/path/mode 和 binding 完整；无重复或路径冲突。
+- main 唯一，Source manifest+Contributions 的完整消费目录与 Notion-owned Files 合并后无重复或路径冲突；Notion 自有 binding 完整，Source 阅读行可稀疏。
 - 当前 source/resource bytes 与 hash/size/mode 相同；native 使用明确 frontmatter 与当前规范化正文。Name/Description 不改 authored bytes。
-- Native 正文和 resource 原件必须完整，所有 supporting 文件具有 Files 身份。日用 main 与全部文本子文件必须有完整 Notion 正文；metadata、外链和 SHA/Bytes 占位不算全文。非文本明确 skipped，仍核精确原件消费。投影失败不阻塞 current ready 或普通消费。
+- Native 正文和 resource 原件必须完整。日用 main 与选中的 Source 阅读文档须有完整 Notion 正文；默认 Markdown 且排除测试/fixture/依赖/生成目录。missing selected pages 重建，excluded Source 行归档，Notion authority 不裁剪。metadata、外链和 SHA/Bytes 占位不算 selected 全文。Excluded 与非文本 skipped 分开报告，仍核完整原件消费。
 - generated body 编辑不自动接管；native 直接编辑不生成远端 object/adoption。多 Source 的逐文件声明不混 revision。
 - 权限、partial pagination、missing/truncated body、非 ready、当前 descriptor 变化均阻止完整结果。末尾再次确认 owner，不能在获取期间停用后仍交付。
 - 完整 export 与单文件 read --output 各按实际需求核对；任意多路径 export 尚未公开，不伪造该能力。
 
 获得整个日用范围授权后，用公开 `ctl library projection --daily --entry DB`
-执行同一路径，记录每项正文读回及非文本跳过，再重复确认零语义写。Disabled
+执行同一路径，记录 full tree、selected、excluded、row changes、正文读回和非文本跳过，再重复确认零语义写。Disabled
 和期望删除只报告，不隐式排除或改策略。失败批次保留 completed/remaining 与
 单项恢复命令；先用其 exact operation resume，再重跑 daily。日用批次不接受
---operation/--resume，不以单例或本地 exact directory 代称全日用正文完成。
+--operation/--resume/--cancel。不以单例或本地 exact directory 代称全日用 selected 正文完成。
 
 ## 2. Notion 清理与关系
 
@@ -103,7 +103,7 @@ Source remove 自带库内完整 Skills/Files 元数据反查，能找到缺 Ori
 | 已退出的旧要求 | 当前义务 |
 | --- | --- |
 | Git-only 独立 reader、自动 adoption、首次主文 takeover | 同一 current Content reader；权威显式 |
-| Git-only supporting Files 可为零 | 全部 supporting 有 Files 身份；日用文本正文由公开 projection 完整生成并读回 |
+| Files 行决定 Git 消费目录、每个脚本/测试都建行 | 完整 manifest+Contributions 决定消费；Files 只投影选中的 Source 阅读文档，缺页由 projection 重建 |
 | event/ACK/review/completion 决定当前可读 | 以 current descriptor、ready 和当前内容判断 |
 | 缺 cache 通过远端历史恢复 | exact 当前声明仍相符才补 Source/resource；否则重选 |
 | 单 Source acquisition 与多代 decoder | 单一 v5 逐文件位置，支持多 Source |
@@ -113,7 +113,7 @@ Source remove 自带库内完整 Skills/Files 元数据反查，能找到缺 Ori
 
 ## 4. 有限当前恢复
 
-沿 [operation recovery](../../verify-notion-operation-recovery/SKILL.md)。完整 import、Source 声明/转权/启停移除与正文 projection 共用 operation 内核。Projection 使用独立类型的有限意图，真实 Skill 保持 ready；同项恢复无 supersede。Source 父 intent 只保留冻结输入和有限目标游标；子任务完成后清理，全部核对后 Source ready，明确移除则核 exact Trash 后清意图。用现有 writer/source-write/source-file/source-lifecycle/projection-write/operation/upload tests 覆盖实际变更，不用旧 ACK/review 模型替代。
+沿 [operation recovery](../../verify-notion-operation-recovery/SKILL.md)。完整 import、Source 声明/转权/启停移除与正文 projection 共用 operation 内核。Projection 使用独立类型的有限意图，真实 Skill 保持 ready；同项恢复无 supersede。需更换阅读策略时，用原 operation --cancel 仅核对在途动作并退役旧意图，不能执行剩余正文或宣称全部完成。Source 父 intent 只保留冻结输入和有限目标游标；子任务完成后清理，全部核对后 Source ready，明确移除则核 exact Trash 后清意图。用现有 writer/source-write/source-file/source-lifecycle/projection-write/operation/upload tests 覆盖实际变更，不用旧 ACK/review 模型替代。
 
 用一个管理意图覆盖 CREATE/完整 append/归档响应丢失、部分文件已成、进程重启或预算暂停。重传同一完整输入，只继续能按当前事实确认的动作。部分 append 未收敛时保持 pending，不盲目重放；这个拒绝结果不能说成自动恢复通过。ready 不依赖历史证明，半树也不能靠改状态通过。
 

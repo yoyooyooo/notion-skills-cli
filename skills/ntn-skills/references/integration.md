@@ -40,7 +40,13 @@ Current observations may reuse unchanged native bodies after complete metadata
 checks. Native bodies also have an independent 24-hour recheck deadline.
 `--refresh` reads those bodies again without fetching every unrequested raw
 resource. Source files retain exact revision/hash/size/mode; reads never advance
-a branch. A Source/resource reading projection does not control its bytes.
+a branch. Full Source manifests and Contributions define every Git path, including
+scripts/tests absent from Files. Source reading-row deletion or reconstruction
+does not change a selected source file identity. Source refs use paths; physical
+file bindings remain authoritative for native/resource files. A Source/resource
+reading projection does not control its bytes. A whole-file native/resource
+takeover removes that path from the Source contribution, so missing old Source
+bytes require reselection rather than fetching an obsolete authority.
 
 All ordinary consumption is remotely read-only. No Record creation, body
 projection, adoption or cleanup occurs during a read. Query POSTs are reads.

@@ -1,14 +1,28 @@
 import { afterAll, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect } from "effect"
+import { Crypto, Effect } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import { trashPath } from "../src/local-locks.ts"
 import { property, text } from "../src/model.ts"
+import { Notion } from "../src/notion.ts"
 import { queryCurrentSkillIndex, type CurrentSkillIndex } from "../src/shared-current-index.ts"
-import { readCurrentOperationIntent } from "../src/shared-current-operation.ts"
-import { projectCurrentSkill } from "../src/shared-current-projection-write.ts"
+import { resolveCurrentSkillConsumption } from "../src/shared-current-consumption.ts"
+import {
+  readCurrentOperationIntent,
+  withCurrentOperation,
+} from "../src/shared-current-operation.ts"
+import {
+  currentProjectionLinkRewriter,
+  projectCurrentSkill,
+} from "../src/shared-current-projection-write.ts"
+import { cancelCurrentSkillProjection } from "../src/shared-current-projection-cancel.ts"
+import {
+  applyCurrentProjection,
+  renderCurrentProjection,
+} from "../src/shared-current-projection.ts"
 import {
   currentSharedSourceRevision,
   validateCurrentSharedSourceContent,
@@ -20,7 +34,8 @@ import {
 } from "../src/shared-current-write.ts"
 import { observeSharedBody } from "../src/shared-page-body.ts"
 import { openSharedSnapshot } from "../src/shared-snapshot.ts"
-import { sha256 } from "../src/store.ts"
+import { sha256, Store } from "../src/store.ts"
+import { sourceRich } from "../src/shared-source-definitions.ts"
 import { currentWriteFixture, id, library, testBytes } from "./shared-current-write-fixture.ts"
 
 const parent = mkdtempSync(join(tmpdir(), "ntn-current-projection-write-"))
@@ -89,6 +104,14 @@ test("dry run inspects all text and native bodies without a semantic write", asy
   expect(result.status).toBe("dry_run")
   expect(result.counts).toEqual({
     total: 6,
+    selected: 6,
+    excluded: 0,
+    created: 0,
+    archived: 0,
+    updated: 0,
+    would_create: 0,
+    would_archive: 0,
+    would_update: 0,
     native_verified: 1,
     skipped_binary: 1,
     unchanged: 0,
@@ -158,6 +181,14 @@ test("projects complete text to existing Skill and File pages, preserves authori
   expect(result.status).toBe("applied")
   expect(result.counts).toEqual({
     total: 6,
+    selected: 6,
+    excluded: 0,
+    created: 0,
+    archived: 0,
+    updated: 0,
+    would_create: 0,
+    would_archive: 0,
+    would_update: 0,
     native_verified: 1,
     skipped_binary: 1,
     unchanged: 0,
@@ -195,7 +226,7 @@ test("projects complete text to existing Skill and File pages, preserves authori
       (call) => call.method === "GET" && /^v1\/blocks\/[^/]+\/children(?:\?|$)/u.test(call.path),
     ),
   ).toHaveLength(4)
-  expect(f.calls).toHaveLength(12)
+  expect(f.calls).toHaveLength(14)
 })
 
 test("an accepted unknown append resumes after File query order changes without making consumption unready", async () => {
@@ -388,6 +419,33 @@ test.each(["unchanged", "disabled", "applying", "revision"] as const)(
         database_id: library.sources.database_id,
       },
       properties: {
+        [fields.Name!]: {
+          id: fields.Name,
+          type: "title",
+          title: [{ type: "text", text: { content: "Source provider" } }],
+        },
+        [fields.Description!]: rich(fields.Description!, "Current source provider"),
+        [fields.Provider!]: { id: fields.Provider, type: "select", select: { name: "git" } },
+        [fields.Location!]: rich(fields.Location!, "https://github.com/example/skills"),
+        [fields.Ref!]: rich(fields.Ref!, "main"),
+        [fields.Policy!]: { id: fields.Policy, type: "select", select: { name: "manual" } },
+        [fields.Selection!]: rich(
+          fields.Selection!,
+          JSON.stringify({ roots: ["upstream"], include: [], exclude: [], mapping: {} }),
+        ),
+        [fields.Options!]: rich(fields.Options!, "{}"),
+        [fields.Contributions!]: rich(
+          fields.Contributions!,
+          JSON.stringify([
+            {
+              skill_id: defaults.skill_id,
+              member_key: "upstream",
+              mount_path: "",
+              mapping: {},
+              exclude: [],
+            },
+          ]),
+        ),
         [fields["Source ID"]!]: rich(fields["Source ID"]!, "source-provider"),
         [fields.Content!]: rich(fields.Content!, JSON.stringify(content)),
         [fields["Last Revision"]!]: rich(fields["Last Revision"]!, revision),
@@ -431,6 +489,7 @@ test.each(["unchanged", "disabled", "applying", "revision"] as const)(
           projectCurrentSkill(library, {
             target: written.page_id,
             operation_id: "source-project",
+            include: ["**/*"],
           }).pipe(Effect.provideService(HttpClient.HttpClient, http)),
         ),
       ).rejects.toMatchObject({
@@ -452,6 +511,7 @@ test.each(["unchanged", "disabled", "applying", "revision"] as const)(
       projectCurrentSkill(library, {
         target: written.page_id,
         operation_id: "source-project",
+        include: ["**/*"],
       }).pipe(Effect.provideService(HttpClient.HttpClient, http)),
     )
     expect(result.counts.applied).toBe(2)
@@ -462,3 +522,713 @@ test.each(["unchanged", "disabled", "applying", "revision"] as const)(
     ).toMatchObject({ kind: "source", source_id: "source-provider", revision })
   },
 )
+
+const sourceCommit = "a".repeat(40)
+async function seedSourceReading(
+  options: {
+    rows?: boolean
+    omitGuide?: boolean
+    removed?: boolean
+    mixed?: boolean
+    treeSize?: number
+  } = {},
+) {
+  const f = currentWriteFixture(parent)
+  const originals = new Map<string, Uint8Array>([
+    [
+      "SKILL.md",
+      testBytes(
+        "# Main\n\nRead [guide](references/render.md), [script](scripts/run.ts#L1), and [test](scripts/test/README.md).\n",
+      ),
+    ],
+    [
+      "references/render.md",
+      testBytes("# Rendering\n\n[Main](../SKILL.md) and [script](../scripts/run.ts?plain=1#L2).\n"),
+    ],
+    ["scripts/run.ts", testBytes("export const exact = 1;\n")],
+    ["scripts/test/README.md", testBytes("# Test corpus documentation\n")],
+    ["assets/photo.png", new Uint8Array([137, 80, 78, 71, 0, 255])],
+  ])
+  for (let n = originals.size; n < (options.treeSize ?? originals.size); n++)
+    originals.set("scripts/test/corpus/case-" + n + ".dot", testBytes("digraph { a -> b }\n"))
+  const manifest = await f.run(
+    Effect.forEach([...originals], ([path, bytes]) =>
+      sha256(bytes).pipe(
+        Effect.map((hash) => ({
+          path: "upstream/" + path,
+          source_path: "upstream/" + path,
+          sha256: hash,
+          bytes: bytes.length,
+          mode: "100644" as const,
+          git_oid: createHash("sha1")
+            .update("blob " + bytes.length + "\0")
+            .update(bytes)
+            .digest("hex"),
+        })),
+      ),
+    ),
+  )
+  const content = validateCurrentSharedSourceContent({
+    version: 1,
+    plan: {
+      version: 1,
+      kind: "composition",
+      mounts: [],
+      base: {
+        kind: "git",
+        source: {
+          url: "https://github.com/example/skills",
+          commit: sourceCommit,
+          tree: "b".repeat(40),
+          root: "",
+          files: manifest,
+        },
+      },
+    },
+  })
+  const revision = await f.run(currentSharedSourceRevision(content))
+  const fields = library.sources.property_ids
+  const rich = (name: string, value: string, kind = "rich_text") => ({
+    id: fields[name],
+    type: kind,
+    [kind]: sourceRich(value),
+    has_more: false,
+  })
+  const select = (name: string, value: string) => ({
+    id: fields[name],
+    type: "select",
+    select: { name: value },
+  })
+  const properties = {
+    [fields.Name!]: rich("Name", "Source reading", "title"),
+    [fields.Description!]: rich("Description", "Source reading fixture"),
+    [fields["Source ID"]!]: rich("Source ID", "reading-source"),
+    [fields.Provider!]: select("Provider", "git"),
+    [fields.Location!]: rich("Location", "https://github.com/example/skills"),
+    [fields.Ref!]: rich("Ref", "main"),
+    [fields.Policy!]: select("Policy", "manual"),
+    [fields.Selection!]: rich(
+      "Selection",
+      JSON.stringify({ roots: ["upstream"], include: [], exclude: [], mapping: {} }),
+    ),
+    [fields.Options!]: rich("Options", "{}"),
+    [fields.Contributions!]: rich(
+      "Contributions",
+      JSON.stringify([
+        {
+          skill_id: defaults.skill_id,
+          member_key: "upstream",
+          mount_path: "",
+          mapping: {},
+          exclude: [],
+        },
+      ]),
+    ),
+    [fields.Content!]: rich("Content", JSON.stringify(content)),
+    [fields["Last Revision"]!]: rich("Last Revision", revision),
+    [fields.Enabled!]: { id: fields.Enabled, type: "checkbox", checkbox: true },
+    [fields.Status!]: select("Status", "ready"),
+    [fields.Operation!]: rich("Operation", ""),
+  }
+  const sourcePage = id(90)
+  f.pages.set(sourcePage, {
+    object: "page",
+    id: sourcePage,
+    parent: {
+      type: "data_source_id",
+      data_source_id: library.sources.data_source_id,
+      database_id: library.sources.database_id,
+    },
+    properties,
+  })
+  const mainFile = {
+    path: "SKILL.md",
+    bytes: testBytes("# Fixture owner\n"),
+  }
+  const plan = await f.run(
+    prepareCurrentSkillWrite({
+      ...defaults,
+      files: [
+        mainFile,
+        ...(options.mixed
+          ? [
+              {
+                path: "notes/custom.txt",
+                bytes: testBytes(native),
+                authority: { kind: "native" as const },
+              },
+              { path: "notes/local.config", bytes: testBytes("Complete resource.\n") },
+            ]
+          : []),
+      ],
+    }),
+  )
+  const written = await f.run(
+    writeCurrentSkill(library, { plan, operation_id: "source-reading-seed" }),
+  )
+  const fileIds = library.files.property_ids
+  const descriptor = (file: (typeof manifest)[number]) => ({
+    kind: "source" as const,
+    source_id: "reading-source",
+    revision,
+    source_path: file.path,
+    sha256: file.sha256,
+    bytes: file.bytes,
+    mode: file.mode,
+  })
+  property(
+    property(f.pages.get(written.page_id)!.properties)[library.skills.property_ids.Content!],
+  ).rich_text = sourceRich(JSON.stringify(descriptor(manifest[0]!)))
+  function addRow(path: string, encoded: ReturnType<typeof descriptor>, n: number) {
+    const page = id(1000 + n)
+    const rich = (name: string, value: string, kind = "rich_text") => ({
+      id: fileIds[name],
+      type: kind,
+      [kind]: sourceRich(value),
+      has_more: false,
+    })
+    f.pages.set(page, {
+      object: "page",
+      id: page,
+      archived: false,
+      in_trash: false,
+      last_edited_time: "2026-11-21T00:00:00.000Z",
+      parent: {
+        type: "data_source_id",
+        data_source_id: library.files.data_source_id,
+        database_id: library.files.database_id,
+      },
+      properties: {
+        [fileIds.Name!]: rich("Name", path, "title"),
+        [fileIds["File ID"]!]: rich("File ID", "reading-file-" + n),
+        [fileIds.Path!]: rich("Path", path),
+        [fileIds.Content!]: rich("Content", JSON.stringify(encoded)),
+        [fileIds.Skill!]: {
+          id: fileIds.Skill,
+          type: "relation",
+          relation: [{ id: written.page_id }],
+          has_more: false,
+        },
+      },
+    })
+    f.blocks.set(page, [])
+    return page
+  }
+  for (const [n, file] of manifest.entries()) {
+    const path = file.path.slice("upstream/".length)
+    f.objects.set("objects/" + file.sha256, originals.get(path)!)
+    if (
+      options.rows !== false &&
+      path !== "SKILL.md" &&
+      !(options.omitGuide && path === "references/render.md")
+    )
+      addRow(path, descriptor(file), n)
+  }
+  if (options.removed)
+    addRow(
+      "removed/old.md",
+      { ...descriptor(manifest[1]!), source_path: "upstream/removed/old.md" },
+      800,
+    )
+  f.clearCalls()
+  return { f, written, originals, sourcePage, revision, manifest }
+}
+
+test("a 410-file source tree plans only its two reading documents and archives excluded rows", async () => {
+  const { f, written } = await seedSourceReading({ treeSize: 410 })
+  const dry = await f.run(
+    projectCurrentSkill(library, {
+      target: written.page_id,
+      operation_id: "docs-dry",
+      dry_run: true,
+    }),
+  )
+  expect(dry.full_tree_total).toBe(410)
+  expect(dry.files.map((file) => file.path)).toEqual(["SKILL.md", "references/render.md"])
+  expect(dry.counts).toMatchObject({
+    selected: 2,
+    excluded: 408,
+    skipped_binary: 0,
+    would_archive: 408,
+    would_create: 0,
+    would_write: 2,
+  })
+  expect(dry.excluded.find((file) => file.path === "scripts/test/README.md")).toMatchObject({
+    reason: "excluded_by_pattern",
+  })
+  expect(dry.excluded.find((file) => file.path === "scripts/run.ts")).toEqual({
+    path: "scripts/run.ts",
+    reason: "not_included",
+  })
+  expect(f.mutations()).toEqual([])
+})
+
+test("sparse source reading creates docs, removes obsolete rows, preserves Notion-owned files and uses fixed upstream links", async () => {
+  const { f, written, sourcePage } = await seedSourceReading({
+    omitGuide: true,
+    removed: true,
+    mixed: true,
+  })
+  const before = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  const consumptionBefore = await f.run(resolveCurrentSkillConsumption(library, before))
+  const sourceBefore = structuredClone(f.pages.get(sourcePage))
+  f.clearCalls()
+  const applied = await f.run(
+    projectCurrentSkill(library, { target: written.page_id, operation_id: "docs-apply" }),
+  )
+  expect(applied.counts).toMatchObject({
+    selected: 4,
+    excluded: 3,
+    created: 1,
+    archived: 4,
+    native_verified: 1,
+    skipped_binary: 0,
+    applied: 3,
+  })
+  expect(applied.rows.find((row) => row.path === "removed/old.md")).toMatchObject({
+    status: "archived",
+    reason: "upstream_removed",
+  })
+  const after = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  expect(after.files.map((file) => file.path).sort()).toEqual([
+    "notes/custom.txt",
+    "notes/local.config",
+    "references/render.md",
+  ])
+  const sourceAfter = await f.run(resolveCurrentSkillConsumption(library, after))
+  expect(sourceAfter.files).toEqual(consumptionBefore.files)
+  expect(sourceAfter.source_fingerprint).toBe(consumptionBefore.source_fingerprint)
+  expect(f.pages.get(sourcePage)).toEqual(sourceBefore)
+  const nativeBefore = before.files.find((file) => file.path === "notes/custom.txt")!
+  const resourceBefore = before.files.find((file) => file.path === "notes/local.config")!
+  expect(after.files.find((file) => file.path === nativeBefore.path)?.page_id).toBe(
+    nativeBefore.page_id,
+  )
+  expect(after.files.find((file) => file.path === resourceBefore.path)?.file_id).toBe(
+    resourceBefore.file_id,
+  )
+  expect((await f.run(observeSharedBody(nativeBefore.page_id))).markdown).toBe(native)
+  const guide = after.files.find((file) => file.path === "references/render.md")!
+  const mainBody = JSON.stringify(f.blocks.get(written.page_id))
+  expect(mainBody).toContain("https://www.notion.so/" + guide.page_id.replaceAll("-", ""))
+  expect(mainBody).toContain(
+    "https://github.com/example/skills/blob/" + sourceCommit + "/upstream/scripts/run.ts#L1",
+  )
+  expect(mainBody).toContain(
+    "https://github.com/example/skills/blob/" + sourceCommit + "/upstream/scripts/test/README.md",
+  )
+  const guideBody = JSON.stringify(f.blocks.get(guide.page_id))
+  expect(guideBody).toContain("https://www.notion.so/" + written.page_id.replaceAll("-", ""))
+  expect(guideBody).toContain("/upstream/scripts/run.ts?plain=1#L2")
+  f.clearCalls()
+  const repeat = await f.run(
+    projectCurrentSkill(library, { target: written.page_id, operation_id: "docs-repeat" }),
+  )
+  expect(repeat.input_sha256).toBe(applied.input_sha256)
+  expect(repeat.status).toBe("unchanged")
+  expect(repeat.counts).toMatchObject({
+    created: 0,
+    archived: 0,
+    updated: 0,
+    applied: 0,
+    unchanged: 3,
+  })
+  expect(f.mutations()).toEqual([])
+})
+
+test("include and exclude arrays replace defaults, including explicit empty arrays", async () => {
+  const { f, written } = await seedSourceReading()
+  const all = await f.run(
+    projectCurrentSkill(library, {
+      target: written.page_id,
+      operation_id: "all",
+      dry_run: true,
+      include: ["**/*"],
+      exclude: [],
+    }),
+  )
+  expect(all.counts).toMatchObject({
+    selected: 5,
+    excluded: 0,
+    skipped_binary: 1,
+    would_archive: 0,
+  })
+  const docsIncludingTests = await f.run(
+    projectCurrentSkill(library, {
+      target: written.page_id,
+      operation_id: "test-docs",
+      dry_run: true,
+      exclude: [],
+    }),
+  )
+  expect(docsIncludingTests.files.map((file) => file.path)).toEqual([
+    "SKILL.md",
+    "references/render.md",
+    "scripts/test/README.md",
+  ])
+  const mainOnly = await f.run(
+    projectCurrentSkill(library, {
+      target: written.page_id,
+      operation_id: "main-only",
+      dry_run: true,
+      include: [],
+      exclude: [],
+    }),
+  )
+  expect(mainOnly.files.map((file) => file.path)).toEqual(["SKILL.md"])
+  expect(mainOnly.counts).toMatchObject({ selected: 1, excluded: 4, would_archive: 4 })
+  expect(mainOnly.policy).toEqual({ include: [], exclude: [] })
+  expect(
+    new Set([all.input_sha256, docsIncludingTests.input_sha256, mainOnly.input_sha256]).size,
+  ).toBe(3)
+  expect(f.mutations()).toEqual([])
+})
+
+test.each(["accepted", "absent"] as const)(
+  "source document create with an unknown %s outcome keeps a stable intent without replay",
+  async (outcome) => {
+    const { f, written } = await seedSourceReading({ rows: false })
+    const dry = await f.run(
+      projectCurrentSkill(library, {
+        target: written.page_id,
+        operation_id: "preview-create",
+        dry_run: true,
+      }),
+    )
+    expect(dry.counts.would_create).toBe(1)
+    f.failNext({ kind: "file-create", outcome })
+    await expect(
+      f.run(
+        projectCurrentSkill(library, {
+          target: written.page_id,
+          operation_id: "unknown-doc-create",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    const pending = await f.run(
+      readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
+    )
+    expect(pending?.intent.input_sha256).toBe(dry.input_sha256)
+    f.clearCalls()
+    reverseFileQuery(f)
+    const resume = projectCurrentSkill(library, {
+      target: written.page_id,
+      operation_id: "unknown-doc-create",
+      mode: "resume",
+    })
+    if (outcome === "absent")
+      await expect(f.run(resume)).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+    else {
+      const result = await f.run(resume)
+      expect(result.input_sha256).toBe(dry.input_sha256)
+      expect(
+        (await f.run(queryCurrentSkillIndex(library, written.page_id))).files.map(
+          (file) => file.path,
+        ),
+      ).toEqual(["references/render.md"])
+    }
+    expect(
+      f
+        .mutations()
+        .filter(
+          (call) =>
+            call.path === "v1/pages" &&
+            property(property(call.body).parent).data_source_id === library.files.data_source_id,
+        ),
+    ).toEqual([])
+    expect((await f.run(queryCurrentSkillIndex(library, written.page_id))).state).toEqual({
+      state: "ready",
+    })
+  },
+)
+
+test("an accepted unknown archive resumes from its exact retired page without another archive request", async () => {
+  const { f, written } = await seedSourceReading()
+  f.failNext({ kind: "retire-file", outcome: "accepted" })
+  await expect(
+    f.run(
+      projectCurrentSkill(library, {
+        target: written.page_id,
+        operation_id: "unknown-doc-archive",
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  const retired = f.mutations().find((call) => property(call.body).in_trash === true)!
+  const pending = await f.run(
+    readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
+  )
+  f.clearCalls()
+  const resumed = await f.run(
+    projectCurrentSkill(library, {
+      target: written.page_id,
+      operation_id: "unknown-doc-archive",
+      mode: "resume",
+    }),
+  )
+  expect(pending?.intent.input_sha256).toBe(resumed.input_sha256)
+  expect(f.mutations().filter((call) => call.path === retired.path)).toEqual([])
+  expect(
+    (await f.run(queryCurrentSkillIndex(library, written.page_id))).files.map((file) => file.path),
+  ).toEqual(["references/render.md"])
+})
+
+test("a source descriptor relocates on its existing reading page without changing File ID", async () => {
+  const { f, written } = await seedSourceReading()
+  const before = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  const guide = before.files.find((file) => file.path === "references/render.md")!
+  property(
+    property(f.pages.get(guide.page_id)!.properties)[library.files.property_ids.Content!],
+  ).rich_text = sourceRich(
+    JSON.stringify({
+      ...guide.content,
+      source_id: "old-source",
+      source_path: "old/guide.md",
+    }),
+  )
+  f.clearCalls()
+  const projected = await f.run(
+    projectCurrentSkill(library, { target: written.page_id, operation_id: "relocated-doc" }),
+  )
+  expect(projected.counts.updated).toBe(1)
+  const after = (await f.run(queryCurrentSkillIndex(library, written.page_id))).files.find(
+    (file) => file.path === guide.path,
+  )!
+  expect(after.page_id).toBe(guide.page_id)
+  expect(after.file_id).toBe(guide.file_id)
+  expect(after.content).toEqual(guide.content)
+})
+
+test("a native takeover during an excluded source page scan blocks retirement", async () => {
+  const { f, written } = await seedSourceReading()
+  const target = (await f.run(queryCurrentSkillIndex(library, written.page_id))).files.find(
+    (file) => file.path === "assets/photo.png",
+  )!
+  let changed = false
+  f.rewrite((path, response) => {
+    if (!changed && path.startsWith("v1/blocks/" + target.page_id + "/children")) {
+      changed = true
+      property(
+        property(f.pages.get(target.page_id)!.properties)[library.files.property_ids.Content!],
+      ).rich_text = sourceRich(JSON.stringify({ kind: "native", mode: "100644", frontmatter: "" }))
+    }
+    return response
+  })
+  f.clearCalls()
+  await expect(
+    f.run(
+      projectCurrentSkill(library, { target: written.page_id, operation_id: "archive-takeover" }),
+    ),
+  ).rejects.toMatchObject({ code: "CURRENT_PROJECTION_CONFLICT" })
+  expect(changed).toBe(true)
+  expect(f.mutations()).toEqual([])
+  expect(property(f.pages.get(target.page_id)).in_trash).toBe(false)
+})
+
+async function leaveDenseProjectionPending(outcome: "accepted" | "absent" = "accepted") {
+  const seeded = await seedSourceReading()
+  const { f, written, originals } = seeded
+  const index = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  const consumption = await f.run(resolveCurrentSkillConsumption(library, index))
+  const plan = renderCurrentProjection({
+    path: index.main.path,
+    bytes: originals.get("SKILL.md")!,
+    rewriteLink: currentProjectionLinkRewriter(
+      index.main.path,
+      new Map([index.main, ...index.files].map((file) => [file.path, file.page_id])),
+      consumption,
+    ),
+  })
+  const inputHash = "d".repeat(64)
+  f.failNext({ kind: "append", outcome })
+  await expect(
+    f.run(
+      withCurrentOperation(library, {
+        intent: {
+          operation_id: "old-dense-projection",
+          input_sha256: inputHash,
+          owner: { kind: "skill", id: defaults.skill_id },
+          projection: true,
+        },
+        ownerPageId: index.page_id,
+        run: (session) =>
+          applyCurrentProjection<Notion | Crypto.Crypto | Store>({
+            pageId: index.page_id,
+            content: index.main.content,
+            plan,
+            assertCurrent: Effect.void,
+            dispatch: session.dispatch,
+          }),
+        verify: () => Effect.void,
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  f.clearCalls()
+  return { ...seeded, index, inputHash, operation_id: "old-dense-projection" }
+}
+function expectOnlyRecordCancellation(f: ReturnType<typeof currentWriteFixture>) {
+  const recordPages = new Set(f.table("records", false).map((row) => "v1/pages/" + row.id))
+  expect(f.mutations().length).toBeGreaterThan(0)
+  expect(f.mutations().every((call) => call.method === "PATCH" && recordPages.has(call.path))).toBe(
+    true,
+  )
+}
+
+test("public cancellation keeps an old frozen hash and dense physical links without rendering the remaining documents", async () => {
+  const { f, written, index, inputHash, operation_id } = await leaveDenseProjectionPending()
+  const bodies = structuredClone([...f.blocks])
+  const cancelled = await f.run(
+    cancelCurrentSkillProjection(library, { target: written.page_id, operation_id }),
+  )
+  expect(cancelled).toMatchObject({ status: "cancelled", operation_id, input_sha256: inputHash })
+  expect([...f.blocks]).toEqual(bodies)
+  expect(
+    (await f.run(queryCurrentSkillIndex(library, written.page_id))).files.map(
+      (file) => file.page_id,
+    ),
+  ).toEqual(index.files.map((file) => file.page_id))
+  expectOnlyRecordCancellation(f)
+  expect(
+    await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
+  ).toBeUndefined()
+  f.clearCalls()
+  expect(
+    (await f.run(cancelCurrentSkillProjection(library, { target: written.page_id, operation_id })))
+      .status,
+  ).toBe("not_found")
+  expect(f.mutations()).toEqual([])
+})
+
+test("public cancellation reconciles sparse fixed-GitHub body links without performing the tail", async () => {
+  const { f, written } = await seedSourceReading({ rows: false })
+  f.failNext({ kind: "append", outcome: "accepted" })
+  await expect(
+    f.run(projectCurrentSkill(library, { target: written.page_id, operation_id: "sparse-cancel" })),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  const body = JSON.stringify(f.blocks.get(written.page_id))
+  expect(body).toContain("/upstream/scripts/run.ts#L1")
+  const prior = structuredClone([...f.blocks])
+  f.clearCalls()
+  expect(
+    (
+      await f.run(
+        cancelCurrentSkillProjection(library, {
+          target: written.page_id,
+          operation_id: "sparse-cancel",
+        }),
+      )
+    ).status,
+  ).toBe("cancelled")
+  expect([...f.blocks]).toEqual(prior)
+  expectOnlyRecordCancellation(f)
+})
+
+test.each(["absent", "different", "native", "wrong-operation"] as const)(
+  "public cancellation leaves %s pending work intact",
+  async (kind) => {
+    const { f, written, operation_id } = await leaveDenseProjectionPending(
+      kind === "absent" ? "absent" : "accepted",
+    )
+    if (kind === "different") {
+      const first = f.blocks.get(written.page_id)![0]!
+      property(first[String(first.type)]).rich_text = sourceRich("A different current body")
+    }
+    if (kind === "native")
+      property(
+        property(f.pages.get(written.page_id)!.properties)[library.skills.property_ids.Content!],
+      ).rich_text = sourceRich(JSON.stringify({ kind: "native", mode: "100644", frontmatter: "" }))
+    await expect(
+      f.run(
+        cancelCurrentSkillProjection(library, {
+          target: written.page_id,
+          operation_id: kind === "wrong-operation" ? "another-operation" : operation_id,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code:
+        kind === "absent"
+          ? "CURRENT_OPERATION_UNRESOLVED"
+          : kind === "wrong-operation"
+            ? "CURRENT_OPERATION_CONFLICT"
+            : "CURRENT_PROJECTION_CONFLICT",
+    })
+    expect(f.mutations()).toEqual([])
+    expect(
+      (await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })))
+        ?.intent.operation_id,
+    ).toBe(operation_id)
+  },
+)
+
+test.each(["file-create", "retire-file"] as const)(
+  "public cancellation observes accepted %s without creating, pruning or rendering more pages",
+  async (kind) => {
+    const { f, written } = await seedSourceReading({ rows: kind !== "file-create" })
+    f.failNext({ kind, outcome: "accepted" })
+    await expect(
+      f.run(
+        projectCurrentSkill(library, { target: written.page_id, operation_id: "metadata-cancel" }),
+      ),
+    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    const before = await f.run(queryCurrentSkillIndex(library, written.page_id))
+    const bodies = structuredClone([...f.blocks])
+    f.clearCalls()
+    const result = await f.run(
+      cancelCurrentSkillProjection(library, {
+        target: written.page_id,
+        operation_id: "metadata-cancel",
+      }),
+    )
+    expect(result.status).toBe("cancelled")
+    expect([...f.blocks]).toEqual(bodies)
+    expect(logical(await f.run(queryCurrentSkillIndex(library, written.page_id)))).toEqual(
+      logical(before),
+    )
+    expectOnlyRecordCancellation(f)
+  },
+)
+
+test("public cancellation observes the exact accepted source Content PATCH without replay", async () => {
+  const { f, written } = await seedSourceReading()
+  const guide = (await f.run(queryCurrentSkillIndex(library, written.page_id))).files.find(
+    (file) => file.path === "references/render.md",
+  )!
+  property(
+    property(f.pages.get(guide.page_id)!.properties)[library.files.property_ids.Content!],
+  ).rich_text = sourceRich(
+    JSON.stringify({ ...guide.content, source_id: "old-source", source_path: "old/guide.md" }),
+  )
+  let changed = false
+  f.rewrite((path, response) => {
+    const call = f.calls.at(-1)
+    if (
+      !changed &&
+      path === "v1/pages/" + guide.page_id &&
+      call?.method === "PATCH" &&
+      property(property(call.body).properties)[library.files.property_ids.Content!] !== undefined
+    ) {
+      changed = true
+      return { ...response, id: id(9999) }
+    }
+    return response
+  })
+  await expect(
+    f.run(
+      projectCurrentSkill(library, { target: written.page_id, operation_id: "content-cancel" }),
+    ),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  expect(changed).toBe(true)
+  f.rewrite(undefined)
+  f.clearCalls()
+  expect(
+    (
+      await f.run(
+        cancelCurrentSkillProjection(library, {
+          target: written.page_id,
+          operation_id: "content-cancel",
+        }),
+      )
+    ).status,
+  ).toBe("cancelled")
+  expectOnlyRecordCancellation(f)
+  expect(f.mutations().filter((call) => call.path === "v1/pages/" + guide.page_id)).toEqual([])
+})
