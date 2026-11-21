@@ -69,8 +69,10 @@ trash 说成可自动恢复。
    native；普通末尾 LF/CRLF、列表、代码、链接等使用受支持语法。核完整真实 Notion 读回、
    reported normalized_paths、可发现/可消费及同命令重跑 0 写。Source/resource 比精确原件，
    native 比内容结构及当前实际导出，不拿规范化后的 hash 冒充原始 hash。
-2. 只更新主文或一个子文件；先有的另一个 native 编辑、未选的 Source/resource、身份与
-   作者策略必须保留。支持文件删除和 Members/Requires 的空集合各按实际 API 验证。
+2. 只更新主文或一个子文件；先有的另一个 native 编辑、未选的 native/resource、身份与
+   作者策略必须保留。含 Source binding 或实际 Source contribution 的目标在此入口分配意图、
+   远端写入前拒绝；涉及 Source 内容的变更沿当前 Source 管理入口，不放松 authority guard。
+   支持文件删除和 Members/Requires 的空集合各按实际 API 验证。
    日常局部修改不得要求 Agent 导出整树、逐文件 --native 或事后再投影。
 3. 在自有 Skills 表内登记已写正文但缺登记的页面：保原 page/body，CLI 补机器字段；有
    支持行时保显式 Path/单 owner。合法 native 重跑零写。缺业务描述要明确报告输入要求；
