@@ -312,12 +312,40 @@ describe("scalar current metadata consumption", () => {
     f.rows.pop()
     const result = await f.run(readSkill(rootRef, options).pipe(Effect.result))
     expect(result._tag).toBe("Failure")
-    if (result._tag === "Failure")
+    if (result._tag === "Failure") {
       expect(result.failure.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
+      expect(property(result.failure.details).field).toBe("Requires")
+      expect(property(result.failure.details).reason).toBeUndefined()
+      expect(result.failure.message).toContain("Requires")
+    }
     expect(bodies(f)).toEqual([])
     expect(f.base.semanticWrites().length).toBe(0)
     expect(f.queries).toHaveLength(1)
   })
+
+  for (const relation of ["Members", "Requires"] as const)
+    test(
+      "disabled " + relation + " metadata reports the selected field without reading bodies",
+      async () => {
+        const f = fixture(3, true)
+        const target = f.rows[relation === "Members" ? 1 : 2]!
+        property(property(target.properties).Enabled).checkbox = false
+        const result = await f.run(readSkill(rootRef, options).pipe(Effect.result))
+        expect(result._tag).toBe("Failure")
+        if (result._tag === "Failure") {
+          expect(result.failure.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
+          expect(property(result.failure.details)).toMatchObject({
+            field: relation,
+            page_id: target.id,
+            reason: "disabled",
+          })
+          expect(result.failure.message).toBe(`A selected ${relation} target is disabled.`)
+        }
+        expect(bodies(f)).toEqual([])
+        expect(f.base.semanticWrites()).toEqual([])
+        expect(f.queries).toHaveLength(1)
+      },
+    )
 
   test("incomplete current relations still fail even after a complete inventory", async () => {
     const f = fixture(3, true)

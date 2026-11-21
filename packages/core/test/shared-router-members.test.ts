@@ -274,8 +274,8 @@ describe("shared Router members", () => {
     assertMetadataOnly(f)
   })
 
-  test("Requires rejects disabled, Prompt, nested Router and duplicate stable identities in the complete inventory", async () => {
-    for (const issue of ["disabled", "prompt", "router", "duplicate"] as const) {
+  test("Requires rejects missing, disabled, Prompt, nested Router and duplicate stable identities in the complete inventory", async () => {
+    for (const issue of ["missing", "disabled", "prompt", "router", "duplicate"] as const) {
       const f = fixture(2)
       const registered = {
         ...library,
@@ -291,7 +291,8 @@ describe("shared Router members", () => {
       const first = f.members[0]
       const second = f.members[1]
       if (!first || !second) throw new Error("Fixture needs two targets")
-      if (issue === "disabled")
+      if (issue === "missing") f.inventory([f.rawRouter, second])
+      else if (issue === "disabled")
         property(property(first.properties)["Renamed enabled"]).checkbox = false
       else if (issue === "duplicate")
         property(second.properties)["Renamed identity"] = rich("skill_id", "member-000")
@@ -309,6 +310,20 @@ describe("shared Router members", () => {
         }).pipe(Effect.result),
       )
       expect(result._tag).toBe("Failure")
+      if (result._tag === "Failure") {
+        expect(property(result.failure.details).field).toBe("Requires")
+        expect(result.failure.message).toContain("Requires")
+        expect(result.failure.message).not.toContain("Router member")
+        if (issue === "missing" || issue === "disabled") {
+          expect(result.failure.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
+          expect(property(result.failure.details).page_id).toBe(id(100))
+          expect(property(result.failure.details).reason).toBe(
+            issue === "disabled" ? "disabled" : undefined,
+          )
+        } else if (issue === "duplicate") {
+          expect(result.failure.code).toBe("SHARED_SKILL_ID_CONFLICT")
+        } else expect(result.failure.code).toBe("INVALID_MEMBERS")
+      }
       assertMetadataOnly(f)
     }
   })
@@ -460,6 +475,9 @@ describe("shared Router members", () => {
     const error = await f.run(Effect.flip(f.query()))
     expect(error.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
     expect(property(error.details).page_id).toBe(id(101))
+    expect(property(error.details).field).toBe("Members")
+    expect(property(error.details).reason).toBeUndefined()
+    expect(error.message).toContain("Members")
   })
 
   test("rejects a selected member from a foreign source", async () => {
@@ -475,6 +493,8 @@ describe("shared Router members", () => {
     const error = await f.run(Effect.flip(f.query()))
     expect(error.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
     expect(property(error.details).reason).toBe("disabled")
+    expect(property(error.details).field).toBe("Members")
+    expect(error.message).toBe("A selected Members target is disabled.")
   })
 
   test("nested Routers and Prompts cannot be selected members", async () => {
@@ -492,7 +512,10 @@ describe("shared Router members", () => {
   test("detects selected-to-selected stable ID conflicts", async () => {
     const f = fixture()
     property(f.members[1]!.properties)["Renamed identity"] = rich("skill_id", "member-000")
-    expect((await f.run(Effect.flip(f.query()))).code).toBe("SHARED_SKILL_ID_CONFLICT")
+    const error = await f.run(Effect.flip(f.query()))
+    expect(error.code).toBe("SHARED_SKILL_ID_CONFLICT")
+    expect(property(error.details).field).toBe("Members")
+    expect(error.message).toContain("Members")
   })
 
   test("detects valid nonmember claims even when disabled without blocking unrelated corrupt rows", async () => {
