@@ -109,7 +109,7 @@ export function openFixedSnapshotFiles(
     const snapshot = yield* typeof fixed === "string"
       ? loadSnapshotManifest(fixed)
       : validateSnapshotManifest(fixed)
-    const accessDenied = yield* assertKnownSnapshotAccess(snapshot, options.offline)
+    yield* assertKnownSnapshotAccess(snapshot)
     const paths = yield* checked(() => selectedPaths(snapshot, select))
     const store = yield* Store
     const context = {
@@ -227,6 +227,6 @@ export function openFixedSnapshotFiles(
           snapshot.files.map((file) => file.path),
         ),
       )
-    return { snapshot, files, access_denied: accessDenied }
+    return { snapshot, files }
   })
 }

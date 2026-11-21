@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Crypto, Deferred, Effect, Fiber, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
-import { recordScope } from "../src/cache.ts"
+import { invalidateScopeCache, invalidateSnapshotCache, recordScope } from "../src/cache.ts"
 import { property, type ContentRecord, type Snapshot } from "../src/model.ts"
 import { noConsumptionWrites, type ConsumptionEffects } from "../src/consumption-effects.ts"
 import { Notion } from "../src/notion.ts"
@@ -92,6 +92,28 @@ function ready(result: ResourceReadResult): ResourceReadReady {
 }
 
 describe("fixed resource batch", () => {
+  for (const code of ["ACCESS_DENIED", "AUTH_REQUIRED"] as const)
+    test(`known ${code} rejects online and offline complete resource bytes before object reads`, async () => {
+      const f = await fixture()
+      await f.run(
+        code === "ACCESS_DENIED"
+          ? invalidateSnapshotCache(f.snapshot.record.id, scope, {
+              retainForOffline: true,
+              accessDenied: code,
+            })
+          : invalidateScopeCache(scope),
+      )
+      f.objectReads.clear()
+      for (const offline of [true, false]) {
+        const result = await f.run(readResources(f.input(), { offline }))
+        expect(result).toMatchObject({ status: "failed", error: { code } })
+        expect("files" in result).toBe(false)
+        expect(await f.run(decodeResourceReadResult(result, f.input()))).toEqual(result)
+      }
+      expect(f.objectReads.size).toBe(0)
+      expect(f.calls).toHaveLength(0)
+    })
+
   test("strict resource batches retain exact selected bytes and observed effects", async () => {
     const f = await fixture(),
       observed: ConsumptionEffects[] = []

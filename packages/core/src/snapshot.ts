@@ -316,10 +316,7 @@ function acquireTargetSnapshot(
       snapshot = {
         ...selected.snapshot,
         source: "local_snapshot",
-        freshness: {
-          policy: "pinned",
-          ...(selected.access_denied === undefined ? {} : { stale: true }),
-        },
+        freshness: { policy: "pinned" },
         materialization: selectedMaterialization(selected.snapshot, selected.files),
       }
       files = selected.files

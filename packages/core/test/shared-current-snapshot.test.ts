@@ -302,10 +302,15 @@ describe("current tree consumption", () => {
         await expect(
           f.run(openFixedSnapshotFiles(selected, () => [selected.entrypoint])),
         ).rejects.toMatchObject({ code: "ACCESS_DENIED" })
-      const offline = await f.run(
-        openFixedSnapshotFiles(selected, () => [selected.entrypoint], { offline: true }),
-      )
-      expect(offline.files[0]?.bytes).toEqual(f.selectedBytes(selected, selected.entrypoint))
+      const offline = openFixedSnapshotFiles(selected, () => [selected.entrypoint], {
+        offline: true,
+      })
+      if (change === "denied")
+        await expect(f.run(offline)).rejects.toMatchObject({ code: "ACCESS_DENIED" })
+      else
+        expect((await f.run(offline)).files[0]?.bytes).toEqual(
+          f.selectedBytes(selected, selected.entrypoint),
+        )
       expect(f.calls).toHaveLength(0)
     }
   })

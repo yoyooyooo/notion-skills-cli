@@ -481,6 +481,82 @@ test("public SDK preserves fixed-object failure details without replacing the pi
   })
 })
 
+for (const code of ["ACCESS_DENIED", "AUTH_REQUIRED"] as const)
+  test(`public SDK retains observed ${code} across offline reads and cache retirement`, async () => {
+    await setup(async ({ source, input, options }) => {
+      ready(await readResources(input, options))
+      const directory = new URL(input.refs[0]!)
+      directory.pathname = "/"
+      directory.searchParams.delete("file_id")
+      const listing = await listSkill(directory.toString(), options)
+      const main = listing.files.find((file) => file.path === listing.entrypoint)
+      if (main === undefined) throw new Error("Expected the actual fixed main reference")
+      await idle(source)
+      source.setPhase(
+        "denied",
+        code === "ACCESS_DENIED" ? { denyCurrent: true } : { denyAuthentication: true },
+      )
+      await expect(readSkill(skillPage, { ...options, refresh: true })).rejects.toMatchObject({
+        code,
+      })
+      await idle(source)
+      const observed = source.requests.length
+      // Plain current and fixed refs share the same known-denial guard. An
+      // offline read cannot downgrade that observation to a stale success.
+      await expect(readSkill(skillPage, { ...options, offline: true })).rejects.toMatchObject({
+        code,
+      })
+      expect(source.requests).toHaveLength(observed)
+      for (const retired of [false, true]) {
+        if (retired)
+          await Effect.runPromise(
+            clearCache(undefined, { all: true }).pipe(
+              Effect.provide(nodeRuntime(process.cwd()).live),
+              Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(options.env))),
+              Effect.scoped,
+            ),
+          )
+        for (const offline of [true, false]) {
+          const before = source.requests.length
+          const deniedOptions = { ...options, offline }
+          for (const ref of [main.ref, input.refs[0]!])
+            await expect(readSkill(ref, deniedOptions)).rejects.toMatchObject({ code })
+          const batch = await readResources(input, deniedOptions)
+          expect(batch).toMatchObject({ status: "failed", error: { code } })
+          expect("files" in batch).toBe(false)
+          expect(await decodeResourceReadResult(batch, input)).toEqual(batch)
+          for (const purpose of ["inspect", "use"] as const) {
+            const prepared = await consume(
+              {
+                version: 1,
+                targets: [main.ref],
+                purpose,
+                freshness: { policy: offline ? "offline" : "default" },
+              },
+              options,
+            )
+            // all-clear removes the disposable account identity for a target
+            // denial. Offline preparation then fails before it can choose a
+            // scope; the scalar/batch checks above still prove the denial is
+            // retained. A scope denial retains its identity association.
+            const preparationCode =
+              retired && offline && code === "ACCESS_DENIED" ? "CACHE_SCOPE_UNAVAILABLE" : code
+            expect(prepared).toMatchObject({ status: "failed", error: { code: preparationCode } })
+            expect("preparation" in prepared).toBe(false)
+            expect(await decodeConsumeResult(prepared)).toEqual(prepared)
+          }
+          if (offline) expect(source.requests).toHaveLength(before)
+        }
+      }
+      expect(
+        source.requests.filter(
+          (request: { status: number }) =>
+            request.status === (code === "ACCESS_DENIED" ? 403 : 401),
+        ).length,
+      ).toBeGreaterThan(0)
+    })
+  })
+
 test("public SDK reports the retired cache generation when clear races a current body read", async () => {
   await setup(async ({ source, input, options }) => {
     const listing = await listSkill(input.refs[0]!, options)

@@ -578,20 +578,19 @@ export function recordScopeAccess(scope: string, generation: number, denied?: Ac
   )
 }
 /** This checks known denials only. Hashes never become a new permission grant. */
-export function assertKnownSnapshotAccess(snapshot: Snapshot, offline = false) {
+export function assertKnownSnapshotAccess(snapshot: Snapshot) {
   return Effect.gen(function* () {
     const scope = yield* latestObservation(scopeAccessIdentity, snapshot.scope)
     const target = yield* latestObservation(snapshot.record.id, snapshot.scope)
     const denied = scope?.access_denied ?? target?.access_denied
-    if (denied !== undefined && !offline)
+    if (denied !== undefined)
       return yield* Effect.fail(
         fail(
           denied,
-          "Known access rejection prevents an online fixed read; revalidate the selected authority or explicitly read historical bytes offline.",
+          "Known access rejection prevents reading these selected bytes; revalidate the current authority.",
           { record_id: snapshot.record.id, snapshot_id: snapshot.snapshot_id },
         ),
       )
-    return denied
   })
 }
 export function cachedRemoteObservation(

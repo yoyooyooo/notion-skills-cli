@@ -335,13 +335,13 @@ test("current eligibility and the native body deadline do not advance a fixed se
   expect(f.semanticWrites()).toHaveLength(0)
 })
 
-test("C6/C7 failed expiry has no stale fallback or timestamp reset; explicit offline remains an observation", async () => {
+test("C6/C7 unknown transport failure has no online fallback; explicit offline retains the original observation", async () => {
   const f = fixture()
   const first = await f.run(readSkill(page))
   f.time(1_300_000)
-  f.deny()
+  f.deny("NOTION_UNAVAILABLE")
   const failure = await f.run(readSkill(page).pipe(Effect.result))
-  expect(failure._tag === "Failure" && failure.failure.code).toBe("ACCESS_DENIED")
+  expect(failure._tag === "Failure" && failure.failure.code).toBe("NOTION_UNAVAILABLE")
   const before = f.requests.length
   const offline = await f.run(readSkill(page, { offline: true }))
   expect(offline.source).toBe("local_cache")
@@ -398,18 +398,28 @@ for (const target of [page, "sample-skill"])
         expect(resource._tag === "Failure" && resource.failure.code).toBe(code)
       }
       const before = f.requests.length
-      const offline = await f.run(readSkill(target, { database, offline: true }))
-      expect(offline.snapshot_id).toBe(first.snapshot_id)
-      expect(offline.freshness).toMatchObject({
-        policy: "offline",
-        stale: true,
-        age_ms: 100,
-        validated_at: first.freshness?.validated_at,
-      })
-      const pinned = await f.run(readSkill(first.ref, { offline: true }))
-      expect(pinned.snapshot_id).toBe(first.snapshot_id)
-      expect(pinned.freshness?.policy).toBe("pinned")
-      if (code !== "NOT_FOUND") expect(pinned.freshness?.stale).toBe(true)
+      if (code === "NOT_FOUND") {
+        const offline = await f.run(readSkill(target, { database, offline: true }))
+        expect(offline.snapshot_id).toBe(first.snapshot_id)
+        expect(offline.freshness).toMatchObject({
+          policy: "offline",
+          stale: true,
+          age_ms: 100,
+          validated_at: first.freshness?.validated_at,
+        })
+        const pinned = await f.run(readSkill(first.ref, { offline: true }))
+        expect(pinned.snapshot_id).toBe(first.snapshot_id)
+        expect(pinned.freshness?.policy).toBe("pinned")
+        expect(pinned.freshness?.stale).toBeUndefined()
+      } else {
+        for (const input of [target, first.ref])
+          await expect(f.run(readSkill(input, { database, offline: true }))).rejects.toMatchObject({
+            code,
+          })
+        await expect(
+          f.run(readSkill("references/guide.md", { from: first.ref, offline: true })),
+        ).rejects.toMatchObject({ code })
+      }
       expect(f.requests.length).toBe(before)
       expect(f.json.get(`snapshots/${first.snapshot_id}.json`)).toEqual(manifest)
       f.allow()
@@ -447,22 +457,19 @@ for (const entry of ["current", "catalog", "current-body"] as const)
     const listed = await f.run(catalog({ database }).pipe(Effect.result))
     expect(listed._tag === "Failure" && listed.failure.code).toBe("AUTH_REQUIRED")
     const before = f.requests.length
-    const offline = await f.run(readSkill("other-skill", { database, offline: true }))
-    expect(offline.snapshot_id).toBe(second.snapshot_id)
-    expect(offline.freshness).toMatchObject({
-      validated_at: second.freshness?.validated_at,
-      age_ms: 100,
-      stale: true,
-    })
+    for (const target of ["other-skill", first.ref, second.ref])
+      await expect(f.run(readSkill(target, { database, offline: true }))).rejects.toMatchObject({
+        code: "AUTH_REQUIRED",
+      })
     const oldDirectory = await f.run(catalog({ database, offline: true }))
     expect(oldDirectory.fetched_at).toBe(directory.fetched_at)
     expect(oldDirectory.freshness.stale).toBe(true)
-    expect((await f.run(readSkill(first.ref, { offline: true }))).snapshot_id).toBe(
-      first.snapshot_id,
-    )
     expect(f.requests.length).toBe(before)
     f.credential("credential-two")
     expect((await f.run(readSkill(other, { database }))).snapshot_id).toBe(
+      otherCredential.snapshot_id,
+    )
+    expect((await f.run(readSkill(otherCredential.ref, { offline: true }))).snapshot_id).toBe(
       otherCredential.snapshot_id,
     )
     expect(f.requests.length).toBe(before)
@@ -485,6 +492,9 @@ for (const code of ["ACCESS_DENIED", "NOT_FOUND"] as const)
     const unaffected = await f.run(readSkill(other, { database }))
     expect(unaffected.source).toBe("local_cache")
     expect(unaffected.snapshot_id).toBe(second.snapshot_id)
+    expect((await f.run(readSkill(second.ref, { offline: true }))).snapshot_id).toBe(
+      second.snapshot_id,
+    )
     expect(f.requests.length).toBe(before)
   })
 
@@ -501,9 +511,9 @@ test("SC12 scope rejection reaches an old pin with no current observation", asyn
   const denied = await f.run(readSkill(old.ref).pipe(Effect.result))
   expect(denied._tag === "Failure" && denied.failure.code).toBe("AUTH_REQUIRED")
   const before = f.requests.length
-  const offline = await f.run(readSkill(old.ref, { offline: true }))
-  expect(offline.snapshot_id).toBe(old.snapshot_id)
-  expect(offline.freshness).toMatchObject({ policy: "pinned", stale: true })
+  await expect(f.run(readSkill(old.ref, { offline: true }))).rejects.toMatchObject({
+    code: "AUTH_REQUIRED",
+  })
   expect(f.requests.length).toBe(before)
   f.allow()
   await f.run(readSkill(page, { database, refresh: true }))
