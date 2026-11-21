@@ -314,6 +314,27 @@ for (const content of ['{"kind":"unknown"}', '{"kind":"source","source_id":', '{
     expect(f.mutations()).toEqual([])
   })
 
+test("a contradictory Source ID remains related even when its Content kind claims native authority", async () => {
+  const f = currentWriteFixture(parent)
+  const skill = await seedSkill(f)
+  const source = await seedSource(f)
+  clearContributions(f, source.page_id)
+  property(property(f.pages.get(skill.page_id)!.properties).content).rich_text = sourceRich(
+    JSON.stringify({ kind: "native", mode: "100644", frontmatter: "", source_id: "managed" }),
+  )
+  f.clearCalls()
+  expect(
+    await f.run(
+      removeCurrentSource(library, {
+        source_id: "managed",
+        operation_id: "contradictory-authority",
+        dry_run: true,
+      }).pipe(Effect.result),
+    ),
+  ).toMatchObject({ _tag: "Failure", failure: { code: "CURRENT_CONTENT_INVALID" } })
+  expect(f.mutations()).toEqual([])
+})
+
 test("an orphan legacy File still prevents a complete Source reference census", async () => {
   const f = currentWriteFixture(parent)
   await seedSkill(f)

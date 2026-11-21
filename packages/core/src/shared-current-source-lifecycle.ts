@@ -83,7 +83,8 @@ function contentReferencesSource(encoded: string, sourceId: string): boolean {
   switch (content.kind) {
     case "native":
     case "resource":
-      return false
+      // A conflicting explicit binding is still in scope; full decoding rejects it.
+      return content.source_id === sourceId
     case "source":
       if (typeof content.source_id === "string")
         return validateCurrentSourceId(content.source_id) === sourceId
