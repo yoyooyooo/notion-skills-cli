@@ -70,8 +70,10 @@ same operation kernel, including additions, removals and missing-owner rebuilds.
 Source enable/disable, unreferenced removal and exact file takeover/restore-follow
 use that current coordinator. Projection uses the same finite kernel and existing
 renderer, keeps the real Skill ready, and verifies full text on existing pages.
-Daily batches preserve human policy and stop with exact single-Skill recovery on
-failure. Partial relationship patches, sync, archive,
+Daily batches preserve human policy. Repeating a plain single-Skill or daily
+command continues only a projection with matching target, policy and complete
+input; explicit recovery retains the original policy and budgets. Conflicts and
+unconfirmed writes stop with exact coordinates. Partial relationship patches, sync, archive,
 graph-release, repair and old migration writers are not public routes. A removed
 route must fail without redirecting to a compatibility handler.
 

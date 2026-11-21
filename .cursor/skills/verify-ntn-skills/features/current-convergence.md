@@ -70,7 +70,9 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN"
 获得整个日用范围授权后，用公开 `ctl library projection --daily --entry DB`
 执行同一路径，记录 full tree、selected、excluded、row changes、正文读回和非文本跳过，再重复确认零语义写。Disabled
 和期望删除只报告，不隐式排除或改策略。失败批次保留 completed/remaining 与
-单项恢复命令；先用其 exact operation resume，再重跑 daily。日用批次不接受
+单项恢复命令。重跑普通单项/daily 命令时核同目标、policy 和完整输入 hash 才沿
+原 operation 自动恢复；冲突不接管，未知写不盲重放。显式恢复携带原 policy 和
+请求预算，省略筛选时用 intent 的冻结策略。日用批次不接受
 --operation/--resume/--cancel。不以单例或本地 exact directory 代称全日用 selected 正文完成。
 
 ## 2. Notion 清理与关系

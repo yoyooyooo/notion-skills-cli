@@ -171,8 +171,12 @@ Enabled and 期望删除 values are reported and preserved. To select one Skill,
 replace the respective default reading filter. These filters never change actual
 consumption exclusions. Dry-run reports selected/excluded paths and row/body
 changes. Equal complete reading pages cause zero semantic writes.
-An interrupted daily run reports completed targets and the exact single-Skill
-resume command. Resume that intent, then run `--daily` again. To stop it before
+Repeat the same single-Skill or daily command after interruption. Without
+`--operation`, it continues a pending projection when the target, reading policy
+and complete current input still match. Conflicts and unconfirmed CREATE/append
+outcomes stop with completed targets and an exact recovery command carrying the
+original policy and requested budgets. Explicit `--operation ID --resume` uses
+the frozen policy for omitted filters. To stop an intent before
 changing reading policy, use the exact `--operation ID --cancel`; only the pending
 action is reconciled, with no remaining projection work executed. Native bodies remain
 authoritative, and projection failure leaves already-ready consumption available.

@@ -18,6 +18,7 @@ import {
   writeCurrentSharedOperationRecord,
 } from "./shared-current-records.ts"
 import { CurrentSourceInputSchema } from "./shared-current-source-action.ts"
+import { CurrentProjectionPolicySchema } from "./shared-current-projection-policy.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
@@ -43,6 +44,7 @@ export const CurrentOperationIntentSchema = Schema.Union([
     input_sha256: Hash,
     owner: Schema.Struct({ kind: Schema.Literal("skill"), id: StableId }),
     projection: Schema.Literal(true),
+    policy: CurrentProjectionPolicySchema,
   }),
   Schema.Struct({
     operation_id: StableId,
@@ -473,7 +475,7 @@ export function currentOperationFailure(
   const sourceInput = "source_input" in intent ? intent.source_input : undefined
   const requiredInput =
     "projection" in intent
-      ? "Repeat projection for the same current Skill with --operation and --resume. Keep its exact current file bindings."
+      ? "Repeat projection with the same current Skill and policy, or use --operation and --resume with the frozen policy. Keep its exact current file bindings."
       : sourceInput === undefined
         ? "Resupply the same prepared input; its exact fingerprint is required."
         : sourceInput.kind === "declaration"
@@ -507,7 +509,7 @@ export function currentOperationFailure(
       ? {
           skill_id: intent.owner.id,
           skill_page_id: page,
-          ...("projection" in intent ? { projection: true } : {}),
+          ...("projection" in intent ? { projection: true, projection_policy: intent.policy } : {}),
           ...("source" in intent && intent.source !== undefined
             ? { source_intent: intent.source }
             : {}),

@@ -129,8 +129,12 @@ Daily combines current members of Sources marked 日用, Skills marked 日用 an
 Default Context. Enabled and 期望删除 are reported and preserved. A missing current
 binding or inaccessible original is a failure, not an omitted daily target.
 The daily run stops at the first failure and reports completed and remaining
-targets. Follow its exact single-Skill `--operation ID --resume` command, then
-rerun `--daily`. To stop that exact intent before changing policy, use
+targets. Repeat the same single-Skill or daily command without `--operation` to
+continue a matching unfinished projection. The current target, reading policy
+and complete input fingerprint must match; other content operations and
+unconfirmed CREATE/append outcomes remain blocked. The reported explicit
+`--operation ID --resume` command carries the original policy and requested
+budgets; omitted filters in explicit resume use the frozen policy. To stop that exact intent before changing policy, use
 `--operation ID --cancel`; only its pending action is reconciled. Daily does not
 accept `--operation`, `--resume` or `--cancel`; projection has no supersede mode. Projection failure leaves already-ready consumption available.
 

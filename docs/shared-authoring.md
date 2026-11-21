@@ -170,21 +170,35 @@ and 期望删除 without changing them. Daily text coverage includes disabled ch
 missing current metadata or unavailable bytes must be reported, not hidden.
 
 Each Skill uses one finite projection intent through the existing operation
-kernel. That intent reconciles Source reading rows and generated bodies. The real Skill remains ready
+kernel. Its effective include/exclude policy is stored with the input fingerprint.
+This policy lives only in the unfinished intent; completion retires it. A new
+projection uses its supplied filters or the defaults, not a persistent Skill policy.
+That intent reconciles Source reading rows and generated bodies. The real Skill remains ready
 for ordinary consumption, including after projection failure. Native author
 bodies are verified without replacement. The command does not change content
 authority, Source membership, retained file identities or human policies.
 
-Resume an interrupted single-Skill intent with the returned exact operation:
+After interruption, repeat the same single-Skill or daily command. Without an
+explicit `--operation`, the CLI continues the existing projection only when its
+target, effective policy and complete current input fingerprint match. It uses
+the existing operation's finite recovery rules and makes no retry loop. A content
+operation, changed input or policy, and an unconfirmed CREATE/append remain blocked.
+
+Explicit recovery remains available with the returned exact operation:
 
 ```bash
 ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ENTRY --operation PROJECTION_ID --resume
 ```
 
-Keep its original state and credential scope. A daily run executes Skills in
-order and stops on failure, reporting completed and remaining targets plus the
-exact single-Skill recovery command. Resume that intent first, then rerun daily;
-already-complete bodies require no semantic writes. `--daily` cannot combine
+Keep its original state and credential scope. Explicit resume of an unfinished
+intent uses the frozen policy for omitted include/exclude filters; supplied
+filters must still match. After retirement, resume only verifies the supplied
+policy without writing; supply custom filters again for that check.
+A daily run executes Skills in order and stops on failure, reporting completed
+and remaining targets plus the exact single-Skill recovery command with the
+original policy and requested invocation budgets. Repeating daily automatically
+continues matching intents; already-complete bodies require no semantic writes.
+`--daily` cannot combine
 with `--operation`, `--resume` or `--cancel`; projection has no supersede mode.
 Use the exact `--operation ID --cancel` to stop an old intent before changing its
 policy. Cancellation reconciles only its pending action and retires the intent;

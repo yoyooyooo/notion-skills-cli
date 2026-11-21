@@ -21,6 +21,12 @@ import {
   withCurrentOperation,
   type CurrentOperationSession,
 } from "./shared-current-operation.ts"
+import { currentProjectionPolicy } from "./shared-current-projection-policy.ts"
+export {
+  currentProjectionDefaultInclude,
+  currentProjectionDefaultExclude,
+  currentProjectionPolicy,
+} from "./shared-current-projection-policy.ts"
 import {
   applyCurrentProjection,
   inspectCurrentProjection,
@@ -42,20 +48,16 @@ import { canonicalSharedJson } from "./shared-records.ts"
 import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
 import { sha256, Store } from "./store.ts"
 
-export const currentProjectionDefaultInclude = ["**/*.md"] as const
-export const currentProjectionDefaultExclude = [
-  "**/{test,tests,__tests__,__snapshots__,fixtures,corpus,testdata,node_modules,vendor,dist,build,coverage}/**",
-] as const
-
 export type CurrentSkillProjectionOptions = {
   readonly target: string
-  readonly operation_id: string
-  readonly mode?: "apply" | "resume"
   readonly dry_run?: boolean
   readonly include?: readonly string[]
   readonly exclude?: readonly string[]
   readonly sourceOptions?: SharedSourcePlanOptions
-}
+} & (
+  | { readonly mode: "auto"; readonly operation_id?: never }
+  | { readonly mode?: "apply" | "resume"; readonly operation_id: string }
+)
 type FileIdentity = {
   readonly file_id: string
   readonly page_id?: string
@@ -174,29 +176,6 @@ function assertSameBinding(actual: CurrentFileBinding, expected: CurrentFileBind
       path: expected.path,
       page_id: expected.page_id,
     })
-}
-export function currentProjectionPolicy(
-  input: Pick<CurrentSkillProjectionOptions, "include" | "exclude">,
-) {
-  const include = [...(input.include ?? currentProjectionDefaultInclude)]
-  const exclude = [...(input.exclude ?? currentProjectionDefaultExclude)]
-  for (const patterns of [include, exclude]) {
-    if (
-      patterns.length > 100 ||
-      patterns.some(
-        (pattern) =>
-          typeof pattern !== "string" ||
-          !pattern ||
-          pattern.length > 512 ||
-          pattern.startsWith("/") ||
-          pattern.includes("\\") ||
-          /[\u0000-\u001f\u007f]/u.test(pattern) ||
-          pattern.split("/").includes(".."),
-      )
-    )
-      throw invalid("Projection patterns must be bounded relative POSIX globs.")
-  }
-  return { include, exclude }
 }
 function excludedBy(
   path: string,
@@ -345,12 +324,17 @@ export function prepareCurrentProjectionFiles(
 /** Explicit management only. Source manifests own the full tree; Files rows are selected reading pages. */
 export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillProjectionOptions) {
   return Effect.gen(function* () {
-    const policy = yield* checked(() => {
-      currentWriteIdentity(input.operation_id, "Operation ID")
-      if (input.mode !== undefined && input.mode !== "apply" && input.mode !== "resume")
-        throw invalid("Use apply or resume for a current reading projection.")
-      if (input.dry_run && input.mode === "resume")
-        throw invalid("Dry run cannot resume an unfinished current projection.")
+    const requestedPolicy = yield* checked(() => {
+      if (input.mode === "auto") {
+        if (input.operation_id !== undefined || input.dry_run)
+          throw invalid("Automatic projection has no explicit operation and cannot be a dry run.")
+      } else {
+        currentWriteIdentity(input.operation_id, "Operation ID")
+        if (input.mode !== undefined && input.mode !== "apply" && input.mode !== "resume")
+          throw invalid("Use auto, apply or resume for a current reading projection.")
+        if (input.dry_run && input.mode === "resume")
+          throw invalid("Dry run cannot resume an unfinished current projection.")
+      }
       return currentProjectionPolicy(input)
     })
     const index = yield* queryCurrentSkillIndex(library, input.target)
@@ -374,8 +358,8 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
       pending !== undefined &&
       (!("projection" in pending.intent) ||
         pending.intent.projection !== true ||
-        pending.intent.operation_id !== input.operation_id ||
-        input.mode !== "resume")
+        (input.mode !== "auto" &&
+          (pending.intent.operation_id !== input.operation_id || input.mode !== "resume")))
     )
       return yield* Effect.fail(
         currentOperationFailure(
@@ -388,6 +372,30 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
           index.page_id,
         ),
       )
+    const frozen =
+      pending !== undefined && "projection" in pending.intent ? pending.intent : undefined
+    const policy =
+      input.mode === "resume" && frozen !== undefined
+        ? currentProjectionPolicy({
+            include: input.include ?? frozen.policy.include,
+            exclude: input.exclude ?? frozen.policy.exclude,
+          })
+        : requestedPolicy
+    const operation_id =
+      input.mode === "auto"
+        ? (frozen?.operation_id ??
+          (yield* (yield* Crypto.Crypto)
+            .randomUUIDv4()
+            .pipe(
+              Effect.mapError(() =>
+                fail("CRYPTO_ERROR", "Cannot identify this projection intent."),
+              ),
+            )))
+        : input.operation_id
+    const mode =
+      input.mode === "resume" || (input.mode === "auto" && frozen !== undefined)
+        ? "resume"
+        : "apply"
     const consumption = yield* resolveCurrentSkillConsumption(library, index, {
       sourceOptions: input.sourceOptions,
     }).pipe(
@@ -397,6 +405,34 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
           : currentOperationFailure(error, pending.intent, null, index.page_id),
       ),
     )
+    const originalConsumption = consumptionIdentity(consumption)
+    const input_sha256 = yield* sha256(
+      canonicalSharedJson({
+        purpose: "current_text_projection",
+        version: 1,
+        owner: {
+          skill_id: index.skill_id,
+          page_id: index.page_id,
+          main_file_id: index.main.file_id,
+          main: index.main.path,
+        },
+        consumption: originalConsumption,
+        policy,
+      }),
+    )
+    if (
+      frozen !== undefined &&
+      (frozen.input_sha256 !== input_sha256 ||
+        canonicalSharedJson(frozen.policy) !== canonicalSharedJson(policy))
+    )
+      return yield* Effect.fail(
+        currentOperationFailure(
+          invalid("The current content or reading policy differs from the unfinished projection."),
+          frozen,
+          null,
+          index.page_id,
+        ),
+      )
     const fullTree = sorted(consumption.files)
     const main = fullTree.find((file) => file.path === index.main.path)
     if (main === undefined)
@@ -471,21 +507,6 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
       [index.main.path, index.main],
       ...index.files.map((file) => [file.path, file] as const),
     ])
-    const originalConsumption = consumptionIdentity(consumption)
-    const input_sha256 = yield* sha256(
-      canonicalSharedJson({
-        purpose: "current_text_projection",
-        version: 1,
-        owner: {
-          skill_id: index.skill_id,
-          page_id: index.page_id,
-          main_file_id: index.main.file_id,
-          main: index.main.path,
-        },
-        consumption: originalConsumption,
-        policy,
-      }),
-    )
     const prepared = yield* prepareCurrentProjectionFiles(
       library,
       index,
@@ -547,7 +568,7 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
       library: { library_id: library.library_id, entry: library.skills.database_id },
       skill_id: index.skill_id,
       page_id: index.page_id,
-      operation_id: input.operation_id,
+      operation_id,
       input_sha256,
       status: input.dry_run
         ? "dry_run"
@@ -724,13 +745,14 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
       })
     return yield* withCurrentOperation(library, {
       intent: {
-        operation_id: input.operation_id,
+        operation_id,
         input_sha256,
         owner: { kind: "skill", id: index.skill_id },
         projection: true,
+        policy,
       },
       ownerPageId: index.page_id,
-      mode: input.mode,
+      mode,
       beforeMutation: assertInventory,
       verifyCompletedResume: () =>
         inspect.pipe(

@@ -1,4 +1,4 @@
-import { Crypto, Effect, Option, Stdio, Stream } from "effect"
+import { Crypto, Effect, Option, Schema, Stdio, Stream } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { databaseId } from "../../core/src/catalog.ts"
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
@@ -7,6 +7,7 @@ import { Notion } from "../../core/src/notion.ts"
 import { pageId } from "../../core/src/ref.ts"
 import { loadCurrentDailySkills } from "../../core/src/shared-current-daily.ts"
 import { withCurrentInvocationBudget } from "../../core/src/shared-current-invocation.ts"
+import { CurrentProjectionPolicySchema } from "../../core/src/shared-current-projection-policy.ts"
 import {
   currentProjectionPolicy,
   projectCurrentSkill,
@@ -41,7 +42,7 @@ export function prepareCurrentProjectionOptions(input: {
   if (input.daily && (input.operation !== undefined || input.resume || input.cancel))
     throw fail(
       "INVALID_ARGUMENT",
-      "Daily projection uses one finite intent per Skill. Resume an exact failed Skill page with its own --operation, then run --daily again.",
+      "Daily projection continues each matching unfinished intent automatically. Use an exact Skill page for explicit --operation, --resume or --cancel.",
     )
   if (
     input.cancel &&
@@ -82,7 +83,11 @@ export function prepareCurrentProjectionOptions(input: {
     scope,
     limits,
     policy: currentProjectionPolicy(input),
-    mode: input.resume ? ("resume" as const) : ("apply" as const),
+    mode: input.resume
+      ? ("resume" as const)
+      : input.operation === undefined && !input.dryRun
+        ? ("auto" as const)
+        : ("apply" as const),
   }
 }
 
@@ -94,9 +99,19 @@ const budgetFlag = (name: string, description: string) =>
   )
 
 /** Recovery follows the observed intent, never the newly requested batch identity. */
-export function currentProjectionRecoveryNext(details: unknown, target: string, entry: string) {
+export function currentProjectionRecoveryNext(
+  details: unknown,
+  target: string,
+  entry: string,
+  limits: Partial<ReturnType<typeof prepareCurrentProjectionOptions>["limits"]> = {},
+) {
   const current = property(details)
   if (current.projection === true && typeof current.operation_id === "string") {
+    const policy = Schema.decodeUnknownOption(CurrentProjectionPolicySchema)(
+      current.projection_policy,
+      { onExcessProperty: "error" },
+    )
+    if (Option.isNone(policy)) return undefined
     const ownerPage =
       typeof current.skill_page_id === "string" ? pageId(current.skill_page_id) : undefined
     return {
@@ -111,9 +126,15 @@ export function currentProjectionRecoveryNext(details: unknown, target: string, 
         "--operation",
         current.operation_id,
         "--resume",
+        ...policy.value.include.flatMap((pattern) => ["--include", pattern]),
+        ...policy.value.exclude.flatMap((pattern) => ["--exclude", pattern]),
+        ...(limits.requests === undefined ? [] : ["--max-requests", String(limits.requests)]),
+        ...(limits.bytes === undefined ? [] : ["--max-bytes", String(limits.bytes)]),
+        ...(limits.duration_ms === undefined ? [] : ["--timeout", String(limits.duration_ms)]),
       ],
       read_only: false,
-      reason: "Resume this exact pending projection, then rerun the daily selection if needed.",
+      reason:
+        "Resume this exact pending projection with its frozen policy, then rerun the daily selection if needed.",
     }
   }
   const owner = property(current.owner)
@@ -152,7 +173,10 @@ export const currentProjectionCommand = defineCommand(
       "operation",
       "Exact single-Skill projection intent; required with --resume or --cancel",
     ),
-    resume: switchFlag("resume", "Reconcile and continue this exact Skill's projection intent"),
+    resume: switchFlag(
+      "resume",
+      "Continue this exact Skill intent; omitted reading filters use its frozen policy",
+    ),
     cancel: switchFlag(
       "cancel",
       "Reconcile only the pending action and retire this exact reading intent without continuing it",
@@ -248,31 +272,43 @@ export const currentProjectionCommand = defineCommand(
                 Effect.mapError(() => fail("OUTPUT_FAILED", "Cannot report projection progress.")),
               )
             }
-            const intent =
-              operation ??
-              (yield* (yield* Crypto.Crypto)
-                .randomUUIDv4()
-                .pipe(
-                  Effect.mapError(() =>
-                    fail("CRYPTO_ERROR", "Cannot identify this projection intent."),
-                  ),
-                ))
+            const execution =
+              prepared.mode === "auto"
+                ? ({ mode: "auto" } as const)
+                : {
+                    mode: prepared.mode,
+                    operation_id:
+                      operation ??
+                      (yield* (yield* Crypto.Crypto)
+                        .randomUUIDv4()
+                        .pipe(
+                          Effect.mapError(() =>
+                            fail("CRYPTO_ERROR", "Cannot identify this projection intent."),
+                          ),
+                        )),
+                  }
             const result = yield* projectCurrentSkill(library, {
               target,
-              operation_id: intent,
-              mode: prepared.mode,
+              ...execution,
               dry_run: options.dryRun,
-              include: prepared.policy.include,
-              exclude: prepared.policy.exclude,
+              include: options.include.length === 0 ? undefined : options.include,
+              exclude: options.exclude.length === 0 ? undefined : options.exclude,
             }).pipe(
               Effect.mapError((error) => {
-                const next = currentProjectionRecoveryNext(error.details, target, options.entry)
+                const next = currentProjectionRecoveryNext(
+                  error.details,
+                  target,
+                  options.entry,
+                  prepared.limits,
+                )
                 return fail(error.code, error.message, {
                   ...property(error.details),
                   ...(next === undefined ? {} : { next }),
                   projection_scope: prepared.scope.kind,
                   failed_target: target,
-                  requested_operation_id: intent,
+                  ...(execution.mode === "auto"
+                    ? {}
+                    : { requested_operation_id: execution.operation_id }),
                   completed: results.map((item) => ({
                     skill_id: item.skill_id,
                     page_id: item.page_id,
@@ -307,7 +343,7 @@ export const currentProjectionCommand = defineCommand(
     { kind: "requires_absent", flag: "cancel", absent: ["resume", "dryRun", "include", "exclude"] },
   ]),
   Command.withDescription(
-    "Reconcile human-readable Source projections: retain the main body, include Markdown by default, and exclude test, fixture, dependency and generated directories. Repeated --include/--exclude globs replace their respective defaults. Create missing selected Files, update their Source descriptors, retire excluded or upstream-removed Source rows, then render complete selected text. Source manifests and Contributions retain every consumption file regardless of reading selection. Native/resource Files remain Notion authority and are preserved; native bodies are verified without replacement. Links to unprojected Source files use the fixed GitHub commit. --daily selects Source 日用 current members, Skill 日用 and Default Context; Enabled and 期望删除 are preserved. --dry-run reports full-tree counts, selection, exclusions and planned row/body changes. An equal result performs zero semantic writes. Each Skill uses one finite operation; failures leave consumption ready. --resume continues that exact intent; --cancel reconciles its pending action and retires only that intent, without claiming the projection is complete. Daily execution stops at the first failure with exact recovery coordinates. Invocation budgets cover reads, writes and retries; Git internal wire traffic is not counted. Ordinary list/read/use/export/SDK/Pi never generate projections.",
+    "Reconcile human-readable Source projections: retain the main body, include Markdown by default, and exclude test, fixture, dependency and generated directories. Repeated --include/--exclude globs replace their respective defaults. Create missing selected Files, update their Source descriptors, retire excluded or upstream-removed Source rows, then render complete selected text. Source manifests and Contributions retain every consumption file regardless of reading selection. Native/resource Files remain Notion authority and are preserved; native bodies are verified without replacement. Links to unprojected Source files use the fixed GitHub commit. --daily selects Source 日用 current members, Skill 日用 and Default Context; Enabled and 期望删除 are preserved. --dry-run reports full-tree counts, selection, exclusions and planned row/body changes. An equal result performs zero semantic writes. Without --operation, repeating a single-Skill or daily command automatically continues an unfinished projection only when its current target, policy and complete input fingerprint still match. Each Skill uses one finite operation; failures leave consumption ready. Explicit --operation requires --resume to continue that intent; omitted filters then use its frozen policy. --cancel reconciles its pending action and retires only that intent, without claiming the projection is complete. Conflicts and unobserved CREATE/append outcomes stop with exact recovery coordinates; no unbounded retry or content-operation takeover occurs. Daily execution stops at the first failure. Invocation budgets cover reads, writes and retries; Git internal wire traffic is not counted. Ordinary list/read/use/export/SDK/Pi never generate projections.",
   ),
   Command.withExamples([
     {

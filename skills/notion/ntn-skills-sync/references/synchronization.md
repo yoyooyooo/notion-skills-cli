@@ -203,14 +203,21 @@ files use the fixed commit. Dry-run reports selection and row/body changes. Equa
 complete reading pages cause zero semantic writes. Generated edits never transfer authority.
 
 Each Skill uses the existing finite kernel and renderer while its real ready
-state remains available for consumption. A failed daily batch reports completed
-and remaining targets and its exact single-Skill resume command:
+state remains available for consumption. Repeat the same single-Skill or daily
+command after interruption. Without --operation, it continues an unfinished
+projection only when the target, effective reading policy and complete current
+input fingerprint match. Content operations, changed input or policy, and
+unconfirmed CREATE/append outcomes remain blocked. A failed daily batch reports
+completed and remaining targets and an exact single-Skill recovery command with
+the original policy and requested budgets. Explicit recovery uses:
 
 ```sh
 ntn-skills ctl library projection PAGE_ID --entry ENTRY --operation OPERATION_ID --resume
 ```
 
-Resume that intent with its original state/credential scope, then rerun daily.
+Keep the original state/credential scope. Omitted filters use the unfinished
+intent's frozen policy; supplied filters must match. The policy retires with the
+completed intent, so new projections use their supplied filters or defaults.
 Stop an old reading policy with its exact --operation ID --cancel before starting
 a new intent. Cancellation reconciles only the pending action, without running
 the remaining work. Uncertain actions remain pending. Daily rejects --operation,

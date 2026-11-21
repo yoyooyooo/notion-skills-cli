@@ -509,10 +509,16 @@ an omitted or successful target.
 Projection uses the same finite operation kernel with a `projection: true` intent.
 It leaves the real Skill ready and does not bind generated-body recovery to
 ordinary consumption. The intent freezes authoritative consumption facts, Source
-fingerprint and reading policy; disposable row allocation and rewritten links do
+fingerprint and stores the effective reading policy in that same intent; disposable row allocation and rewritten links do
 not change its input identity. Each actual mutation still freezes its exact request.
-Native bodies are checked without writing them. Single-Skill recovery uses the
-same `--operation ID --resume`. To stop that intent, `--operation ID --cancel`
+Native bodies are checked without writing them. Without an explicit operation,
+repeating the single-Skill or daily command resumes an existing projection only
+when its target, effective policy and complete input fingerprint still match.
+It does not take over content operations or retry unobserved CREATE/append writes.
+Explicit recovery uses `--operation ID --resume`; omitted filters use that intent's
+frozen policy, and supplied filters must match. Error recovery coordinates carry
+the original policy and requested budgets rather than a conflicting new policy.
+To stop that intent, `--operation ID --cancel`
 reconciles only its pending action and retires the intent without executing its
 remaining work or claiming complete projection. Uncertain outcomes remain pending.
 There is no projection supersede mode. Daily runs execute one Skill intent at a

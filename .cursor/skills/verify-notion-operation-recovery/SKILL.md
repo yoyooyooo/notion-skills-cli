@@ -40,10 +40,12 @@ Notion 属性和本地 mutex 不提供跨机器 CAS。显式 supersede 不能撤
 
 用 `ctl library operation OWNER_ID --kind skill|source --entry ENTRY` 只读查看当前意图及物理定位。没有可见意图不等于 owner ready。Source 连续 supersede 时，若当前父尚未接走祖父的 child，下一轮必须在父首次写前拒绝并指回现父 resume；已接走则可用新的完整目标继续，不保留历史链。
 
-Projection 的修改复用 `shared-current-projection-write.test.ts`：未知 append 后
-沿同一 `projection PAGE_ID --entry DB --operation ID --resume` 对账，不自动
-重放或改 native。Daily 顺序运行每个 Skill，失败即停并返回已成/未成范围；
-先恢复失败单项再重跑 daily，相等正文零写。Projection 不提供 supersede。
+Projection 的修改复用 `shared-current-projection-write.test.ts` 和 CLI 对应测试。
+普通单项/daily 命令重跑时，只在同目标、有效 policy 和完整输入 hash 一致时
+自动沿原 operation 恢复，不接管内容意图或盲重放未知 CREATE/append。核自定义
+policy 与预算进入准确恢复命令；显式 `--operation ID --resume` 省略筛选时用
+原 intent 的 policy，冲突新策略不能覆盖它。Daily 顺序运行，失败返回已成/未成
+范围；相等正文零写。Projection 不提供 supersede。
 
 ## Evidence
 

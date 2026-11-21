@@ -16,6 +16,7 @@ import {
 } from "../src/shared-current-operation.ts"
 import {
   currentProjectionLinkRewriter,
+  currentProjectionPolicy,
   projectCurrentSkill,
 } from "../src/shared-current-projection-write.ts"
 import { cancelCurrentSkillProjection } from "../src/shared-current-projection-cancel.ts"
@@ -229,7 +230,7 @@ test("projects complete text to existing Skill and File pages, preserves authori
   expect(f.calls).toHaveLength(14)
 })
 
-test("an accepted unknown append resumes after File query order changes without making consumption unready", async () => {
+test("an ordinary repeat automatically resumes the exact accepted append after File query order changes", async () => {
   const { f, written } = await seed()
   f.failNext({ kind: "append", outcome: "accepted" })
   await expect(
@@ -250,10 +251,10 @@ test("an accepted unknown append resumes after File query order changes without 
   const resumed = await f.run(
     projectCurrentSkill(library, {
       target: written.page_id,
-      operation_id: "unknown-append",
-      mode: "resume",
+      mode: "auto",
     }),
   )
+  expect(resumed.operation_id).toBe("unknown-append")
   expect(resumed.counts.unchanged).toBe(1)
   expect(resumed.counts.applied).toBe(3)
   expect(f.blocks.get(written.page_id)).toEqual(firstBlocks)
@@ -275,19 +276,160 @@ test("unknown absent append is never duplicated from absence and never changes c
     f.run(projectCurrentSkill(library, { target: written.page_id, operation_id: "absent-append" })),
   ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
   f.clearCalls()
-  await expect(
-    f.run(
-      projectCurrentSkill(library, {
-        target: written.page_id,
-        operation_id: "absent-append",
-        mode: "resume",
-      }),
-    ),
-  ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+  for (const execution of [
+    { operation_id: "absent-append", mode: "resume" } as const,
+    { mode: "auto" } as const,
+  ])
+    await expect(
+      f.run(projectCurrentSkill(library, { target: written.page_id, ...execution })),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
   expect(f.mutations().filter((call) => call.path.includes("/children"))).toEqual([])
   expect((await f.run(queryCurrentSkillIndex(library, written.page_id))).state).toEqual({
     state: "ready",
   })
+})
+
+test("automatic continuation rejects changed policy or content and retains the original recovery policy", async () => {
+  for (const change of ["policy", "content"] as const) {
+    const { f, written } = await seed()
+    f.failNext({ kind: "append", outcome: "accepted" })
+    await expect(
+      f.run(projectCurrentSkill(library, { target: written.page_id, operation_id: "frozen" })),
+    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    const pending = await f.run(
+      readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
+    )
+    if (change === "content") {
+      const index = await f.run(queryCurrentSkillIndex(library, written.page_id))
+      const row = f.pages.get(written.page_id)!
+      const properties = property(row.properties)
+      properties[library.skills.property_ids.Content!] = {
+        id: library.skills.property_ids.Content,
+        type: "rich_text",
+        rich_text: sourceRich(JSON.stringify({ ...index.main.content, sha256: "f".repeat(64) })),
+      }
+    }
+    f.clearCalls()
+    await expect(
+      f.run(
+        projectCurrentSkill(library, {
+          target: written.page_id,
+          mode: "auto",
+          ...(change === "policy" ? { include: ["references/**/*.md"] } : {}),
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "CURRENT_PROJECTION_CONFLICT",
+      details: {
+        operation_id: "frozen",
+        projection_policy: currentProjectionPolicy({}),
+      },
+    })
+    expect(f.mutations()).toEqual([])
+    expect(
+      (await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })))
+        ?.intent,
+    ).toEqual(pending?.intent)
+  }
+})
+
+test("explicit resume uses the frozen custom policy when filters are omitted", async () => {
+  const { f, written } = await seed()
+  const policy = { include: ["references/**/*.md"], exclude: [] }
+  f.failNext({ kind: "append", outcome: "accepted" })
+  await expect(
+    f.run(
+      projectCurrentSkill(library, {
+        target: written.page_id,
+        operation_id: "custom-policy",
+        ...policy,
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  f.clearCalls()
+  await expect(
+    f.run(
+      projectCurrentSkill(library, {
+        target: written.page_id,
+        operation_id: "custom-policy",
+        mode: "resume",
+      }),
+    ),
+  ).resolves.toMatchObject({ operation_id: "custom-policy", policy })
+  expect(
+    f.mutations().filter((call) => call.path === `v1/blocks/${written.page_id}/children`),
+  ).toEqual([])
+})
+
+test("completed custom projection resume only verifies the supplied policy and cannot start default writes", async () => {
+  const { f, written } = await seedSourceReading()
+  const policy = { include: ["SKILL.md"], exclude: [] }
+  await f.run(
+    projectCurrentSkill(library, {
+      target: written.page_id,
+      operation_id: "completed-custom",
+      ...policy,
+    }),
+  )
+  expect(
+    await f.run(
+      readCurrentOperationIntent(library, {
+        kind: "skill",
+        id: defaults.skill_id,
+      }),
+    ),
+  ).toBeUndefined()
+  f.clearCalls()
+  await expect(
+    f.run(
+      projectCurrentSkill(library, {
+        target: written.page_id,
+        operation_id: "completed-custom",
+        mode: "resume",
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "CURRENT_PROJECTION_CONFLICT" })
+  expect(f.mutations()).toEqual([])
+  await expect(
+    f.run(
+      projectCurrentSkill(library, {
+        target: written.page_id,
+        operation_id: "completed-custom",
+        mode: "resume",
+        ...policy,
+      }),
+    ),
+  ).resolves.toMatchObject({ status: "unchanged", selected: 1, policy })
+  expect(f.mutations()).toEqual([])
+})
+
+test("automatic projection does not take over an unfinished content operation", async () => {
+  const f = currentWriteFixture(parent)
+  const plan = await f.run(
+    prepareCurrentSkillWrite({
+      ...defaults,
+      files: [
+        { path: "SKILL.md", bytes: testBytes("# Native author\n"), authority: { kind: "native" } },
+      ],
+    }),
+  )
+  f.failNext({ kind: "native-body", outcome: "accepted" })
+  await expect(
+    f.run(writeCurrentSkill(library, { plan, operation_id: "content-writer" })),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  const pending = await f.run(
+    readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
+  )
+  const target = String(f.table("skills")[0]!.id)
+  f.clearCalls()
+  await expect(f.run(projectCurrentSkill(library, { target, mode: "auto" }))).rejects.toMatchObject(
+    { code: "CURRENT_OPERATION_PENDING" },
+  )
+  expect(f.mutations()).toEqual([])
+  expect(
+    (await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })))
+      ?.intent,
+  ).toEqual(pending?.intent)
 })
 
 test("a corrupt cached original is rejected before any projection or finite Record write", async () => {
@@ -1048,6 +1190,7 @@ async function leaveDenseProjectionPending(outcome: "accepted" | "absent" = "acc
           input_sha256: inputHash,
           owner: { kind: "skill", id: defaults.skill_id },
           projection: true,
+          policy: { include: ["**/*"], exclude: [] },
         },
         ownerPageId: index.page_id,
         run: (session) =>

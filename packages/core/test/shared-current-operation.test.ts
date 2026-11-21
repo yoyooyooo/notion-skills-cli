@@ -641,7 +641,11 @@ describe("current Source-child operation", () => {
 })
 
 describe("finite reading projection", () => {
-  const projectionIntent = { ...intent, projection: true as const }
+  const projectionIntent = {
+    ...intent,
+    projection: true as const,
+    policy: { include: ["**/*.md"], exclude: [] },
+  }
   const cancellationAction = (
     f: ReturnType<typeof fixture>,
     replay: "never" | "idempotent" = "never",

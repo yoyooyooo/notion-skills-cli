@@ -102,7 +102,7 @@ ntn-skills ctl library projection --daily --entry ENTRY_DATABASE_ID --dry-run
 ntn-skills ctl library projection --daily --entry ENTRY_DATABASE_ID
 ```
 
-日用是 Source 日用的当前成员、Skill 日用与 Default Context 的并集；现有 Enabled、期望删除只报告，不修改。单项处理时，将 `--daily` 换成精确 Skill page ID。完整正文相同时零语义写。日用批次中断会返回已完成目标及失败单项的精确恢复命令，先恢复该意图，再重跑 `--daily`。需变更阅读范围时，用原 `--operation ID --cancel` 仅核对在途动作并关闭旧意图，不继续其余投影；未确认动作仍保留。投影失败仍保留已就绪的消费。步骤见[正文生成](docs/shared-authoring.md#generate-readable-text-in-notion)。
+日用是 Source 日用的当前成员、Skill 日用与 Default Context 的并集；现有 Enabled、期望删除只报告，不修改。单项处理时，将 `--daily` 换成精确 Skill page ID。完整正文相同时零语义写。中断后重跑同一单项或日用命令；未指定 `--operation` 时，仅在目标、有效阅读策略与完整当前输入一致时自动沿原投影意图继续。冲突或未确认的 CREATE/append 仍停止，并返回已完成范围及携带原策略、请求预算的精确恢复命令。显式 `--operation ID --resume` 省略筛选时使用未完成意图的冻结策略。需变更阅读范围时，用原 `--operation ID --cancel` 仅核对在途动作并关闭旧意图，不继续其余投影；未确认动作仍保留。投影失败仍保留已就绪的消费。步骤见[正文生成](docs/shared-authoring.md#generate-readable-text-in-notion)。
 
 ## 建库和 Profile
 

@@ -41,7 +41,7 @@ ntn-skills files SNAPSHOT_ID
 ntn-skills export SNAPSHOT_ID --output NEW_DIRECTORY
 ~~~
 
-files 的完整目录不证明 body 已获取。整包导出、单文件输出和实际 Notion 全文阅读分别核对。日用 main 与全部文本子文件必须有完整正文；非文本明确 skipped，原件消费仍需成立。文本占位、原件缺失、Source-generated body 编辑自动接管均是缺陷。全日用只用同一公开 `projection --daily --entry ENTRY`，失败先按返回的单项 operation resume，再重跑 daily；不另起批量 writer。
+files 的完整目录不证明 body 已获取。整包导出、单文件输出和实际 Notion 全文阅读分别核对。日用 main 与全部文本子文件必须有完整正文；非文本明确 skipped，原件消费仍需成立。文本占位、原件缺失、Source-generated body 编辑自动接管均是缺陷。全日用只用同一公开 `projection --daily --entry ENTRY`；重跑时同目标、policy 和完整输入一致才自动续原意图，冲突与未确认的未知写仍停止。显式恢复使用原冻结策略，不另起批量 writer。
 
 当前 Profile 用 singular `ctl library profile`。set 传完整规则、必填 name/enabled/expect，遗漏 default-view/freshness-json 表示清除。unknown 后的 reconcile 只读当前规则，不重复 POST/PATCH；当前内容相等不伪造旧 ACK。
 

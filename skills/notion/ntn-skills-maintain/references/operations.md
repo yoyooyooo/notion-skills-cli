@@ -121,14 +121,21 @@ selected/excluded paths and row/body changes.
 The whole daily invocation shares the same request, byte and deadline limits.
 
 Projection uses a finite intent while the real Skill stays ready for consumption.
+After interruption, repeat the same single-Skill or daily command. Without
+--operation, it continues an unfinished projection only when the target, effective
+reading policy and complete current input fingerprint match. Content operations,
+changed input or policy, and unconfirmed CREATE/append outcomes remain blocked.
 A daily batch stops on the first failure with completed/remaining scope and an
-exact single-Skill operation. Keep the original state and credential scope:
+exact single-Skill recovery command carrying the original policy and requested
+budgets. Keep the original state and credential scope. Explicit recovery uses:
 
 ```sh
 ntn-skills ctl library projection PAGE_ID --entry ENTRY --operation OPERATION_ID --resume
 ```
 
-Resume that Skill, then rerun daily. Already-complete bodies make no writes.
+Omitted filters use the unfinished intent's frozen policy; supplied filters must
+match. Completion retires the policy with the intent, so new projections use
+their supplied filters or defaults. Already-complete bodies make no writes.
 To stop the old intent before changing policy, use its exact --operation ID
 --cancel. Only the pending action is reconciled; the remaining work is not run or
 reported complete. Daily rejects --operation, --resume and --cancel; projection

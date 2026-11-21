@@ -184,7 +184,7 @@ test("real Store preserves projection intent without changing its owner across r
     const written = await run(
       root,
       `
-const projection={...pending,owner_page_id:'00000000-0000-4000-8000-000000000001',intent:{...pending.intent,projection:true},lifecycle:{phase:'active',record_page_id:'00000000-0000-4000-8000-000000000002'}};
+const projection={...pending,owner_page_id:'00000000-0000-4000-8000-000000000001',intent:{...pending.intent,projection:true,policy:{include:['**/*.md'],exclude:[]}},lifecycle:{phase:'active',record_page_id:'00000000-0000-4000-8000-000000000002'}};
 yield* store.writeJson(key,projection);
 const content={...projection,intent:pending.intent};
 const replaced=yield* store.writeJson(key,content).pipe(Effect.result);
@@ -194,7 +194,11 @@ console.log(JSON.stringify({projection:yield* store.readJson(key,CurrentWritePen
     const initial = JSON.parse(written.stdout)
     expect(initial.projection).toMatchObject({
       owner_page_id: "00000000-0000-4000-8000-000000000001",
-      intent: { ...pending.intent, projection: true },
+      intent: {
+        ...pending.intent,
+        projection: true,
+        policy: { include: ["**/*.md"], exclude: [] },
+      },
       lifecycle: { phase: "active" },
     })
     expect(initial.replaced).toBe("STATE_CONFLICT")
