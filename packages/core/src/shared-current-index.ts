@@ -163,7 +163,8 @@ export function currentFileRecord(
     row.archived === true ||
     row.is_archived === true ||
     parent.type !== "data_source_id" ||
-    exactPage(parent.data_source_id, "File data source") !== dataSourceId
+    exactPage(parent.data_source_id, "File data source") !==
+      exactPage(dataSourceId, "Files data source")
   )
     throw invalid("The current Files query returned an unavailable or foreign page.")
   const owner = fileOwner(row, ids)
@@ -361,10 +362,10 @@ export function queryCurrentSkillIndex(
   })
 }
 
-/** Complete current library metadata for relationship retirement. Files are
- * enumerated independently, so an orphan or a missing Origin cannot disappear
- * behind an owner filter. No file bodies or resource bytes are fetched. */
-export function queryCurrentLibraryIndex(library: SharedLibrary) {
+/** Complete relationship census, before selecting a current management scope.
+ * Files are enumerated independently, so orphan Files cannot disappear behind an
+ * owner filter. Empty legacy Content remains observable, never current content. */
+export function queryCurrentLibraryCensus(library: SharedLibrary) {
   return Effect.gen(function* () {
     const api = yield* Notion
     const enumerate = (dataSourceId: string, properties: readonly string[] = []) =>
@@ -435,30 +436,40 @@ export function queryCurrentLibraryIndex(library: SharedLibrary) {
       exactPage(library.files.data_source_id, "Files data source"),
     )
     const filePages = yield* enumerate(filesDataSourceId, Object.values(ids))
-    const files = new Map<string, CurrentFileBinding[]>([...pages.keys()].map((page) => [page, []]))
+    const skills = new Map<
+      string,
+      {
+        raw: unknown
+        skill_id: string
+        content: string
+        files: { raw: unknown; content: string }[]
+      }
+    >()
+    for (const [page, raw] of pages) {
+      const metadata = yield* checked(() => {
+        const row = object(raw, "Skill reference metadata")
+        return {
+          raw,
+          skill_id: rich(row, library.skills.property_ids, "Skill ID"),
+          content: rich(row, library.skills.property_ids, "Content"),
+          files: [],
+        }
+      })
+      skills.set(page, metadata)
+    }
     for (const [page, raw] of filePages) {
-      const file = yield* checked(() => {
-        const owner = fileOwner(object(raw, "Current File page"), ids)
-        if (!pages.has(owner))
+      yield* checked(() => {
+        const row = object(raw, "File reference metadata")
+        const owner = fileOwner(row, ids)
+        const skill = skills.get(owner)
+        if (skill === undefined)
           throw invalid("A current File has no available owner in this library.", {
             page_id: page,
             skill_page_id: owner,
           })
-        return currentFileRecord(raw, owner, filesDataSourceId, ids)
+        skill.files.push({ raw, content: rich(row, ids, "Content") })
       })
-      files.get(file.skill_page_id)!.push(file)
     }
-    const skills = new Map<string, CurrentSkillIndex>()
-    for (const [page, raw] of pages) {
-      const index = yield* queryCurrentSkillIndex(library, page, raw, files.get(page)!)
-      if (skills.has(index.skill_id))
-        return yield* Effect.fail(
-          invalid("Several current Skills claim the same stable identity.", {
-            skill_id: index.skill_id,
-          }),
-        )
-      skills.set(index.skill_id, index)
-    }
-    return { skills, pages }
+    return skills
   })
 }
