@@ -288,7 +288,7 @@ function git(
               stdin: observe.stdin === undefined ? "ignore" : Stream.make(observe.stdin),
               stdout: "pipe",
               stderr: "pipe",
-              detached: false,
+              // The spawner owns a POSIX group so cancellation also stops Git helpers.
               forceKillAfter: "2 seconds",
               env: {
                 GIT_TERMINAL_PROMPT: "0",
