@@ -28,11 +28,20 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 5. 每文件 acquisition v5 支持多 Source、native 和 resource。检查 exact hash/bytes/mode、按需获取、offline 不发请求及权限拒绝；generated body 编辑不自动接管。
 6. 相对文件留在选定 owner；跨 Skill 路径要求显式当前引用。整包 export 与单文件 read --output 分别核 bytes/path/mode；任意多路径 export 尚未公开，不发明选项。
 7. 真实公开 list/read/use/files/export 的语义写计数均为 0。Notion query POST 是读；Record 创建、投影、adoption 和清理都是写。
+8. SDK 的完整 `options.env` 同时约束配置和实际 Git 子进程；并发 operation 不共享可变环境。公共 consume 的接线必须有受控 Source/实际 shim 证据，单独测试 runtime 不能代替。
+9. 取消不只检查 SDK 返回。POSIX Git 主进程及其自有进程组须收束，包括主进程先退、孙进程忽略 SIGTERM 的情况；保留原取消原因、2 秒强杀边界和 stderr 保密。不改认证或延长预算制造通过。
 
 相关当前获取和请求检查：
 
 ~~~sh
 bun test packages/core/test/shared-acquisition-contract.test.ts packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts packages/core/test/shared-read-coalescing.test.ts --timeout 60000
+~~~
+
+SDK 环境或 Git 生命周期变化另执行现有边界回归：
+
+~~~sh
+bun test packages/cli/test/sdk.test.ts packages/core/test/source-git-runtime.test.ts --timeout 30000
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-immutable-read.node.test.ts
 ~~~
 
 安装层复用 [portable-export-package-consumption](../verify-ntn-skills/features/portable-export-package-consumption.md) 的实际包入口。旧远端恢复或已退出命令的步骤不可继承；包未切换记缺口。Pi 由 Broker integration 沿 AH-1197/AH-637/AH-1198 验；AH-1063 仅为历史基线，不扩 OMP/Tern。
@@ -42,6 +51,10 @@ bun test packages/core/test/shared-acquisition-contract.test.ts packages/core/te
 按 [当前合同与回执](../../../docs/verification-contracts.md) 标 C01/C06/C07a/C09、具体时间线及实际层级；相同原件跨票引用不重复计数。
 
 记录当前范围、来源、完整字节比对、freshness、HTTP attempts/bytes 和语义写。相同输入/scope/freshness 才可比较成本；不省文件或延 TTL 制造下降。
+
+冷读未取得完整固定结果时，下一次同输入是再次 current 观察，不能记作 warm。
+Notion metadata 成功、Git acquisition 等待、实际 cat-file 正文、进程树退出分别记录；
+未知 wire/auth wait 不填零。显式测试期限不代表普通 Pi 的默认期限。
 
 源码当前测试、实际安装、真实 Notion 阅读投影和 Pi 分开记录。Source/resource 的本地 exact bytes 不证明 Notion 每份子文档已有人类正文。
 
