@@ -23,7 +23,7 @@ reader and no old authoring or history fallback.
 
 Use `ntn-skills schema COMMAND...` for exact command fields. The current root
 contains list/read/use/files/export/schema/ctl. `ctl library` contains init,
-inspect, files, import and the singular `profile` family.
+inspect, files, operation, import, projection, source and the singular `profile` family.
 
 ## Retired procedures
 
@@ -33,12 +33,13 @@ longer execution guidance for this branch, even if an old file remains in the
 repository or a package inventory. Do not follow their create/apply/adopt/archive/
 restore steps or use an older binary to make them run.
 
-Current import writes one complete resource tree with full reading projections
-and a finite unfinished operation. Source refresh, relationship updates, the
-one-time live-data converter and actual library cleanup remain incomplete.
-Historical model/coverage files do not certify these replacements. Actual old
-document/module/package removal belongs to the same AH-517 cutover; navigation
-alone does not establish that cleanup.
+Current import and Source apply/refresh write complete current content through
+finite operations. `ctl library projection` separately generates the full text
+on existing Skills and Files pages. Daily text coverage is required; non-daily
+projection and binary presentation remain deferred. Source bytes, generated
+bodies, installed packages and live library coverage each need their own actual
+result. Replaced runtime code leaves in the same change; AH-517 covers remaining
+static material. Navigation alone does not establish cleanup.
 
 The existing [current-convergence journey](https://github.com/yoyooyooo/notion-skills-cli/blob/next/.cursor/skills/verify-ntn-skills/features/current-convergence.md)
 is the verification entry. It reuses six domain checks and records controlled

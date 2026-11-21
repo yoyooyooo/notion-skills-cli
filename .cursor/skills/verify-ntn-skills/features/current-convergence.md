@@ -6,19 +6,19 @@
 
 | 组 | 要证明的当前结果 | owner | 不能混同 |
 | --- | --- | --- | --- |
-| 1 | 日用内容、权威、完整目录与消费 | AH-499/504/516 | exact bytes、Notion 投影、全库覆盖 |
+| 1 | 日用内容、完整目录、消费及文本正文 | AH-499/504/516/501/1141 | exact bytes、Notion 全文、全库覆盖 |
 | 2 | 旧对象与关系实际清退 | AH-505/513 | 目标 inspect、完整 census、真实清理 |
 | 3 | 唯一当前路径与普通消费 0 写 | AH-499/504/617 | 源码、公开命令、安装产物 |
 | 4 | 当前管理意图有限恢复 | AH-504/507 | 受控整树恢复、partial 拒绝和真实业务恢复 |
 | 5 | HTTP、字节、分页与取消有界 | AH-503 | TTL 命中、metadata 复核、body 读取 |
 | 6 | 配对安装与真实 Pro Pi | AH-1063 | 准备、投递、模型实际使用 |
 
-AH-516 先对账日用集合：Source 日用的真实上游成员、Skill 日用与 Default Context 的并集。AH-498 汇总这一批的公开 CLI 同步和实际消费。非日用内容与投影后置；不删除 agent-kit 主路径的 Skill。日用不等于全部进入 Default Context，OMP/Tern 宿主适配仍延期。
+AH-516 先对账日用集合：Source 日用的真实上游成员、Skill 日用与 Default Context 的并集。日用 Skill 主文与全部文本 supporting Files 的完整 Notion 正文由 AH-501/AH-1141 验收。非日用内容与额外二进制呈现后置；不删除 agent-kit 主路径的 Skill。日用不等于全部进入 Default Context，OMP/Tern 宿主适配仍延期。
 
 ## 开始前
 
 1. 确定已有授权的 exact entry、target、候选代码/包与实际范围。沿原授权推进；验证不扩大远端作用范围。
-2. 当前 reader、完整 import、Git Source apply/refresh 和同版本零写复用一条路径。先验当前批次的首次纳管、更新、增删、删后重建和消费；跨对象治理与全量投影不作消费前置。源码功能、受控整合、实际安装与真实库分别报告。
+2. 当前 reader、完整 import、Git Source apply/refresh 和同版本零写复用一条路径。同步后显式运行 projection，验证日用全文和重复零写；投影失败保持已就绪消费，不扩大为跨对象治理或非日用全库覆盖。源码功能、受控整合、实际安装与真实库分别报告。
 3. 先用受控 current tests 核普通读语义 0 写，再读真实 current 库。缺 Content 或 state 非 ready 不是让旧 reader 顶上的理由。
 4. 从仓库根复用隔离设施：
 
@@ -41,10 +41,17 @@ Doctor 只证明入口可启动和当前接线，不证明内容、安装或线�
 bun test packages/core/test/shared-current-index.test.ts packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-source.test.ts packages/core/test/shared-current-resource.test.ts packages/core/test/shared-current-projection.test.ts packages/core/test/shared-acquisition-contract.test.ts --timeout 60000
 ~~~
 
+修改日用投影入口时，复用 `shared-current-daily.test.ts`、
+`shared-current-projection-write.test.ts` 和 CLI 对应测试。核日用并集的完整
+分页、无 Origin 仍选到真实成员、native 不覆盖、非文本跳过、同版零写和
+投影未完成仍可消费，不增加新的 runner 或矩阵。
+
 对实际已是 current schema 的授权对象，使用实际返回的身份：
 
 ~~~sh
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library files "$CURRENT_TARGET" --entry "$CURRENT_ENTRY"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library projection "$CURRENT_TARGET" --entry "$CURRENT_ENTRY" --dry-run
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library projection "$CURRENT_TARGET" --entry "$CURRENT_ENTRY"
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- read "$CURRENT_TARGET" --database "$CURRENT_ENTRY" --refresh --metrics
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- files "$CURRENT_TARGET" --database "$CURRENT_ENTRY"
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- read "$CURRENT_FILE_REF"
@@ -55,12 +62,16 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN"
 
 - main 唯一，全部 supporting Files 身份/owner/path/mode 和 binding 完整；无重复或路径冲突。
 - 当前 source/resource bytes 与 hash/size/mode 相同；native 使用明确 frontmatter 与当前规范化正文。Name/Description 不改 authored bytes。
-- Native 正文和 resource 原件必须完整，所有 supporting 文件具有 Files 身份。Source/resource 的生成阅读投影另验，不阻塞 current ready 或普通消费；metadata、外链和 SHA/Bytes 占位不算投影全文。
+- Native 正文和 resource 原件必须完整，所有 supporting 文件具有 Files 身份。日用 main 与全部文本子文件必须有完整 Notion 正文；metadata、外链和 SHA/Bytes 占位不算全文。非文本明确 skipped，仍核精确原件消费。投影失败不阻塞 current ready 或普通消费。
 - generated body 编辑不自动接管；native 直接编辑不生成远端 object/adoption。多 Source 的逐文件声明不混 revision。
 - 权限、partial pagination、missing/truncated body、非 ready、当前 descriptor 变化均阻止完整结果。末尾再次确认 owner，不能在获取期间停用后仍交付。
 - 完整 export 与单文件 read --output 各按实际需求核对；任意多路径 export 尚未公开，不伪造该能力。
 
-本地 exact directory 通过不等于 AH-501 全量 Files/阅读投影已落库。已知试点只证明自己的范围。
+获得整个日用范围授权后，用公开 `ctl library projection --daily --entry DB`
+执行同一路径，记录每项正文读回及非文本跳过，再重复确认零语义写。Disabled
+和期望删除只报告，不隐式排除或改策略。失败批次保留 completed/remaining 与
+单项恢复命令；先用其 exact operation resume，再重跑 daily。日用批次不接受
+--operation/--resume，不以单例或本地 exact directory 代称全日用正文完成。
 
 ## 2. Notion 清理与关系
 
@@ -92,7 +103,7 @@ Source remove 自带库内完整 Skills/Files 元数据反查，能找到缺 Ori
 | 已退出的旧要求 | 当前义务 |
 | --- | --- |
 | Git-only 独立 reader、自动 adoption、首次主文 takeover | 同一 current Content reader；权威显式 |
-| Git-only supporting Files 可为零 | 全部 supporting 有 Files 身份；生成阅读投影另行验收 |
+| Git-only supporting Files 可为零 | 全部 supporting 有 Files 身份；日用文本正文由公开 projection 完整生成并读回 |
 | event/ACK/review/completion 决定当前可读 | 以 current descriptor、ready 和当前内容判断 |
 | 缺 cache 通过远端历史恢复 | exact 当前声明仍相符才补 Source/resource；否则重选 |
 | 单 Source acquisition 与多代 decoder | 单一 v5 逐文件位置，支持多 Source |
@@ -102,7 +113,7 @@ Source remove 自带库内完整 Skills/Files 元数据反查，能找到缺 Ori
 
 ## 4. 有限当前恢复
 
-沿 [operation recovery](../../verify-notion-operation-recovery/SKILL.md)。完整 import 与 Source 声明、转权、启停移除共用 operation 内核。Source 父 intent 只保留冻结输入和有限目标游标；子任务完成后清理，全部核对后 Source ready，明确移除则核 exact Trash 后清意图。用现有 writer/source-write/source-file/source-lifecycle/operation/upload tests 覆盖实际变更，不用旧 ACK/review 模型替代。
+沿 [operation recovery](../../verify-notion-operation-recovery/SKILL.md)。完整 import、Source 声明/转权/启停移除与正文 projection 共用 operation 内核。Projection 使用独立类型的有限意图，真实 Skill 保持 ready；同项恢复无 supersede。Source 父 intent 只保留冻结输入和有限目标游标；子任务完成后清理，全部核对后 Source ready，明确移除则核 exact Trash 后清意图。用现有 writer/source-write/source-file/source-lifecycle/projection-write/operation/upload tests 覆盖实际变更，不用旧 ACK/review 模型替代。
 
 用一个管理意图覆盖 CREATE/完整 append/归档响应丢失、部分文件已成、进程重启或预算暂停。重传同一完整输入，只继续能按当前事实确认的动作。部分 append 未收敛时保持 pending，不盲目重放；这个拒绝结果不能说成自动恢复通过。ready 不依赖历史证明，半树也不能靠改状态通过。
 

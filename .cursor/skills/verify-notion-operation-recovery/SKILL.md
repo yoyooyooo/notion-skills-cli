@@ -28,7 +28,7 @@ bun test packages/core/test/request-budget.test.ts packages/core/test/request-en
 2. CREATE/append 已发出但响应丢失时，用 `ctl library import INPUT --entry DB --skill-id ID --operation ID --resume` 重传相同完整输入。实际当前结果满足同一动作才继续，不能因一次查询没有结果重发非幂等请求。
 3. 幂等属性替换或归档，只在同一冻结意图、显式 resume 和当前 owner 校验下重试。若 append 只落了一部分，保留 pending 并拒绝盲目重放；明确报告未自动收敛。
 4. Files 或 Resource 已归档却丢 ACK，完整目录查询中已没有该行。通过在途动作的 exact page 核对归档状态，再收敛，不能丢掉这个动作或新建替代行。
-5. 当前 applying/attention 阻止普通消费在正文前继续。最后核完整目录和当前字节，发布 ready 并清 Operation，然后退役远端意图、删除本地 pending。不要先删恢复指针。
+5. 当前内容写入的 applying/attention 阻止普通消费在正文前继续。最后核完整目录和当前字节，发布 ready 并清 Operation，然后退役远端意图、删除本地 pending。Projection 意图保持真实 Skill ready，正文渲染失败不应阻断原有消费。不要先删恢复指针。
 6. 本地只剩 retiring 且下一个输入不同，只有当前 owner ready、逻辑 Operation 完整查询为空、已知物理 Record 明确在 Trash 时才能清这个本地残留。404、权限失败或半页不是完成依据。
 7. 预算耗尽和取消停止派发；同 invocation 的重试、排队、上传、下载共用预算。不得开另一个 runtime 写 attention。新一次明确 resume 才有新预算。
 8. 附件上传用当前 owner、operation、path 和 wire hash 定位，未知分配不重复 CREATE；multipart 按已观察的完整前缀继续。最终从实际附件下载并核原件，缓存旧 bytes 不能证明新附件正确。
@@ -39,6 +39,11 @@ bun test packages/core/test/request-budget.test.ts packages/core/test/request-en
 Notion 属性和本地 mutex 不提供跨机器 CAS。显式 supersede 不能撤回已经发出的请求；未知 CREATE 以后仍可能出现，观察到重复身份就拒绝。当前结果满足意图并不恢复原请求的网络 ACK，也不需要永久证据链或长期墓碑。
 
 用 `ctl library operation OWNER_ID --kind skill|source --entry ENTRY` 只读查看当前意图及物理定位。没有可见意图不等于 owner ready。Source 连续 supersede 时，若当前父尚未接走祖父的 child，下一轮必须在父首次写前拒绝并指回现父 resume；已接走则可用新的完整目标继续，不保留历史链。
+
+Projection 的修改复用 `shared-current-projection-write.test.ts`：未知 append 后
+沿同一 `projection PAGE_ID --entry DB --operation ID --resume` 对账，不自动
+重放或改 native。Daily 顺序运行每个 Skill，失败即停并返回已成/未成范围；
+先恢复失败单项再重跑 daily，相等正文零写。Projection 不提供 supersede。
 
 ## Evidence
 

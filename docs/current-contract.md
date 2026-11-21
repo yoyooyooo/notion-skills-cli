@@ -10,8 +10,9 @@ The work is tracked by [AH-499](https://linear.app/yoyooyooo/issue/AH-499) and i
 defines the current behavior and its remaining delivery scope. The installed Pro
 CLI/SDK/Broker already has a bounded native, Git and resource consumption baseline.
 That baseline does not establish that every daily Skill or the long tail has been
-converted. The last section separates current daily work from deferred projection
-and non-daily cleanup.
+converted. Daily acceptance also requires complete readable main and supporting
+text in Notion. The last section separates that work from non-daily projection,
+binary presentation and unrelated cleanup.
 
 ## One current owner for each fact
 
@@ -83,8 +84,8 @@ Authority or Status column cannot drift from the locator:
 | Current authority and representation | Bytes come from | What the Notion body means |
 | --- | --- | --- |
 | Notion native Markdown | Current page body plus explicitly stored current file metadata | Editable author content |
-| Notion exact resource | Current Records resource locator and exact size/hash/mode | Generated full text for readable resources; an original usable attachment for opaque resources |
-| Selected Source file | Current Source contribution, exact selected revision and source path | Generated full reading projection |
+| Notion exact resource | Current Records resource locator and exact size/hash/mode | Generated full text for readable resources; non-text display is optional |
+| Selected Source file | Current Source contribution, exact selected revision and source path | Generated full text; non-text display is optional |
 
 The one accepted descriptor union is:
 
@@ -304,11 +305,14 @@ previous fixed references keep their original authorized bindings.
 Every supporting file has complete current Files metadata. Source and resource
 consumption reads its declared exact original without requiring a generated page
 body. Native author bodies remain necessary current content and are verified before
-ready. Generated projections can be rendered later; they are not a commit gate for
-synchronization or import. When a text projection is rendered, it must contain the
-full current text. Truncation, hash-only notes, a download link or a cache path do
-not count as full reading coverage. Projection writes must never overwrite a
-native author body.
+ready. Generated projections are not a commit gate for synchronization or import.
+Explicit `ctl library projection` generates them after current content is ready.
+Daily acceptance requires every selected Skill main and text supporting file to
+have its complete readable body on the existing Skills or Files page. Truncation,
+hash-only notes, a download link or a cache path do not count as text coverage.
+Native author bodies are verified without replacement. Non-text files are
+reported as skipped and retain their exact original consumption route; generated
+image, font or other binary bodies are not required for daily text acceptance.
 
 Explicit export supports a whole Skill or an explicit path set, preserving complete
 selected bytes and modes. Missing paths, unsafe paths, collisions and cancellation
@@ -397,7 +401,8 @@ replay, and completion clears finite local pending state. The public route is
 `ctl library profile`, singular.
 
 The registered CLI exposes current consumption, library initialization,
-inspection, complete current import, Source apply/refresh, Profiles and local configuration. Import is
+inspection, complete current import, Source apply/refresh, text projection,
+Profiles and local configuration. Import is
 `ctl library import INPUT --entry DB --skill-id ID`; `--dry-run` inspects the
 replacement, and `--operation ID --resume` supplies the same input to its finite
 intent. Default import keeps exact originals as Notion resources without waiting
@@ -465,6 +470,25 @@ original as other Source files. A generated attachment is not required for their
 consumption. Source manifest resources belong to that Source and are collected
 after the current manifest changes. The full effective tree, native references
 and exact target scope are checked before completion.
+
+`ctl library projection PAGE_ID --entry DB` generates complete current source/resource
+text on one Skill and its existing supporting Files. `--dry-run` reads current
+originals and projected bodies without writes. Equal complete text is a zero-write
+no-op. `--daily` replaces PAGE_ID with Source 日用 members ∪ Skill 日用 ∪ Default
+Context, using current Source contributions and complete metadata pagination.
+Enabled and 期望删除 are preserved and reported, including disabled daily choices.
+Absent current metadata, unavailable bytes or incomplete traversal cannot become
+an omitted or successful target.
+
+Projection uses the same finite operation kernel with a `projection: true` intent.
+It leaves the real Skill ready and does not bind generated-body recovery to
+ordinary consumption. The intent freezes the current file bindings and content;
+native bodies are checked without writing them. Single-Skill recovery uses the
+same `--operation ID --resume`. There is no projection supersede mode. Daily runs
+execute one Skill intent at a time and stop on the first failure, returning
+completed/remaining scope and the exact failed-Skill operation. Resume that Skill,
+then rerun daily; `--daily` rejects `--operation` and `--resume`. All targets share
+one invocation budget, with the same defaults and limit flags as import.
 
 One finite parent intent freezes its action and affected Skill IDs. Declaration
 actions also freeze effective configuration, Git commit and the exact physical
@@ -547,7 +571,10 @@ complete discovery recalculates that number when upstream changes.
 - AH-617: update only SDK/Broker behavior actually changed by this implementation,
   pair the built artifacts, and verify necessary real Pi samples. The first native,
   Git and resource daily baselines are already recorded in AH-1063/AH-516.
-- AH-501/AH-1141: generated reading projections after consumption is usable.
+- AH-501/AH-1141: complete daily main/supporting text in Notion through the public
+  projection command, including readback and same-version zero writes. Non-daily
+  text and additional binary presentation remain deferred. Code availability is
+  not evidence that the live daily batch has already been projected.
 - AH-505/AH-507/AH-1143: additional governance, recovery and broader documentation
   only when needed; changed public help and current guidance are updated now.
 - AH-513: non-daily legacy data. AH-517: obsolete static migration materials only.

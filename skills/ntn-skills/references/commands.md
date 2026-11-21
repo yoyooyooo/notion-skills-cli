@@ -76,13 +76,16 @@ Inspect reads the descriptor; files reads complete current file metadata, state
 and authority. Neither reads every body nor repairs the library. A missing
 current descriptor or pending current operation remains an explicit error.
 
-The current library family also provides `init`, `import`, `source` and singular `profile`.
+The current library family also provides `init`, `import`, `projection`, `source`
+and singular `profile`.
 Use `notion/ntn-skills-maintain` for complete import, deletion previews and the
 same operation's resume procedure. Portable Members/Requires round-trip through
 export and complete import; omitted fields preserve, [] clears, and lists replace
 the complete relation. Repeat --native PATH to select editable text during import.
-Use `notion/ntn-skills-sync` for explicit Git Source apply/refresh and current
-contribution mappings/exclusions. Partial file updates and takeover remain unavailable.
+Use `notion/ntn-skills-sync` for explicit Git Source apply/refresh, contribution
+mappings/exclusions and exact file takeover/restore-follow. Use
+`notion/ntn-skills-maintain` to generate missing daily Notion text through
+`ctl library projection`; ordinary consumption never writes those bodies.
 
 ## Local builtins
 

@@ -24,6 +24,7 @@ The installed parser is the command reference:
 ```bash
 ntn-skills schema
 ntn-skills schema ctl library import
+ntn-skills schema ctl library projection
 ntn-skills schema ctl library profile set
 ```
 
@@ -41,6 +42,7 @@ The root schema is shallow; query an exact command path for its full definition.
 | `ctl library init/inspect/files` | Current descriptor, initialization, or selected-owner directory |
 | `ctl library import` | Complete current Skill replacement, dry run, or same-operation resume |
 | `ctl library source apply/refresh` | Explicit Git contribution changes and same-parent finite recovery |
+| `ctl library projection` | Complete Notion text for one current Skill or the daily set, with read-only preview and single-Skill resume |
 | `ctl library profile` | Current shared Profile rules and machine selection |
 | `ctl config/cache/builtin/doctor` | Local configuration, cache, packaged Skills, or scoped diagnostics |
 | `ctl views/prepare/resolve` | View discovery, graph preparation, or relative-reference resolution |
@@ -116,6 +118,22 @@ finite target cursor, removed with the operation on completion. Desired paths ex
 HTTP budget; Git subprocess HTTP/wire bytes are unmetered, while deadline and
 file limits still apply. See [authoring](shared-authoring.md#apply-or-refresh-a-git-source).
 
+`ctl library projection PAGE_ID --entry ENTRY` reads the current complete tree and
+verified originals, renders source/resource text with the existing renderer, and
+checks the actual Skills/Files bodies. Native bodies are verified without writing;
+non-text files are explicitly skipped. `--dry-run` inspects without writes. Equal
+complete bodies are a zero-write no-op. Projection keeps the real Skill ready, so
+an unfinished generated-body intent does not block ordinary consumption.
+
+`projection --daily --entry ENTRY` selects Source 日用 current members ∪ Skill 日用
+∪ Default Context. Complete checkbox-schema and pagination checks precede target
+writes. Existing Enabled and 期望删除 are reported and preserved. The batch stops
+on the first failure and reports completed/remaining targets plus the exact
+single-Skill operation. Resume it with `projection PAGE_ID --entry ENTRY
+--operation ID --resume`, then rerun daily. Daily rejects `--operation` and
+`--resume`; projection exposes no supersede. One invocation budget covers the
+whole batch. See [text generation](shared-authoring.md#generate-readable-text-in-notion).
+
 Profiles have one current Record and a conflict-detection fingerprint.
 `profile set` replaces the full rule set and requires `--name`, `--enabled`, and `--expect`.
 Omitted optional rules are removed.
@@ -177,12 +195,14 @@ Limits apply to different boundaries. A small output page does not imply a fixed
 | Local request schedule | Default 350 ms admission spacing, shared by participating CLI processes on one machine |
 | Admission | One five-minute deadline across a request's retries; bounded queue of 256 |
 | HTTP attempt | `NTN_SKILLS_REQUEST_TIMEOUT_MS`, default 30 seconds, for each attempt |
-| Complete current import | `--max-requests` default 1000 attempts; `--max-bytes` default 536870912 payload bytes; `--timeout` default 600000 ms |
+| Current import, Source management and projection | `--max-requests` default 1000 attempts; `--max-bytes` default 536870912 payload bytes; `--timeout` default 600000 ms for the complete invocation |
 
 Graph budgets count nodes and bytes; they are not HTTP request-count limits.
 Current import includes library lookup, relation closure, retries, uploads,
 provider downloads, native body writes, pagination, cleanup and readback in one
-invocation budget. The three flags require positive safe integers. Nested calls
+invocation budget. Projection similarly includes daily selection, all selected
+Skills, original acquisition, generated bodies and readback. The three flags
+require positive safe integers. Nested calls
 reuse the same budget. Success and operational errors report the budget snapshot.
 
 Known request bytes must fit before dispatch. An admitted response is accounted
@@ -253,7 +273,8 @@ Uninstalling the package does not remove these directories.
 | `RATE_LIMITED`, `NOTION_QUEUE_FULL`, `NOTION_SCHEDULER_UNAVAILABLE` | Inspect the request or scheduler failure without changing content authority |
 | `STATE_RUNTIME_UNSUPPORTED` | Run the supported Node runtime before opening local state |
 
-Source takeover/restore-follow and disable/removal, Pro-wide census and batch
-migration, and governance across related objects remain incomplete.
+Source takeover/restore-follow and disable/removal are current explicit commands.
+Pro-wide census, non-daily conversion and governance across related objects have
+separate delivery boundaries.
 The selected-owner index does not certify global orphan cleanup.
 Local CLI and SDK checks do not certify the live Notion tables or Pi delivery.

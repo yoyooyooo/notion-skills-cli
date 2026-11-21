@@ -18,12 +18,13 @@
 | 检查当前文件权威、归属和在途状态 | `ctl library files` |
 | 导入或替换一个完整本地文件树 | `ctl library import`，支持 `--dry-run` 和原意图 `--resume` |
 | 应用或刷新明确的 Git 贡献 | `ctl library source apply`、`ctl library source refresh` |
+| 为单个 Skill 或日用集合生成 Notion 全文 | `ctl library projection PAGE_ID` 或 `ctl library projection --daily` |
 | 创建或检查当前四表结构 | `ctl library init`、`ctl library inspect` |
 | 管理共享当前 Profile | `ctl library profile` |
 
 普通 list/read/use/资源读取/export 对 Notion 的语义写入为零。直接修改 native 作者正文后，读取会取得当前内容，不创建 adoption event，也不保留远端内容版本。Source/resource 的生成阅读页即使被编辑，也不会自动取得作者权威。
 
-当前导入默认写入精确 resource 原件；重复 `--native PATH` 可将所选文本交给可编辑的 Notion 正文。完整文件目录和原件先保证可消费，生成阅读投影可以后置。Portable Members/Requires 支持导出再导入，核完整目标与依赖关系；库查询、写入和清理共用一次有界 HTTP 预算。Source apply/refresh 自动发现完整选中成员，接入新增、更新原文件并清退上游已移除的纯 Source 成员。既有映射保留稳定身份，新成员获得确定身份。保存声明文件后，即使 Notion Source 被删，也可用 `source apply` 重建。GitHub 和实际私有 HTTP(S) Git 共用该路径及本机认证。
+当前导入默认写入精确 resource 原件；重复 `--native PATH` 可将所选文本交给可编辑的 Notion 正文。完整文件目录和原件先保证可消费；导入或 Source 刷新后，用 `ctl library projection` 生成阅读正文。日用 Skill 主文及全部文本子文件必须在 Notion 中完整可读，非文本文件明确报告跳过；投影失败不阻断已就绪的消费。Portable Members/Requires 支持导出再导入，核完整目标与依赖关系；库查询、写入和清理共用一次有界 HTTP 预算。Source apply/refresh 自动发现完整选中成员，接入新增、更新原文件并清退上游已移除的纯 Source 成员。既有映射保留稳定身份，新成员获得确定身份。保存声明文件后，即使 Notion Source 被删，也可用 `source apply` 重建。GitHub 和实际私有 HTTP(S) Git 共用该路径及本机认证。
 
 `source takeover` 和 `source restore-follow` 保留 File ID、Notion 页面及路径，同时调整当前贡献的精确排除规则。它们使用 Source 已选定的原件，不顺便刷新 Git。`source enable/disable` 控制消费资格；`source remove` 只有在文件与 Origin 引用都已解除后才清退 Source 及其资源。未完成写入可重传原输入 resume，也可在原 writer 停止后用 `--operation NEW --supersede OLD` 明确提交完整新意图。完成后不保留前意图或内容历史。
 
@@ -82,7 +83,7 @@ ntn-skills export SNAPSHOT_ID_FROM_READ --output ./selected-skill
 | Sources | 稳定 Source 定义、完整当前选定计划、目标贡献和在途操作 |
 | Records | 当前精确资源、唯一当前 Profile、未完成管理意图 |
 
-`Content` 明确选择 native 作者 Markdown、Notion 管理的精确资源，或当前 Source 文件。主文在 Skills，其他文件在 Files。原生正文保持作者权威，Source/resource 通过所声明的精确原件消费；生成页面投影单独推进。投影完成时必须提供全文或可用原件。真实库的覆盖、迁移和剩余能力见[当前合同](docs/current-contract.md)。
+`Content` 明确选择 native 作者 Markdown、Notion 管理的精确资源，或当前 Source 文件。主文在 Skills，其他文件在 Files。原生正文保持作者权威，只读验证而不覆盖。Source/resource 通过所声明的精确原件消费；显式投影将完整文本写入现有页面，不改变来源或跟随关系。图片、字体等非文本保留原件消费方式，无需生成正文。日用覆盖边界见[当前合同](docs/current-contract.md)。
 
 只检查当前目录和权威，不读取正文：
 
@@ -91,6 +92,17 @@ ntn-skills ctl library files SKILL_PAGE_ID --entry ENTRY_DATABASE_ID
 ```
 
 缺当前 descriptor 返回 `CURRENT_SCHEMA_REQUIRED`。applying/attention 指向一个未完成当前操作。普通读取不会迁移 schema，也不会替管理操作对账。
+
+## 在 Notion 阅读日用正文
+
+同步当前内容后，预览并生成阅读正文：
+
+```sh
+ntn-skills ctl library projection --daily --entry ENTRY_DATABASE_ID --dry-run
+ntn-skills ctl library projection --daily --entry ENTRY_DATABASE_ID
+```
+
+日用是 Source 日用的当前成员、Skill 日用与 Default Context 的并集；现有 Enabled、期望删除只报告，不修改。单项处理时，将 `--daily` 换成精确 Skill page ID。完整正文相同时零语义写。日用批次中断会返回已完成目标及失败单项的精确恢复命令，先恢复该意图，再重跑 `--daily`；投影失败仍保留已就绪的消费。步骤见[正文生成](docs/shared-authoring.md#generate-readable-text-in-notion)。
 
 ## 建库和 Profile
 
@@ -109,7 +121,7 @@ ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_
 ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID
 ```
 
-导入保留精确 resource 原件；生成阅读页可后续补齐，不阻塞消费。要在 Notion 编辑正文，可加 `--native SKILL.md --native references/guide.md`，所选正文须为 UTF-8/LF。相同稳定身份对应完整文件树替换。先检查 dry-run 中的移除范围；相同输入再次执行为零写入。未完成时用原输入、原 native 选择加 `--operation OPERATION_ID --resume`。具体步骤见[当前管理](docs/shared-authoring.md)。
+导入保留精确 resource 原件；阅读页由 `ctl library projection` 补齐，不阻塞消费。要在 Notion 编辑正文，可加 `--native SKILL.md --native references/guide.md`，所选正文须为 UTF-8/LF。相同稳定身份对应完整文件树替换。先检查 dry-run 中的移除范围；相同输入再次执行为零写入。未完成时用原输入、原 native 选择加 `--operation OPERATION_ID --resume`。具体步骤见[当前管理](docs/shared-authoring.md)。
 
 Profile 将当前 View 和 freshness 规则保存在一个稳定 Record：
 

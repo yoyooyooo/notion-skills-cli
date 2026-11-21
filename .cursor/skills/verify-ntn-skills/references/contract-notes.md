@@ -6,6 +6,11 @@
 
 `ctl library import` 接受完整本地文件树。先 dry-run，再执行同一输入；需要恢复时沿同一入口提交原 operation 和完整输入。每个文件只有当前权威，正文阅读投影不自动转移权威。Operation 只保留未完成意图，完成后清理。
 
+同步后用 `ctl library projection PAGE_ID --entry DB` 或授权日用范围的 `--daily`
+生成完整主文和文本子文件正文。Native 只读验证，非文本明确跳过；投影意图不改
+真实 Skill ready，同版本正文零写。Daily 失败先恢复返回的单项 operation，再
+重跑 daily。非日用投影与额外二进制呈现不作为日用文本完成的前置。
+
 从 Skills 关联 Files，应能读到每个文本的完整内容，二进制有可用原件。export 和单文件 read 核原始 bytes、mode 和路径。导出携带当前 Members/Requires，显式关系替换遵守同库、唯一身份、完整分页与依赖安全边界。参考 [管理](../../verify-notion-management/SKILL.md) 和 [导入旅程](../features/import-create-recovery-dry-run.md)。
 
 ## 普通消费与成本

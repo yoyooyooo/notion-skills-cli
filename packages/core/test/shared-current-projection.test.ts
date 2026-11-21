@@ -295,7 +295,6 @@ describe("complete current reading projections", () => {
       "file.zip",
       "file.png",
       "file.mp4",
-      "file.stl",
       "file.bin",
     ]) {
       expect(isCurrentProjectionBinary(path, source)).toBe(true)
@@ -313,9 +312,49 @@ describe("complete current reading projections", () => {
       "run.sh",
       "Dockerfile",
       "unknown.future",
+      "document.rtf",
+      "drawing.dxf",
+      "model.fbx",
+      "model.step",
+      "model.stp",
+      "model.iges",
+      "model.igs",
+      "model.stl",
+      "model.obj",
+      "model.dae",
     ]) {
       expect(isCurrentProjectionBinary(path, source)).toBe(false)
       expect(renderCurrentProjection({ path, bytes: source }).representation).not.toBe("binary")
+    }
+  })
+
+  test("Graphviz dot and gettext pot remain full text while binary Office templates stay opaque", () => {
+    const sources = [
+      [
+        "scripts/test/corpus/simple/graph.dot",
+        'digraph G {\n  rankdir=LR;\n  "开始" -> "结束" [label="finish"];\n}\n',
+      ],
+      [
+        "locales/messages.pot",
+        '# Translation template\nmsgid ""\nmsgstr ""\n"Content-Type: text/plain; charset=UTF-8\\n"\n\nmsgid "欢迎"\nmsgstr ""\n',
+      ],
+    ] as const
+    for (const [path, source] of sources) {
+      const original = bytes(source)
+      expect(isCurrentProjectionBinary(path, original)).toBe(false)
+      const plan = renderCurrentProjection({ path, bytes: original })
+      expect(plan.representation).toBe("code")
+      expect(planText(plan)).toBe(source)
+    }
+    const officeOriginal = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0])
+    for (const path of ["word-template.dot", "presentation-template.pot"]) {
+      expect(isCurrentProjectionBinary(path, officeOriginal)).toBe(true)
+      expect(() => renderCurrentProjection({ path, bytes: officeOriginal })).toThrow(
+        "original attachment",
+      )
+      expect(
+        renderCurrentProjection({ path, bytes: officeOriginal, attachment: upload }).representation,
+      ).toBe("binary")
     }
   })
 

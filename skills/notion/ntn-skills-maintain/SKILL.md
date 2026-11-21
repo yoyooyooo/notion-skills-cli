@@ -1,6 +1,6 @@
 ---
 name: ntn-skills-maintain
-description: Import or replace complete resource/native Notion Skill trees, inspect current ownership, resume or supersede an unfinished import, or create the four-table layout. Use for local Skill migration.
+description: Manage complete resource/native Skill imports, readable Notion text, finite import recovery and library setup. Use for local Skill migration or missing daily Notion bodies.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-maintain
@@ -54,17 +54,22 @@ Use the returned PAGE_ID. Import preserves Skill and retained File identities,
 checks complete current metadata and authoritative content, then retires omitted
 Notion-owned supporting rows and unreferenced owned resources. Equal complete input makes zero semantic Notion writes.
 
-Resource import preserves exact bytes and mode; opaque files use one original or
-single-original ZIP. Generated reading projections do not block consumption.
-For installed/App Skills, repeat complete import against the updated installation
-directory under the same Skill ID. Genuine Notion originals retain native
-authority; export their complete tree for recovery.
+Import preserves exact originals. Repeat installed-tree imports under the same
+Skill ID; keep Notion originals native. Generate readable main/supporting text:
+
+```sh
+ntn-skills ctl library projection PAGE_ID --entry ENTRY
+```
+
+Native bodies are verified without writes; non-text is skipped. See
+[text projection](references/operations.md#generate-notion-text) for daily scope,
+resume and zero-write reruns. Projection failure does not block consumption.
 
 Repeat --native PATH for editable text, such as --native SKILL.md --native
 references/guide.md. Select exact paths after any entrypoint rename. Native
-bodies require UTF-8/LF and an actual Notion round-trip; frontmatter and mode stay
-exact. Reimport replaces later human edits too. Export them first if they belong
-in the intended input. Failed native conversion never falls back to resource.
+bodies require UTF-8/LF and an actual round-trip; frontmatter/mode stay exact.
+Reimport replaces later edits; export them first if needed. Failed native
+conversion never falls back to resource.
 
 Existing Enabled and Default Context stay unchanged. Portable Members/Requires
 use same-library stable refs: omitted preserves, [] clears, a list replaces.

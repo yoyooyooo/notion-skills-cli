@@ -3,6 +3,7 @@
 - [Profile rules](#profile-rules)
 - [Current Source](#current-source-boundaries)
 - [Declaration input](#a-source-management-request)
+- [Daily Notion text](#daily-notion-text)
 - [File authority and lifecycle](#file-authority-and-lifecycle)
 - [Unfinished Source work](#unfinished-source-work)
 
@@ -156,8 +157,8 @@ other Sources and existing Skill metadata remain preserved; another Source at th
 same desired path is a conflict. When a member disappears, archive its Files and
 Skill only if the complete target is owned by this Source. Retaining unrelated
 author content must not silently erase it. Source bytes and modes remain upstream
-exact. Generated page bodies and binary attachments are optional projections, not
-consumption prerequisites.
+exact. Generated page bodies do not gate consumption. Daily main and supporting
+text still requires the explicit projection step below; binary display is optional.
 
 Save the declaration outside Notion for `source apply` after a Source deletion.
 A recreated page has a new physical page ID but the declared stable Skill identity.
@@ -172,6 +173,36 @@ permissions and incomplete pagination are not an empty source.
 Dry-run reads Notion and exact Git bytes without semantic writes; body verification
 still happens during apply. Review additions, removals and target scope. A complete
 equal invocation creates no operation and makes no semantic writes.
+
+## Daily Notion text
+
+After Source apply/refresh, use the same current content to generate readable pages:
+
+```sh
+ntn-skills ctl library projection --daily --entry ENTRY --dry-run
+ntn-skills ctl library projection --daily --entry ENTRY
+ntn-skills ctl library projection PAGE_ID --entry ENTRY
+```
+
+Daily combines current Source 日用 members, Skill 日用 and Default Context, using
+current contributions rather than Origin navigation. Preserve Enabled and
+期望删除; report blocked content without hiding selected targets. The main stays
+on Skills and text supporting bodies use their existing Files pages. Verify native
+bodies without writing them; report non-text files as skipped. Complete equal
+text causes zero semantic writes. Generated edits never transfer authority.
+
+Each Skill uses the existing finite kernel and renderer while its real ready
+state remains available for consumption. A failed daily batch reports completed
+and remaining targets and its exact single-Skill resume command:
+
+```sh
+ntn-skills ctl library projection PAGE_ID --entry ENTRY --operation OPERATION_ID --resume
+```
+
+Resume that intent with its original state/credential scope, then rerun daily.
+Daily rejects --operation and --resume; projection has no supersede. The entire
+invocation shares 1000 HTTP attempts, 512 MiB and 600000 ms by default. Use
+--max-requests, --max-bytes and --timeout for explicit positive limits.
 
 ## File authority and lifecycle
 

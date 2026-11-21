@@ -22,6 +22,7 @@ that the production library, published npm package or installed Pi has migrated.
 | Inspect an unfinished intent without replaying it | `ctl library operation`, with an exact owner ID and kind |
 | Import or replace one complete local tree | `ctl library import`, with `--dry-run` and same-intent `--resume` |
 | Apply or refresh declared Git contributions | `ctl library source apply`, `ctl library source refresh` |
+| Generate complete Notion text for one Skill or the daily set | `ctl library projection PAGE_ID`, or `ctl library projection --daily` |
 | Take over a file or restore its current Source binding | `ctl library source takeover`, `ctl library source restore-follow` |
 | Enable, disable or remove an unreferenced Source | `ctl library source enable`, `disable`, `remove` |
 | Create or inspect a current four-table layout | `ctl library init`, `ctl library inspect` |
@@ -34,8 +35,10 @@ page does not become author content merely because someone edited its display.
 
 Current import writes exact resource originals; repeat `--native PATH` for text
 files whose current Notion body should be editable. Complete file metadata and
-original bytes establish consumption readiness. Generated reading projections can
-be produced later and do not block that readiness. Portable Members/Requires
+original bytes establish consumption readiness. Use `ctl library projection`
+after import or Source refresh to generate complete readable text. Every daily
+Skill main and text supporting file must be readable in Notion; non-text files
+are reported as skipped. Projection does not block consumption readiness. Portable Members/Requires
 round-trip through export and complete import, with complete target validation
 and dependency checks. One invocation budget covers lookup, writes and cleanup.
 Source apply/refresh discovers the complete selected Git member set, adds members,
@@ -46,7 +49,7 @@ GitHub and private HTTP(S) Git origins share this path and local authentication.
 Source takeover and restore-follow keep the same File and Notion page identities,
 update the exact contribution exclusion, and use the Source's selected original.
 Source enablement controls consumption; removal refuses remaining file or Origin
-references. An interrupted writer can resume its original input or accept an
+references. An interrupted content writer can resume its original input or accept an
 explicit complete successor with `--operation NEW --supersede OLD` after the old
 writer stops. Completed operations keep no predecessor or content history.
 Old create/apply/write/replace/adopt, sync, snapshot/archive and repair commands
@@ -136,10 +139,11 @@ file read with `--output` for one file.
 The `Content` descriptor selects native author Markdown, a Notion-owned exact
 resource, or a selected Source file. Main content lives on Skills; supporting files
 live on Files. Native body edits remain authoritative. Source and resource files
-are consumed from their exact declared originals; generated page rendering is
-separate work. When rendered, a text projection must contain the full text, and
-opaque content must expose its usable original. Library coverage and remaining
-projection work are listed in the [current contract](docs/current-contract.md).
+are consumed from their exact declared originals. Explicit projection writes their
+complete text to the existing Skills and Files pages without changing authority.
+Native author bodies are verified without replacement. Non-text files retain
+their original acquisition route and do not require generated bodies. See the
+[current contract](docs/current-contract.md) for the daily coverage boundary.
 
 Inspect the current directory without fetching bodies:
 
@@ -150,6 +154,23 @@ ntn-skills ctl library files SKILL_PAGE_ID --entry ENTRY_DATABASE_ID
 A missing current descriptor returns `CURRENT_SCHEMA_REQUIRED`. An applying or
 attention state identifies one unfinished current operation. Reads neither migrate
 the schema nor reconcile that operation.
+
+## Read daily content in Notion
+
+After synchronizing current content, inspect and generate its text bodies:
+
+```sh
+ntn-skills ctl library projection --daily --entry ENTRY_DATABASE_ID --dry-run
+ntn-skills ctl library projection --daily --entry ENTRY_DATABASE_ID
+```
+
+Daily means Source 日用 members, Skill 日用 and Default Context combined. Existing
+Enabled and 期望删除 values are reported and preserved. To select one Skill, replace
+`--daily` with its exact page ID. Equal complete bodies cause zero semantic writes.
+An interrupted daily run reports completed targets and the exact single-Skill
+resume command. Resume that intent, then run `--daily` again. Native bodies remain
+authoritative, and projection failure leaves already-ready consumption available.
+See [projection management](docs/shared-authoring.md#generate-readable-text-in-notion).
 
 ## Setup and Profiles
 
@@ -170,7 +191,7 @@ ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_
 ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID
 ```
 
-Import preserves exact resource originals; generated reading pages are deferred. Use
+Import preserves exact resource originals; run `ctl library projection` for reading pages. Use
 `--native SKILL.md --native references/guide.md` to select editable UTF-8/LF bodies;
 the same selection is required on resume. It replaces the
 whole file tree for that stable identity; review removals in dry-run. Repeat equal

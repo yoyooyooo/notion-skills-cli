@@ -37,6 +37,12 @@ export const CurrentOperationIntentSchema = Schema.Union([
     operation_id: StableId,
     input_sha256: Hash,
     owner: Schema.Struct({ kind: Schema.Literal("skill"), id: StableId }),
+    projection: Schema.Literal(true),
+  }),
+  Schema.Struct({
+    operation_id: StableId,
+    input_sha256: Hash,
+    owner: Schema.Struct({ kind: Schema.Literal("skill"), id: StableId }),
     source: Schema.optional(CurrentSourceIntentBindingSchema),
   }),
   Schema.Struct({
@@ -166,6 +172,11 @@ function strict<S extends Schema.ConstraintDecoder<unknown>>(schema: S, value: u
 function decodePayload(value: unknown): CurrentPayload {
   const payload = strict(PayloadSchema, value),
     progress = payload.source_progress
+  if (
+    "projection" in payload.intent &&
+    (payload.completion !== "ready" || payload.predecessor !== undefined)
+  )
+    throw invalid("A reading projection cannot retire its owner or carry a predecessor.")
   if ("source_input" in payload.intent) {
     const length = payload.intent.source_input.affected_skill_ids.length
     if (
@@ -320,15 +331,17 @@ export function currentOperationFailure(
   const details = property(error.details)
   const sourceInput = "source_input" in intent ? intent.source_input : undefined
   const requiredInput =
-    sourceInput === undefined
-      ? "Resupply the same prepared input; its exact fingerprint is required."
-      : sourceInput.kind === "declaration"
-        ? "Resupply the original Source declaration with --operation and --resume."
-        : sourceInput.kind === "file_authority"
-          ? "Repeat the same Source file action and exact file identity with --operation and --resume."
-          : sourceInput.kind === "enabled"
-            ? "Repeat the same Source enabled action and selected boolean with --operation and --resume."
-            : "Repeat Source removal for this exact Source with --operation and --resume."
+    "projection" in intent
+      ? "Repeat projection for the same current Skill with --operation and --resume. Keep its exact current file bindings."
+      : sourceInput === undefined
+        ? "Resupply the same prepared input; its exact fingerprint is required."
+        : sourceInput.kind === "declaration"
+          ? "Resupply the original Source declaration with --operation and --resume."
+          : sourceInput.kind === "file_authority"
+            ? "Repeat the same Source file action and exact file identity with --operation and --resume."
+            : sourceInput.kind === "enabled"
+              ? "Repeat the same Source enabled action and selected boolean with --operation and --resume."
+              : "Repeat Source removal for this exact Source with --operation and --resume."
   const previousOwner = property(details.owner)
   const sameOwner = previousOwner.kind === intent.owner.kind && previousOwner.id === intent.owner.id
   // An already confirmed original input wins over a later supplied hash for the
@@ -353,6 +366,7 @@ export function currentOperationFailure(
       ? {
           skill_id: intent.owner.id,
           skill_page_id: page,
+          ...("projection" in intent ? { projection: true } : {}),
           ...("source" in intent && intent.source !== undefined
             ? { source_intent: intent.source }
             : {}),
@@ -566,7 +580,7 @@ export function withCurrentOperation<A, R>(
       readonly next: CurrentSourceIntentBinding
     }
     readonly assertScope?: Effect.Effect<void, SkillsError, R>
-    readonly beforeMutation?: Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>
+    readonly beforeMutation?: Effect.Effect<void, SkillsError, R | Notion | Crypto.Crypto | Store>
     readonly afterActivate?: Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>
     readonly unstartedSourceChild?: CurrentSourceIntentBinding
     readonly verifyCompletedResume?: (
@@ -599,6 +613,20 @@ export function withCurrentOperation<A, R>(
     if (supersededOperation === intent.operation_id)
       return yield* Effect.fail(invalid("A successor requires a different operation identity."))
     const completion = yield* checked(() => strict(CompletionSchema, input.completion ?? "ready"))
+    const projection = "projection" in intent
+    if (
+      projection &&
+      (suppliedPage === null ||
+        completion !== "ready" ||
+        supersededOperation !== undefined ||
+        input.supersedingSourceChild !== undefined ||
+        input.unstartedSourceChild !== undefined)
+    )
+      return yield* Effect.fail(
+        invalid(
+          "Projection requires an existing ready Skill and apply or resume without takeover.",
+        ),
+      )
     yield* checked(() => {
       for (const name of ["Skill ID", "Current State", "Operation"])
         binding(library, intent.owner, name)
@@ -619,6 +647,14 @@ export function withCurrentOperation<A, R>(
     })
     const api = yield* Notion,
       store = yield* Store
+    // Keep the session API closed over this invocation's services while the
+    // caller's scope check still executes immediately before its first mutation.
+    const beforeMutation =
+      input.beforeMutation === undefined
+        ? undefined
+        : input.beforeMutation.pipe(
+            Effect.provide(yield* Effect.context<R | Notion | Crypto.Crypto | Store>()),
+          )
     const address = yield* operationAddress(library, intent.owner)
     const { scope, recordId, entityId, key } = address
     // Created inside Effect.gen: reusing this Effect cannot retain another
@@ -715,6 +751,18 @@ export function withCurrentOperation<A, R>(
           selectedIntent !== undefined &&
           !sameIntent(selectedIntent, intent)
         ) {
+          if ("projection" in selectedIntent)
+            return yield* Effect.fail(
+              currentOperationFailure(
+                fail(
+                  "CURRENT_OPERATION_PENDING",
+                  "Resume the unfinished reading projection before changing current content.",
+                ),
+                selectedIntent,
+                observedPayload?.in_flight ?? null,
+                record?.owner?.page_id ?? pending?.owner_page_id ?? suppliedPage,
+              ),
+            )
           if (selectedIntent.operation_id !== supersededOperation)
             return yield* Effect.fail(
               currentOperationFailure(
@@ -908,7 +956,7 @@ export function withCurrentOperation<A, R>(
           retainFailure = (error) =>
             currentOperationFailure(error, intent, null, staged.owner_page_id)
           yield* assertScope()
-          if (input.beforeMutation !== undefined) yield* input.beforeMutation
+          if (beforeMutation !== undefined) yield* beforeMutation
           if (record === undefined) {
             if (staged.lifecycle.phase !== "replacing" || staged.lifecycle.record_page_id !== null)
               return yield* Effect.fail(invalid("The known handoff Record is unavailable."))
@@ -1291,7 +1339,7 @@ export function withCurrentOperation<A, R>(
                 invalid("A completed current intent cannot begin a mutation."),
               )
             if (!mutationScopeConfirmed) {
-              if (input.beforeMutation !== undefined) yield* input.beforeMutation
+              if (beforeMutation !== undefined) yield* beforeMutation
               mutationScopeConfirmed = true
             }
             if (record !== undefined) {
@@ -1323,7 +1371,7 @@ export function withCurrentOperation<A, R>(
             record = written.success
             yield* saveLocal({ phase: "active", record_page_id: record.page_id })
             yield* confirmActivation()
-            if (owner !== null) yield* changeOwner("applying")
+            if (owner !== null && !projection) yield* changeOwner("applying")
           })
         const dispatch = <B, R2>(
           action: CurrentOperationAction<B, R2>,
@@ -1353,6 +1401,15 @@ export function withCurrentOperation<A, R>(
                   (action.fileSha256 === undefined || !/^[a-f0-9]{64}$/u.test(action.fileSha256))
                 )
                   throw invalid("Multipart writes need their exact input content fingerprint.")
+                if (
+                  projection &&
+                  (method !== "PATCH" ||
+                    !/^v1\/(?:pages\/[a-f0-9-]+\/markdown|blocks\/[a-f0-9-]+\/children)$/iu.test(
+                      action.request.path,
+                    ) ||
+                    action.request.options?.file !== undefined)
+                )
+                  throw invalid("A reading projection may change generated page bodies only.")
                 return {
                   path: action.request.path,
                   method,
@@ -1516,6 +1573,11 @@ export function withCurrentOperation<A, R>(
               ? { ...property(raw), in_trash: false, archived: false, is_archived: false }
               : raw
           const state = currentOperationOwnerState(library, intent, page, active)
+          if (projection && state.state !== "ready")
+            throw fail(
+              "CURRENT_OPERATION_CONFLICT",
+              "A reading projection requires the current Skill to remain ready.",
+            )
           if (trashed) {
             if (
               !permitted ||
@@ -1673,9 +1735,10 @@ export function withCurrentOperation<A, R>(
               const state = yield* checked(() => ownerObservation(raw))
               if (ownerRetired) return raw
               if (
-                state.state === "ready"
+                !projection &&
+                (state.state === "ready"
                   ? !ownerReady && (record !== undefined || pending !== undefined)
-                  : record === undefined || state.operation_id !== intent.operation_id
+                  : record === undefined || state.operation_id !== intent.operation_id)
               )
                 return yield* Effect.fail(
                   fail(
@@ -1689,6 +1752,8 @@ export function withCurrentOperation<A, R>(
             Effect.gen(function* () {
               if (closed)
                 return yield* Effect.fail(invalid("The current intent session is closed."))
+              if (projection)
+                return yield* Effect.fail(invalid("A reading projection cannot bind a new owner."))
               const selected = yield* checked(() => uuid(page))
               if (owner !== null && owner !== selected)
                 return yield* Effect.fail(
@@ -1791,7 +1856,7 @@ export function withCurrentOperation<A, R>(
               // acknowledgement of a lost ready PATCH. Keep the finite Record
               // until full target verification, but allow only read-only children.
               if (payload.in_flight?.key === "$owner.ready") settled = true
-            } else if (state.state === "ready" && record !== undefined)
+            } else if (state.state === "ready" && record !== undefined && !projection)
               yield* changeOwner("applying")
             else if (
               payload.in_flight?.key === "$owner.applying" ||
@@ -1841,6 +1906,7 @@ export function withCurrentOperation<A, R>(
               ),
             )
           if (completion === "retired") yield* retireOwner(value)
+          else if (projection) yield* session.assertCurrent()
           else yield* changeOwner("ready")
           ownerReady = true
           if (record !== undefined) {
@@ -1858,6 +1924,7 @@ export function withCurrentOperation<A, R>(
               // Applying already blocks consumption. Exhaustion and cancellation do not
               // start another runtime or issue best-effort cleanup writes.
               if (
+                !projection &&
                 record !== undefined &&
                 settled &&
                 !payloadWriteUncertain &&

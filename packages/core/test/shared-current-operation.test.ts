@@ -66,8 +66,15 @@ function matches(row: unknown, input: unknown): boolean {
     return text(value.rich_text) === property(filter.rich_text).equals
   return false
 }
-function fixture(options: { skillExists?: boolean; sourceOwner?: Record<string, unknown> } = {}) {
+function fixture(
+  options: {
+    skillExists?: boolean
+    sourceOwner?: Record<string, unknown>
+    projection?: boolean
+  } = {},
+) {
   const sourceOwner = options.sourceOwner
+  const projection = options.projection === true
   const root = mkdtempSync(join(parent, "case-")),
     json = new Map<string, unknown>()
   const records = new Map<string, Record<string, unknown>>(),
@@ -140,10 +147,12 @@ function fixture(options: { skillExists?: boolean; sourceOwner?: Record<string, 
             )
           return row
         }
-        if (path === productPath && method === "POST") {
+        if (path === productPath && method === (projection ? "PATCH" : "POST")) {
           const chosen = fault?.target === "product" ? fault : undefined
           if (chosen) fault = undefined
-          expect(property(property(owner.properties).state).select).toEqual({ name: "applying" })
+          expect(property(property(owner.properties).state).select).toEqual({
+            name: projection ? "ready" : "applying",
+          })
           if (chosen?.outcome !== "absent") values.push(String(request.value))
           if (chosen)
             return yield* Effect.fail(
@@ -301,7 +310,11 @@ function fixture(options: { skillExists?: boolean; sourceOwner?: Record<string, 
     session.dispatch({
       key: "append:" + value,
       replay,
-      request: { path: productPath, body: { value }, options: { method: "POST" } },
+      request: {
+        path: productPath,
+        body: { value },
+        options: { method: projection ? "PATCH" : "POST" },
+      },
       observe: ({ fresh }) =>
         Effect.sync(() => {
           observerFreshness.push(fresh)
@@ -607,6 +620,195 @@ describe("current Source-child operation", () => {
       f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
     ).toHaveLength(writes)
     expect(f.json.size).toBe(0)
+  })
+})
+
+describe("finite reading projection", () => {
+  const projectionIntent = { ...intent, projection: true as const }
+  const ready = (f: ReturnType<typeof fixture>) => {
+    expect(property(property(f.owner.properties).state).select).toEqual({ name: "ready" })
+    expect(text(property(property(f.owner.properties).operation).rich_text)).toBe("")
+    expect(
+      f.calls.filter((call) => call.path === "v1/pages/" + ownerId && call.method === "PATCH"),
+    ).toEqual([])
+  }
+
+  test("generated bodies use one finite intent without changing owner metadata or readiness", async () => {
+    const f = fixture({ projection: true })
+    const before = structuredClone(f.owner)
+    expect(
+      await f.run(
+        withCurrentOperation(library, {
+          intent: projectionIntent,
+          ownerPageId: ownerId,
+          run: (session) =>
+            Effect.gen(function* () {
+              yield* session.activate()
+              yield* session.assertCurrent()
+              yield* f.action(session)
+              yield* session.assertCurrent()
+              return "first"
+            }),
+          verify: () => Effect.void,
+        }),
+      ),
+    ).toBe("first")
+    ready(f)
+    expect(f.owner).toEqual(before)
+    expect(f.activeRecords()).toEqual([])
+    expect(f.json.size).toBe(0)
+    const writes = f.calls.filter(
+      (call) => call.method !== "GET" && !call.path.includes("/query"),
+    ).length
+    expect(await f.run(f.apply({ nextIntent: projectionIntent }))).toBe(1)
+    expect(
+      f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+    ).toHaveLength(writes)
+  })
+
+  test("unknown accepted append preserves consumption and excludes content writers until exact resume", async () => {
+    const f = fixture({ projection: true })
+    f.fault({ target: "product", outcome: "visible" })
+    expect(
+      await f.run(f.apply({ nextIntent: projectionIntent }).pipe(Effect.result)),
+    ).toMatchObject({ _tag: "Failure", failure: { code: "WRITE_OUTCOME_UNKNOWN" } })
+    ready(f)
+    expect(f.activeRecords()).toHaveLength(1)
+    const current = await f.run(inspectCurrentOperation(library, intent.owner))
+    expect(current).toMatchObject({
+      intent: projectionIntent,
+      owner_state: { state: "ready" },
+      in_flight: { key: "append:first", replay: "never" },
+    })
+    for (const mode of ["apply", { kind: "supersede", operation_id: intent.operation_id }] as const)
+      expect(
+        await f.run(
+          f
+            .apply({ mode, nextIntent: { ...intent, operation_id: "content-next" } })
+            .pipe(Effect.result),
+        ),
+      ).toMatchObject({
+        _tag: "Failure",
+        failure: { code: "CURRENT_OPERATION_PENDING", details: { projection: true } },
+      })
+    expect(f.productRequests()).toBe(1)
+    ready(f)
+    expect(await f.run(f.apply({ nextIntent: projectionIntent, mode: "resume" }))).toBe(1)
+    expect(f.productRequests()).toBe(1)
+    expect(f.activeRecords()).toEqual([])
+    expect(f.json.size).toBe(0)
+    ready(f)
+  })
+
+  test("unknown absent append is never replayed and leaves the Skill consumable", async () => {
+    const f = fixture({ projection: true })
+    f.fault({ target: "product", outcome: "absent" })
+    await f.run(f.apply({ nextIntent: projectionIntent }).pipe(Effect.result))
+    expect(
+      await f.run(f.apply({ nextIntent: projectionIntent, mode: "resume" }).pipe(Effect.result)),
+    ).toMatchObject({ _tag: "Failure", failure: { code: "CURRENT_OPERATION_UNRESOLVED" } })
+    expect(f.productRequests()).toBe(1)
+    expect(f.activeRecords()).toHaveLength(1)
+    ready(f)
+  })
+
+  test("failed full readback preserves ready and resumes its existing generated body", async () => {
+    const f = fixture({ projection: true })
+    expect(
+      await f.run(
+        f.apply({ nextIntent: projectionIntent, verifyFailure: true }).pipe(Effect.result),
+      ),
+    ).toMatchObject({ _tag: "Failure", failure: { code: "CURRENT_TREE_INCOMPLETE" } })
+    ready(f)
+    expect(await f.run(f.apply({ nextIntent: projectionIntent, mode: "resume" }))).toBe(1)
+    expect(f.productRequests()).toBe(1)
+    expect(f.activeRecords()).toEqual([])
+    expect(f.json.size).toBe(0)
+    ready(f)
+  })
+
+  test("lost Record retirement acknowledgement resumes without any owner ready write", async () => {
+    const f = fixture({ projection: true })
+    f.fault({ target: "retirement", outcome: "visible" })
+    expect(
+      await f.run(f.apply({ nextIntent: projectionIntent }).pipe(Effect.result)),
+    ).toMatchObject({ _tag: "Failure", failure: { code: "WRITE_OUTCOME_UNKNOWN" } })
+    expect(f.json.size).toBe(1)
+    ready(f)
+    expect(await f.run(f.apply({ nextIntent: projectionIntent, mode: "resume" }))).toBe(1)
+    expect(f.productRequests()).toBe(1)
+    expect(f.json.size).toBe(0)
+    ready(f)
+  })
+
+  test("projection rejects owner creation, retirement and supersede before remote work", async () => {
+    for (const options of [
+      { ownerPageId: null },
+      { completion: "retired" as const },
+      { mode: { kind: "supersede" as const, operation_id: "previous" } },
+    ]) {
+      const f = fixture({ projection: true })
+      expect(
+        await f.run(
+          withCurrentOperation(library, {
+            intent: projectionIntent,
+            ownerPageId: ownerId,
+            ...options,
+            run: () => Effect.void,
+            verify: () => Effect.void,
+          }).pipe(Effect.result),
+        ),
+      ).toMatchObject({ _tag: "Failure", failure: { code: "CURRENT_OPERATION_INVALID" } })
+      expect(f.calls).toEqual([])
+    }
+  })
+
+  test("projection dispatch cannot mutate metadata and cannot rebind its owner", async () => {
+    for (const action of ["metadata", "binding"] as const) {
+      const f = fixture({ projection: true })
+      expect(
+        await f.run(
+          withCurrentOperation(library, {
+            intent: projectionIntent,
+            ownerPageId: ownerId,
+            run: (session) =>
+              action === "binding"
+                ? session.bindOwner(ownerId)
+                : session.dispatch({
+                    key: "metadata",
+                    replay: "idempotent",
+                    request: {
+                      path: "v1/pages/" + ownerId,
+                      body: { properties: { state: { select: { name: "applying" } } } },
+                      options: { method: "PATCH" },
+                    },
+                    observe: () => Effect.succeed({ status: "missing" as const }),
+                  }),
+            verify: () => Effect.void,
+          }).pipe(Effect.result),
+        ),
+      ).toMatchObject({ _tag: "Failure", failure: { code: "CURRENT_OPERATION_INVALID" } })
+      expect(f.activeRecords()).toEqual([])
+      expect(f.json.size).toBe(0)
+      ready(f)
+    }
+  })
+
+  test("an owner becoming unready during projection cannot be republished by completion", async () => {
+    const f = fixture({ projection: true })
+    expect(
+      await f.run(
+        f.apply({ nextIntent: projectionIntent, foreignOwner: true }).pipe(Effect.result),
+      ),
+    ).toMatchObject({ _tag: "Failure", failure: { code: "CURRENT_OPERATION_CONFLICT" } })
+    expect(property(property(f.owner.properties).state).select).toEqual({ name: "applying" })
+    expect(text(property(property(f.owner.properties).operation).rich_text)).toBe(
+      "another-operation",
+    )
+    expect(
+      f.calls.filter((call) => call.path === "v1/pages/" + ownerId && call.method === "PATCH"),
+    ).toEqual([])
+    expect(f.activeRecords()).toHaveLength(1)
   })
 })
 

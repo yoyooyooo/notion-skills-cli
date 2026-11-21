@@ -17,6 +17,8 @@ correspondence. Those former passes do not certify the current line.
 | Complete current input, original bytes, stable Files and owner-scoped retirement | `shared-current-write-input.ts`, `shared-current-write.ts` | `shared-current-write-input.test.ts`, `shared-current-write.test.ts` |
 | One unfinished intent, unknown-result observation, finite pending cleanup | `shared-current-operation.ts` | `shared-current-operation.test.ts`, `shared-current-operation.node.test.ts` |
 | Full text, code and binary reading projections | `shared-current-projection.ts` | `shared-current-projection.test.ts` |
+| Explicit complete-text projection, native preservation and nonblocking recovery | `shared-current-projection-write.ts` | `shared-current-projection-write.test.ts` |
+| Daily Source membership ∪ Skill 日用 ∪ Default Context, complete metadata only | `shared-current-daily.ts` | `shared-current-daily.test.ts` |
 | Current upload identity, multipart transmission and actual HTTP requests | `shared-current-upload.ts`, `notion-http.ts` | `shared-current-upload.test.ts`, `shared-current-upload-http.test.ts` |
 | Single per-file acquisition v5 and current-locator checks | `shared-acquisition-model.ts`, `shared-fixed-acquisition.ts` | `shared-acquisition-contract.test.ts` |
 | Current Profile replacement and finite local pending intent | `shared-profile.ts` | `shared-profile.test.ts` |
@@ -60,12 +62,16 @@ pages or repairing operations would be semantic writes and is forbidden here.
 
 ## Public boundary
 
-Current `ctl library` exposes init, inspect, files, operation, import, source and profile. Import
+Current `ctl library` exposes init, inspect, files, operation, import, projection,
+source and profile. Import
 accepts a complete resource/native tree, with dry run and resume on the same route.
 Source apply/refresh reconciles the complete selected Git member set through the
 same operation kernel, including additions, removals and missing-owner rebuilds.
 Source enable/disable, unreferenced removal and exact file takeover/restore-follow
-use that current coordinator. Partial relationship patches, sync, archive,
+use that current coordinator. Projection uses the same finite kernel and existing
+renderer, keeps the real Skill ready, and verifies full text on existing pages.
+Daily batches preserve human policy and stop with exact single-Skill recovery on
+failure. Partial relationship patches, sync, archive,
 graph-release, repair and old migration writers are not public routes. A removed
 route must fail without redirecting to a compatibility handler.
 
@@ -103,7 +109,11 @@ Skill, and isolate global Skills with `pi -ns`. AH-1063 records the first native
 baseline; it does not certify a later pairing or the full daily batch.
 
 Required Files metadata and original bytes belong to current consumption.
-AH-501/AH-1141 cover later reading projections. AH-505/AH-507/AH-513 cover additional
+AH-501/AH-1141 now require full daily main and supporting text in Notion. Run the
+public projection command, read back actual bodies and repeat to establish zero
+semantic writes. Report native bodies as verified and non-text files as skipped.
+The public command and controlled tests do not prove live daily coverage. Non-daily
+text and binary presentation remain deferred. AH-505/AH-507/AH-513 cover additional
 governance, recovery and non-daily data; those tasks do not block the daily batch.
 Agent-kit main-path Skills and global exposure stay available. OMP/Tern and other
 hosts remain deferred.

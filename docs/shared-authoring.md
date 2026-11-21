@@ -113,7 +113,7 @@ actual round trip; an unconfirmed write leaves the intent unfinished. Keep exact
 resources for byte formats the native body cannot preserve.
 
 Paths, original resource bytes, and executable modes remain part of file identity.
-The writer verifies the complete current tree and authoritative bytes. Generated main-page and supporting-page reading projections can be rendered separately; they do not block readiness.
+The writer verifies the complete current tree and authoritative bytes. Run the explicit projection command below for generated main-page and supporting-page reading bodies; those bodies do not block content readiness.
 It cleans obsolete resources owned by an admitted replacement after the new bindings are established.
 
 For a new Skill, Enabled defaults to true and Default Context defaults to false.
@@ -132,13 +132,57 @@ An admitted response may exceed the byte limit; the next request is refused.
 Exhaustion preserves any unfinished intent. Resume the same input explicitly
 with a fresh invocation budget; do not create a replacement operation.
 
-## Read the projection and exact original
+## Generate readable text in Notion
 
-Open the resulting Skill page and follow its Supporting Files relation.
-Source and resource consumption uses exact declared originals. Generated reading pages may be absent or out of date until projection work runs separately. When rendered, text must be complete and opaque files must expose a usable original.
-Formats that need a ZIP carrier use one ZIP containing that single original file.
+After import or Source apply/refresh, inspect and generate the current text:
 
-The `Content` descriptor determines where the authoritative bytes live.
+```bash
+ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ENTRY --dry-run
+ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ENTRY
+ntn-skills ctl library projection --daily --entry LIBRARY_ENTRY --dry-run
+ntn-skills ctl library projection --daily --entry LIBRARY_ENTRY
+```
+
+Open the resulting Skill page and follow Supporting Files. The main body belongs
+on Skills and each text supporting body on its existing Files page. The same
+renderer writes complete Markdown or code text from verified current originals,
+then reads the actual result back. An equal complete projection is a zero-write
+no-op. A link, hash, truncated excerpt or local cache path is not a text body.
+Non-text files, including images and fonts, are reported as skipped; their exact
+original acquisition remains available without generating a Notion body.
+
+`--daily` selects current members of Sources marked 日用, Skills marked 日用 and
+Default Context. It validates the checkbox schema and complete pagination and
+uses current contributions rather than Origin navigation. It reports Enabled
+and 期望删除 without changing them. Daily text coverage includes disabled choices;
+missing current metadata or unavailable bytes must be reported, not hidden.
+
+Each Skill uses one finite projection intent through the existing operation
+kernel. That intent changes generated bodies only. The real Skill remains ready
+for ordinary consumption, including after projection failure. Native author
+bodies are verified without replacement. The command does not change content
+authority, source membership, file identities or human policies.
+
+Resume an interrupted single-Skill intent with the returned exact operation:
+
+```bash
+ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ENTRY --operation PROJECTION_ID --resume
+```
+
+Keep its original state and credential scope. A daily run executes Skills in
+order and stops on failure, reporting completed and remaining targets plus the
+exact single-Skill recovery command. Resume that intent first, then rerun daily;
+already-complete bodies require no semantic writes. `--daily` cannot combine
+with `--operation` or `--resume`; projection has no supersede mode. Unknown
+append outcomes are reconciled, not blindly replayed.
+
+The whole invocation shares 1000 HTTP attempts, 512 MiB payload bytes and
+600000 ms by default, including daily selection, original acquisition, generated
+body writes and readback. `--max-requests`, `--max-bytes` and `--timeout` accept
+positive explicit limits; nested Skills cannot reset them. Content sync and
+projection are explicit separate commands. Ordinary consumption stays read-only.
+
+The `Content` descriptor continues to determine where the authoritative bytes live.
 Editing a generated resource or Source projection does not change those bytes or transfer authority.
 For an existing native file, its Notion author body remains editable under the native descriptor.
 An explicit `--native PATH` selects this editable representation. Reimporting a

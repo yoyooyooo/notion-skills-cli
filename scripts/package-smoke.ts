@@ -112,6 +112,7 @@ assert.deepEqual(library.schema.commands.map((command: { name: string }) => comm
   "inspect",
   "operation",
   "profile",
+  "projection",
   "source",
 ])
 const sourceSchema = await cli(["schema", "ctl", "library", "source"])
@@ -246,6 +247,7 @@ const semanticWrites = () =>
   source.requests.filter((call: { semantic_write?: boolean }) => call.semantic_write === true)
     .length
 let currentImport
+let currentProjection
 try {
   env.NOTION_API_TOKEN = "current-cli-owned-token"
   env.NOTION_API_BASE_URL = source.origin
@@ -431,6 +433,82 @@ try {
     portable.relations,
   )
   assert.equal(semanticWrites(), afterImport + roundtripWrites)
+  const projectionArgs = [
+    "ctl",
+    "library",
+    "projection",
+    imported.page_id,
+    "--entry",
+    currentLibrary.skills.database_id,
+  ]
+  const beforeProjection = semanticWrites()
+  const beforeProjectionFiles = await cli([
+    "files",
+    imported.page_id,
+    "--database",
+    currentLibrary.skills.database_id,
+    "--refresh",
+  ])
+  assert.equal(typeof beforeProjectionFiles.snapshot_id, "string")
+  const projectionPlan = await cli([...projectionArgs, "--dry-run"])
+  assert.equal(projectionPlan.status, "inspected")
+  assert.equal(projectionPlan.results[0].counts.would_write, 2)
+  assert.equal(projectionPlan.results[0].counts.native_verified, 1)
+  assert.equal(semanticWrites(), beforeProjection)
+  const projected = await cli([...projectionArgs, "--operation", "installed-projection"])
+  assert.equal(projected.status, "complete")
+  assert.equal(projected.results[0].counts.applied, 2)
+  assert.equal(projected.results[0].counts.native_verified, 1)
+  const projectionWrites = semanticWrites() - beforeProjection
+  assert.ok(projectionWrites > 0)
+  const projectedBodies = projected.results[0].files.filter(
+    (file: { status: string }) => file.status === "applied",
+  )
+  for (const file of projectedBodies) {
+    assert.ok(source.notion.blocks[file.page_id].length > 0)
+    assert.ok(
+      source.notion.bodies[file.page_id].includes(
+        file.path === "SKILL.md" ? "Current import" : "原始正文 α 😀",
+      ),
+    )
+  }
+  const repeatedProjection = await cli([
+    ...projectionArgs,
+    "--operation",
+    "installed-projection-repeat",
+  ])
+  assert.equal(repeatedProjection.results[0].counts.unchanged, 2)
+  assert.equal(repeatedProjection.results[0].counts.applied, 0)
+  assert.equal(semanticWrites(), beforeProjection + projectionWrites)
+  const afterProjectionFiles = await cli([
+    "files",
+    imported.page_id,
+    "--database",
+    currentLibrary.skills.database_id,
+    "--refresh",
+  ])
+  assert.equal(afterProjectionFiles.snapshot_id, beforeProjectionFiles.snapshot_id)
+  const afterProjectionRead = await cli([
+    "read",
+    imported.page_id,
+    "--database",
+    currentLibrary.skills.database_id,
+    "--path",
+    "references/guide.md",
+    "--refresh",
+    "--json",
+  ])
+  assert.equal(afterProjectionRead.content, edited)
+  assert.equal(semanticWrites(), beforeProjection + projectionWrites)
+  currentProjection = {
+    text_files: 2,
+    native_verified: 1,
+    dry_run_writes: 0,
+    projection_writes: projectionWrites,
+    repeated_projection_writes: 0,
+    consumption_writes: 0,
+    snapshot_identity_preserved: true,
+  }
   assert.equal(source.unexpected.length, 0, JSON.stringify(source.unexpected))
   currentImport = {
     files: currentFiles.length,
@@ -464,8 +542,10 @@ const report = {
     "builtin_install_update",
     "installed_current_import_dry_run_apply_read_files_export_noop",
     "installed_portable_roundtrip_and_invocation_budget",
+    "installed_current_projection_full_bodies_noop_and_read_only_consumption",
   ],
   current_import: currentImport,
+  current_projection: currentProjection,
   scratch,
 }
 await writeFile(join(scratch, "report.json"), JSON.stringify(report, null, 2) + "\n")

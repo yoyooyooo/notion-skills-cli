@@ -2,6 +2,7 @@
 
 - [Inspect](#inspect-the-complete-tree)
 - [Complete import](#import-a-complete-current-tree)
+- [Notion text](#generate-notion-text)
 - [Unfinished work](#incomplete-current-work)
 - [Cleanup](#cleanup-boundaries)
 
@@ -53,8 +54,8 @@ directories without a README. Images must target files. Escaped HTML remains
 literal text; missing targets and paths escaping the Skill still fail validation.
 
 Default resource import preserves exact originals and complete file metadata.
-Generated full-text projections can be produced later; missing generated bodies do
-not prevent consumption. Unsupported upload types use a deterministic single-original ZIP. Uploads larger
+Generate full text with the explicit projection command below; missing generated
+bodies do not prevent consumption. Unsupported upload types use a deterministic single-original ZIP. Uploads larger
 than the direct limit use bounded multipart transport. A source or native file
 is not silently replaced merely by editing its generated page.
 
@@ -92,10 +93,43 @@ download and cleanup share these limits. An admitted response may finish beyond
 the byte limit; its actual cost is reported and no next request is admitted.
 Nested calls cannot reset or increase this budget.
 
+## Generate Notion text
+
+```sh
+ntn-skills ctl library projection PAGE_ID --entry ENTRY --dry-run
+ntn-skills ctl library projection PAGE_ID --entry ENTRY
+ntn-skills ctl library projection --daily --entry ENTRY --dry-run
+ntn-skills ctl library projection --daily --entry ENTRY
+```
+
+Run after import or Source refresh. The existing renderer writes complete current
+Source/resource text to the main Skills page and every text supporting Files page,
+then reads it back. It preserves authority, file identities and human policy.
+Native bodies are verified without writes; non-text files are explicitly skipped.
+An equal complete projection makes zero semantic Notion writes.
+
+Daily is current Source 日用 members, Skill 日用 and Default Context combined.
+Enabled and 期望删除 are reported without changing or silently excluding them.
+Missing current bindings or inaccessible bytes are failures, not completed text.
+The whole daily invocation shares the same request, byte and deadline limits.
+
+Projection uses a finite intent while the real Skill stays ready for consumption.
+A daily batch stops on the first failure with completed/remaining scope and an
+exact single-Skill operation. Keep the original state and credential scope:
+
+```sh
+ntn-skills ctl library projection PAGE_ID --entry ENTRY --operation OPERATION_ID --resume
+```
+
+Resume that Skill, then rerun daily. Already-complete bodies make no writes.
+Daily rejects --operation and --resume; projection has no supersede mode.
+Unknown append is reconciled, not blindly replayed. Ordinary reads never project.
+
 ## Incomplete current work
 
-Ready requires an empty Operation. Applying and attention identify one unfinished
-current intent. Consumers refuse those states before body acquisition.
+Content writes require an empty Operation before ready. Applying and attention
+identify an unfinished content intent; consumers refuse those states before body
+acquisition. Projection intents preserve the real Skill's ready state.
 
 ```sh
 ntn-skills ctl library operation SKILL_ID --kind skill --entry ENTRY

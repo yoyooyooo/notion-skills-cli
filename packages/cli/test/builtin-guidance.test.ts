@@ -50,7 +50,16 @@ test("executable builtin examples stay within the public current command surface
     "prepare",
     "resolve",
   ])
-  const library = new Set(["init", "inspect", "files", "operation", "import", "source", "profile"])
+  const library = new Set([
+    "init",
+    "inspect",
+    "files",
+    "operation",
+    "import",
+    "source",
+    "projection",
+    "profile",
+  ])
   let examples = 0
   for (const skill of builtins) {
     for (const file of skill.portable.files) {

@@ -25,7 +25,7 @@ acquisition v5 按文件保存 source_id/revision/source_path 或 resource objec
 
 ## 人类阅读与未实现边界
 
-Source、resource、native 的每个 supporting 文件都需要 Files 身份与唯一 owner。Native 正文及 resource 原件完整；生成阅读页另行验收，不阻塞 ready 和消费。实际 Source bytes 不证明 Notion 已有投影，普通消费也不能为了补页而写 Notion。
+Source、resource、native 的每个 supporting 文件都需要 Files 身份与唯一 owner。Native 正文及 resource 原件完整；同步后用公开 projection 验日用 main 与所有文本 Files 正文，native 只读验证、非文本 skipped、重复零写。生成阅读不阻塞 ready 和消费。实际 Source bytes 不证明 Notion 已有正文，普通消费也不能为了补页而写 Notion。
 
 当前 public CLI 使用完整本地树 `ctl library import` 与同一条 Source apply/refresh。按完整上游自动增删成员，同版本零写，保存声明可删后重建。混合接管及跨对象治理各按实际范围验收，不作日用迁入前置。
 

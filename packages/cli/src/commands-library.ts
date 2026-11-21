@@ -9,6 +9,7 @@ import { libraryProfilesCommand } from "./commands-library-profiles.ts"
 import { currentImportCommand } from "./commands-current-import.ts"
 import { currentSourceCommand } from "./commands-current-source.ts"
 import { currentOperationCommand } from "./commands-current-operation.ts"
+import { currentProjectionCommand } from "./commands-current-projection.ts"
 
 const initialize = defineCommand(
   "init",
@@ -90,6 +91,7 @@ export const libraryCommand = defineCommand("library").pipe(
     currentOperationCommand,
     currentImportCommand,
     currentSourceCommand,
+    currentProjectionCommand,
     libraryProfilesCommand,
   ]),
 )

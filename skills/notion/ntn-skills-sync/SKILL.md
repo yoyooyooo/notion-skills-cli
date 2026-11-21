@@ -23,6 +23,7 @@ Use the complete {version:1,definition,contributions} input in
 ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --dry-run
 ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --operation OPERATION_ID
 ntn-skills ctl library source refresh SOURCE_ID --entry ENTRY
+ntn-skills ctl library projection --daily --entry ENTRY
 ```
 
 Use regular Git content from GitHub or a credential-free private HTTP(S) Git
@@ -40,7 +41,10 @@ explicitly to retain its Notion authority. Other Source content cannot be replac
 A removed pure Source member is archived with its Files; unrelated author content
 prevents silent deletion. Retained paths preserve File identities and human metadata.
 Every supporting file needs current Files metadata and exact declared bytes.
-Generated reading projections can follow later and do not block consumption.
+After sync, projection must make every daily main and text supporting file fully
+readable in Notion. Native bodies are verified without writes; non-text is skipped.
+Projection failure preserves consumption. See
+[daily text](references/synchronization.md#daily-notion-text) for preview and recovery.
 
 Keep the declaration outside Notion. Reapply it to rebuild a missing Source or
 Skill; upstream content does not reconstruct human checkbox or relation choices.

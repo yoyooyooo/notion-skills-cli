@@ -178,6 +178,41 @@ console.log(JSON.stringify({source,child,remaining:yield* store.listKeys('operat
   }
 }, 30_000)
 
+test("real Store preserves projection intent without changing its owner across restart", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ntn-projection-intent-sqlite-"))
+  try {
+    const written = await run(
+      root,
+      `
+const projection={...pending,owner_page_id:'00000000-0000-4000-8000-000000000001',intent:{...pending.intent,projection:true},lifecycle:{phase:'active',record_page_id:'00000000-0000-4000-8000-000000000002'}};
+yield* store.writeJson(key,projection);
+const content={...projection,intent:pending.intent};
+const replaced=yield* store.writeJson(key,content).pipe(Effect.result);
+console.log(JSON.stringify({projection:yield* store.readJson(key,CurrentWritePendingSchema),replaced:replaced._tag==='Failure'?replaced.failure.code:null}));`,
+    )
+    expect(written.exit, written.stderr).toBe(0)
+    const initial = JSON.parse(written.stdout)
+    expect(initial.projection).toMatchObject({
+      owner_page_id: "00000000-0000-4000-8000-000000000001",
+      intent: { ...pending.intent, projection: true },
+      lifecycle: { phase: "active" },
+    })
+    expect(initial.replaced).toBe("STATE_CONFLICT")
+    const reopened = await run(
+      root,
+      `
+const restored=yield* store.readJson(key,CurrentWritePendingSchema);
+yield* store.writeJson(key,{...restored,lifecycle:{phase:'retiring',record_page_id:restored.lifecycle.record_page_id}});
+yield* store.retireKeys([key]);
+console.log(JSON.stringify({restored,remaining:yield* store.listKeys('operations/current-write-pending')}));`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(JSON.parse(reopened.stdout)).toEqual({ restored: initial.projection, remaining: [] })
+  } finally {
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
+  }
+}, 30_000)
+
 test("real SQLite admits exactly one expected-old successor and preserves it across restart", async () => {
   const root = await mkdtemp(join(tmpdir(), "ntn-current-handoff-sqlite-"))
   try {
