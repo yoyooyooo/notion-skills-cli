@@ -105,6 +105,11 @@
       "id": "verify-context-broker",
       "repository": "broker",
       "skill": ".agents/skills/verify-context-broker/SKILL.md"
+    },
+    {
+      "id": "verify-notion-agent-workflows",
+      "repository": "broker",
+      "skill": ".agents/skills/verify-notion-agent-workflows/SKILL.md"
     }
   ],
   "contracts": [
@@ -351,7 +356,7 @@
     {
       "id": "C08",
       "title": "自然任务工具选择",
-      "owner": "verify-context-broker",
+      "owner": "verify-notion-agent-workflows",
       "issue": "AH-1196",
       "state_owners": ["task intent", "local/remote origin", "catalog guidance"],
       "events": ["explicit local", "remote task", "natural refresh", "failure"],
@@ -374,6 +379,25 @@
           "repository": "broker",
           "command": "bun test packages/context-broker/scripts/completion.test.ts packages/context-broker/scripts/notion-consumption-tools.test.ts",
           "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/agent-workflow.json",
+          "required_inputs": [
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/agent-workflow.json --live",
+          "required_inputs": [
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。",
+            "候选配置与自有fixtures完成后执行；保留真实session、实际发送请求/完成响应、控制端事件和独立读回；失败及retest_of分别保存。"
+          ]
         }
       ]
     },
@@ -472,7 +496,7 @@
             "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
             "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
             "candidate-run 另需当前包/archive/SDK/entry hashes、oldBrokerRoot、localSkill path/name/hash、ownershipReceipt、artifactReceipt、自有 evidenceRoot、sourceId/database 及已授权凭据环境。",
-            "现有候选实现要求 model:magpie/group/flash、thinkingLevel:high；其项目级运行不能代替每机普通日用入口。"
+            "现有候选实现要求 model:magpie/group/worker、thinkingLevel:high；其项目级运行不能代替每机普通日用入口。"
           ]
         }
       ]
@@ -934,7 +958,7 @@
       "contracts": ["C01", "C02"],
       "owner": "verify-notion-consumer-state",
       "issue": "AH-1192",
-      "precondition": "原会话完整采用 A；远端已修改为 B；当前 candidate-run 没有轮间暂停并等待远端编辑的编排，不能独立证明先采用 A、远端改 B、再续聊；完整时序仍需公开 Pi 人工驱动及原件，未做为 not_run",
+      "precondition": "原会话完整采用A；有限publish-version事件通过公共CLI真实发布B并独立读回；同一RPC进程按预写自然消息继续。",
       "events": ["TTL 未到与到期分别说自然语言请求重新获取最新并继续"],
       "oracle": ["无需 reload；采用完整 B，普通对话仍保 A，保留不受影响 roots"],
       "minimum_layer": "natural",
@@ -947,24 +971,21 @@
         },
         {
           "repository": "broker",
-          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/current-candidate.json",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/agent-workflow.json",
           "required_inputs": [
-            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
-            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
-            "冻结 turns[].prompt/bodies/proofs/requireUse 和对应 expectedBodies、localSkill、ownershipReceipt、artifactReceipt；提示不得预塞工具名、flag 或 opaque ref。",
-            "该入口只提供现有候选模型/正文观测。完整 T16/T17 必须另保留同会话远端编辑前后证据；没有轮间编排时不把候选结果当整个时间线通过。"
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。"
           ]
         },
         {
           "repository": "broker",
-          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/current-candidate.json --live",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/agent-workflow.json --live",
           "required_inputs": [
-            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
-            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
-            "candidate-run 另需当前包/archive/SDK/entry hashes、oldBrokerRoot、localSkill path/name/hash、ownershipReceipt、artifactReceipt、自有 evidenceRoot、sourceId/database 及已授权凭据环境。",
-            "现有候选实现要求 model:magpie/group/flash、thinkingLevel:high；其项目级运行不能代替每机普通日用入口。",
-            "冻结 turns[].prompt/bodies/proofs/requireUse 和对应 expectedBodies、localSkill、ownershipReceipt、artifactReceipt；提示不得预塞工具名、flag 或 opaque ref。",
-            "该入口只提供现有候选模型/正文观测。完整 T16/T17 必须另保留同会话远端编辑前后证据；没有轮间编排时不把候选结果当整个时间线通过。"
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。",
+            "候选配置与自有fixtures完成后执行；保留真实session、实际发送请求/完成响应、控制端事件和独立读回；失败及retest_of分别保存。"
           ]
         }
       ]
@@ -975,7 +996,7 @@
       "contracts": ["C02"],
       "owner": "verify-notion-consumer-state",
       "issue": "AH-1192",
-      "precondition": "任务固定 A；current 为 B；当前 candidate-run 没有轮间暂停并等待远端编辑的编排，不能独立证明先采用 A、远端改 B、再续聊；完整时序仍需公开 Pi 人工驱动及原件，未做为 not_run",
+      "precondition": "任务固定A；实际current已为B；同进程查看B、继续A、明确采用B分别记录真实选择与本次请求。",
       "events": ["查看/比较 B，然后普通续聊，再明确采用 B"],
       "oracle": ["inspect 不激活；采用后才切换完整图；阶段失败准确"],
       "minimum_layer": "natural",
@@ -988,24 +1009,21 @@
         },
         {
           "repository": "broker",
-          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/current-candidate.json",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/agent-workflow.json",
           "required_inputs": [
-            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
-            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
-            "冻结 turns[].prompt/bodies/proofs/requireUse 和对应 expectedBodies、localSkill、ownershipReceipt、artifactReceipt；提示不得预塞工具名、flag 或 opaque ref。",
-            "该入口只提供现有候选模型/正文观测。完整 T16/T17 必须另保留同会话远端编辑前后证据；没有轮间编排时不把候选结果当整个时间线通过。"
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。"
           ]
         },
         {
           "repository": "broker",
-          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/current-candidate.json --live",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/agent-workflow.json --live",
           "required_inputs": [
-            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
-            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
-            "candidate-run 另需当前包/archive/SDK/entry hashes、oldBrokerRoot、localSkill path/name/hash、ownershipReceipt、artifactReceipt、自有 evidenceRoot、sourceId/database 及已授权凭据环境。",
-            "现有候选实现要求 model:magpie/group/flash、thinkingLevel:high；其项目级运行不能代替每机普通日用入口。",
-            "冻结 turns[].prompt/bodies/proofs/requireUse 和对应 expectedBodies、localSkill、ownershipReceipt、artifactReceipt；提示不得预塞工具名、flag 或 opaque ref。",
-            "该入口只提供现有候选模型/正文观测。完整 T16/T17 必须另保留同会话远端编辑前后证据；没有轮间编排时不把候选结果当整个时间线通过。"
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。",
+            "候选配置与自有fixtures完成后执行；保留真实session、实际发送请求/完成响应、控制端事件和独立读回；失败及retest_of分别保存。"
           ]
         }
       ]
@@ -1026,6 +1044,25 @@
           "repository": "broker",
           "command": "bun test packages/context-broker/scripts/skill-context-session.test.ts packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/resource-read-host.test.ts",
           "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/agent-workflow.json",
+          "required_inputs": [
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/agent-workflow.json --live",
+          "required_inputs": [
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。",
+            "候选配置与自有fixtures完成后执行；保留真实session、实际发送请求/完成响应、控制端事件和独立读回；失败及retest_of分别保存。"
+          ]
         }
       ]
     },
@@ -1052,6 +1089,25 @@
           "repository": "broker",
           "command": "bun test packages/context-broker/scripts/notion-source-sdk.test.ts packages/context-broker/scripts/skill-context-session.test.ts",
           "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/agent-workflow.json",
+          "required_inputs": [
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/agent-workflow.json --live",
+          "required_inputs": [
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。",
+            "候选配置与自有fixtures完成后执行；保留真实session、实际发送请求/完成响应、控制端事件和独立读回；失败及retest_of分别保存。"
+          ]
         }
       ]
     },
@@ -1073,6 +1129,25 @@
           "repository": "broker",
           "command": "bun test packages/context-broker/scripts/notion-consumption-tools.test.ts packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/host-prepare.test.ts",
           "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/agent-workflow.json",
+          "required_inputs": [
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/agent-workflow.json --live",
+          "required_inputs": [
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。",
+            "候选配置与自有fixtures完成后执行；保留真实session、实际发送请求/完成响应、控制端事件和独立读回；失败及retest_of分别保存。"
+          ]
         }
       ]
     },
@@ -1141,7 +1216,7 @@
             "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
             "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
             "candidate-run 另需当前包/archive/SDK/entry hashes、oldBrokerRoot、localSkill path/name/hash、ownershipReceipt、artifactReceipt、自有 evidenceRoot、sourceId/database 及已授权凭据环境。",
-            "现有候选实现要求 model:magpie/group/flash、thinkingLevel:high；其项目级运行不能代替每机普通日用入口。"
+            "现有候选实现要求 model:magpie/group/worker、thinkingLevel:high；其项目级运行不能代替每机普通日用入口。"
           ]
         }
       ]
@@ -1150,13 +1225,13 @@
       "id": "T22",
       "title": "远端可见的本地充分负例",
       "contracts": ["C08"],
-      "owner": "verify-context-broker",
+      "owner": "verify-notion-agent-workflows",
       "issue": "AH-1196",
       "precondition": "普通 Pi；本地 skill 足够；Notion source 与目录可见",
       "events": ["自然任务使用显式 local；同名候选/宽泛 Description/URL；另跑确需远端正例"],
       "oracle": [
         "不必要 notion_use=0且计失败；local 不被同名远端替换；必要远端仍可用",
-        "独立人工逐条审核完整 tool_call/tool_result/provider trace，不必要 notion_use 必须为零，失败调用也计入；toolCallCount 是全部工具总数，不能替代此判据。"
+        "机械检查完整tool_call尝试（失败/guard拒绝也计），不必要notion_use为零；同时证明目标来源可见、本地正文实际发送和业务正确。工具总数不代替必要性。"
       ],
       "minimum_layer": "natural",
       "live_required": true,
@@ -1166,7 +1241,7 @@
           "command": "pi",
           "required_inputs": [
             "普通 Pi 不带 -ns；本地 Skill 可用且足够；日用 Notion source 启用并可见；当前实际加载身份、自然任务及已授权 provider。",
-            "完整保留工具调用/结果含失败调用、provider payload 与模型回复，交独立人工审核工具必要性。"
+            "完整保留工具调用/结果含失败调用、provider payload 与模型回复，按私有场景判据机械审核工具必要性并保留人工复核入口。"
           ]
         },
         {
@@ -1176,24 +1251,21 @@
         },
         {
           "repository": "broker",
-          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/current-candidate.json",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-plan --config /absolute/owned/agent-workflow.json",
           "required_inputs": [
-            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
-            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
-            "冻结 turns[].prompt/bodies/proofs/requireUse 和对应 expectedBodies、localSkill、ownershipReceipt、artifactReceipt；提示不得预塞工具名、flag 或 opaque ref。",
-            "现有候选没有独立 unnecessary notion_use 计数规则，必须对完整 trace 作独立人工审核；不能用 toolCallCount 总数或 requireUse:false 证明零误调。"
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。"
           ]
         },
         {
           "repository": "broker",
-          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/current-candidate.json --live",
+          "command": "node scripts/verify-pi-daily-installation.mjs candidate-run --config /absolute/owned/agent-workflow.json --live",
           "required_inputs": [
-            "本轮自有 config.version:1、scope:project-scoped-candidate-precheck、非空 turns 且 id 唯一/自然 prompt；body 断言须对应冻结的 expectedBodies。",
-            "candidate-plan 只返回 prepared_not_executed，不证明实际安装、模型或双机入口。",
-            "candidate-run 另需当前包/archive/SDK/entry hashes、oldBrokerRoot、localSkill path/name/hash、ownershipReceipt、artifactReceipt、自有 evidenceRoot、sourceId/database 及已授权凭据环境。",
-            "现有候选实现要求 model:magpie/group/flash、thinkingLevel:high；其项目级运行不能代替每机普通日用入口。",
-            "冻结 turns[].prompt/bodies/proofs/requireUse 和对应 expectedBodies、localSkill、ownershipReceipt、artifactReceipt；提示不得预塞工具名、flag 或 opaque ref。",
-            "现有候选没有独立 unnecessary notion_use 计数规则，必须对完整 trace 作独立人工审核；不能用 toolCallCount 总数或 requireUse:false 证明零误调。"
+            "本轮自有 version:1 config，scope:notion-agent-workflow；scenarioFile/scenarioId、profile:daily|no-native-skills、bindingsFile、当前配对 brokerRoot/cliRoot、sourceId/database、packageIndex、evidenceRoot。",
+            "独立真实fixture经公共CLI准备；bindings保留public用户材料和private身份/正文/oracle。普通daily不带-ns，保留正常全局本地Skills与MCP/扩展；对照仅加-ns，不宣称Notion-only。",
+            "正式模型固定magpie/group/worker、thinkingLevel:high；自然prompt不预填工具名/flag/opaque ref。采用现役长生命周期RPC和实际请求观察；plan不是执行成绩。",
+            "候选配置与自有fixtures完成后执行；保留真实session、实际发送请求/完成响应、控制端事件和独立读回；失败及retest_of分别保存。"
           ]
         }
       ]
