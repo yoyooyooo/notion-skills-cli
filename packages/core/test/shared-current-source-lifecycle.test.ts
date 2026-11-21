@@ -335,6 +335,101 @@ test("a contradictory Source ID remains related even when its Content kind claim
   expect(f.mutations()).toEqual([])
 })
 
+test("a Skill created between the Skills and Files census is resolved by its exact live owner", async () => {
+  const f = currentWriteFixture(parent)
+  await seedSkill(f)
+  const source = await seedSource(f)
+  clearContributions(f, source.page_id)
+  const { legacySkill, legacyFile } = seedUnrelatedLegacy(f)
+  const before = structuredClone([legacySkill, legacyFile])
+  f.rewrite((path, response) =>
+    path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`)
+      ? {
+          ...response,
+          results: (response.results as unknown[]).filter(
+            (row) => property(row).id !== legacySkill.id,
+          ),
+        }
+      : response,
+  )
+  f.clearCalls()
+  expect(
+    await f.run(
+      removeCurrentSource(library, {
+        source_id: "managed",
+        operation_id: "late-unrelated-owner",
+        dry_run: true,
+      }),
+    ),
+  ).toMatchObject({ status: "inspected", targets: [] })
+  expect(f.calls.filter((call) => call.path === `v1/pages/${legacySkill.id}`)).toHaveLength(1)
+  expect(f.mutations()).toEqual([])
+  expect([f.pages.get(String(legacySkill.id)), f.pages.get(String(legacyFile.id))]).toEqual(before)
+})
+
+test("a late owner remains subject to complete Source identity and reference validation", async () => {
+  const f = currentWriteFixture(parent)
+  const skill = await seedSkill(f)
+  const source = await seedSource(f)
+  clearContributions(f, source.page_id)
+  property(property(f.pages.get(skill.page_id)!.properties).origin).relation = [
+    { id: source.page_id },
+  ]
+  f.rewrite((path, response) =>
+    path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`)
+      ? { ...response, results: [] }
+      : response,
+  )
+  f.clearCalls()
+  expect(
+    await f.run(
+      removeCurrentSource(library, {
+        source_id: "managed",
+        operation_id: "late-related-owner",
+      }).pipe(Effect.result),
+    ),
+  ).toMatchObject({ _tag: "Failure", failure: { code: "CURRENT_SOURCE_REFERENCED" } })
+  expect(f.mutations()).toEqual([])
+})
+
+for (const change of ["identity", "parent", "unavailable"] as const)
+  test(`a missing census owner cannot be supplied by a ${change} mismatch`, async () => {
+    const f = currentWriteFixture(parent)
+    await seedSkill(f)
+    const source = await seedSource(f)
+    clearContributions(f, source.page_id)
+    const { legacySkill } = seedUnrelatedLegacy(f)
+    f.rewrite((path, response) => {
+      if (path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`))
+        return {
+          ...response,
+          results: (response.results as unknown[]).filter(
+            (row) => property(row).id !== legacySkill.id,
+          ),
+        }
+      if (path === `v1/pages/${legacySkill.id}`)
+        return change === "identity"
+          ? { ...response, id: id(9000) }
+          : change === "parent"
+            ? {
+                ...response,
+                parent: { type: "data_source_id", data_source_id: library.files.data_source_id },
+              }
+            : { ...response, in_trash: true }
+      return response
+    })
+    f.clearCalls()
+    expect(
+      await f.run(
+        removeCurrentSource(library, {
+          source_id: "managed",
+          operation_id: `late-owner-${change}`,
+        }).pipe(Effect.result),
+      ),
+    ).toMatchObject({ _tag: "Failure", failure: { code: "CURRENT_INDEX_INVALID" } })
+    expect(f.mutations()).toEqual([])
+  })
+
 test("an orphan legacy File still prevents a complete Source reference census", async () => {
   const f = currentWriteFixture(parent)
   await seedSkill(f)

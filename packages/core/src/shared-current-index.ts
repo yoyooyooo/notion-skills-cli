@@ -42,6 +42,13 @@ export type CurrentSkillIndex = {
   readonly files: readonly CurrentFileBinding[]
 }
 
+type CurrentSkillCensusEntry = {
+  readonly raw: unknown
+  readonly skill_id: string
+  readonly content: string
+  readonly files: { raw: unknown; content: string }[]
+}
+
 const fileFields = ["File ID", "Skill", "Path", "Content"] as const
 type PropertyIds = Readonly<Record<string, string>>
 type QueryCurrentFilesInput = {
@@ -436,39 +443,60 @@ export function queryCurrentLibraryCensus(library: SharedLibrary) {
       exactPage(library.files.data_source_id, "Files data source"),
     )
     const filePages = yield* enumerate(filesDataSourceId, Object.values(ids))
-    const skills = new Map<
-      string,
-      {
-        raw: unknown
-        skill_id: string
-        content: string
-        files: { raw: unknown; content: string }[]
+    const skills = new Map<string, CurrentSkillCensusEntry>()
+    const referenceMetadata = (raw: unknown): CurrentSkillCensusEntry => {
+      const row = object(raw, "Skill reference metadata")
+      return {
+        raw,
+        skill_id: rich(row, library.skills.property_ids, "Skill ID"),
+        content: rich(row, library.skills.property_ids, "Content"),
+        files: [],
       }
-    >()
+    }
     for (const [page, raw] of pages) {
-      const metadata = yield* checked(() => {
-        const row = object(raw, "Skill reference metadata")
-        return {
-          raw,
-          skill_id: rich(row, library.skills.property_ids, "Skill ID"),
-          content: rich(row, library.skills.property_ids, "Content"),
-          files: [],
-        }
-      })
+      const metadata = yield* checked(() => referenceMetadata(raw))
       skills.set(page, metadata)
     }
     for (const [page, raw] of filePages) {
-      yield* checked(() => {
+      const { owner, content } = yield* checked(() => {
         const row = object(raw, "File reference metadata")
-        const owner = fileOwner(row, ids)
-        const skill = skills.get(owner)
-        if (skill === undefined)
-          throw invalid("A current File has no available owner in this library.", {
+        return { owner: fileOwner(row, ids), content: rich(row, ids, "Content") }
+      })
+      let skill = skills.get(owner)
+      if (skill === undefined) {
+        // The two tables have no shared snapshot: a valid owner may have been
+        // created after its table was enumerated. Resolve that exact relation
+        // once, without dropping the File or admitting a foreign/trashed owner.
+        const unavailable = () =>
+          invalid("A current File has no available owner in this library.", {
             page_id: page,
             skill_page_id: owner,
           })
-        skill.files.push({ raw, content: rich(row, ids, "Content") })
-      })
+        const rawOwner = yield* api.request(`v1/pages/${owner}`).pipe(
+          Effect.catchIf(
+            (error) => error.code === "NOT_FOUND",
+            () => Effect.fail(unavailable()),
+          ),
+        )
+        skill = yield* checked(() => {
+          const row = object(rawOwner, "Current File owner")
+          const parent = object(row.parent, "Current File owner parent")
+          if (
+            row.object !== "page" ||
+            exactPage(row.id, "Current File owner") !== owner ||
+            row.in_trash === true ||
+            row.archived === true ||
+            row.is_archived === true ||
+            parent.type !== "data_source_id" ||
+            exactPage(parent.data_source_id, "Current File owner parent") !==
+              exactPage(library.skills.data_source_id, "Skills data source")
+          )
+            throw unavailable()
+          return referenceMetadata(rawOwner)
+        })
+        skills.set(owner, skill)
+      }
+      skill.files.push({ raw, content })
     }
     return skills
   })
