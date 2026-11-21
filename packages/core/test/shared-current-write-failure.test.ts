@@ -234,3 +234,62 @@ test("saving an observed Operation locally retains context before execute and an
   }
   expect(f.mutations().length).toBe(writes)
 })
+
+test("a post-write directory conflict retains bounded evidence without retrying or completing", async () => {
+  const f = currentWriteFixture(root)
+  const authored = input()
+  const plan = await f.run(
+    prepareCurrentSkillWrite({
+      ...authored,
+      files: authored.files.map((file) => ({ ...file, authority: { kind: "native" } })),
+    }),
+  )
+  const filesPath = `v1/data_sources/${library.files.data_source_id}/query`
+  let omitted = 0
+  f.rewrite((path, value) => {
+    if (
+      path.startsWith(filesPath) &&
+      f.calls.some((call) => call.method === "PATCH" && call.path.endsWith("/markdown"))
+    ) {
+      omitted++
+      return { ...value, results: [] }
+    }
+    return value
+  })
+  const outcome = await f.run(
+    writeCurrentSkill(library, { plan, operation_id: operationId }).pipe(Effect.result),
+  )
+  expect(outcome._tag).toBe("Failure")
+  if (outcome._tag !== "Failure") throw new Error("The omitted directory was accepted")
+  expect(outcome.failure.code).toBe("CURRENT_WRITE_CONFLICT")
+  const verification = property(property(outcome.failure.details).verification)
+  expect(verification).toMatchObject({
+    stage: "complete-current-directory",
+    expected: { skill_id: plan.skill_id, operation_id: operationId, files: 2 },
+    actual: { skill_id: plan.skill_id, files: 1 },
+    properties: [],
+    directory: { unexpected: [], omitted: 0 },
+  })
+  expect(property(verification.expected).directory_sha256).not.toBe(
+    property(verification.actual).directory_sha256,
+  )
+  expect(property(verification.directory).missing).toEqual([
+    expect.objectContaining({
+      path: "guide.md",
+      page_id: f.table("files")[0]!.id,
+      content_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    }),
+  ])
+  expect(omitted).toBe(1)
+  expect(f.table("skills")).toHaveLength(1)
+  expect(f.table("files")).toHaveLength(1)
+  const owner = f.table("skills")[0]!
+  expect(
+    property(property(owner.properties)[library.skills.property_ids["Current State"]!]).select,
+  ).toMatchObject({ name: "attention" })
+  expect(outcome.failure.details).toMatchObject({
+    operation_id: operationId,
+    input_sha256: plan.input_sha256,
+    next: "reconcile_current",
+  })
+})
