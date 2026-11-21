@@ -20,6 +20,7 @@ type ImportOptions = {
   readonly name?: string
   readonly description?: string
   readonly native?: readonly string[]
+  readonly nativeMarkdown?: boolean
 }
 
 function currentImportInput(
@@ -119,7 +120,13 @@ export function prepareCurrentImport(input: string, options: ImportOptions) {
     const native = yield* Effect.try({
       try: () => {
         const paths = new Set(admitted.files.map((file) => file.path)),
-          selected = new Set<string>()
+          selected = new Set<string>(
+            options.nativeMarkdown
+              ? admitted.files
+                  .filter((file) => /\.(md|markdown)$/iu.test(file.path))
+                  .map((file) => file.path)
+              : [],
+          )
         for (const path of options.native ?? []) {
           if (!paths.has(path) || selected.has(path))
             throw fail(
@@ -196,7 +203,7 @@ export const currentImportCommand = defineCommand(
     native: Flag.String("native").pipe(
       Flag.atLeast(0),
       Flag.withDescription(
-        "Make this exact final input path editable in Notion; repeat for multiple files. Unselected paths remain resources. Native bodies require UTF-8/LF text without a terminal LF and exact Notion round-trip; input bytes are never trimmed. A single Markdown input uses SKILL.md.",
+        "Make this exact final input path editable in Notion; repeat for multiple files. Unselected paths remain resources. Native bodies accept UTF-8 with LF or CRLF and terminal blank lines. Complete readback verifies structure, text, code and links while allowing known Notion formatting normalization; the admitted input bytes stay exact. A single Markdown input uses SKILL.md.",
       ),
     ),
     maxRequests: budgetFlag(
@@ -291,7 +298,7 @@ export const currentImportCommand = defineCommand(
 ).pipe(
   withConstraints([exclusiveFlags(["resume", "supersede", "dryRun"])]),
   Command.withDescription(
-    "Import one complete current Skill under an exact stable Skill ID. Existing Notion-owned supporting files absent from the input are removed by the current writer. By default files remain exact Notion resources. Generated reading projections are separate and do not block current ready, import completion or ordinary consumption. Repeat --native PATH to select exact final input paths whose UTF-8/LF Markdown bodies become editable in Notion; frontmatter and mode remain in Content. Native is the subset that Notion can preserve exactly. Terminal LF is rejected before remote access; input bytes are never trimmed. Other representation changes still fail actual round-trip verification. Native selection never converts source bytes or falls back to resource after a failed round-trip. Complete import replaces native bodies too, including later Notion edits; review the current content before importing. If the existing main or any supporting file has Source authority, dry-run and apply reject with CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an unchanged export. Source removal, takeover, renaming or rebinding requires coordinated contribution management. A plain directory or ZIP requires root SKILL.md; a current portable manifest may select Skill, Router or Prompt with its canonical entrypoint. Portable Members/Requires use same-library stable Skill identities: omitted preserves, [] clears, an array replaces the complete set. Changed sets are limited to 100 targets per field; larger unchanged sets are retained. Changed Requires are checked for dependency cycles before writing. Only an explicitly selected single Markdown file is renamed to SKILL.md; select it with --native SKILL.md. Unknown or duplicate native paths, retained projections, unknown fields, symbolic links and oversized input are rejected locally. --dry-run only inspects. --max-requests, --max-bytes and --timeout (ms) bound all remote work. Resume with the same input, native paths and --operation ID --resume. To replace an unfinished intent, use --supersede OLD --operation NEW with a distinct new identity; the kernel first reconciles the exact predecessor. Supersede does not bypass unresolved writes or authority checks. No name matching or historical recovery.",
+    "Import one complete current Skill under an exact stable Skill ID. Existing Notion-owned supporting files absent from the input are removed by the current writer. By default files remain exact Notion resources. Generated reading projections are separate and do not block current ready, import completion or ordinary consumption. Repeat --native PATH to select exact final input paths whose UTF-8 Markdown bodies become editable in Notion; frontmatter and mode remain in Content. Native accepts LF, CRLF and terminal blank lines. Complete actual readback allows understood formatting normalization and still rejects changed structure, text, code or links. Original input bytes and their fingerprint remain exact. Native selection never converts source bytes or falls back to resource after a failed round-trip. Complete import replaces native bodies too, including later Notion edits; review the current content before importing. If the existing main or any supporting file has Source authority, dry-run and apply reject with CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an unchanged export. Source removal, takeover, renaming or rebinding requires coordinated contribution management. A plain directory or ZIP requires root SKILL.md; a current portable manifest may select Skill, Router or Prompt with its canonical entrypoint. Portable Members/Requires use same-library stable Skill identities: omitted preserves, [] clears, an array replaces the complete set. Changed sets are limited to 100 targets per field; larger unchanged sets are retained. Changed Requires are checked for dependency cycles before writing. Only an explicitly selected single Markdown file is renamed to SKILL.md; select it with --native SKILL.md. Unknown or duplicate native paths, retained projections, unknown fields, symbolic links and oversized input are rejected locally. --dry-run only inspects. --max-requests, --max-bytes and --timeout (ms) bound all remote work. Resume with the same input, native paths and --operation ID --resume. To replace an unfinished intent, use --supersede OLD --operation NEW with a distinct new identity; the kernel first reconciles the exact predecessor. Supersede does not bypass unresolved writes or authority checks. No name matching or historical recovery.",
   ),
   Command.withExamples([
     {

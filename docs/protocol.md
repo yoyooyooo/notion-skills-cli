@@ -71,15 +71,25 @@ Ordinary reads check Enabled and reject an observed unfinished current operation
 
 ## Current management commands
 
+`ctl library skill create INPUT --entry ENTRY --skill-id ID` selects native
+Markdown and exact resources for other files. `skill update TARGET` changes only
+explicit content, metadata or relations; unmentioned files stay current.
+`skill register PAGE_ID` preserves an authored page in the exact Skills table and
+fills missing registration. `skill remove TARGET` owns supporting/resource
+retirement and incoming same-library Members/Requires cleanup. Every action uses
+exact identities, dry-run and shared request budgets. See [daily authoring](shared-authoring.md#manage-native-skills).
+
 `ctl library import INPUT --entry ENTRY --skill-id ID` admits the complete local input before Notion access.
 The accepted input is a directory, ZIP, or explicitly selected Markdown file.
 The input limit is 128 MiB expanded and 10,000 entries. The ZIP wire limit is 138 MiB.
 
 The default representation is exact Notion resource content. Generated reading projections are separate and do not block readiness.
 An existing Notion-owned supporting file omitted from the input is removed.
-Repeat `--native PATH` for editable UTF-8/LF text with exact frontmatter and mode.
-The author body must not end in LF. This local admission check never trims input;
-actual complete round-trip verification still rejects other representation changes.
+Repeat `--native PATH` for editable supported Markdown with exact frontmatter and
+mode. All native writers accept normal LF/CRLF and terminal newlines, verify full
+Notion readback for structural equivalence and report formatting normalization.
+Original input fingerprints remain fixed; native read/export uses the current
+Notion body. Lost content or changed meaning cannot complete an intent.
 Unknown or noncanonical native paths are rejected locally; the selection is part
 of the input fingerprint and must match on resume. A target containing any Source
 main or supporting file returns `CURRENT_SOURCE_MANAGEMENT_REQUIRED` in both dry-run

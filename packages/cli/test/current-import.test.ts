@@ -141,7 +141,7 @@ test("native body rejection never normalizes arbitrary resource bytes", async ()
     "---\nname: Main\ndescription: Exact bytes\n---\n# Main\n",
   )
   for (const bytes of [
-    encode("# CRLF\r\n"),
+    encode("# Bare CR\r"),
     encode("\uFEFF# BOM\n"),
     encode("# Control\u0000\n"),
     new Uint8Array([0xff, 0xfe, 0x41]),
@@ -156,14 +156,15 @@ test("native body rejection never normalizes arbitrary resource bytes", async ()
   }
 })
 
-test("native terminal LF fails public admission before remote work without changing original bytes", async () => {
+test("native LF and CRLF normalize through full readback while the admitted input stays exact", async () => {
   for (const selected of ["SKILL.md", "notes.txt"]) {
     const parent = await root(),
       directory = join(parent, "input"),
       f = currentWriteFixture(parent)
     await mkdir(directory)
-    const header = "---\nname: Native boundary\ndescription: Exact body boundary\n---\n\n",
-      body = "# Native boundary\n\nPreserve this terminal LF.\n",
+    const header =
+        "---\r\nname: Native boundary\r\ndescription: Current native body\r\n---\r\n\r\n",
+      body = "# Native boundary\r\n\r\nPreserve this text.\r\n",
       bytes = encode((selected === "SKILL.md" ? header : "") + body),
       originalHash = createHash("sha256").update(bytes).digest("hex")
     await writeFile(join(directory, "SKILL.md"), header + "# Native boundary")
@@ -174,31 +175,99 @@ test("native terminal LF fails public admission before remote work without chang
       sha256: originalHash,
       kind: "resource",
     })
-    for (const mode of [[], ["--dry-run"], ["--operation", "old-native", "--resume"]])
-      await expect(
-        f.run(
-          Command.runWith(currentImportCommand, { version: "test", renderErrors: false })([
-            directory,
-            "--entry",
-            library.skills.database_id,
-            "--skill-id",
-            "native-boundary",
-            "--native",
-            selected,
-            ...mode,
-          ]),
-        ),
-      ).rejects.toMatchObject({
-        code: "CURRENT_WRITE_INPUT_INVALID",
-        details: { path: selected, reason: "native_terminal_lf" },
-      })
-    expect(f.calls).toEqual([])
-    expect(f.pages.size).toBe(0)
+    const prepared = await f.run(
+      prepareCurrentImport(directory, { skillId: "native-boundary", native: [selected] }),
+    )
+    expect(prepared.plan.files.find((file) => file.path === selected)).toMatchObject({
+      bytes,
+      sha256: originalHash,
+    })
+    f.rewrite((path, response) =>
+      path.includes("/markdown") && typeof response.markdown === "string"
+        ? { ...response, markdown: response.markdown.replace(/\n+$/u, "") }
+        : response,
+    )
+    const written = await f.run(
+      writeCurrentSkill(library, { plan: prepared.plan, operation_id: "native-normalized" }),
+    )
+    expect(written).toMatchObject({
+      state: "ready",
+      native: { verified: 1, normalized_paths: [selected] },
+    })
+    const actual =
+      (selected === "SKILL.md" ? header : "") + body.replaceAll("\r\n", "\n").replace(/\n+$/u, "")
+    expect(
+      await f.run(
+        readSkill(written.page_id, {
+          database: library.skills.database_id,
+          path: selected,
+          refresh: true,
+        }),
+      ),
+    ).toMatchObject({ content: actual })
+    const output = join(parent, "normalized-export")
+    await f.run(
+      exportSkill(written.page_id, {
+        database: library.skills.database_id,
+        output,
+        format: "directory",
+      }),
+    )
+    expect(await readFile(join(output, selected), "utf8")).toBe(actual)
+    f.clearCalls()
+    expect(
+      await f.run(
+        writeCurrentSkill(library, {
+          plan: prepared.plan,
+          operation_id: "native-normalized-repeat",
+        }),
+      ),
+    ).toMatchObject({
+      status: "unchanged",
+      state: "ready",
+      native: { normalized_paths: [selected] },
+    })
+    const exported = await f.run(
+      prepareCurrentImport(output, { skillId: "native-boundary", native: [selected] }),
+    )
+    expect(
+      await f.run(
+        writeCurrentSkill(library, { plan: exported.plan, operation_id: "native-export-repeat" }),
+      ),
+    ).toMatchObject({ status: "unchanged", state: "ready", native: { normalized_paths: [] } })
+    expect(f.mutations()).toEqual([])
     expect([...f.json.keys()].filter((key) => key.startsWith("operations/"))).toEqual([])
     const after = await readFile(join(directory, selected))
     expect(new Uint8Array(after)).toEqual(bytes)
     expect(createHash("sha256").update(after).digest("hex")).toBe(originalHash)
   }
+})
+
+test("unsupported native structure fails public admission before remote work", async () => {
+  const parent = await root(),
+    directory = join(parent, "input"),
+    f = currentWriteFixture(parent)
+  await mkdir(directory)
+  await writeFile(
+    join(directory, "SKILL.md"),
+    '---\nname: Native\ndescription: Unsupported shape\n---\n<custom-block definition-id="not-a-draft" />',
+  )
+  await expect(
+    f.run(
+      Command.runWith(currentImportCommand, { version: "test", renderErrors: false })([
+        directory,
+        "--entry",
+        library.skills.database_id,
+        "--skill-id",
+        "unsupported-native",
+        "--native",
+        "SKILL.md",
+        "--dry-run",
+      ]),
+    ),
+  ).rejects.toMatchObject({ code: "CURRENT_NATIVE_MARKDOWN_UNSUPPORTED" })
+  expect(f.calls).toEqual([])
+  expect(f.pages.size).toBe(0)
 })
 
 test("the public parser accepts repeatable native flags and rejects duplicates before Notion access", async () => {

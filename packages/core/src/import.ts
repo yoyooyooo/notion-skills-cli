@@ -237,6 +237,23 @@ function readImportRegular(location: string, before: BigIntStats, limit: number)
 
 /** Reject links at every input ancestor and entry; preserve one bounded complete tree. */
 export function loadImport(input: string) {
+  return loadLocalInput(input, false)
+}
+
+/** One exact regular file for a selected current Skill path, with the same
+ * ancestor, descriptor, byte-limit and concurrent-change checks as import. */
+export function loadSkillUpdateFile(input: string) {
+  return loadLocalInput(input, true).pipe(
+    Effect.flatMap((loaded) => {
+      const file = loaded.files[0]
+      return loaded.files.length === 1 && file !== undefined
+        ? Effect.succeed(file)
+        : Effect.fail(fail("INVALID_INPUT", "Select one ordinary file for an update."))
+    }),
+  )
+}
+
+function loadLocalInput(input: string, singleFile: boolean) {
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -277,6 +294,10 @@ export function loadImport(input: string) {
       { discard: true },
     )
     if (info.isDirectory()) {
+      if (singleFile)
+        return yield* Effect.fail(
+          fail("INVALID_INPUT", "A selected Skill update path requires one ordinary file."),
+        )
       const directories: {
         readonly absolute: string
         readonly relative: string
@@ -369,12 +390,12 @@ export function loadImport(input: string) {
       return yield* Effect.fail(
         fail("INVALID_INPUT", "Import requires an ordinary ZIP, Markdown file or directory."),
       )
-    const zip = /\.zip$/iu.test(full)
-    if (!zip && !/\.(md|markdown)$/iu.test(full))
+    const zip = !singleFile && /\.zip$/iu.test(full)
+    if (!singleFile && !zip && !/\.(md|markdown)$/iu.test(full))
       return yield* Effect.fail(
         fail("INVALID_INPUT", "Import file must be .zip, .md or .markdown."),
       )
-    const limit = zip ? MAX_ZIP_BYTES : MAX_BYTES
+    const limit = singleFile ? 64 * 1024 * 1024 : zip ? MAX_ZIP_BYTES : MAX_BYTES
     if (info.size > BigInt(limit))
       return yield* Effect.fail(fail("ARCHIVE_TOO_LARGE", "Import input exceeds its size limit."))
     const bytes = yield* readImportRegular(full, info, limit)

@@ -113,8 +113,14 @@ assert.deepEqual(library.schema.commands.map((command: { name: string }) => comm
   "operation",
   "profile",
   "projection",
+  "skill",
   "source",
 ])
+const skillSchema = await cli(["schema", "ctl", "library", "skill"])
+assert.deepEqual(
+  skillSchema.schema.commands.map((command: { name: string }) => command.name).sort(),
+  ["create", "register", "remove", "update"],
+)
 const sourceSchema = await cli(["schema", "ctl", "library", "source"])
 assert.deepEqual(
   sourceSchema.schema.commands.map((command: { name: string }) => command.name).sort(),

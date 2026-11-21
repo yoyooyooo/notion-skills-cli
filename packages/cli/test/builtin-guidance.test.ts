@@ -55,6 +55,7 @@ test("executable builtin examples stay within the public current command surface
     "inspect",
     "files",
     "operation",
+    "skill",
     "import",
     "source",
     "projection",
@@ -81,6 +82,8 @@ test("executable builtin examples stay within the public current command surface
                   ["apply", "refresh", "enable", "disable", "remove", "takeover", "restore-follow"],
                   label,
                 ).toContain(words[3]!)
+              if (words[2] === "skill")
+                expect(["create", "update", "register", "remove"], label).toContain(words[3]!)
             }
           }
           expect(words, label).not.toContain("--authoring")
@@ -92,7 +95,7 @@ test("executable builtin examples stay within the public current command surface
   expect(examples).toBeGreaterThan(10)
 })
 
-test("maintenance teaches the current complete import and its actual recovery boundary", () => {
+test("maintenance routes daily native management through public commands and keeps advanced recovery in references", () => {
   const root = fileText("notion/ntn-skills-maintain", "SKILL.md")
   const setup = fileText("notion/ntn-skills-maintain", "references/setup.md")
   const operations = fileText("notion/ntn-skills-maintain", "references/operations.md")
@@ -102,13 +105,24 @@ test("maintenance teaches the current complete import and its actual recovery bo
   expect(root).toContain("CURRENT_SCHEMA_REQUIRED")
   expect(root).toContain("CURRENT_OPERATION_PENDING")
   expect(root).toContain("ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run")
-  expect(root).toContain("--operation OPERATION_ID --resume")
-  expect(root).toContain("--supersede OLD --operation NEW")
+  for (const action of ["create INPUT", "update TARGET", "register PAGE_ID", "remove TARGET"])
+    expect(root).toContain(`ctl library skill ${action} --entry ENTRY`)
+  expect(root).toContain("preserves everything else")
+  expect(root).toContain("no projection is")
+  expect(root).toContain("do not construct those Notion fields")
+  expect(root).toContain("clears")
+  expect(root).toContain("incoming Members/Requires")
+  expect(operations).toContain("--operation OPERATION_ID --resume")
+  expect(operations).toContain("--supersede OLD_OPERATION_ID --operation NEW_OPERATION_ID")
+  expect(operations).toContain("native.normalized_paths")
+  expect(operations).toContain("Profile v2 contains View/freshness rules, not Skill membership")
   expect(root).toContain("zero semantic Notion writes")
+  expect(root).toContain("complete CLI verification")
+  expect(root).toContain("only for requested review or")
   expect(root).toContain("not a completed")
   expect(setup).toContain("ctl library init --parent AUTHORIZED_PARENT_PAGE")
-  expect(setup).toContain("ctl library import INPUT --entry ENTRY --skill-id SKILL_ID")
-  expect(setup).toContain("does not convert")
+  expect(setup).toContain("ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID")
+  expect(setup).toContain("converts an older library schema")
   expect(setup).toContain("/context-broker connect SOURCE ENTRY")
   expect(operations).toContain("metadata-only")
   expect(operations).toContain("Target inspection does not prove whole-library coverage")
@@ -123,6 +137,8 @@ test("consumption and Profile guidance preserve zero-write reads and complete cu
   expect(consumer).toContain("generated Source/resource")
   expect(consumer).toContain("selecting current content again")
   expect(consumer).toContain("not a current CLI option")
+  expect(consumer).toContain("Create, edit, register or delete a Notion-native Skill")
+  expect(consumer).toContain("ctl library skill")
   expect(profile).toContain("ctl library profile set")
   expect(profile).toContain("--expect new")
   expect(profile).toContain("complete desired rule")

@@ -45,6 +45,28 @@ accounted for.
 
 ## Fields and relationships
 
+### Author intent and CLI-owned registration
+
+The public authoring boundary is `ctl library skill create|update|register|remove`.
+An Agent supplies content and author decisions; it does not populate internal
+Notion columns to make a page consumable. The four registered table roles remain
+Skills, Files, Sources and Records. A visible three-table layout does not redefine
+that registration, and a pure native Skill needs no synthetic Source.
+
+| Field responsibility | Current values | Management rule |
+| --- | --- | --- |
+| Author content and discovery | Native page body, Name, Description, Kind and Tags | Preserve authored content and unspecified metadata; changing display metadata does not rewrite frontmatter |
+| Author policy and relationships | Enabled, Default Context, Members, Requires; optional user 日用 and 期望删除 fields | Accept explicit supported author options; preserve unmentioned policies and custom fields |
+| Required consumption bindings | Skill ID, Main File ID, supporting File ID/Path/Skill, Content | CLI allocates or validates stable identities, canonical paths, one owner and authority; no title-based identity inference |
+| Native file metadata | Content.kind=native, frontmatter and mode | CLI stores declared file metadata; register preserves an existing page body and uses empty stored frontmatter when Content is missing |
+| Finite operation state | Skills Current State/Operation, Sources Status/Operation, current Operation Records | Only the finite writer changes or retires these fields; an Agent never clears them to bypass incomplete work |
+| Resource and upstream facts | Resource Records; Sources selected manifest, revision and Contributions | Their corresponding writers own exact bytes and source authority; they are not manual registration inputs |
+
+The optional 日用 and 期望删除 checkboxes are existing author policy, not required
+native consumption fields. Daily selection resolves their actual schema IDs;
+ordinary Skill creation or registration does not invent them. Property display
+names do not authorize changing a different registered binding.
+
 ### Skills
 
 Keep `Name`, `Description`, `Kind`, `Tags`, `Enabled`, `Default Context`, `Skill ID`,
@@ -117,19 +139,21 @@ and content identity. Native author bodies are hashed after reading; a stale
 stored hash must not prevent a direct Notion edit from being read. Reading that edit
 writes only disposable local cache data, never an adoption event or remote object.
 
-For native text, specify normalization and round-trip behavior. Do not claim to
-preserve arbitrary source bytes through a native representation that changes them.
-If native transport cannot preserve the selected text, use its **current** exact
-resource and render the entire readable text. Native import refuses invalid input
-or leaves an unconfirmed round trip unfinished; it never silently changes authority.
-New native writes reject a body ending in LF before operation allocation or semantic
-writes. This admission limit follows a repeated live Markdown v2 observation and
-does not assert that every other Markdown form round-trips. It never trims input
-or changes existing native read behavior. Stored frontmatter may retain its exact
-line endings; the limit applies to the author body after that header.
-Import never silently normalizes a
-BOM, line ending or executable mode. An explicitly requested conversion is a new
-current edit, not a reason to keep both past and present content.
+All native writers share structural Markdown equivalence, including daily
+create/update, explicit native import and Source takeover. Supported UTF-8 input
+may use LF/CRLF and a terminal newline. Admission rejects unsupported syntax;
+complete Notion readback must retain text, code payloads, link destinations and
+supported document structure. Formatting-only differences can complete and are
+reported through `native.verified` and `native.normalized_paths`. Lost content,
+changed meaning or an unconfirmed full body cannot publish ready.
+
+The original input bytes/hash and operation fingerprint remain fixed. Stored
+frontmatter and executable mode remain exact. Native reads and exports use the
+actual current Notion body, so native authoring does not promise original Markdown
+byte equality. Repeating equivalent content makes zero semantic writes. Choose
+an exact resource when source spelling or arbitrary original bytes matter;
+failure never silently changes authority or falls back to a resource. No content
+version is retained to support normalization.
 
 `following/custom/tombstone` event-derived status is retired. Authority is direct.
 An explicit consumption deletion records the exact upstream path exclusion in
@@ -424,17 +448,62 @@ replay, and completion clears finite local pending state. The public route is
 `ctl library profile`, singular.
 
 The registered CLI exposes current consumption, library initialization,
-inspection, complete current import, Source apply/refresh, text projection,
-Profiles and local configuration. Import is
+inspection, native daily management, complete current import, Source apply/refresh,
+text projection, Profiles and local configuration.
+
+`ctl library skill create INPUT --entry DB --skill-id ID` creates the complete
+input with `.md`/`.markdown` files native and other files resource-backed.
+`skill update TARGET --input LOCAL [--path PATH]` changes the main by default or
+one selected file; repeated `--file PATH=LOCAL` and `--remove-file PATH` declare
+supporting changes. The CLI preserves unmentioned files through their current
+bindings and bodies rather than exporting and overwriting the whole tree.
+Author options change name, description, Enabled, Default Context, Members or
+Requires explicitly; omitted fields are retained. A single empty Members/Requires
+argument clears the set. TARGET accepts exact page IDs/URLs or stable Skill IDs,
+never a display-title match.
+
+`skill register PAGE_ID --entry DB` only registers an existing page in the exact
+Skills data source. It preserves body text, including any frontmatter-looking
+text in that body. Missing Content becomes native/frontmatter empty/mode 100644;
+valid native Content remains. Missing Kind defaults to skill, while an existing
+valid Kind remains. Missing Skill ID defaults to `skill-` plus the page UUID
+without hyphens; an explicit --skill-id may supply it. Main and supporting File
+identities are supplied or validated by the CLI. Valid existing Name/Description
+are retained; missing business metadata requires explicit author values.
+New registration defaults Enabled true and Default Context false; registered
+author policies are preserved unless explicitly selected. Supporting native rows
+need valid explicit paths and exactly one owner. Complete valid native registration
+is unchanged; foreign pages, ambiguous bindings and resource/Source authority
+conversion are refused.
+
+`skill remove TARGET --entry DB` owns supporting Files, unused owned resources
+and incoming same-library Members/Requires cleanup before moving the owner to
+Trash. It preserves referencing Skills and all other relation targets. Complete
+relation pagination, operation conflicts and Notion's replacement limit are
+checked before mutation. Profile v2 has no Skill membership and is untouched.
+Prose links and external pages are not rewritten. This finite removal is not a
+whole-workspace cleanup or an implicit change to Source declarations.
+Source-owned content or contributions require Source management. Completed
+removal reports `status: removed, cleanup_verified: true`. Without a pending
+intent, an already trashed exact page returns `already_trashed` with zero writes
+and `cleanup_verified: false`; an absent stable ID returns `not_found` with
+`cleanup_verified: false`. Neither proves cleanup after an external manual
+deletion, because Notion hides relations to trashed owners.
+
+All four daily actions expose dry run and shared invocation budgets. Repeating
+the same command with the same intent continues its own unfinished work; changed
+intent or unconfirmed competing writes cannot be discarded. Ready native bodies
+are immediately consumable, with no projection after an ordinary Notion edit.
+
+Complete import is
 `ctl library import INPUT --entry DB --skill-id ID`; `--dry-run` inspects the
 replacement, and `--operation ID --resume` supplies the same input to its finite
 intent. Default import keeps exact originals as Notion resources without waiting
-for generated text projections. Repeated `--native PATH` selects editable UTF-8/LF bodies with exact
-stored frontmatter and mode; bodies ending in LF are rejected before remote access.
-That selection must remain identical on resume. An input changed to adopt Notion's
-observed representation requires an explicit successor operation, not a resumed
-claim that the original bytes were preserved.
-Actual native round-trip verification precedes ready. Reimport replaces the chosen
+for generated text projections. Repeated `--native PATH` selects editable Markdown
+with the shared native equivalence rule and exact stored frontmatter/mode. That
+selection and original input remain identical on resume. A change in authored
+meaning requires an explicit successor operation, not a resumed claim that the
+original intent completed. Complete semantic readback precedes ready. Reimport replaces the chosen
 native content, so a local copy does not automatically merge a later Notion edit.
 Import preserves the physical Skill, stable retained File IDs and
 unspecified enablement, default-context and authored relations. Removed Notion-owned
@@ -478,10 +547,10 @@ be preserved on surviving pages or supplied separately when rebuilding.
 
 `source takeover SOURCE_ID SOURCE_PATH --skill-id ID --file-id ID --as native|resource`
 transfers exactly one selected original into Notion authority. Resource is the
-default representation. Native requires actual supported UTF-8/LF Markdown and a
-successful Notion round-trip; failure does not silently switch representation.
-Terminal LF is rejected after acquiring the selected Source original but before
-allocating an operation or making semantic writes. The Source bytes remain exact.
+default representation. Native requires supported UTF-8 Markdown and complete
+semantic Notion readback under the same normalization rule as other native writes;
+failure does not silently switch representation. The selected Source input and
+fingerprint remain exact; after takeover, native consumption uses its current body.
 `source restore-follow` takes the same exact coordinates and follows the Source's
 already-selected plan. Neither action discovers a new Git HEAD. Both adjust the
 current contribution, preserve all other files, and keep the selected File/page/
@@ -641,7 +710,7 @@ successor is refused before parent writes. It must first resume that current
 handoff. This check probes at most the previous cursor's one child, not an ancestor
 history or one operation query per member.
 
-Old create/apply/write/replace/adopt, sync, archive, graph-release, repair and
+Old top-level create/apply/write/replace/adopt, sync, archive, graph-release, repair and
 migration command families are not active authoring routes. Source actions use
 the current coordinator; general cross-object governance still needs implementation.
 Removing a command does not prove that every old module, export or guide is gone.

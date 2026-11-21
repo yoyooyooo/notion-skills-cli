@@ -1,6 +1,6 @@
 ---
 name: verify-notion-management
-description: "验证 Notion 当前完整树导入、文件权威、原件导出、独立阅读投影、同页 Trash 恢复、Profile、有限恢复和实际残留清理。修改 Skills/Files/Records 管理或清退时使用。"
+description: "验证 Notion 原生 Skill 新建、局部更新、页面登记、删除、完整树导入、正文语义、阅读投影及有限恢复。修改 Skills/Files/Records 管理或清退时使用。"
 ---
 
 # 当前管理验证
@@ -21,9 +21,15 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 
 ## Drive
 
+日常作者入口先沿 [原生管理旅程](../verify-ntn-skills/features/skill-maintenance.md#原生日常管理与实际-pi)
+核公开 `ctl library skill create/update/register/remove`。新建不手填内部字段，局部更新
+保留未触及正文，登记保原页，删除在一个意图中清 Files/自有无引用资源与同库受管入链。
+原生直接编辑后用实际 reader 取得新正文，不追加投影。CLI、安装包和真实 Pi group/worker
+分别验收；成功后额外 Agent 补属性、补关系或清 pending 不能拼成通过。
+
 1. 先用 `ctl library import INPUT --entry DB --skill-id ID --dry-run` 读取当前目录与完整替换范围。确认 main 唯一、全部 supporting Files、stable ID、唯一 owner、路径、mode 和 authority。缺少当前 Content 的旧库必须先显式转换。
 2. 对同一完整输入执行 import。默认保存精确 Notion resource 原件；生成阅读投影独立验收，不阻塞 ready 或消费。unsupported 类型是单原件 ZIP，读和导出恢复原字节。generated body 编辑不转移权威；native author body 仍直接编辑。
-3. 从 Skills→Files 逐类查看 Markdown、代码和二进制。用实际 current reader、单文件读取和目录 export 核 hash/bytes/mode。不要只比较上传请求或属性占位。原输入在 prepare 后变动必须在远端写入前拒绝。native 只接收可精确表达的正文子集：末尾 LF 在本地准入拒绝，public import 为零远端请求，Source takeover 取得原件后为零语义写/零新 intent；原 bytes/hash 不变。其他正文变化仍须由实际完整读回拒绝，受控 echo fixture 不能证明 Notion 保真。改变失败输入后仅可用新 operation 显式 supersede，并保留原失败；普通 import 没有通用 cancel。
+3. 从 Skills→Files 逐类查看 Markdown、代码和二进制。Source/resource 核原件 hash/bytes/mode；native 核完整 Notion 正文与文本、代码、链接、层级等结构化等价，导出以实际正文加原 frontmatter/mode 为准。LF/CRLF 和末尾换行不再单独拒绝，支持的格式变化须报告 normalized_paths；真正丢字、代码或链接变化保持 pending。原输入 bytes/hash/fingerprint 不变，未知语法写前拒绝，受控 echo 不能证明真实 Notion。改变失败输入仅按公开恢复规则显式换意图；普通 import 没有通用 cancel。
 4. 用相同输入和新的 operation 重复 import，确认 semantic writes 为 0，没有新 Operation/Resource。修改一个文件并移除另一个，确认唯一 Skill 页、保留 File ID、最终完整树及旧 Files/无引用 Resource 已进入 Trash。重复导入不因投影缺失写入；原件和完整树必须在一次有限操作内收敛。
 5. 覆盖时保持未指定的 Enabled、Default Context、Members 和 Requires。portable 关系省略保持、[] 清空、数组替换，导出携带两组完整集合。核同库唯一 ready/Enabled目标、完整分页、100条写入上限和 Requires 环；kind 变化与 Source 选择按各自明确入口。旧投影字段必须拒绝。完整本地导入是显式替换整个文件树。
 6. 沿 [当前恢复](../verify-notion-operation-recovery/SKILL.md) 核 CREATE、append、退役响应丢失及半树拒绝消费。有限 Operation 完成后回收，不保留旧正文或永久 ACK。

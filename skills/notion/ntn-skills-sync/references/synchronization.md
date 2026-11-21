@@ -273,11 +273,13 @@ ntn-skills ctl library source restore-follow SOURCE_ID SOURCE_PATH --entry ENTRY
 
 Takeover reads the selected Source original, keeps File ID, page, target path and
 mode, and adds the exact file exclusion in the same Source intent. Resource is
-the default and preserves opaque originals too. Native requires supported UTF-8/LF
-text without a terminal LF and an exact author-body round-trip. After acquiring
-the selected original, this admission check rejects before operation allocation
-or semantic writes; it never trims Source bytes. Other round-trip failures leave
-the intent unfinished without fallback. Repeating a completed takeover must
+the default and preserves opaque originals too. Native uses the same supported
+UTF-8 Markdown semantics as create/update and explicit native import. Normal
+LF/CRLF and terminal newlines are accepted; the full Notion readback must preserve
+text, code, links and structure. The receipt reports supported formatting
+normalization. Original Source bytes and the input fingerprint remain exact;
+native consumption then uses the current Notion author body. Content changes
+leave the intent unfinished without fallback. Repeating a completed takeover must
 preserve later Notion edits.
 
 Restore-follow names the intended current Source and path explicitly. It requires

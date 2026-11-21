@@ -23,6 +23,7 @@ import {
 import { currentUploadFileSpec } from "./shared-current-upload.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
+import { nativeMarkdownTransport, validateNativeMarkdown } from "./shared-native-markdown.ts"
 
 export type CurrentWriteAuthority =
   | { readonly kind: "resource" }
@@ -106,23 +107,6 @@ function boundedContent(content: CurrentFileContent): void {
     )
 }
 
-/** Live Markdown v2 exports omitted terminal LF even after an exact replacement.
- * Keep that known non-round-trippable input out of a new native write; neither
- * input bytes nor observed bodies are normalized to make the comparison pass. */
-function assertNativeBodyTail(markdown: string, path: string): void {
-  const terminal = /\n+$/u.exec(markdown)?.[0]
-  if (terminal === undefined) return
-  throw invalid(
-    "Native author bodies must not end with LF because that byte is outside the admitted exact Notion Markdown subset. Use resource for the exact original, or explicitly prepare a distinct native input without terminal LF. Input bytes are not changed; a changed pending input requires a new operation with --supersede.",
-    {
-      path,
-      reason: "native_terminal_lf",
-      body_bytes: new TextEncoder().encode(markdown).byteLength,
-      terminal_lf_count: terminal.length,
-    },
-  )
-}
-
 function validateWriteFileInput(file: CurrentSkillWriteInput["files"][number]): void {
   if (!(file.bytes instanceof Uint8Array) || file.bytes.byteLength > 64 * 1024 * 1024)
     throw invalid("Each current original must contain at most 64 MiB.", { path: file.path })
@@ -167,22 +151,13 @@ export function prepareCurrentWriteFile(
         const header =
           /^(\uFEFF?---\r?\n(?:[\s\S]*?\r?\n)?---(?:\r?\n|$)(?:\r?\n)*)/u.exec(original)?.[1] ?? ""
         const markdown = original.slice(header.length)
-        if (
-          markdown.includes("\r") ||
-          markdown.charCodeAt(0) === 0xfeff ||
-          /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(markdown)
-        )
-          throw invalid(
-            "Native body authoring requires UTF-8 text with LF newlines. Select resource to retain arbitrary original bytes.",
-            { path: inputFile.path },
-          )
-        assertNativeBodyTail(markdown, inputFile.path)
+        validateNativeMarkdown(markdown)
         if (
           new TextEncoder().encode(
             JSON.stringify({
               markdown_version: "v2",
               type: "replace_content",
-              replace_content: { new_str: markdown },
+              replace_content: { new_str: nativeMarkdownTransport(markdown) },
             }),
           ).byteLength > 480000
         )
@@ -328,21 +303,18 @@ function validatePreparedCurrentWriteFile(
       if (file.kind === "native") {
         if (
           typeof file.markdown !== "string" ||
-          file.markdown.includes("\r") ||
-          file.markdown.charCodeAt(0) === 0xfeff ||
-          /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(file.markdown) ||
           new TextEncoder().encode(
             JSON.stringify({
               markdown_version: "v2",
               type: "replace_content",
-              replace_content: { new_str: file.markdown },
+              replace_content: { new_str: nativeMarkdownTransport(file.markdown) },
             }),
           ).byteLength > 480000
         )
           throw invalid("Prepared native Markdown exceeds its exact text boundary.", {
             path: file.path,
           })
-        assertNativeBodyTail(file.markdown, file.path)
+        validateNativeMarkdown(file.markdown)
         const original = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
           file.bytes,
         )

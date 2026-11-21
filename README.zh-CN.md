@@ -16,6 +16,7 @@
 | 查看完整文件目录 | `files` |
 | 导出完整当前选择到本地 | `export` |
 | 检查当前文件权威、归属和在途状态 | `ctl library files` |
+| 新建、编辑、登记或删除 Notion 原生 Skill | `ctl library skill create`、`update`、`register`、`remove` |
 | 导入或替换一个完整本地文件树 | `ctl library import`，支持 `--dry-run` 和原意图 `--resume` |
 | 应用或刷新明确的 Git 贡献 | `ctl library source apply`、`ctl library source refresh` |
 | 为单个 Skill 或日用集合生成 Notion 全文 | `ctl library projection PAGE_ID` 或 `ctl library projection --daily` |
@@ -25,11 +26,11 @@
 
 普通 list/read/use/资源读取/export 对 Notion 的语义写入为零。直接修改 native 作者正文后，读取会取得当前内容，不创建 adoption event，也不保留远端内容版本。Source/resource 的生成阅读页即使被编辑，也不会自动取得作者权威。
 
-当前导入默认写入精确 resource 原件；重复 `--native PATH` 可将所选文本交给可编辑的 Notion 正文。完整文件目录和原件先保证可消费；导入或 Source 刷新后，用 `ctl library projection` 生成阅读正文。日用主文与选中的阅读文档须在 Notion 中完整可读。Source 默认仅投影 Markdown，并排除测试、fixture、依赖和生成目录；缺页重建，多余 Source 行归档。完整 Git 消费目录由 manifest 与 Contributions 决定，脚本和测试仍可消费。Native/resource 行保持 Notion 权威，非文本无需正文；投影失败不阻断已就绪的消费。Portable Members/Requires 支持导出再导入，核完整目标与依赖关系；库查询、写入和清理共用一次有界 HTTP 预算。Source apply/refresh 自动发现完整选中成员，接入新增、更新原文件并清退上游已移除的纯 Source 成员。既有映射保留稳定身份，新成员获得确定身份。保存声明文件后，即使 Notion Source 被删，也可用 `source apply` 重建。GitHub 和实际私有 HTTP(S) Git 共用该路径及本机认证。
+日常原生管理使用 `ctl library skill`，CLI 负责登记、文件身份、受管关系和有限操作清理。完整导入默认写入精确 resource 原件；重复 `--native PATH` 可将所选文本交给可编辑的 Notion 正文。完整文件目录和原件先保证可消费；导入或 Source 刷新后，用 `ctl library projection` 生成阅读正文。日用主文与选中的阅读文档须在 Notion 中完整可读。Source 默认仅投影 Markdown，并排除测试、fixture、依赖和生成目录；缺页重建，多余 Source 行归档。完整 Git 消费目录由 manifest 与 Contributions 决定，脚本和测试仍可消费。Native/resource 行保持 Notion 权威，非文本无需正文；投影失败不阻断已就绪的消费。Portable Members/Requires 支持导出再导入，核完整目标与依赖关系；库查询、写入和清理共用一次有界 HTTP 预算。Source apply/refresh 自动发现完整选中成员，接入新增、更新原文件并清退上游已移除的纯 Source 成员。既有映射保留稳定身份，新成员获得确定身份。保存声明文件后，即使 Notion Source 被删，也可用 `source apply` 重建。GitHub 和实际私有 HTTP(S) Git 共用该路径及本机认证。
 
 `source takeover` 和 `source restore-follow` 保留 File ID、Notion 页面及路径，同时调整当前贡献的精确排除规则。它们使用 Source 已选定的原件，不顺便刷新 Git。`source enable/disable` 控制消费资格；`source remove` 只有在文件与 Origin 引用都已解除后才清退 Source 及其资源。未完成写入可重传原输入 resume，也可在原 writer 停止后用 `--operation NEW --supersede OLD` 明确提交完整新意图。完成后不保留前意图或内容历史。
 
-旧 create/apply/write/replace/adopt、sync、snapshot/archive 和 repair 命令已退出当前 CLI。真实库的数据转换、全文覆盖、旧对象清理和 Pi 安装仍需分别完成。
+旧顶层 create/apply/write/replace/adopt、sync、snapshot/archive 和 repair 命令已退出当前 CLI。真实库的数据转换、全文覆盖、旧对象清理和 Pi 安装仍需分别完成。
 
 ## 安装
 
@@ -82,6 +83,30 @@ ntn-skills export SNAPSHOT_ID_FROM_READ --output ./selected-skill
 
 导出保留完整字节和可执行 mode，已有不同输出会被拒绝。读取或导出脚本不会执行它。任意多路径局部导出尚未有公共参数；单文件使用精确 `read --output`。
 
+## 新建和管理原生 Skill
+
+日常管理统一使用 `ctl library skill`。新建默认将 Markdown 作为可编辑原生正文，其他文件保留精确 resource 原件：
+
+```sh
+ntn-skills ctl library skill create ./my-skill --entry ENTRY_DATABASE_ID --skill-id my-skill
+ntn-skills ctl library skill update my-skill --entry ENTRY_DATABASE_ID --input ./SKILL.md
+ntn-skills ctl library skill update my-skill --entry ENTRY_DATABASE_ID --file references/guide.md=./guide.md
+```
+
+局部更新只改指定主文、子文件或属性，未触及的文件保留当前 Notion 编辑和身份。用 `--remove-file PATH` 明确删除子文件；用 `--name`、`--description`、`--enabled true|false`、`--default-context true|false` 修改作者属性。重复 `--members TARGET` 或 `--requires TARGET` 替换该关系集合，单独空字符串清空，省略则保留。TARGET 只能是精确 page ID、页面 URL 或稳定 Skill ID。
+
+已经在当前 Skills 表里写好正文的页面，可以登记；删除则由同一个管理入口负责关联清理：
+
+```sh
+ntn-skills ctl library skill register SKILL_PAGE_ID --entry ENTRY_DATABASE_ID
+ntn-skills ctl library skill remove my-skill --entry ENTRY_DATABASE_ID --dry-run
+ntn-skills ctl library skill remove my-skill --entry ENTRY_DATABASE_ID
+```
+
+登记保留正文并补机器字段；缺少有效名称或业务描述时，作者通过 `--name`、`--description` 提供。删除把 Skill、子文件和自有无引用资源移入 Trash，同时解除同库 Members/Requires 对它的引用，保留引用方和其他关系。四个动作都支持 dry-run 与预算；中断后重跑同一意图。Agent 无需手填内部列或成功后扫尾。
+
+Native 写入读取完整 Notion 结果，验证文本、代码、链接和结构等价，报告支持的格式规范化。当前 Notion 正文是权威；Source/resource 原件仍逐字节保真。原生正文后续直接在 Notion 编辑即可，无需投影；需要立即核验时使用 `read --refresh`。详见[原生管理](docs/shared-authoring.md#manage-native-skills)。
+
 ## 四张表各管什么
 
 | 表 | 当前职责 |
@@ -90,6 +115,8 @@ ntn-skills export SNAPSHOT_ID_FROM_READ --output ./selected-skill
 | Files | Notion 自有子文件及选中的 Source 阅读文档，精确 owner、File ID、路径和 Content |
 | Sources | 稳定 Source 定义、完整当前选定计划、目标贡献和在途操作 |
 | Records | 当前精确资源、唯一当前 Profile、未完成管理意图 |
+
+当前库注册四种表角色，不以某个 Notion 视图显示几张表为准。作者主要操作 Skills 和 Files，Sources 管外部来源，Records 由 CLI 管理；纯原生 Skill 无需人为补一个 Source。
 
 `Content` 明确选择 native 作者 Markdown、Notion 管理的精确资源，或当前 Source 文件。主文在 Skills，Notion 自有子文件及选中的 Source 阅读文档在 Files。原生正文保持作者权威，只读验证而不覆盖。Source/resource 通过所声明的精确原件消费；显式投影筛选有人类阅读价值的文档并生成全文，不改变来源、完整消费目录或跟随关系。重复 --include/--exclude glob 可替换各自默认筛选；这些规则不能写入会影响消费的 Contributions.exclude。图片、字体等非文本保留原件消费方式，无需生成正文。日用覆盖边界见[当前合同](docs/current-contract.md)。
 
@@ -139,7 +166,7 @@ ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_
 ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID
 ```
 
-导入保留精确 resource 原件；阅读页由 `ctl library projection` 补齐，不阻塞消费。要在 Notion 编辑正文，可加 `--native SKILL.md --native references/guide.md`，所选正文须为 UTF-8/LF 且不能以 LF 结尾。native 只接收 Notion 能精确表达的文本，输入不会被自动裁剪，实际读回仍须完全一致。相同稳定身份对应完整文件树替换。先检查 dry-run 中的移除范围；相同输入再次执行为零写入。未完成时用原输入、原 native 选择加 `--operation OPERATION_ID --resume`。具体步骤见[当前管理](docs/shared-authoring.md)。
+导入保留精确 resource 原件；阅读页由 `ctl library projection` 补齐，不阻塞消费。要在 Notion 编辑正文，可加 `--native SKILL.md --native references/guide.md`，所选正文采用与日常管理相同的结构化等价验证，允许支持的格式规范化并在回执中报告；原输入指纹、frontmatter 与 mode 保持。相同稳定身份对应完整文件树替换。先检查 dry-run 中的移除范围；相同输入再次执行为零写入。未完成时用原输入、原 native 选择加 `--operation OPERATION_ID --resume`。具体步骤见[当前管理](docs/shared-authoring.md)。
 
 Profile 将当前 View 和 freshness 规则保存在一个稳定 Record：
 
@@ -153,7 +180,7 @@ ntn-skills list --profile PROFILE_ID --database ENTRY_DATABASE_ID
 
 ## Agent 接入
 
-通过 builtin catalog 读取 `notion/ntn-skills` 获取消费指引。`notion/ntn-skills-maintain` 负责设置、完整当前导入与有限恢复；`notion/ntn-skills-sync` 负责当前 Profile、Git Source apply/refresh、文件接管与恢复跟随、Source 启停清退和混合树保留规则。
+通过 builtin catalog 读取 `notion/ntn-skills` 获取消费指引。`notion/ntn-skills-maintain` 负责原生新建、局部更新、页面登记、删除、设置、完整导入与有限恢复；`notion/ntn-skills-sync` 负责当前 Profile、Git Source apply/refresh、文件接管与恢复跟随、Source 启停清退和混合树保留规则。
 
 Pi 是首个日用宿主，Notion discovery/use/资源读取使用配对 SDK。OMP/Tern 适配延期，但它们目录中的本地 Skill 内容仍属于 Pro 迁移盘点。
 

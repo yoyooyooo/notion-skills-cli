@@ -1,13 +1,15 @@
 ---
 name: ntn-skills
-description: Discover and use current workflows from the Notion Skill library. Select from metadata, read the chosen workflow, and resolve supporting files from its returned selection. Route content management to ntn-skills-maintain, and Source apply/refresh or Profile rules to ntn-skills-sync.
-compatibility: Requires Node.js 22.22.3+ within 22.x or 24.20.0+ and ntn-skills. Online consumption needs the existing Notion connection and Read content access; ordinary reads never write Notion. A native host tool requires its own adapter.
+description: Discover and use current workflows from the Notion Skill library. Select from metadata, read the workflow and resolve supporting files. Route creating, editing, registering or deleting Notion-native Skills to ntn-skills-maintain; route Source apply/refresh and Profile rules to ntn-skills-sync.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills
 ---
 
 # Use the current Notion Skill library
+
+Requires ntn-skills on Node.js 22.22.3+ within 22.x or 24.20.0+. Online reads use
+the existing Notion connection and Read access. A native host tool needs its adapter.
 
 Use the executable and library scope supplied by the host. Select exact returned
 identities; a display name, invocation alias and page ID are different values.
@@ -93,8 +95,9 @@ do not grant access or activate workflows.
 | --- | --- |
 | Inspect or create a library layout | `notion/ntn-skills-maintain`, then its setup reference |
 | Inspect current ownership, missing content or an incomplete operation | `notion/ntn-skills-maintain` |
+| Create, edit, register or delete a Notion-native Skill or supporting file | `notion/ntn-skills-maintain`; use `ctl library skill` without manually filling internal fields |
 | Import or replace a complete local Skill tree | `notion/ntn-skills-maintain`; use its current import and resume procedure |
-| Complete portable relationship changes | `notion/ntn-skills-maintain`; export, edit same-library refs and import the complete tree |
+| Change name, description, enablement, Members or Requires | `notion/ntn-skills-maintain`; update only the requested metadata or relationship set |
 | Git Source apply/refresh or contribution mapping/exclusion | `notion/ntn-skills-sync` |
 | Source takeover, restore-follow or removal | `notion/ntn-skills-sync` |
 | Complete installed/App tree replacement or native recovery | `notion/ntn-skills-maintain` |

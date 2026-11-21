@@ -15,6 +15,7 @@ correspondence. Those former passes do not certify the current line.
 | Explicit Git contribution preparation, batched target scope and mixed-tree writes | `shared-current-source-input.ts`, `shared-current-source-management.ts`, `shared-current-source-write.ts` | Corresponding Source input/management/write tests |
 | Current exact resources, inline, attachment or a single-original ZIP carrier | `shared-current-resource.ts`, `shared-current-records.ts` | `shared-current-resource.test.ts` |
 | Complete current input, original bytes, stable Files and owner-scoped retirement | `shared-current-write-input.ts`, `shared-current-write.ts` | `shared-current-write-input.test.ts`, `shared-current-write.test.ts` |
+| Native daily creation, partial updates, registration and managed deletion | Public `skill` commands, native writer and finite operation kernel | Corresponding core/CLI management tests; live Notion and Pi checked separately |
 | One unfinished intent, unknown-result observation, finite pending cleanup | `shared-current-operation.ts` | `shared-current-operation.test.ts`, `shared-current-operation.node.test.ts` |
 | Full text, code and binary reading projections | `shared-current-projection.ts` | `shared-current-projection.test.ts` |
 | Explicit complete-text projection, native preservation and nonblocking recovery | `shared-current-projection-write.ts` | `shared-current-projection-write.test.ts` |
@@ -63,8 +64,9 @@ pages or repairing operations would be semantic writes and is forbidden here.
 
 ## Public boundary
 
-Current `ctl library` exposes init, inspect, files, operation, import, projection,
-source and profile. Import
+Current `ctl library` exposes init, inspect, files, operation, skill, import,
+projection, source and profile. `skill create|update|register|remove` owns daily
+native authoring, machine registration and scoped deletion cleanup. Import
 accepts a complete resource/native tree, with dry run and resume on the same route.
 Source apply/refresh reconciles the complete selected Git member set through the
 same operation kernel, including additions, removals and missing-owner rebuilds.
@@ -74,7 +76,7 @@ renderer, keeps the real Skill ready, and verifies full text on existing pages.
 Daily batches preserve human policy. Repeating a plain single-Skill or daily
 command continues only a projection with matching target, policy and complete
 input; explicit recovery retains the original policy and budgets. Conflicts and
-unconfirmed writes stop with exact coordinates. Partial relationship patches, sync, archive,
+unconfirmed writes stop with exact coordinates. Arbitrary raw property patches, sync, archive,
 graph-release, repair and old migration writers are not public routes. A removed
 route must fail without redirecting to a compatibility handler.
 
@@ -128,6 +130,45 @@ text and binary presentation remain deferred. AH-505/AH-507/AH-513 cover additio
 governance, recovery and non-daily data; those tasks do not block the daily batch.
 Agent-kit main-path Skills and global exposure stay available. OMP/Tern and other
 hosts remain deferred.
+
+## Native daily authoring acceptance
+
+Use the existing management tests, package gate and paired Pi integration. This
+procedure defines required observations, not a passing result or a new harness.
+
+1. Exercise public `skill create` with supported Markdown main/supporting content
+   and an exact resource. Verify full Notion readback and the returned native
+   normalization report. Normal LF/CRLF and terminal newlines must not require
+   per-Skill trimming. Content loss, changed code or link destinations must fail;
+   an echo fixture alone cannot establish live Notion behavior.
+2. Use `skill update` on one file and selected author metadata. Preserve an
+   unmentioned native edit, other current bindings, stable IDs and user policy.
+   Native reads/exports use the actual Notion body and stored frontmatter/mode;
+   resource/Source originals keep exact bytes. Do not claim native original-byte
+   equality after normalization. Repeat unchanged intents and count real zero writes.
+3. Register an authorized page already in the current Skills table. Keep its
+   exact page/body, including frontmatter-looking body text; supply genuinely
+   missing business metadata rather than inventing it. Verify automatic identity
+   and Content registration, current native consumption, and a second unchanged
+   registration. Refuse foreign/conflicting pages and implicit authority conversion.
+4. Remove the authorized target through `skill remove`. Check supporting Files,
+   unused owned resources and incoming same-library Members/Requires together;
+   retain referencing Skills, remaining relations and Profiles. Relations must be
+   observed while the target is live, before Trash hides them. Check complete
+   pagination, bounded replacement, interruption recovery and a zero-write repeat.
+   An auxiliary Agent may not patch fields, relations or pending state to finish.
+5. Use the user's actual `pi -ne` entry with group/worker for the natural journey.
+   Provide the author task, content and authorized scope; let the installed main
+   builtin route to maintain and its public actions. Do not seed the prompt with
+   the correct command, internal fields or expected answer. Check real worker
+   calls, full provider-delivered body, subsequent native edits without projection
+   and finite operation retirement. Installed package, live Notion and natural Pi
+   results remain separate, with exact loaded artifacts, receipts and failures.
+
+Unknown responses and budget interruption use the existing operation regressions.
+The same intent may continue; conflicting input cannot be hidden by clearing
+state. All unexecuted observations remain not_run. Scoped CRUD does not certify
+whole-library legacy cleanup or unrelated Source configuration changes.
 
 ## Single-command Trash recovery
 

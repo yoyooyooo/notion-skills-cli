@@ -6,6 +6,7 @@ import { queryCurrentSkillIndex } from "../../core/src/shared-current-index.ts"
 import { Notion } from "../../core/src/notion.ts"
 import { emit, requiredSingleton, singleton } from "./command-options.ts"
 import { libraryProfilesCommand } from "./commands-library-profiles.ts"
+import { currentSkillCommand } from "./commands-current-skill.ts"
 import { currentImportCommand } from "./commands-current-import.ts"
 import { currentSourceCommand } from "./commands-current-source.ts"
 import { currentOperationCommand } from "./commands-current-operation.ts"
@@ -89,6 +90,7 @@ export const libraryCommand = defineCommand("library").pipe(
     inspect,
     files,
     currentOperationCommand,
+    currentSkillCommand,
     currentImportCommand,
     currentSourceCommand,
     currentProjectionCommand,

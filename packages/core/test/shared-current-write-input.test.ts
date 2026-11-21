@@ -81,7 +81,7 @@ describe("current write input boundaries", () => {
     })
   })
 
-  test("prepared native input cannot bypass terminal LF admission with matching file bytes and hash", async () => {
+  test("prepared native input cannot bypass bare CR rejection with matching file bytes and hash", async () => {
     const plan = await run(
       prepareCurrentSkillWrite(
         input([{ path: "SKILL.md", bytes: bytes("# Native"), authority: { kind: "native" } }]),
@@ -89,16 +89,16 @@ describe("current write input boundaries", () => {
     )
     const native = plan.files[0]!
     if (native.kind !== "native") throw new Error("Expected prepared native input")
-    const original = bytes("# Native\n")
+    const original = bytes("# Native\rforged")
     const forged = {
       ...native,
       bytes: original,
       sha256: await run(sha256(original)),
-      markdown: "# Native\n",
+      markdown: "# Native\rforged",
     }
     const expected = {
       code: "CURRENT_WRITE_INPUT_INVALID",
-      details: { reason: "native_terminal_lf", path: "SKILL.md" },
+      details: { reason: "invalid_text_encoding" },
     }
     await expect(run(copyValidatedCurrentWriteFile(forged))).rejects.toMatchObject(expected)
     await expect(

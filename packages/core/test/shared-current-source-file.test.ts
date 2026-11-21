@@ -217,7 +217,7 @@ async function author(f: Fixture, page: string, body: string) {
 }
 
 test.each([true, false])(
-  "native takeover rejects terminal LF before semantic writes (dry_run=%s)",
+  "native takeover verifies terminal LF normalization without changing Source originals (dry_run=%s)",
   async (dry_run) => {
     const { f, http, page, index } = await seed("\n")
     const sourceBefore = await f.run(queryCurrentSourceManagement(library, "file-source"))
@@ -229,31 +229,56 @@ test.each([true, false])(
     const originalHash = createHash("sha256").update(original.content).digest("hex")
     const pagesBefore = structuredClone([...f.pages])
     f.clearCalls()
-    await expect(
-      f.run(
-        http.use(
-          changeCurrentSourceFileAuthority(library, {
-            ...change(index.main, "native-terminal-lf", { kind: "takeover", to: "native" }),
-            dry_run,
-          }),
-        ),
+    f.rewrite((path, response) =>
+      path.includes("/markdown") && typeof response.markdown === "string"
+        ? { ...response, markdown: response.markdown.replace(/\n+$/u, "") }
+        : response,
+    )
+    await f.run(
+      http.use(
+        changeCurrentSourceFileAuthority(library, {
+          ...change(index.main, "native-terminal-lf", { kind: "takeover", to: "native" }),
+          dry_run,
+        }),
       ),
-    ).rejects.toMatchObject({
-      code: "CURRENT_WRITE_INPUT_INVALID",
-      details: { reason: "native_terminal_lf", path: "SKILL.md" },
-    })
-    expect(f.mutations()).toEqual([])
-    expect([...f.pages]).toEqual(pagesBefore)
-    expect(await f.run(queryCurrentSourceManagement(library, "file-source"))).toEqual(sourceBefore)
-    expect(await f.run(queryCurrentSkillIndex(library, page))).toEqual(index)
+    )
+    if (dry_run) {
+      expect(f.mutations()).toEqual([])
+      expect([...f.pages]).toEqual(pagesBefore)
+      expect(await f.run(queryCurrentSourceManagement(library, "file-source"))).toEqual(
+        sourceBefore,
+      )
+      expect(await f.run(queryCurrentSkillIndex(library, page))).toEqual(index)
+    } else
+      expect((await f.run(queryCurrentSkillIndex(library, page))).main).toMatchObject({
+        file_id: index.main.file_id,
+        page_id: page,
+        content: { kind: "native" },
+      })
     const retained = await f.run(
       http.use(readSkill(page, { database: library.skills.database_id, refresh: true })),
     )
     if (!("content" in retained)) throw new Error("Expected the retained Source text")
-    expect(retained.content).toBe(original.content)
-    expect(createHash("sha256").update(retained.content).digest("hex")).toBe(originalHash)
+    expect(retained.content).toBe(
+      dry_run ? original.content : original.content.replace(/\n+$/u, ""),
+    )
+    if (!dry_run) {
+      await f.run(
+        http.use(
+          changeCurrentSourceFileAuthority(library, {
+            ...change(index.main, "native-terminal-lf-follow", { kind: "restore_follow" }),
+          }),
+        ),
+      )
+      const followed = await f.run(
+        http.use(readSkill(page, { database: library.skills.database_id, refresh: true })),
+      )
+      if (!("content" in followed)) throw new Error("Expected the exact selected Source text")
+      expect(followed.content).toBe(original.content)
+      expect(createHash("sha256").update(followed.content).digest("hex")).toBe(originalHash)
+    }
     await ready(f)
-    expect(f.mutations()).toEqual([])
+    if (dry_run) expect(f.mutations()).toEqual([])
   },
 )
 
