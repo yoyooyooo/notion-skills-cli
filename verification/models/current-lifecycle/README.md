@@ -76,6 +76,19 @@ Native 允许支持范围内的表示规范化，不能再用“逐字相同”�
 对应实现与永久回归列在 [coverage.json](coverage.json) 的 `unmodeled_bindings`；
 列入该部分不表示已新增形式证明，也不替代本次实际运行回执。
 
+## 成功恢复后的查询可见性
+
+精确 owner 的恢复 PATCH 成功后，页面读取与稳定 Skill ID 查询可能尚未一致。
+只有成功写响应的确认步骤允许短暂观察到「owner 已 live，但完整身份查询暂缺该页」，
+最多观察五次，间隔 1、2、4、8 秒；每次仍检查 exact owner、唯一身份、Source 状态和冻结指纹。
+等待复用原 invocation 的时限并支持取消，不重复 PATCH。
+初始检查、写入前检查、最终验证及未知写响应的显式恢复规则不变。
+永久缺行、身份竞争、内容变化、不完整查询、预算耗尽或取消都保留未完成意图。
+
+模型的单个 Trash 位没有枚举 page 与 query 分别可见的时序，也不证明某个真实服务延迟上界。
+这些边界由 `shared-current-projection-write.test.ts` 的实际服务夹具回归覆盖，
+列在 coverage 的未建模对应中；七个模型配置和四个生产 guard mutation 保持原范围。
+
 ## 条件进展
 
 OperationEventuallyExplained 要求最终达到 retired 或 blocked；后者明确保留未解意图，不能算业务完成。

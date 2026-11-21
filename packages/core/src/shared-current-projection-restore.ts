@@ -2,6 +2,7 @@ import { Crypto, Effect } from "effect"
 import { fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
+import { RequestBudget, withinRequestBudget } from "./request-budget.ts"
 import { resolveCurrentSourceConsumption } from "./shared-current-consumption.ts"
 import { readCurrentSkillMetadata, type CurrentFileBinding } from "./shared-current-index.ts"
 import { withCurrentInvocationBudget } from "./shared-current-invocation.ts"
@@ -33,6 +34,10 @@ const binding = ({ file_id, page_id, path, content }: CurrentFileBinding) => ({
   path,
   content,
 })
+// Only a known successful untrash can wait for its live identity query to catch up.
+// These read-only waits spend the same invocation deadline and never replay the PATCH.
+const restoreVisibilityWaits = [1000, 2000, 4000, 8000] as const
+type RestoreReadPurpose = "guard" | "successful_untrash"
 
 /** Restore only the existing owner, then run the normal complete reading projection.
  * The two finite intents share the invocation budget, not a second journal or history. */
@@ -52,7 +57,7 @@ export function restoreCurrentSkillProjection(
       return { target, policy: currentProjectionPolicy(input) }
     })
     const api = yield* Notion
-    const read = () =>
+    const read = (purpose: RestoreReadPurpose = "guard") =>
       Effect.gen(function* () {
         const raw = property(yield* api.request(`v1/pages/${target}`))
         const trashed = raw.in_trash === true || raw.archived === true || raw.is_archived === true
@@ -69,11 +74,14 @@ export function restoreCurrentSkillProjection(
         const live = (yield* queryCurrentSourceTargetPages(library, {
           skillIds: [owner.skill_id],
         })).get(owner.skill_id)
-        if ((live !== undefined && live.page_id !== target) || (!trashed && live === undefined))
+        if (
+          (live !== undefined && live.page_id !== target) ||
+          (!trashed && live === undefined && purpose === "guard")
+        )
           return yield* Effect.fail(
             invalid("The stable Skill identity belongs to a different or unavailable live page."),
           )
-        return { owner, trashed }
+        return { owner, trashed, indexed: live !== undefined }
       })
     const initial = yield* read()
     const pending = yield* readCurrentOperationIntent(library, {
@@ -164,19 +172,20 @@ export function restoreCurrentSkillProjection(
         owner: { kind: "skill", id: initial.owner.skill_id },
         restore: { page_id: target, policy },
       }
-      const assertCurrent = Effect.gen(function* () {
-        const current = yield* read()
-        if ((yield* fingerprint(current.owner)) !== input_sha256)
-          return yield* Effect.fail(invalid("The current Skill changed during restoration."))
-        return current
-      })
+      const assertCurrent = (purpose: RestoreReadPurpose = "guard") =>
+        Effect.gen(function* () {
+          const current = yield* read(purpose)
+          if ((yield* fingerprint(current.owner)) !== input_sha256)
+            return yield* Effect.fail(invalid("The current Skill changed during restoration."))
+          return current
+        })
       yield* withCurrentOperation(library, {
         intent,
         // The finite Record may exist before the trashed page can be related to it.
         // Bind only this same physical page after its live state is observed.
         ownerPageId: null,
         mode: frozen === undefined ? "apply" : "resume",
-        beforeMutation: assertCurrent.pipe(Effect.asVoid),
+        beforeMutation: assertCurrent().pipe(Effect.asVoid),
         run: (session) =>
           Effect.gen(function* () {
             if (session.ownerPageId === null) yield* session.activate()
@@ -189,20 +198,43 @@ export function restoreCurrentSkillProjection(
                 options: { method: "PATCH" },
               },
               observe: () =>
-                assertCurrent.pipe(
+                assertCurrent().pipe(
                   Effect.map((current) =>
                     current.trashed
                       ? ({ status: "missing" } as const)
                       : ({ status: "complete", value: undefined } as const),
                   ),
                 ),
+              acknowledge: () =>
+                Effect.gen(function* () {
+                  const budget = yield* RequestBudget
+                  for (let attempt = 0; ; attempt += 1) {
+                    // Each observation still checks the exact owner, complete unique
+                    // identity query, Source readiness and the frozen fingerprint.
+                    const current = yield* assertCurrent("successful_untrash")
+                    if (current.trashed)
+                      return yield* Effect.fail(
+                        invalid("The restored Skill has not been observed live."),
+                      )
+                    if (current.indexed) return
+                    const wait = restoreVisibilityWaits[attempt]
+                    if (wait === undefined)
+                      return yield* Effect.fail(
+                        invalid(
+                          "The restored Skill is still unavailable in its live identity query.",
+                        ),
+                      )
+                    yield* budget.check
+                    yield* withinRequestBudget(Effect.sleep(wait), budget)
+                  }
+                }),
             })
             if (session.ownerPageId === null) yield* session.bindOwner(target)
             else if (session.ownerPageId !== target)
               return yield* Effect.fail(invalid("Restoration changed its exact Skill page."))
           }),
         verify: () =>
-          assertCurrent.pipe(
+          assertCurrent().pipe(
             Effect.flatMap((current) =>
               current.trashed
                 ? Effect.fail(invalid("The restored Skill has not been observed live."))

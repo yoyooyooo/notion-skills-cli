@@ -3,8 +3,9 @@ import { mkdtempSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Crypto, Effect, Option } from "effect"
+import { Clock, Crypto, Duration, Effect, Exit, Fiber, Latch, Option } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
+import { TestClock } from "effect/testing"
 import { trashPath } from "../src/local-locks.ts"
 import { fail, property, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
@@ -1107,6 +1108,219 @@ test("restore rebuilds sparse reading bodies for all 410 consumed files while pr
     status: "unchanged",
     restoration: { status: "unchanged" },
   })
+  expect(f.mutations()).toEqual([])
+})
+
+test("restore waits for the live identity query after a successful untrash without repeating it", async () => {
+  const { f, written } = await seedSourceReading({ rows: false })
+  await f.run(projectCurrentSkill(library, { target: written.page_id, mode: "auto" }))
+  const before = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  f.blocks.set(written.page_id, [])
+  f.pages.get(written.page_id)!.in_trash = true
+  f.clearCalls()
+  let hidden = 0
+  f.rewrite((path, response) => {
+    if (
+      path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`) &&
+      f.pages.get(written.page_id)!.in_trash === false &&
+      hidden < 2
+    ) {
+      hidden += 1
+      return { ...response, results: [], has_more: false, next_cursor: null }
+    }
+    return response
+  })
+  const restored = await f.run(restoreCurrentSkillProjection(library, { target: written.page_id }))
+  expect(restored).toMatchObject({ status: "applied", restoration: { status: "restored" } })
+  expect(hidden).toBe(2)
+  expect(logical(await f.run(queryCurrentSkillIndex(library, written.page_id)))).toEqual(
+    logical(before),
+  )
+  expect(blockText(f.blocks.get(written.page_id)!)).toContain("Read guide, script, and test.")
+  expect(f.mutations().filter((call) => call.path === `v1/pages/${written.page_id}`)).toEqual([
+    { path: `v1/pages/${written.page_id}`, method: "PATCH", body: { in_trash: false } },
+  ])
+  expect(
+    await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
+  ).toBeUndefined()
+})
+
+test("restore bounds a permanently absent live identity query and retains the original action", async () => {
+  const { f, written } = await seedSourceReading({ rows: false })
+  f.pages.get(written.page_id)!.in_trash = true
+  let observations = 0
+  f.rewrite((path, response) => {
+    if (
+      path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`) &&
+      f.pages.get(written.page_id)!.in_trash === false
+    ) {
+      observations += 1
+      return { ...response, results: [], has_more: false, next_cursor: null }
+    }
+    return response
+  })
+  const error = await f.run(
+    Effect.flip(restoreCurrentSkillProjection(library, { target: written.page_id })),
+  )
+  expect(error).toMatchObject({
+    code: "WRITE_OUTCOME_UNKNOWN",
+    details: { cause_code: "CURRENT_PROJECTION_RESTORE_CONFLICT", action: "$owner.restore" },
+  })
+  expect(observations).toBe(5)
+  expect(f.mutations().filter((call) => call.path === `v1/pages/${written.page_id}`)).toEqual([
+    { path: `v1/pages/${written.page_id}`, method: "PATCH", body: { in_trash: false } },
+  ])
+  const pending = await f.run(
+    readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
+  )
+  expect(pending?.intent).toMatchObject({
+    operation_id: property(error.details).operation_id,
+    input_sha256: property(error.details).input_sha256,
+    restore: { page_id: written.page_id, policy: currentProjectionPolicy({}) },
+  })
+  expect(f.blocks.get(written.page_id)).toEqual([])
+})
+
+test.each(["foreign", "duplicate", "main-identity", "source-applying", "partial-query"] as const)(
+  "restore stops immediately when %s appears during live identity convergence",
+  async (change) => {
+    const { f, written, sourcePage } = await seedSourceReading({ rows: false })
+    const owner = f.pages.get(written.page_id)!
+    owner.in_trash = true
+    let observations = 0
+    f.rewrite((path, response) => {
+      if (
+        !path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`) ||
+        owner.in_trash !== false
+      )
+        return response
+      observations += 1
+      if (observations === 1) {
+        if (change === "main-identity")
+          property(
+            property(owner.properties)[library.skills.property_ids["Main File ID"]!],
+          ).rich_text = sourceRich("changed-main-identity")
+        return { ...response, results: [], has_more: false, next_cursor: null }
+      }
+      if (change === "foreign" || change === "duplicate") {
+        const competitor = { ...structuredClone(owner), id: id(8000) }
+        return {
+          ...response,
+          results: change === "foreign" ? [competitor] : [structuredClone(owner), competitor],
+        }
+      }
+      if (change === "source-applying") {
+        const fields = property(f.pages.get(sourcePage)!.properties)
+        property(fields[library.sources.property_ids.Status!]).select = { name: "applying" }
+        property(fields[library.sources.property_ids.Operation!]).rich_text =
+          sourceRich("other-writer")
+      }
+      if (change === "partial-query")
+        return { ...response, results: [], request_status: { type: "incomplete" } }
+      return response
+    })
+    const error = await f.run(
+      Effect.flip(restoreCurrentSkillProjection(library, { target: written.page_id })),
+    )
+    expect(error).toMatchObject({
+      code: "WRITE_OUTCOME_UNKNOWN",
+      details: { action: "$owner.restore" },
+    })
+    expect(observations).toBe(2)
+    expect(f.mutations().filter((call) => call.path === `v1/pages/${written.page_id}`)).toEqual([
+      { path: `v1/pages/${written.page_id}`, method: "PATCH", body: { in_trash: false } },
+    ])
+    const pending = await f.run(
+      readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
+    )
+    expect(pending?.intent).toMatchObject({ operation_id: property(error.details).operation_id })
+    expect(f.blocks.get(written.page_id)).toEqual([])
+  },
+)
+
+test.each(["deadline", "cancellation"] as const)(
+  "restore stops its read-only visibility wait on %s with the action retained",
+  async (stop) => {
+    const { f, written } = await seedSourceReading({ rows: false })
+    f.pages.get(written.page_id)!.in_trash = true
+    let observations = 0
+    f.rewrite((path, response) => {
+      if (
+        path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`) &&
+        f.pages.get(written.page_id)!.in_trash === false
+      ) {
+        observations += 1
+        return { ...response, results: [], has_more: false, next_cursor: null }
+      }
+      return response
+    })
+    await f.run(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* TestClock.make()
+          const waiting = yield* Latch.make(false)
+          const observedClock: Clock.Clock = {
+            ...clock,
+            sleep: (duration) =>
+              Effect.gen(function* () {
+                if (Duration.toMillis(duration) === 1000) yield* waiting.open
+                yield* clock.sleep(duration)
+              }),
+          }
+          const task = yield* Effect.forkChild(
+            withCurrentInvocationBudget(
+              restoreCurrentSkillProjection(library, { target: written.page_id }),
+              { duration_ms: 50 },
+            ).pipe(Effect.result, Effect.provideService(Clock.Clock, observedClock)),
+            { startImmediately: true },
+          )
+          yield* waiting.await
+          if (stop === "deadline") {
+            yield* clock.adjust(50)
+            const result = yield* Fiber.join(task)
+            expect(result).toMatchObject({
+              _tag: "Failure",
+              failure: {
+                code: "WRITE_OUTCOME_UNKNOWN",
+                details: {
+                  cause_code: "REQUEST_BUDGET_EXHAUSTED",
+                  budget: { limits: { duration_ms: 50 }, exhausted: "duration" },
+                },
+              },
+            })
+          } else {
+            yield* Fiber.interrupt(task)
+            expect(Exit.hasInterrupts(yield* Fiber.await(task))).toBe(true)
+          }
+        }),
+      ),
+    )
+    expect(observations).toBe(1)
+    expect(f.mutations().filter((call) => call.path === `v1/pages/${written.page_id}`)).toEqual([
+      { path: `v1/pages/${written.page_id}`, method: "PATCH", body: { in_trash: false } },
+    ])
+    expect(
+      (await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })))
+        ?.intent,
+    ).toHaveProperty("restore")
+    expect(f.blocks.get(written.page_id)).toEqual([])
+  },
+)
+
+test("restore does not wait for a missing live identity before any successful untrash", async () => {
+  const { f, written } = await seedSourceReading({ rows: false })
+  let observations = 0
+  f.rewrite((path, response) => {
+    if (path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`)) {
+      observations += 1
+      return { ...response, results: [], has_more: false, next_cursor: null }
+    }
+    return response
+  })
+  await expect(
+    f.run(restoreCurrentSkillProjection(library, { target: written.page_id })),
+  ).rejects.toMatchObject({ code: "CURRENT_PROJECTION_RESTORE_CONFLICT" })
+  expect(observations).toBe(1)
   expect(f.mutations()).toEqual([])
 })
 
