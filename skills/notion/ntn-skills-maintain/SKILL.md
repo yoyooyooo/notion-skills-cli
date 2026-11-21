@@ -27,7 +27,7 @@ Report progress before writes and during long verification.
 
 ## Prepare local input
 
-Use physical input paths, including parents. Prepare temporary input:
+Use physical input paths, including parents:
 
 ```sh
 skill_dir=$(mktemp -d)
@@ -88,11 +88,11 @@ reports restoration.status restored or unchanged. Continue only for requested re
 consumption, using read-only paths. Repeat completed work only for a new user
 request or an explicit idempotence test.
 
-For requested Pi inspection, refresh that source's directory
+For requested Pi inspection, refresh the source directory
 with `notion_list({query: SKILL_ID, source: SOURCE_ID, refresh: true})`, then use
 ordinary `read` on its returned exact ref. This refreshes discovery, not adopted
-versions. Inspect the edited target; do not activate it. Empty queries or CLI list
-do not refresh the host directory.
+versions. Inspect the edited target; do not activate it. Repeating an unchanged
+empty query or running CLI list does not refresh the host directory.
 
 For CLI readback:
 

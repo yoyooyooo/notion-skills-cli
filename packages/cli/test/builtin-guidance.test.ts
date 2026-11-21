@@ -124,6 +124,9 @@ test("maintenance routes daily native management through public commands and kee
   expect(root).toContain("notion_list({query: SKILL_ID, source: SOURCE_ID, refresh: true})")
   expect(root).toContain("then use\nordinary `read`")
   expect(root).toContain("not adopted\nversions")
+  expect(root.replace(/\s+/g, " ")).toContain(
+    "Repeating an unchanged empty query or running CLI list does not refresh the host directory.",
+  )
   expect(root).toContain("Summarized readbacks retain page/ref, snapshot")
   expect(root).toContain("For a basic how-to, explain create/register below from this main")
   expect(root).toContain("load an API Skill only for direct API work")
