@@ -354,6 +354,18 @@ describe("Promise SDK boundary", () => {
       "# Invoice\n",
     ])
       expect(compareNativeMarkdown({ expected, observed: changed })).toBe("different")
+    const wrapped = {
+      expected: "1. Run `list --database\n   ENTRY`.\n\n   Keep the paragraph.\n",
+      observed:
+        "1. Run <code>list --database ENTRY</code>.\n   <p>\n   Keep the paragraph.\n   </p>\n",
+    }
+    expect(compareNativeMarkdown(wrapped)).toBe("normalized")
+    expect(
+      compareNativeMarkdown({
+        ...wrapped,
+        observed: wrapped.observed.replace("database ENTRY", "database<br>ENTRY"),
+      }),
+    ).toBe("different")
   })
 
   test("independent resource capability preserves consumer v1 and rejects structural errors before runtime acquisition", async () => {

@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -117,6 +118,97 @@ test("create verifies the whole native/resource tree and an equal repeat writes 
   expect(f.mutations()).toHaveLength(0)
   const after = await f.run(queryCurrentSkillIndex(library, created.page_id))
   expect(after).toEqual(before)
+})
+
+test("native create freezes authored bytes while sending equivalent soft wraps and checking paragraph readback", async () => {
+  const f = currentWriteFixture(parent)
+  const header =
+    "---\r\nname: native-managed\r\ndescription: Authoring wrapper acceptance\r\n---\r\n"
+  const markdown =
+    "# Main\r\n\r\nRead `list --view VIEW_ID --database\r\nENTRY` and [release\r\nchecks](https://example.com).\r\n\r\n1. Run\r\n   now.\r\n\r\n   ```sh\r\n   printf 'keep\\n'\r\n   ```\r\n\r\n   Keep\r\n   this paragraph.\r\n"
+  const wire =
+    "# Main\n\nRead `list --view VIEW_ID --database ENTRY` and [release checks](https://example.com).\n\n1. Run now.\n\n   ```sh\n   printf 'keep\\n'\n   ```\n\n   Keep this paragraph.\n"
+  const bytes = testBytes(header + markdown)
+  const plan = await f.run(
+    prepareCurrentSkillWrite(
+      input({
+        files: [{ path: "SKILL.md", bytes, mode: "100755", authority: { kind: "native" } }],
+      }),
+    ),
+  )
+  expect(plan.files[0]).toMatchObject({
+    kind: "native",
+    markdown,
+    bytes,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    content: { frontmatter: header, mode: "100755" },
+  })
+  const frozen = structuredClone(plan)
+  f.rewrite((path, response) => {
+    if (!path.includes("/markdown") || typeof response.markdown !== "string") return response
+    return {
+      ...response,
+      markdown: response.markdown
+        .replace(
+          "`list --view VIEW_ID --database ENTRY`",
+          "<code>list --view VIEW_ID --database ENTRY</code>",
+        )
+        .replace("   Keep this paragraph.", "   <p>\n   Keep this paragraph.\n   </p>"),
+    }
+  })
+  const created = createdResult(await f.run(createCurrentNotionSkill(library, { plan })))
+  expect(created).toMatchObject({
+    state: "ready",
+    native: { verified: 1, normalized_paths: ["SKILL.md"] },
+  })
+  const writes = f.mutations().filter((call) => call.path.includes("/markdown"))
+  expect(writes).toHaveLength(1)
+  expect(writes[0]?.body).toEqual({
+    markdown_version: "v2",
+    type: "replace_content",
+    replace_content: { new_str: wire },
+  })
+  expect(plan).toEqual(frozen)
+  f.clearCalls()
+  expect(await f.run(createCurrentNotionSkill(library, { plan }))).toMatchObject({
+    status: "unchanged",
+    remote_writes: 0,
+  })
+  expect(f.mutations()).toEqual([])
+})
+
+test("native create keeps a literal br inside code unfinished after full readback", async () => {
+  const f = currentWriteFixture(parent)
+  const plan = await f.run(
+    prepareCurrentSkillWrite(
+      input({
+        files: [
+          {
+            path: "SKILL.md",
+            bytes: testBytes("Read `list --database\nENTRY`.\n"),
+            authority: { kind: "native" },
+          },
+        ],
+      }),
+    ),
+  )
+  f.rewrite((path, response) =>
+    path.includes("/markdown") && typeof response.markdown === "string"
+      ? {
+          ...response,
+          markdown: response.markdown.replace(
+            "`list --database ENTRY`",
+            "<code>list --database<br>ENTRY</code>",
+          ),
+        }
+      : response,
+  )
+  await expect(f.run(createCurrentNotionSkill(library, { plan }))).rejects.toMatchObject({
+    code: "WRITE_OUTCOME_UNKNOWN",
+    details: { cause_code: "CURRENT_NATIVE_ROUNDTRIP" },
+  })
+  expect(pending(f)).toHaveLength(1)
+  expect(f.mutations().filter((call) => call.path.includes("/markdown"))).toHaveLength(1)
 })
 
 for (const difference of ["metadata", "support-body", "file-count"] as const)
