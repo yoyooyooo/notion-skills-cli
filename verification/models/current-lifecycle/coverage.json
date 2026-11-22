@@ -94,9 +94,7 @@
     {
       "model": "CurrentLifecycle",
       "config": "read-fence.cfg",
-      "expected_broken": [
-        "NoMixedCurrentPublication"
-      ],
+      "expected_broken": ["NoMixedCurrentPublication"],
       "expected_rules": [
         "TypeOK",
         "ReadyHasNoContentOperation",
@@ -114,9 +112,7 @@
     {
       "model": "CurrentLifecycle",
       "config": "projection-owner.cfg",
-      "expected_broken": [
-        "NonContentPreservesReadiness"
-      ],
+      "expected_broken": ["NonContentPreservesReadiness"],
       "expected_rules": [
         "TypeOK",
         "ReadyHasNoContentOperation",
@@ -134,9 +130,7 @@
     {
       "model": "CurrentLifecycle",
       "config": "unknown-replay.cfg",
-      "expected_broken": [
-        "UnknownNonIdempotentNeverRepeated"
-      ],
+      "expected_broken": ["UnknownNonIdempotentNeverRepeated"],
       "expected_rules": [
         "TypeOK",
         "ReadyHasNoContentOperation",
@@ -154,9 +148,7 @@
     {
       "model": "CurrentLifecycle",
       "config": "completion-owner.cfg",
-      "expected_broken": [
-        "NonContentCompletionQualified"
-      ],
+      "expected_broken": ["NonContentCompletionQualified"],
       "expected_rules": [
         "TypeOK",
         "ReadyHasNoContentOperation",

@@ -93,9 +93,7 @@
     {
       "model": "SharedProducer",
       "config": "cancel.cfg",
-      "expected_broken": [
-        "SurvivingWaiterKeepsProducer"
-      ],
+      "expected_broken": ["SurvivingWaiterKeepsProducer"],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -113,9 +111,7 @@
     {
       "model": "SharedProducer",
       "config": "release.cfg",
-      "expected_broken": [
-        "LastWaiterReleasesProducer"
-      ],
+      "expected_broken": ["LastWaiterReleasesProducer"],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -133,9 +129,7 @@
     {
       "model": "SharedProducer",
       "config": "scope.cfg",
-      "expected_broken": [
-        "ScopeIsolated"
-      ],
+      "expected_broken": ["ScopeIsolated"],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -153,9 +147,7 @@
     {
       "model": "SharedProducer",
       "config": "budget.cfg",
-      "expected_broken": [
-        "BudgetIsolated"
-      ],
+      "expected_broken": ["BudgetIsolated"],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -173,9 +165,7 @@
     {
       "model": "SharedProducer",
       "config": "queue.cfg",
-      "expected_broken": [
-        "QueueBudgetIsolated"
-      ],
+      "expected_broken": ["QueueBudgetIsolated"],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -193,9 +183,7 @@
     {
       "model": "SharedProducer",
       "config": "service.cfg",
-      "expected_broken": [
-        "ServiceIsolated"
-      ],
+      "expected_broken": ["ServiceIsolated"],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -213,9 +201,7 @@
     {
       "model": "SharedProducer",
       "config": "cache.cfg",
-      "expected_broken": [
-        "SettledResultNotReused"
-      ],
+      "expected_broken": ["SettledResultNotReused"],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -233,9 +219,7 @@
     {
       "model": "SharedProducer",
       "config": "cleanup.cfg",
-      "expected_broken": [
-        "ReplacementSurvivesOldCleanup"
-      ],
+      "expected_broken": ["ReplacementSurvivesOldCleanup"],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -253,9 +237,7 @@
     {
       "model": "SharedProducer",
       "config": "runtime.cfg",
-      "expected_broken": [
-        "SurvivingWaiterKeepsProducer"
-      ],
+      "expected_broken": ["SurvivingWaiterKeepsProducer"],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -273,9 +255,7 @@
     {
       "model": "SharedProducer",
       "config": "capacity.cfg",
-      "expected_broken": [
-        "SharedAdmissionBounded"
-      ],
+      "expected_broken": ["SharedAdmissionBounded"],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -293,9 +273,7 @@
     {
       "model": "SharedProducer",
       "config": "cleanup-capacity.cfg",
-      "expected_broken": [
-        "SharedAdmissionBounded"
-      ],
+      "expected_broken": ["SharedAdmissionBounded"],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -329,9 +307,7 @@
     {
       "model": "RequestAdmission",
       "config": "cooldown.cfg",
-      "expected_broken": [
-        "CooldownBeforeAdmission"
-      ],
+      "expected_broken": ["CooldownBeforeAdmission"],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -347,9 +323,7 @@
     {
       "model": "RequestAdmission",
       "config": "queue.cfg",
-      "expected_broken": [
-        "CallerDeadlineRespected"
-      ],
+      "expected_broken": ["CallerDeadlineRespected"],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -365,9 +339,7 @@
     {
       "model": "RequestAdmission",
       "config": "operation.cfg",
-      "expected_broken": [
-        "CallerDeadlineRespected"
-      ],
+      "expected_broken": ["CallerDeadlineRespected"],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -383,9 +355,7 @@
     {
       "model": "RequestAdmission",
       "config": "attempts.cfg",
-      "expected_broken": [
-        "AttemptBudgetRespected"
-      ],
+      "expected_broken": ["AttemptBudgetRespected"],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -401,9 +371,7 @@
     {
       "model": "RequestAdmission",
       "config": "unknown.cfg",
-      "expected_broken": [
-        "UnknownMutationNeverRetried"
-      ],
+      "expected_broken": ["UnknownMutationNeverRetried"],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -419,9 +387,7 @@
     {
       "model": "RequestAdmission",
       "config": "permit.cfg",
-      "expected_broken": [
-        "NoPermitDuringQueueOrBackoff"
-      ],
+      "expected_broken": ["NoPermitDuringQueueOrBackoff"],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -437,9 +403,7 @@
     {
       "model": "RequestAdmission",
       "config": "lease.cfg",
-      "expected_broken": [
-        "CancelledQueueReleasesLease"
-      ],
+      "expected_broken": ["CancelledQueueReleasesLease"],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -455,9 +419,7 @@
     {
       "model": "RequestAdmission",
       "config": "timeout.cfg",
-      "expected_broken": [
-        "AttemptDeadlineRespected"
-      ],
+      "expected_broken": ["AttemptDeadlineRespected"],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
