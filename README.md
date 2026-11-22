@@ -88,9 +88,11 @@ to configure the other three table IDs. An existing library can start with
 `init --entry` does not save a local default. In a new terminal or Agent session,
 set `library_entry` to this same saved ID and pass it to the commands below.
 
-If initialization stops, keep its error and operation ID. The
+If initialization stops, keep its parent, error, operation ID, and local state.
+First reconcile without remote writes; add `--resume` only to continue that
+original initialization's confirmed unfinished steps. The
 [initialization recovery guide](skills/notion/ntn-skills-maintain/references/setup.md#interrupted-initialization)
-explains what read-only reconciliation can confirm and what remains unfinished.
+explains both commands and the unknown results that still need reconciliation.
 
 ### 3. Create your first Skill
 

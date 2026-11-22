@@ -58,22 +58,35 @@ converts an older library schema.
 
 ## Interrupted initialization
 
-Keep the original parent, error details, and operation ID. To inspect that
-initialization, use its exact returned ID:
+Keep the original parent, error details, returned operation ID, and the same
+`NTN_SKILLS_HOME`. First inspect that initialization without remote writes:
 
 ```sh
 ntn-skills ctl library init --parent AUTHORIZED_PARENT_PAGE --operation ORIGINAL_OPERATION_ID
 ```
 
-This is read-only reconciliation. It can confirm a completed registration whose
-response was lost. It does not create missing tables, add missing relationships,
-or write an absent library descriptor. `LIBRARY_INIT_INCOMPLETE` can therefore
-remain unresolved after this command. Do not describe it as a general resume.
+This command is read-only reconciliation. It can confirm a completed
+registration whose response was lost, but it does not finish missing work.
+To continue the original initialization, add `--resume`:
 
-Preserve unresolved objects and the original operation. An unknown write or a
-missing result is not permission to repeat a POST, edit internal fields by hand,
-or create a replacement library. Follow the actual error within the original
-scope.
+```sh
+ntn-skills ctl library init --parent AUTHORIZED_PARENT_PAGE --operation ORIGINAL_OPERATION_ID --resume
+```
+
+Continuation preserves known table, data-source and property IDs, creates only
+tables whose creation was not attempted or was definitively rejected, and
+completes missing relationships and the descriptor. A lost response is
+reconciled first. Unknown table or relation creation that remains invisible
+stays unresolved; it is not blindly repeated. The exact descriptor replacement
+is idempotent and can be retried after checking the original marker and
+registered identities. Human edits or conflicting objects stop continuation.
+
+Only unfinished initialization state is retained locally; success clears it.
+Losing that state does not authorize recreating a missing table. An already
+registered library can still be validated or attached from a fresh client using
+its exact entry. Run one initializer per parent; local locks do not provide a
+cross-machine Notion transaction. Preserve unresolved objects and the original
+operation rather than creating a replacement library or editing internal fields.
 
 ## Create a native Skill
 

@@ -86,9 +86,10 @@ ntn-skills ctl library init --entry "$library_entry"
 `init --entry` 不会保存本地默认库。下一次终端或 Agent 会话中，把
 `library_entry` 设为这次保存的同一个 ID，再传给下面的命令。
 
-如果初始化中断，保留错误和 operation ID。
+如果初始化中断，保留原父页、错误、operation ID 和本地状态。
+先只读对账；加 `--resume` 才继续原初始化中可确认的未完成步骤。
 [初始化恢复说明](skills/notion/ntn-skills-maintain/references/setup.md#interrupted-initialization)
-列出了只读对账能确认的结果，以及仍无法补齐的阶段。
+列出了两条命令，以及仍需对账的未知结果边界。
 
 ### 3. 创建第一个 Skill
 
