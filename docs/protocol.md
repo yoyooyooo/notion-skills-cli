@@ -164,6 +164,7 @@ The package exports the Node ESM module `ntn-skills/sdk` and its TypeScript decl
 | `consume` | Contract version 1 instruction preparation with complete manifests |
 | `readResources` | Contract version 1 acquisition of a bounded exact file set |
 | `decodeConsumeResult`, `decodeResourceReadResult` | Local validation of the corresponding result contract |
+| `compareNativeMarkdown` | Pure current-writer comparison of complete Native Markdown: `exact`, `normalized`, or `different`; preserves text, formatting, links, nesting, and code and rejects unsupported expected syntax |
 
 SDK calls accept an optional environment, working directory, abort signal, and request-metrics callback.
 They use the same credential provider, Store, and request engine as the CLI.

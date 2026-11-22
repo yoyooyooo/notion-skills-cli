@@ -68,6 +68,7 @@ export type {
 } from "../../core/src/consumer-model.ts"
 export { SkillsError } from "../../core/src/model.ts"
 export { parseDuration } from "../../core/src/cache.ts"
+export { compareNativeMarkdown } from "../../core/src/shared-native-markdown.ts"
 export { resolveCatalogReference } from "../../core/src/catalog-reference.ts"
 export { READ_OUTPUT_PROOF_VERSION } from "../../core/src/snapshot.ts"
 export type { RequestMetricsSnapshot } from "../../core/src/request-metrics.ts"

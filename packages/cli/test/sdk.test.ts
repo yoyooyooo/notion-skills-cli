@@ -11,6 +11,7 @@ import {
   decodeConsumeResult,
   decodeResourceReadResult,
   parseDuration,
+  compareNativeMarkdown,
   readResources,
   readSkill,
   listCatalog,
@@ -339,6 +340,20 @@ describe("Promise SDK boundary", () => {
     expect(parseDuration("5m")).toBe(300000)
     expect(() => parseDuration("5ms")).toThrow(SkillsError)
     expect(() => parseDuration("1.5s")).toThrow(SkillsError)
+  })
+
+  test("native Markdown comparison preserves the current writer's complete structure", () => {
+    const expected = "# Invoice\n\nRead total_cents and `last_invoice_id`.\n"
+    const observed = "# Invoice\n\nRead total\\_cents and `last_invoice_id`.\n"
+    expect(compareNativeMarkdown({ expected, observed })).toBe("normalized")
+    expect(compareNativeMarkdown({ expected, observed: expected })).toBe("exact")
+    for (const changed of [
+      observed.replace("total\\_cents", "total\\_dollars"),
+      observed.replace("# Invoice", "## Invoice"),
+      observed.replace("`last_invoice_id`", "`last\\_invoice\\_id`"),
+      "# Invoice\n",
+    ])
+      expect(compareNativeMarkdown({ expected, observed: changed })).toBe("different")
   })
 
   test("independent resource capability preserves consumer v1 and rejects structural errors before runtime acquisition", async () => {

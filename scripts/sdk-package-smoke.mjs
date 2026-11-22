@@ -162,6 +162,7 @@ try {
       "readResources",
       "decodeConsumeResult",
       "decodeResourceReadResult",
+      "compareNativeMarkdown",
     ])
       assert.equal(typeof sdk[name], "function")
     assert.equal(
@@ -169,6 +170,17 @@ try {
         /Source(Storage|Onboarding|Recovery|Projection|File)|sourceManagement/u.test(name),
       ),
       false,
+    )
+    const expected = "# Invoice\n\nRead total_cents and `last_invoice_id`.\n"
+    const observed = "# Invoice\n\nRead total\\_cents and `last_invoice_id`.\n"
+    assert.equal(sdk.compareNativeMarkdown({ expected, observed }), "normalized")
+    assert.equal(sdk.compareNativeMarkdown({ expected, observed: expected }), "exact")
+    assert.equal(
+      sdk.compareNativeMarkdown({
+        expected,
+        observed: observed.replace("total\\_cents", "total\\_dollars"),
+      }),
+      "different",
     )
     await writeFile(
       join(root, "sdk-contract.ts"),
