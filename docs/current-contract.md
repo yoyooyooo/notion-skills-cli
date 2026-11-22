@@ -173,6 +173,10 @@ code is content, not a line-break spelling, and cannot pass as a space.
 The observed Notion code-block label normalization from `sh` to `bash` is also
 accepted with an exact code payload. This concerns the presentation label;
 POSIX `sh` and Bash interpreters are not interchangeable.
+Admission and remote readback are separate boundaries. A Notion representation
+outside this decoder, including the observed multi-paragraph `<quote>` wrapper,
+still leaves the operation unfinished even if its original Markdown was admitted.
+Native authoring does not promise lossless support for every Markdown construct.
 
 Notion may turn ordinary technical identifiers, such as the filename `SKILL.md`
 or option name `options.storage`, into external links. A backslash-escaped

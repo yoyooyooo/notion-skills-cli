@@ -268,7 +268,7 @@ export function decodeConsumeResult(value: unknown, expected?: ConsumeInput) {
       const manifest = entry.manifest
       const identity = node.id
       const snapshotInputs =
-        node.freshness?.policy === "pinned" && node.source === "local_cache"
+        node.freshness?.policy === "pinned" && node.source === "local_snapshot"
           ? retainedSnapshotIdentityInputs(manifest)
           : [selectionSnapshotIdentityInput(manifest)]
       if (
