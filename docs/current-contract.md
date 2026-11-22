@@ -163,6 +163,14 @@ supported document structure. Formatting-only differences can complete and are
 reported through `native.verified` and `native.normalized_paths`. Lost content,
 changed meaning or an unconfirmed full body cannot publish ready.
 
+The native transport folds ordinary soft line wraps and line endings inside
+Markdown code spans to spaces, following their CommonMark meaning. Explicit hard
+breaks, fenced code payloads, native `<code>` literals and link destinations stay
+unchanged. The complete structure must still match before any write. Readback
+also recognizes the attribute-free `<p>` paragraph wrapper that Notion emits for
+list children; its inline body remains one paragraph. A literal `<br>` inside
+code is content, not a line-break spelling, and cannot pass as a space.
+
 The original input bytes/hash and operation fingerprint remain fixed. Stored
 frontmatter and executable mode remain exact. Native reads and exports use the
 actual current Notion body, so native authoring does not promise original Markdown

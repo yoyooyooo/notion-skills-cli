@@ -182,6 +182,19 @@ try {
       }),
       "different",
     )
+    const wrapped = {
+      expected: "1. Run `list --database\n   ENTRY`.\n\n   Keep the paragraph.\n",
+      observed:
+        "1. Run <code>list --database ENTRY</code>.\n   <p>\n   Keep the paragraph.\n   </p>\n",
+    }
+    assert.equal(sdk.compareNativeMarkdown(wrapped), "normalized")
+    assert.equal(
+      sdk.compareNativeMarkdown({
+        ...wrapped,
+        observed: wrapped.observed.replace("database ENTRY", "database<br>ENTRY"),
+      }),
+      "different",
+    )
     await writeFile(
       join(root, "sdk-contract.ts"),
       `import { SDK_VERSION, consume, readSkill, listSkill, readResources, type ConsumeOptions } from 'ntn-skills/sdk';\nconst version: 2 = SDK_VERSION;\nconst options: ConsumeOptions = { env: {}, database: '${fixture.database}' };\nvoid consume({version:1,targets:['${fixture.root_page_id}'],purpose:'use'}, options);\nvoid readSkill('${fixture.root_page_id}', options);\nvoid listSkill('${fixture.root_page_id}', options);\nvoid readResources({version:1,refs:[]}, options);\n// @ts-expect-error removed SDK option\nconst removed: ConsumeOptions = { readOnly: true };\n// @ts-expect-error retired Source management API\nimport { planSourceRefresh } from 'ntn-skills/sdk';\n`,
