@@ -948,7 +948,8 @@
         "单caller取消不害存活caller；全取消不应晚发ready。",
         "每次logical invocation预算涵盖reads/retries；partial provider结果不能当完整树。",
         "request模型保证局部资源规则，不自动保证管理变化后graph/payload仍可交付。",
-        "局部结果不带complete；Disabled重复claim、分页与foreign错误仍拒绝。stable query仅选身份，正文前exact owner GET和正文后writer fence都保留。"
+        "局部结果不带complete；Disabled重复claim、分页与foreign错误仍拒绝。stable query仅选身份，正文前exact owner GET和正文后writer fence都保留。",
+        "已完成资格准入的固定A字节可以继续；后来的缺字节获取重新核当前Source状态。Source applying/revision受控事实与真实管理writer回执分别记录，不把前者称为live管理成功。"
       ],
       "minimum_layer": "sdk",
       "live_required": false,
@@ -960,7 +961,7 @@
         },
         {
           "repository": "cli",
-          "command": "node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-bounded-metadata.node.test.ts",
+          "command": "node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-bounded-metadata.node.test.ts packages/core/test/sdk-immutable-read.node.test.ts",
           "required_inputs": []
         }
       ]

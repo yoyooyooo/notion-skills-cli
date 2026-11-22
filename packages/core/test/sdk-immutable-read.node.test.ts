@@ -22,6 +22,7 @@ import { currentSourceConsumerFixture } from "./shared-current-source-consumer-f
 import {
   currentSnapshotFixture,
   currentId,
+  currentRich,
   currentLibrary as library,
   currentSkillPage as skillPage,
 } from "./shared-current-fixture.ts"
@@ -220,7 +221,7 @@ await writeFile(process.argv[3],JSON.stringify({rows,explicitCalls,inherited}));
   }
 })
 
-async function sample() {
+async function sample(currentSource?: Record<string, unknown>) {
   const f = currentSnapshotFixture({ fileCount: 1 })
   await f.resource(0, "scripts/read-only.sh", raw, "100755")
   const main = {
@@ -242,7 +243,7 @@ async function sample() {
       skills: [structuredClone(main)],
       files: structuredClone(f.files),
       records: structuredClone([...f.records.values()]),
-      sources: [],
+      sources: currentSource === undefined ? [] : [currentSource],
       bodies: Object.fromEntries(f.bodies),
     },
   }
@@ -260,15 +261,19 @@ async function setup(
     root: string
     options: Awaited<ReturnType<typeof bootstrap>>["options"]
     input: Awaited<ReturnType<typeof bootstrap>>["input"]
+    snapshotId: string
     other: (name: string) => ReturnType<typeof bootstrap>
   }) => Promise<void>,
-  fixtureOptions: { emptyFirstRecordsPage?: boolean } = {},
+  fixtureOptions: {
+    emptyFirstRecordsPage?: boolean
+    currentSource?: Record<string, unknown>
+  } = {},
 ) {
   const root = await mkdtemp(join(await realpath(tmpdir()), "sdk-immutable-read-"))
   const source = await startSdkSourceFixture(
-    await sample(),
+    await sample(fixtureOptions.currentSource),
     join(root, "requests.jsonl"),
-    fixtureOptions,
+    { emptyFirstRecordsPage: fixtureOptions.emptyFirstRecordsPage },
   )
   const other = (name: string) => bootstrap(source, root, name)
   try {
@@ -310,6 +315,7 @@ async function bootstrap(source: Source, root: string, name: string) {
   })
   return {
     options,
+    snapshotId: main.snapshot_id,
     input: {
       version: 1 as const,
       refs: [selected.ref],
@@ -322,7 +328,7 @@ const bodyCalls = (source: Source) =>
   source.requests.filter(
     (row: { phase: string; path: string }) => row.phase === "read" && row.path === recordsPath,
   )
-async function joinedEligibility(source: Source, timeBudgetMs: number) {
+async function joinedEligibility(source: Source, timeBudgetMs: number, sourceQueries = 2) {
   await vi.waitFor(
     () =>
       expect(
@@ -332,11 +338,12 @@ async function joinedEligibility(source: Source, timeBudgetMs: number) {
             row.path === `/v1/data_sources/${library.sources.data_source_id}/query` &&
             row.terminal === "finished",
         ),
-      ).toHaveLength(2),
+      ).toHaveLength(sourceQueries),
     // Current eligibility uses the public SDK's budget, not vi.waitFor's 1 s default.
     { timeout: timeBudgetMs },
   )
-  // Contributions is the final HTTP eligibility read; Files alone leaves that check pending.
+  // Contributions (then selected Sources, when present) complete HTTP eligibility.
+  // Files alone leaves that check pending.
   // The server observes its completion, while joining is local work.
   await new Promise((resolve) => setTimeout(resolve, 50))
 }
@@ -744,4 +751,229 @@ test("another credential cannot borrow the authorized pin's pending bytes", asyn
     await idle(source)
     expect(bodyCalls(source)).toHaveLength(1)
   })
+})
+
+async function sourceRevisions() {
+  const fixture = await currentSourceConsumerFixture()
+  // This unrequested Source file changes the complete tree, without replacing
+  // the independent Notion-owned resource whose pending bytes are shared.
+  const files = [
+    {
+      path: "references/source.md",
+      bytes: new TextEncoder().encode("# Source contribution\n"),
+      mode: "100644" as const,
+    },
+  ]
+  await fixture.select(files, "git", "a".repeat(40))
+  const first = structuredClone(fixture.source)
+  const applying = {
+    ...structuredClone(first),
+    properties: {
+      ...property(first.properties),
+      Status: {
+        id: library.sources.property_ids.Status,
+        type: "select",
+        select: { name: "applying" },
+      },
+      Operation: currentRich(library.sources.property_ids.Operation!, "t14-controlled-operation"),
+    },
+  }
+  await fixture.select(files, "git", "c".repeat(40))
+  return { first, applying, second: structuredClone(fixture.source) }
+}
+
+async function sourceFact(
+  source: Source,
+  root: string,
+  state: string,
+  row: Record<string, unknown>,
+) {
+  const at = process.hrtime.bigint().toString()
+  source.notion.sources = [structuredClone(row)]
+  await writeFile(
+    join(root, "source-timeline.jsonl"),
+    JSON.stringify({
+      boundary: "controlled service fact; no management command is claimed",
+      state,
+      at_monotonic_ns: at,
+      row,
+    }) + "\n",
+    { flag: "a" },
+  )
+}
+
+async function selectAfterSourceRevision(
+  input: Awaited<ReturnType<typeof bootstrap>>["input"],
+  options: Awaited<ReturnType<typeof bootstrap>>["options"],
+  snapshotId: string,
+) {
+  const manifest = join(options.env.NTN_SKILLS_HOME, "snapshots", snapshotId + ".json")
+  const retained = await readFile(manifest)
+  const current = await readSkill(skillPage, { ...options, refresh: true })
+  expect(current.snapshot_id).not.toBe(snapshotId)
+  const directory = new URL(current.ref)
+  directory.pathname = "/"
+  directory.searchParams.delete("file_id")
+  const listing = await listSkill(directory.toString(), options)
+  expect(listing.files.map((file) => file.path).sort()).toEqual([
+    "SKILL.md",
+    "references/source.md",
+    "scripts/read-only.sh",
+  ])
+  const resource = listing.files.find((file) => file.path === "scripts/read-only.sh")
+  if (resource === undefined) throw new Error("New Source revision lost the independent resource")
+  expect(await readFile(manifest)).toEqual(retained)
+  return { ...input, refs: [resource.ref] }
+}
+
+function noConsumerWrites(source: Source) {
+  expect(source.requests.filter((row: { semantic_write?: boolean }) => row.semantic_write)).toEqual(
+    [],
+  )
+}
+
+test("T14 shared admitted bytes survive creator cancellation and 429 while a new acquisition observes Source applying", async () => {
+  const revisions = await sourceRevisions()
+  await setup(
+    async ({ source, root, input, options, snapshotId }) => {
+      const hold = source.holdNext({ method: "POST", path: recordsPath })
+      const creator = new AbortController()
+      const first = readResources(input, { ...options, signal: creator.signal })
+      await hold.reached
+      const second = readResources(input, options)
+      await joinedEligibility(source, input.budget.timeBudgetMs, 4)
+      await sourceFact(source, root, "applying", revisions.applying)
+      creator.abort()
+      expect((await first).status).toBe("cancelled")
+      expect(bodyCalls(source)).toHaveLength(1)
+      expect(bodyCalls(source)[0].closed_monotonic_ns).toBeNull()
+      const denied = await readResources(input, options)
+      expect(denied).toMatchObject({
+        status: "failed",
+        error: { code: "CURRENT_SOURCE_NOT_READY" },
+      })
+      expect("files" in denied).toBe(false)
+      expect(bodyCalls(source)).toHaveLength(1)
+      source.rejectNext({ method: "POST", path: recordsPath, retryAfterSeconds: 0.1 })
+      hold.release()
+      const survived = await second
+      ready(survived)
+      if (survived.status !== "ready") throw new Error("The admitted survivor did not finish")
+      expect(survived.selection.snapshot_id).toBe(snapshotId)
+      await idle(source)
+      expect(bodyCalls(source).map((row: { status: number }) => row.status)).toEqual([
+        200, 429, 200,
+      ])
+      expect(
+        bodyCalls(source).map(
+          (row: { body: { start_cursor?: string } }) => row.body.start_cursor ?? null,
+        ),
+      ).toEqual([null, "offset-0", "offset-0"])
+      // A later management fact does not revoke an acquisition already admitted
+      // to exact A bytes. A fresh selection now observes the complete B tree.
+      await sourceFact(source, root, "ready-B", revisions.second)
+      const next = await selectAfterSourceRevision(input, options, snapshotId)
+      const calls = source.requests.length
+      ready(await readResources(next, options))
+      ready(await readResources(input, options))
+      expect(source.requests).toHaveLength(calls)
+      noConsumerWrites(source)
+    },
+    { currentSource: revisions.first, emptyFirstRecordsPage: true },
+  )
+})
+
+test("T14 cancelling every admitted reader closes a partial page without publishing before Source revision retry", async () => {
+  const revisions = await sourceRevisions()
+  await setup(
+    async ({ source, root, input, options, snapshotId }) => {
+      const hold = source.holdNext({ method: "POST", path: recordsPath, afterHeaders: true })
+      const controllers = [new AbortController(), new AbortController()]
+      const first = readResources(input, { ...options, signal: controllers[0]!.signal })
+      await hold.reached
+      const second = readResources(input, { ...options, signal: controllers[1]!.signal })
+      await joinedEligibility(source, input.budget.timeBudgetMs, 4)
+      await sourceFact(source, root, "applying", revisions.applying)
+      controllers.forEach((controller) => controller.abort())
+      const cancelled = await Promise.all([first, second])
+      expect(cancelled.map((result) => result.status)).toEqual(["cancelled", "cancelled"])
+      expect(cancelled.every((result) => !("files" in result))).toBe(true)
+      const closed = await hold.closed
+      expect(closed.terminal).toBe("aborted")
+      expect(closed.observed_response_bytes).toBeGreaterThan(0)
+      expect(closed.response_bytes_complete).toBe(false)
+      expect(closed.decoded_response_bytes).toBeNull()
+      await expect(
+        readFile(join(options.env.NTN_SKILLS_HOME, "objects", hash)),
+      ).rejects.toMatchObject({ code: "ENOENT" })
+      const denied = await readResources(input, options)
+      expect(denied).toMatchObject({
+        status: "failed",
+        error: { code: "CURRENT_SOURCE_NOT_READY" },
+      })
+      expect(bodyCalls(source)).toHaveLength(1)
+      await sourceFact(source, root, "ready-B", revisions.second)
+      const next = await selectAfterSourceRevision(input, options, snapshotId)
+      ready(await readResources(next, options))
+      await idle(source)
+      expect(bodyCalls(source)).toHaveLength(2)
+      expect(bodyCalls(source)[1].terminal).toBe("finished")
+      const calls = source.requests.length
+      ready(await readResources(next, options))
+      expect(source.requests).toHaveLength(calls)
+      noConsumerWrites(source)
+    },
+    { currentSource: revisions.first },
+  )
+})
+
+test("T14 shared 429 retry spends each caller's original budget and publishes no partial ready tree", async () => {
+  const revisions = await sourceRevisions()
+  await setup(
+    async ({ source, root, input, options, snapshotId }) => {
+      const bounded = { ...input, budget: { ...input.budget, timeBudgetMs: 5000 } }
+      const hold = source.holdNext({ method: "POST", path: recordsPath })
+      const started = process.hrtime.bigint()
+      const first = readResources(bounded, options)
+      await hold.reached
+      const second = readResources(bounded, options)
+      await joinedEligibility(source, bounded.budget.timeBudgetMs, 4)
+      await sourceFact(source, root, "applying", revisions.applying)
+      source.rejectNext({ method: "POST", path: recordsPath, retryAfterSeconds: 10 })
+      hold.release()
+      const failed = await Promise.all([first, second])
+      expect(failed).toEqual(
+        failed.map(() =>
+          expect.objectContaining({
+            status: "failed",
+            error: expect.objectContaining({ code: "RESOURCE_TIME_BUDGET" }),
+          }),
+        ),
+      )
+      expect(failed.every((result) => !("files" in result))).toBe(true)
+      const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6
+      expect(elapsedMs).toBeGreaterThanOrEqual(bounded.budget.timeBudgetMs - 100)
+      expect(elapsedMs).toBeLessThan(9000)
+      await idle(source)
+      expect(bodyCalls(source).map((row: { status: number }) => row.status)).toEqual([200, 429])
+      await expect(
+        readFile(join(options.env.NTN_SKILLS_HOME, "objects", hash)),
+      ).rejects.toMatchObject({ code: "ENOENT" })
+      const denied = await readResources(input, options)
+      expect(denied).toMatchObject({
+        status: "failed",
+        error: { code: "CURRENT_SOURCE_NOT_READY" },
+      })
+      expect(bodyCalls(source)).toHaveLength(2)
+      await sourceFact(source, root, "ready-B", revisions.second)
+      const next = await selectAfterSourceRevision(input, options, snapshotId)
+      ready(await readResources(next, options))
+      await idle(source)
+      expect(bodyCalls(source).map((row: { status: number }) => row.status)).toEqual([
+        200, 429, 200, 200,
+      ])
+      noConsumerWrites(source)
+    },
+    { currentSource: revisions.first, emptyFirstRecordsPage: true },
+  )
 })
