@@ -270,6 +270,12 @@ This creates the current layout. It does not import local Skills or establish Pi
 delivery. Follow the [setup reference](skills/notion/ntn-skills-maintain/references/setup.md)
 for the exact boundary and current inspection path.
 
+If initialization stops, keep the original parent, operation ID and local state.
+`ctl library init --parent PARENT_PAGE_ID --operation OPERATION_ID` reconciles
+without remote writes; add `--resume` to continue confirmed unfinished steps.
+Unknown creates and conflicting edits remain explicit. See
+[interrupted initialization](skills/notion/ntn-skills-maintain/references/setup.md#continue-an-interrupted-initialization).
+
 Import a complete local tree into that current library:
 
 ```sh

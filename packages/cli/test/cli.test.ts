@@ -140,6 +140,34 @@ test("retired root commands and name-based replacement are rejected offline", as
     await invalid(args)
 }, 60000)
 
+test("library initialization exposes explicit continuation and rejects incomplete selectors offline", async () => {
+  const schema = await invoke(["schema", "ctl", "library", "init"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
+  expect(schema.exit).toBe(0)
+  expect(schema.onlineCalled).toBe(false)
+  expect(JSON.parse(schema.stdout).schema.parameters).toContainEqual(
+    expect.objectContaining({ name: "resume", type: "boolean", default: false }),
+  )
+  const help = await invoke(["ctl", "library", "init", "--help"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
+  expect(help.exit).toBe(0)
+  expect(help.onlineCalled).toBe(false)
+  expect(help.stdout).toContain("read-only reconciliation")
+  expect(help.stdout).toContain("--resume")
+  const parent = "11111111-1111-4111-8111-111111111111"
+  for (const flags of [
+    ["--parent", parent, "--resume"],
+    ["--operation", "library-test", "--resume"],
+    ["--entry", parent, "--resume"],
+    ["--entry", parent, "--operation", "library-test"],
+  ])
+    await invalid(["ctl", "library", "init", ...flags])
+}, 30_000)
+
 test("read schema exposes official parameter types and requiredness offline", async () => {
   const result = await invoke(["schema", "read"], {
     inaccessible: true,

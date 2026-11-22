@@ -1,25 +1,69 @@
-import { expect, test } from "bun:test"
-import { Crypto, Effect, Layer } from "effect"
+import { afterAll, expect, test } from "bun:test"
+import { Crypto, Effect, Layer, Schema } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { initializeSharedLibrary, libraryFromDatabase } from "../src/shared-library.ts"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { trashPath } from "../src/local-locks.ts"
+import { Store } from "../src/store.ts"
+import {
+  initializeSharedLibrary,
+  libraryFromDatabase,
+  LIBRARY_MARKER,
+} from "../src/shared-library.ts"
 import { Notion } from "../src/notion.ts"
 import { fail, property, text, SkillsError } from "../src/model.ts"
 
 const parent = "11111111-1111-4111-8111-111111111111"
 const id = (number: number) => `22222222-2222-4222-8222-${number.toString().padStart(12, "0")}`
+const stateParent = mkdtempSync(join(tmpdir(), "ntn-library-init-"))
+afterAll(async () => {
+  if (process.platform === "darwin") await Effect.runPromise(trashPath(stateParent))
+})
 
 function fixture(
   unknownFirstCreate = false,
   failures: {
     readonly members?: "accepted" | "not_accepted"
     readonly descriptor?: "accepted" | "not_accepted"
+    readonly origins?: "accepted" | "not_accepted"
+    readonly before?: "Files" | "Members" | "Origin" | "descriptor"
   } = {},
 ) {
+  const state = new Map<string, unknown>(),
+    root = mkdtempSync(join(stateParent, "case-"))
+  const store: Store["Service"] = {
+    root,
+    configRoot: root,
+    cacheRoot: root,
+    reserveCacheGeneration: () => Effect.succeed(1),
+    listKeys: (prefix) => Effect.succeed([...state.keys()].filter((key) => key.startsWith(prefix))),
+    retireKeys: (keys) =>
+      Effect.sync(() =>
+        keys.map((key) => {
+          state.delete(key)
+          return { key, retention_path: "fixture" }
+        }),
+      ),
+    readJson: (key, schema) =>
+      Effect.sync(() =>
+        state.has(key) ? Schema.decodeUnknownSync(schema)(state.get(key)) : undefined,
+      ),
+    writeJson: (key, value) =>
+      Effect.sync(() => {
+        state.set(key, structuredClone(value))
+      }),
+    readBytes: () => Effect.fail(fail("UNEXPECTED", "No bytes")),
+    writeBytes: () => Effect.fail(fail("UNEXPECTED", "No bytes")),
+    backup: () => Effect.fail(fail("UNEXPECTED", "No backup")),
+    output: () => Effect.fail(fail("UNEXPECTED", "No output")),
+  }
   const databases = new Map<string, { name: string; raw: Record<string, unknown> }>()
   const sources = new Map<string, Record<string, unknown>>()
   const calls: Array<{ path: string; write: boolean; method: string; body: unknown }> = []
   let counter = 0
   let hiddenRelation: "Members" | "Requires" | undefined
+  let hiddenTable: string | undefined
   const responseField = (raw: unknown, fieldId: string) => {
     const field = property(raw)
     const type = Object.keys(field)[0]
@@ -43,15 +87,23 @@ function fixture(
         const value = property(body)
         if (path === `v1/blocks/${parent}/children?page_size=100`)
           return Effect.succeed({
-            results: [...databases].map(([databaseId, db]) => ({
-              id: databaseId,
-              type: "child_database",
-              child_database: { title: db.name },
-            })),
+            results: [...databases]
+              .filter(([databaseId]) => databaseId !== hiddenTable)
+              .map(([databaseId, db]) => ({
+                id: databaseId,
+                type: "child_database",
+                child_database: { title: db.name },
+              })),
             has_more: false,
             next_cursor: null,
           })
         if (path === "v1/databases" && method === "POST") {
+          if (text(value.title) === failures.before)
+            return Effect.fail(
+              fail("REQUEST_BUDGET_EXHAUSTED", "Pause before table dispatch.", {
+                phase: "input_rejected",
+              }),
+            )
           const dbId = id(++counter),
             sourceId = id(counter + 100)
           const raw = {
@@ -110,6 +162,12 @@ function fixture(
         const db = databases.get(path.replace("v1/databases/", ""))
         if (db) {
           if (method === "PATCH") {
+            if (failures.before === "descriptor")
+              return Effect.fail(
+                fail("REQUEST_BUDGET_EXHAUSTED", "Pause before descriptor dispatch.", {
+                  phase: "input_rejected",
+                }),
+              )
             if (failures.descriptor !== "not_accepted") Object.assign(db.raw, value)
             if (failures.descriptor !== undefined)
               return Effect.fail(fail("WRITE_OUTCOME_UNKNOWN", "Descriptor response lost."))
@@ -120,7 +178,20 @@ function fixture(
         if (source) {
           if (method === "PATCH") {
             const membersPatch = property(value.properties).Members !== undefined
-            if (!membersPatch || failures.members !== "not_accepted") {
+            const originsPatch = property(value.properties).Origin !== undefined
+            if (
+              (membersPatch && failures.before === "Members") ||
+              (originsPatch && failures.before === "Origin")
+            )
+              return Effect.fail(
+                fail("REQUEST_BUDGET_EXHAUSTED", "Pause before relation dispatch.", {
+                  phase: "input_rejected",
+                }),
+              )
+            if (
+              (!membersPatch || failures.members !== "not_accepted") &&
+              (!originsPatch || failures.origins !== "not_accepted")
+            ) {
               for (const [name, field] of Object.entries(property(value.properties)))
                 property(source.properties)[name] = responseField(
                   field,
@@ -129,6 +200,8 @@ function fixture(
             }
             if (membersPatch && failures.members !== undefined)
               return Effect.fail(fail("WRITE_OUTCOME_UNKNOWN", "Members schema response lost."))
+            if (originsPatch && failures.origins !== undefined)
+              return Effect.fail(fail("WRITE_OUTCOME_UNKNOWN", "Origin schema response lost."))
           }
           const response = structuredClone(source)
           if (hiddenRelation) delete property(response.properties)[hiddenRelation]
@@ -137,14 +210,29 @@ function fixture(
         return Effect.fail(fail("UNEXPECTED_REQUEST", "Unexpected fixture request.", { path }))
       }),
   }
-  const run = <A, E>(effect: Effect.Effect<A, E, Notion | Crypto.Crypto>) =>
+  const run = <A, E>(effect: Effect.Effect<A, E, Notion | Crypto.Crypto | Store>) =>
     Effect.runPromise(
-      effect.pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, Layer.succeed(Notion, api)))),
+      effect.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            NodeServices.layer,
+            Layer.succeed(Notion, api),
+            Layer.succeed(Store, store),
+          ),
+        ),
+      ),
     )
   return {
     databases,
     sources,
     calls,
+    state,
+    clearFailures: () => {
+      failures = {}
+    },
+    hideTable: (databaseId?: string) => {
+      hiddenTable = databaseId
+    },
     run,
     hideRelation: (name: "Members" | "Requires") => {
       hiddenRelation = name
@@ -570,4 +658,187 @@ test("an unknown descriptor PATCH absent on readback is not replayed after Membe
   expect(recovered.failure.code).toBe("LIBRARY_INIT_INCOMPLETE")
   expect(property(recovered.failure.details).stage).toBe("descriptor")
   expect(f.calls.filter((call) => call.write).length).toBe(writes)
+})
+
+async function unfinished(f: ReturnType<typeof fixture>) {
+  const result = await f.run(initializeSharedLibrary({ parent }).pipe(Effect.result))
+  if (result._tag !== "Failure" || !(result.failure instanceof SkillsError))
+    throw Error("Expected unfinished initialization")
+  const operation = property(result.failure.details).operation_id
+  if (typeof operation !== "string") throw Error("Failure must preserve the exact operation")
+  return { operation, error: result.failure }
+}
+
+test("explicit resume reconciles a lost create response and creates only the three unstarted tables", async () => {
+  const f = fixture(true),
+    { operation } = await unfinished(f)
+  const originalId = [...f.databases.keys()][0]
+  if (originalId === undefined) throw Error("Unknown create must be visible in this fixture")
+  expect(f.state.size).toBe(1)
+  const result = await f.run(initializeSharedLibrary({ parent, operation, resume: true }))
+  expect(result.library.skills.database_id).toBe(originalId)
+  expect(result.library.operation_id).toBe(operation)
+  expect(f.databases.size).toBe(4)
+  expect(
+    f.calls.filter((call) => call.path === "v1/databases" && call.method === "POST"),
+  ).toHaveLength(4)
+  expect(f.state.size).toBe(0)
+  const writes = f.calls.filter((call) => call.write).length
+  const repeated = await f.run(initializeSharedLibrary({ parent, operation, resume: true }))
+  expect(repeated.reused).toBe(true)
+  expect(repeated.library).toEqual(result.library)
+  expect(
+    (await f.run(initializeSharedLibrary({ entry: result.library.skills.database_id }))).library,
+  ).toEqual(result.library)
+  expect(f.calls.filter((call) => call.write)).toHaveLength(writes)
+})
+
+test("resume cannot replay an invisible unknown table and can proceed when that same table becomes visible", async () => {
+  const f = fixture(true),
+    { operation } = await unfinished(f)
+  f.hideTable([...f.databases.keys()][0])
+  const writes = f.calls.filter((call) => call.write).length
+  const pending = structuredClone([...f.state.values()])
+  await expect(f.run(initializeSharedLibrary({ parent, operation, resume: true }))).rejects.toThrow(
+    "absence cannot authorize",
+  )
+  expect(f.calls.filter((call) => call.write)).toHaveLength(writes)
+  expect([...f.state.values()]).toEqual(pending)
+  f.hideTable()
+  expect(
+    (await f.run(initializeSharedLibrary({ parent, operation, resume: true }))).library
+      .operation_id,
+  ).toBe(operation)
+  expect(f.databases.size).toBe(4)
+})
+
+test("known pre-dispatch stops resume at missing tables, relations and descriptor without duplicating objects", async () => {
+  for (const before of ["Files", "Members", "Origin", "descriptor"] as const) {
+    const f = fixture(false, { before }),
+      { operation, error } = await unfinished(f)
+    expect(error.code).toBe("REQUEST_BUDGET_EXHAUSTED")
+    const ids = [...f.databases.keys()]
+    const writes = f.calls.filter((call) => call.write).length
+    await expect(f.run(initializeSharedLibrary({ parent, operation }))).rejects.toThrow()
+    expect(f.calls.filter((call) => call.write)).toHaveLength(writes)
+    f.clearFailures()
+    const completed = await f.run(initializeSharedLibrary({ parent, operation, resume: true }))
+    expect(completed.library.operation_id).toBe(operation)
+    expect([...f.databases.keys()].slice(0, ids.length)).toEqual(ids)
+    expect(f.databases.size).toBe(4)
+    expect(f.state.size).toBe(0)
+  }
+})
+
+test("unknown accepted relation writes are observed once before resume advances to the next stage", async () => {
+  for (const stage of ["members", "origins"] as const) {
+    const f = fixture(false, { [stage]: "accepted" }),
+      { operation } = await unfinished(f)
+    const path = `v1/data_sources/${stage === "members" ? id(101) : id(102)}`
+    expect(f.calls.filter((call) => call.method === "PATCH" && call.path === path)).toHaveLength(1)
+    f.clearFailures()
+    const result = await f.run(initializeSharedLibrary({ parent, operation, resume: true }))
+    expect(result.library.files.property_ids.Origin).toBeDefined()
+    expect(f.calls.filter((call) => call.method === "PATCH" && call.path === path)).toHaveLength(1)
+    expect(f.state.size).toBe(0)
+  }
+})
+
+test("unknown absent relation creation stays unresolved even with explicit resume", async () => {
+  for (const stage of ["members", "origins"] as const) {
+    const f = fixture(false, { [stage]: "not_accepted" }),
+      { operation } = await unfinished(f)
+    const writes = f.calls.filter((call) => call.write).length
+    f.clearFailures()
+    await expect(
+      f.run(initializeSharedLibrary({ parent, operation, resume: true })),
+    ).rejects.toThrow()
+    expect(f.calls.filter((call) => call.write)).toHaveLength(writes)
+    expect(f.state.size).toBe(1)
+  }
+})
+
+test("resume may repeat the exact idempotent descriptor replacement after a lost response", async () => {
+  for (const outcome of ["accepted", "not_accepted"] as const) {
+    const f = fixture(false, { descriptor: outcome }),
+      { operation } = await unfinished(f)
+    f.clearFailures()
+    const result = await f.run(initializeSharedLibrary({ parent, operation, resume: true }))
+    expect(result.library.operation_id).toBe(operation)
+    expect(result.reused).toBe(outcome === "accepted")
+    expect(
+      f.calls.filter((call) => call.path === `v1/databases/${id(1)}` && call.method === "PATCH"),
+    ).toHaveLength(outcome === "accepted" ? 1 : 2)
+    expect(f.databases.size).toBe(4)
+    expect(f.state.size).toBe(0)
+  }
+})
+
+test("original initialization refuses an edited library identity after descriptor response loss", async () => {
+  for (const resume of [true, false]) {
+    const f = fixture(false, { descriptor: "accepted" }),
+      { operation } = await unfinished(f)
+    const db = f.databases.get(id(1))
+    if (!db) throw Error("Fixture table missing")
+    const registered = libraryFromDatabase(db.raw)
+    if (!registered) throw Error("Fixture descriptor missing")
+    db.raw.description = [
+      {
+        plain_text:
+          LIBRARY_MARKER + JSON.stringify({ ...registered, library_id: "library-edited" }),
+      },
+    ]
+    const writes = f.calls.filter((call) => call.write).length
+    const pending = structuredClone([...f.state.entries()])
+    const result = await f.run(
+      initializeSharedLibrary({ parent, operation, resume }).pipe(Effect.result),
+    )
+    expect(result._tag).toBe("Failure")
+    if (result._tag !== "Failure") throw Error("An edited library identity must remain unresolved")
+    expect(result.failure.code).toBe("LIBRARY_SCHEMA_CONFLICT")
+    expect(f.calls.filter((call) => call.write)).toHaveLength(writes)
+    expect([...f.state.entries()]).toEqual(pending)
+  }
+})
+
+test("resume requires retained initialization state and refuses altered known table identities", async () => {
+  for (const change of [
+    "missing_state",
+    "replaced_source",
+    "edited_descriptor",
+    "different_operation",
+  ] as const) {
+    const f = fixture(false, { before: "descriptor" }),
+      { operation } = await unfinished(f)
+    f.clearFailures()
+    const db = f.databases.get(id(1))
+    if (!db) throw Error("Fixture table missing")
+    if (change === "missing_state") f.state.clear()
+    if (change === "replaced_source") db.raw.data_sources = [{ id: id(999) }]
+    if (change === "edited_descriptor") db.raw.description = [{ plain_text: "Human description" }]
+    const writes = f.calls.filter((call) => call.write).length
+    await expect(
+      f.run(
+        initializeSharedLibrary({
+          parent,
+          operation: change === "different_operation" ? "library-other" : operation,
+          resume: true,
+        }),
+      ),
+    ).rejects.toThrow()
+    expect(f.calls.filter((call) => call.write)).toHaveLength(writes)
+    expect(f.databases.size).toBe(4)
+  }
+})
+
+test("resume validates its operation selector before network or state writes", async () => {
+  const f = fixture()
+  for (const input of [
+    { parent, resume: true },
+    { entry: id(1), operation: "library-one", resume: true },
+  ]) {
+    await expect(f.run(initializeSharedLibrary(input))).rejects.toThrow()
+  }
+  expect(f.calls).toHaveLength(0)
+  expect(f.state.size).toBe(0)
 })
