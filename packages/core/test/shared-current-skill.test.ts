@@ -153,6 +153,7 @@ test("native create freezes authored bytes while sending equivalent soft wraps a
           "`list --view VIEW_ID --database ENTRY`",
           "<code>list --view VIEW_ID --database ENTRY</code>",
         )
+        .replace("\n   ```sh\n", "\n   ```bash\n")
         .replace("   Keep this paragraph.", "   <p>\n   Keep this paragraph.\n   </p>"),
     }
   })
