@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { cachedRemoteObservation } from "../src/cache.ts"
 import { snapshotPortable } from "../src/export.ts"
-import { openFixedSnapshotFiles } from "../src/fixed-snapshot-files.ts"
+import { loadSnapshotManifest, openFixedSnapshotFiles } from "../src/fixed-snapshot-files.ts"
 import { readImportZip } from "../src/import.ts"
 import { portableZip, readPortable } from "../src/portable.ts"
-import { fail, property } from "../src/model.ts"
+import { decode, fail, property, SnapshotSchema } from "../src/model.ts"
 import { openSharedSnapshot, SHARED_FULL_BODY_MAX_AGE_MS } from "../src/shared-snapshot.ts"
 import {
   currentBytes,
@@ -198,7 +198,7 @@ describe("current tree consumption", () => {
     expect(f.semanticWrites()).toHaveLength(0)
   })
 
-  test("display metadata changes return new metadata while retaining exact authored bytes and content identity", async () => {
+  test("display metadata changes select an exact new record while retaining authored bytes and content version", async () => {
     const f = currentSnapshotFixture({ fileCount: 0 })
     const first = await f.open()
     const original = new Uint8Array(f.selectedBytes(first, "SKILL.md"))
@@ -210,7 +210,7 @@ describe("current tree consumption", () => {
     expect(next.record.name).toBe("Renamed display")
     expect(next.record.description).toBe("Different directory summary.")
     expect(next.version_id).toBe(first.version_id)
-    expect(next.snapshot_id).toBe(first.snapshot_id)
+    expect(next.snapshot_id).not.toBe(first.snapshot_id)
     expect(f.selectedBytes(next, "SKILL.md")).toEqual(original)
     expect(property(property(f.json.get(`snapshots/${first.snapshot_id}.json`)).record).name).toBe(
       "Current demo",
@@ -221,7 +221,7 @@ describe("current tree consumption", () => {
     )
     expect(cached?.snapshot.record.name).toBe("Renamed display")
     expect(cached?.snapshot.record.description).toBe("Different directory summary.")
-    expect(cached?.stored_snapshot?.record.name).toBe("Current demo")
+    expect(cached?.stored_snapshot?.record.name).toBe("Renamed display")
     expect(f.calls).toHaveLength(0)
     expect(f.semanticWrites()).toHaveLength(0)
   })
@@ -264,6 +264,43 @@ describe("current tree consumption", () => {
       ).rejects.toMatchObject({ code: "STATE_CORRUPT" })
       expect(f.calls).toHaveLength(0)
     }
+  })
+
+  test("an old current observation requires reacquisition while its retained exact manifest stays readable", async () => {
+    const f = currentSnapshotFixture({ fileCount: 0 })
+    const selected = await f.open()
+    const retained = {
+      ...decode(SnapshotSchema, f.json.get(`snapshots/${selected.snapshot_id}.json`)),
+      snapshot_id: `s_${currentDigest(JSON.stringify([selected.scope, selected.record.id, selected.version_id]))}`,
+    }
+    f.json.set(`snapshots/${retained.snapshot_id}.json`, retained)
+    const key = [...f.json.keys()].find((key) => key.startsWith("cache/latest/"))!
+    f.json.set(key, {
+      ...property(f.json.get(key)),
+      snapshot_id: retained.snapshot_id,
+      default_context: true,
+      current_snapshot: { ...retained, record: { ...retained.record, default_context: true } },
+    })
+    f.clearCalls()
+    expect(
+      await f.run(
+        cachedRemoteObservation(selected.record.id, currentScope, { access: "metadata" }),
+      ),
+    ).toBeUndefined()
+    expect((await f.run(loadSnapshotManifest(retained.snapshot_id))).record).toEqual(
+      retained.record,
+    )
+    expect(f.calls).toEqual([])
+    f.main.properties["Default Context"].checkbox = true
+    f.main.last_edited_time = "2026-11-18T00:02:00.000Z"
+    const current = await f.open()
+    expect(current.snapshot_id).not.toBe(retained.snapshot_id)
+    expect(current.version_id).toBe(retained.version_id)
+    expect(current.record.default_context).toBe(true)
+    expect((await f.run(loadSnapshotManifest(retained.snapshot_id))).record.default_context).toBe(
+      false,
+    )
+    expect(f.semanticWrites()).toEqual([])
   })
 
   test("a failed lazy acquisition invalidates current eligibility and remembers access denial", async () => {

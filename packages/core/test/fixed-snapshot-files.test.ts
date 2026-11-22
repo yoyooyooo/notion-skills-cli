@@ -9,6 +9,7 @@ import { fileRef, parseTarget } from "../src/ref.ts"
 import { prepareCurrentSharedResource } from "../src/shared-current-resource.ts"
 import { listSkill, readSkill, targetSnapshot } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
 import {
   currentBytes as encode,
   currentDigest as digest,
@@ -201,7 +202,7 @@ describe("fixed snapshot selected files", () => {
       { path: "mounted/README.md", bytes: bytes.byteLength, sha256: hash },
     ].sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
     const version = digest(JSON.stringify(["old-reference-check", f.snapshot.version_id, files]))
-    const snapshotId = `s_${digest(JSON.stringify([f.snapshot.scope, f.snapshot.record.id, version]))}`
+    const snapshotId = `s_${digest(selectionSnapshotIdentityInput({ ...f.snapshot, version_id: version }))}`
     const historical = decode(SnapshotSchema, {
       ...f.snapshot,
       files,
@@ -555,9 +556,11 @@ describe("fixed snapshot selected files", () => {
 
   test("a current receipt permits selected reads without scanning unselected damaged objects or renewing freshness", async () => {
     const f = await fixture()
-    for (const [key, value] of f.json)
-      if (key.startsWith("cache/latest/"))
-        property(value).default_context = !f.snapshot.record.default_context
+    f.main.properties["Default Context"].checkbox = !f.snapshot.record.default_context
+    const current = await f.open()
+    expect(current.snapshot_id).not.toBe(f.snapshot.snapshot_id)
+    expect(current.version_id).toBe(f.snapshot.version_id)
+    f.clearCalls()
     const before = structuredClone([...f.json].filter(([key]) => key.startsWith("cache/latest/")))
     f.objects.delete("objects/" + f.file("references/1.md").sha256)
     f.objects.set(
@@ -567,6 +570,7 @@ describe("fixed snapshot selected files", () => {
     const target = parseTarget(fileRef(f.snapshot.record.id, f.snapshot.entrypoint))
     const entry = await f.run(targetSnapshot(target, {}, "entrypoint"))
     expect(entry.source).toBe("local_cache")
+    expect(entry.snapshot_id).toBe(current.snapshot_id)
     expect(entry.record.default_context).toBe(!f.snapshot.record.default_context)
     expect(entry.materialization?.materialized_paths).toEqual([f.snapshot.entrypoint])
     expect(entry.materialization?.local_files_ready).toBe(false)

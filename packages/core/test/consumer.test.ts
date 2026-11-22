@@ -11,6 +11,7 @@ import { sharedSkillId } from "../src/shared-content.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { listSkill, readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
 import {
   currentDigest as digest,
   currentBytes as encode,
@@ -70,7 +71,10 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
       required: [],
       members: [],
     }
-    snapshots.set(key, snapshot)
+    snapshots.set(key, {
+      ...snapshot,
+      snapshot_id: `s_${digest(selectionSnapshotIdentityInput(snapshot))}`,
+    })
     f.objects.set(`objects/${digest(bytes)}`, bytes)
   }
   const get = (key: string) => {

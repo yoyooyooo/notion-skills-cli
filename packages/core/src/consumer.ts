@@ -18,6 +18,10 @@ import { fileRef, normalizePath, pageId, parseRef, parseTarget } from "./ref.ts"
 import { validateSharedRecordIdentity } from "./shared-content.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
+import {
+  retainedSnapshotIdentityInputs,
+  selectionSnapshotIdentityInput,
+} from "./snapshot-identity.ts"
 
 export * from "./consumer-model.ts"
 export {
@@ -263,10 +267,15 @@ export function decodeConsumeResult(value: unknown, expected?: ConsumeInput) {
       })
       const manifest = entry.manifest
       const identity = node.id
+      const snapshotInputs =
+        node.freshness?.policy === "pinned" && node.source === "local_cache"
+          ? retainedSnapshotIdentityInputs(manifest)
+          : [selectionSnapshotIdentityInput(manifest)]
       if (
         identity === undefined ||
-        manifest.snapshot_id !==
-          `s_${yield* sha256(JSON.stringify([manifest.scope, identity, manifest.version_id]))}` ||
+        !(yield* Effect.forEach(snapshotInputs, sha256)).some(
+          (hash) => manifest.snapshot_id === `s_${hash}`,
+        ) ||
         (yield* sha256(node.content)) !== node.body_sha256 ||
         (yield* sha256(canonicalSharedJson(manifest))) !== entry.manifest_sha256 ||
         (yield* sha256(canonicalSharedJson(relations(node)))) !== entry.projection.relations_sha256

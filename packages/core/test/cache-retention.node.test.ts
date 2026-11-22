@@ -18,6 +18,7 @@ import { trashPath } from "../src/local-locks.ts"
 import type { SkillsError, Snapshot } from "../src/model.ts"
 import { sqliteState } from "../src/sqlite-state.ts"
 import { Store, StoreLive } from "../src/store.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
 
 const key = (id: string) => `cache/shared-github-blobs/${id.repeat(40)}.json`
 const hash = (text: string) => createHash("sha256").update(text).digest("hex")
@@ -117,32 +118,37 @@ test.skipIf(process.platform !== "darwin")(
   "exact preview uses system Trash, preserves current fixed bytes and permits fixed-index reconstruction",
   async () =>
     isolated(async (directory) => {
-      const snapshots: Snapshot[] = ["one", "two"].map((id) => ({
-        snapshot_id: `s_${id}`,
-        scope: "scope",
-        version_id: "v_1",
-        entrypoint: "SKILL.md",
-        created_at: 1,
-        record: {
-          id: `shared_skill:library-current:${id}`,
-          kind: "skill",
+      const snapshots: Snapshot[] = ["one", "two"]
+        .map<Snapshot>((id) => ({
+          snapshot_id: `s_${id}`,
+          scope: "scope",
+          version_id: "v_1",
           entrypoint: "SKILL.md",
-          locator: {
-            type: "shared_skill",
-            page_id: "00000000-0000-4000-8000-000000000001",
-            database_id: "00000000-0000-4000-8000-000000000003",
-            data_source_id: "00000000-0000-4000-8000-000000000004",
-            library_id: "library-current",
-            skill_id: id,
+          created_at: 1,
+          record: {
+            id: `shared_skill:library-current:${id}`,
+            kind: "skill",
+            entrypoint: "SKILL.md",
+            locator: {
+              type: "shared_skill",
+              page_id: "00000000-0000-4000-8000-000000000001",
+              database_id: "00000000-0000-4000-8000-000000000003",
+              data_source_id: "00000000-0000-4000-8000-000000000004",
+              library_id: "library-current",
+              skill_id: id,
+            },
+            name: id,
+            alias: id,
+            description: id,
+            ref: `skill://${encodeURIComponent(`shared_skill:library-current:${id}`)}/SKILL.md`,
+            default_context: false,
           },
-          name: id,
-          alias: id,
-          description: id,
-          ref: `skill://${encodeURIComponent(`shared_skill:library-current:${id}`)}/SKILL.md`,
-          default_context: false,
-        },
-        files: [{ path: "SKILL.md", bytes: 8, sha256: payload.sha256 }],
-      }))
+          files: [{ path: "SKILL.md", bytes: 8, sha256: payload.sha256 }],
+        }))
+        .map((snapshot) => ({
+          ...snapshot,
+          snapshot_id: `s_${hash(selectionSnapshotIdentityInput(snapshot))}`,
+        }))
       await run(
         directory,
         Effect.gen(function* () {
@@ -164,7 +170,7 @@ test.skipIf(process.platform !== "darwin")(
       expect(preview.objects).toHaveLength(1)
       expect(preview.objects[0]).toMatchObject({
         bytes: 8,
-        snapshots: ["s_one", "s_two"],
+        snapshots: snapshots.map((snapshot) => snapshot.snapshot_id).sort(),
         owners: ["shared_skill:library-current:one", "shared_skill:library-current:two"],
       })
       expect(preview.objects[0]?.protected_by).toContain("shared_object")

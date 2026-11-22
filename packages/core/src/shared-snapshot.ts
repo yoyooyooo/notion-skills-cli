@@ -45,6 +45,7 @@ import {
 } from "./shared-router-members.ts"
 import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
 import { sha256, Store } from "./store.ts"
+import { selectionSnapshotIdentityInput } from "./snapshot-identity.ts"
 import { observedRelationPageDenial } from "./shared-skill-targets.ts"
 
 export type FixedSharedSource = {
@@ -569,7 +570,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         required: (frozenRequired ?? []).map(({ id, ref }) => ({ id, ref })),
       }),
     )
-    const snapshotId = `s_${yield* sha256(JSON.stringify([input.scope, record.id, version]))}`
+    const snapshotId = `s_${yield* sha256(selectionSnapshotIdentityInput({ scope: input.scope, record, version_id: version }))}`
     const current = yield* checked(() =>
       decode(SnapshotSchema, {
         snapshot_id: snapshotId,
@@ -590,8 +591,8 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         ...(frozenRequired === undefined ? {} : { required: frozenRequired }),
       }),
     )
-    // The local selection keeps its original metadata; a current observation is
-    // free to return newer display data without altering that selected artifact.
+    // Repeated complete selections reuse one immutable manifest. Metadata-only
+    // changes select another manifest without changing content version or bytes.
     if ((yield* store.readJson(`snapshots/${snapshotId}.json`, SnapshotSchema)) === undefined)
       yield* store.writeJson(`snapshots/${snapshotId}.json`, current)
     yield* store.writeJson(observationKey, {

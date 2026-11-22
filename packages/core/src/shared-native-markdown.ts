@@ -10,7 +10,7 @@ type Style = {
   readonly underline: boolean
 }
 type Link = { readonly href: string; readonly title: string | null }
-type Inline =
+export type NativeMarkdownInline =
   | {
       readonly kind: "text"
       readonly text: string
@@ -25,6 +25,7 @@ type Inline =
       readonly alt: string
       readonly link: Link | null
     }
+type Inline = NativeMarkdownInline
 type Block =
   | { readonly kind: "paragraph"; readonly content: readonly Inline[] }
   | { readonly kind: "heading"; readonly depth: number; readonly content: readonly Inline[] }
@@ -527,16 +528,20 @@ function blocks(input: readonly unknown[], context: Context, depth: number): rea
   }
   return result
 }
-function signature(markdown: string): string {
+/** Internal authoring structure, not a successful write or a read-time repair. */
+export function nativeMarkdownStructure(markdown: string) {
   const tokens = SourceLexer.lex(normalizedEncoding(markdown))
   const context: Context = { count: 0, destinations: new Map(), links: tokens.links }
   const document = blocks(tokens, context, 0)
-  return canonicalSharedJson({
+  return {
     blocks: document,
     destinations: [...context.destinations]
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([, value]) => value),
-  })
+  }
+}
+function signature(markdown: string): string {
+  return canonicalSharedJson(nativeMarkdownStructure(markdown))
 }
 
 /** Reject unsupported syntax before allocating a remote operation. */

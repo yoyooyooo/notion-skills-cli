@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, realpath, rename, writeFile } from "node:fs/p
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
+import { fileURLToPath } from "node:url"
 import { expect, test, vi } from "vitest"
 import { ConfigProvider, Effect } from "effect"
 import {
@@ -804,6 +805,139 @@ test("public SDK reports the retired cache generation when clear races a current
           request.method !== "GET" && !request.path.endsWith("/query"),
       ),
     ).toEqual([])
+  })
+})
+
+test("public SDK metadata selections survive independent processes and cache clear with exact original bindings", async () => {
+  await setup(async ({ source, root, options }) => {
+    let serial = 0
+    const sdk = new URL("../../cli/src/sdk.ts", import.meta.url).pathname
+    const workerSource = join(root, "selection-worker.ts"),
+      worker = join(root, "selection-worker.mjs")
+    await writeFile(
+      workerSource,
+      `import {readFile} from 'node:fs/promises';
+import {consume} from ${JSON.stringify(sdk)};
+import {Effect,ConfigProvider} from ${JSON.stringify(fileURLToPath(import.meta.resolve("effect")))};
+import {clearCache} from ${JSON.stringify(new URL("../src/cache.ts", import.meta.url).pathname)};
+import {nodeRuntime} from ${JSON.stringify(new URL("../../cli/src/runtime.ts", import.meta.url).pathname)};
+const request=JSON.parse(await readFile(process.argv[2],'utf8'));
+const result=request.clear
+? await Effect.runPromise(clearCache(undefined,{all:true}).pipe(Effect.provide(nodeRuntime(process.cwd()).live),Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(request.options.env))),Effect.scoped))
+: await consume(request.input,request.options);
+console.log(JSON.stringify(result));`,
+    )
+    const build = spawnSync(
+      "bun",
+      ["build", workerSource, "--target=node", "--format=esm", "--outfile", worker],
+      { encoding: "utf8" },
+    )
+    expect(build.status, build.stderr).toBe(0)
+    const invoke = async (input: unknown, clear = false) => {
+      const requestFile = join(root, `selection-${serial++}.json`)
+      await writeFile(requestFile, JSON.stringify({ input, options, clear }))
+      const child = spawn(process.execPath, [worker, requestFile], {
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+      let stdout = "",
+        stderr = ""
+      child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+        stdout += chunk
+      })
+      child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+        stderr += chunk
+      })
+      const exit = await new Promise<number | null>((resolve) => child.once("close", resolve))
+      await writeFile(requestFile + ".stdout", stdout)
+      await writeFile(requestFile + ".stderr", stderr)
+      expect(exit, stderr).toBe(0)
+      return JSON.parse(stdout) as Awaited<ReturnType<typeof consume>>
+    }
+    const inspect = {
+      version: 1,
+      targets: [skillPage],
+      purpose: "inspect",
+      freshness: { policy: "refresh" },
+    }
+    const selections = []
+    for (let stage = 0; stage < 4; stage++) {
+      if (stage > 0) {
+        if (stage === 1) source.notion.main.properties["Default Context"].checkbox = true
+        if (stage === 2) source.notion.main.properties.Name.title[0].plain_text = "Second display"
+        if (stage === 3)
+          source.notion.main.properties.Description = currentRich(
+            "description",
+            "Third observed description.",
+          )
+        source.notion.main.last_edited_time = `2026-11-18T00:0${stage}:00.000Z`
+        source.notion.skills = [structuredClone(source.notion.main)]
+      }
+      source.setPhase(`metadata-${stage}`)
+      const selected = await invoke(inspect)
+      expect(selected.status, JSON.stringify(selected)).toBe("ready")
+      if (selected.status !== "ready") throw new Error("Expected complete metadata selection")
+      selections.push(selected)
+    }
+    const bindings = selections.map((selection) => selection.preparation.session_bindings[0]!)
+    expect(new Set(bindings.map((binding) => binding.snapshot_id)).size).toBe(4)
+    expect(new Set(bindings.map((binding) => binding.version_id)).size).toBe(1)
+    expect(new Set(bindings.map((binding) => binding.body_sha256)).size).toBe(1)
+    const before = source.requests.length
+    await invoke(undefined, true)
+    for (const selected of selections) {
+      const used = await invoke({
+        version: 1,
+        targets: [skillPage],
+        purpose: "use",
+        freshness: { policy: "offline" },
+        sessionBindings: selected.preparation.session_bindings,
+      })
+      expect(used.status, JSON.stringify(used)).toBe("ready")
+      if (used.status !== "ready") throw new Error("Expected the original exact selection")
+      expect(used.preparation.session_bindings).toEqual(selected.preparation.session_bindings)
+      expect(used.entries[0]?.manifest).toEqual(selected.entries[0]?.manifest)
+      expect(
+        used.preparation.nodes
+          .filter((node) => node.state === "prepared")
+          .map((node) => node.content),
+      ).toEqual(
+        selected.preparation.nodes
+          .filter((node) => node.state === "prepared")
+          .map((node) => node.content),
+      )
+    }
+    expect(source.requests).toHaveLength(before)
+    const binding = bindings[1]!
+    const forged = await invoke({
+      version: 1,
+      targets: [skillPage],
+      purpose: "use",
+      freshness: { policy: "offline" },
+      sessionBindings: [
+        { ...binding, record: { ...binding.record, description: "Not the observed record" } },
+      ],
+    })
+    expect(forged).toMatchObject({ status: "failed", error: { code: "PREPARE_BINDING_CONFLICT" } })
+    source.notion.bodies[skillPage] += "\nAn actual author edit changes the content version.\n"
+    source.notion.main.last_edited_time = "2026-11-18T00:05:00.000Z"
+    source.notion.skills = [structuredClone(source.notion.main)]
+    const changed = await invoke(inspect)
+    expect(changed.status, JSON.stringify(changed)).toBe("ready")
+    if (changed.status !== "ready") throw new Error("Expected changed content")
+    expect(changed.preparation.session_bindings[0]?.version_id).not.toBe(binding.version_id)
+    const retained = await invoke({
+      version: 1,
+      targets: [skillPage],
+      purpose: "use",
+      freshness: { policy: "offline" },
+      sessionBindings: selections[1]!.preparation.session_bindings,
+    })
+    expect(retained.status, JSON.stringify(retained)).toBe("ready")
+    if (retained.status !== "ready") throw new Error("Expected retained intermediate selection")
+    expect(retained.preparation.session_bindings).toEqual(
+      selections[1]!.preparation.session_bindings,
+    )
+    noConsumerWrites(source)
   })
 })
 

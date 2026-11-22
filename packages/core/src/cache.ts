@@ -21,6 +21,10 @@ import {
 } from "./shared-file-references.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { Store, configuration, publicConfiguration, sha256 } from "./store.ts"
+import {
+  retainedSnapshotIdentityInputs,
+  selectionSnapshotIdentityInput,
+} from "./snapshot-identity.ts"
 
 export interface ReadPolicyOptions {
   readonly refresh?: boolean
@@ -210,8 +214,9 @@ export function validateSnapshotManifest(snapshot: Snapshot) {
       catch: () => fail("STATE_CORRUPT", "Snapshot Skill name is invalid."),
     })
     if (
-      snapshot.snapshot_id !==
-        `s_${yield* sha256(JSON.stringify([snapshot.scope, snapshot.record.id, snapshot.version_id]))}` ||
+      !(yield* Effect.forEach(retainedSnapshotIdentityInputs(snapshot), sha256)).some(
+        (hash) => snapshot.snapshot_id === `s_${hash}`,
+      ) ||
       alias !== snapshot.record.alias ||
       snapshot.entrypoint !== snapshot.record.entrypoint ||
       !snapshot.files.some((file) => file.path === snapshot.entrypoint) ||
@@ -699,13 +704,20 @@ export function cachedRemoteObservation(
     }
     const current = latest.current_snapshot ?? snapshot
     yield* validateSnapshotManifest(current)
+    // Old observations may carry metadata that was never part of their original
+    // immutable selection. Reacquire current once; retained fixed reads keep
+    // using their exact local manifest and do not enter this freshness path.
+    if (current.snapshot_id !== `s_${yield* sha256(selectionSnapshotIdentityInput(current))}`)
+      return undefined
     const fileIdentities = (value: Snapshot) =>
       value.file_bindings?.map(({ file_id, path }) => ({ file_id, path })) ?? []
     if (
       current.snapshot_id !== snapshot.snapshot_id ||
       current.scope !== snapshot.scope ||
       current.version_id !== snapshot.version_id ||
-      current.record.id !== snapshot.record.id ||
+      canonicalSharedJson(current.record) !== canonicalSharedJson(snapshot.record) ||
+      (latest.default_context !== undefined &&
+        latest.default_context !== current.record.default_context) ||
       canonicalSharedJson(current.record.locator) !==
         canonicalSharedJson(snapshot.record.locator) ||
       canonicalSharedJson(fileIdentities(current)) !==
@@ -716,13 +728,7 @@ export function cachedRemoteObservation(
         fail("STATE_CORRUPT", "Current cache metadata differs from its selected content."),
       )
     return {
-      snapshot:
-        latest.default_context === undefined
-          ? current
-          : {
-              ...current,
-              record: { ...current.record, default_context: latest.default_context },
-            },
+      snapshot: current,
       // Local object verification uses the originally selected content manifest.
       ...(options.access === "metadata" ? { stored_snapshot: snapshot } : {}),
       validated_at: latest.validated_at,

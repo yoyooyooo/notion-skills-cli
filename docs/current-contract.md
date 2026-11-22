@@ -176,10 +176,21 @@ POSIX `sh` and Bash interpreters are not interchangeable.
 
 Notion may turn ordinary technical identifiers, such as the filename `SKILL.md`
 or option name `options.storage`, into external links. A backslash-escaped
-filename can still acquire a link. Author literal filenames and option names as
-inline code when they should remain code text. An unexpected link still fails complete
-verification and leaves the operation unfinished; general plain-text fidelity
-across Notion's automatic linking is not resolved by the Markdown transport.
+filename can still acquire a link. For `.md` and `.markdown` writes, the writer
+keeps the existing Markdown structure transport and can then correct that exact
+plain-text span through the block's explicit `rich_text` link field. It first
+binds the complete observed Markdown structure and physical block inventory to
+the original author intent. Only an added HTTP link for the same domain-like
+plain text is eligible; original links, code, styles, text and structure remain
+exact requirements. An unrelated difference or incomplete block binding leaves
+the operation unfinished.
+
+The correction uses the same finite operation, input fingerprint and invocation
+budget. Each block request is rebuilt from the original spans; after an unknown
+response, the same-input resume observes that exact action before any retry.
+Only complete final Markdown readback can verify the native file and permit
+ready. Ordinary reads never repair content. Author inline code when code styling
+is intended; plain text does not need that styling to preserve its meaning.
 
 The original input bytes/hash and operation fingerprint remain fixed. Stored
 frontmatter and executable mode remain exact. Native reads and exports use the
@@ -384,8 +395,16 @@ source path and exact bytes/mode; Source reading page IDs do not enter content
 identity. Source fixed refs use paths without a presentation File ID. Rebuilding
 a Source supporting projection leaves its selected consumption identity unchanged.
 Rebuilding an authoritative Notion owner or File still creates a new selection.
-The snapshot-ID formula is unchanged; previous fixed references retain their
-selected exact bytes and authorization scope.
+An opaque snapshot ID identifies the complete local selection, including its
+observed record metadata. Name, Description, Default Context or Enabled changes
+can therefore select a new snapshot without changing content `version_id` or
+file hashes. Repeated identical selections reuse their ID. Previously selected
+metadata and bytes remain bound to their original local manifest; a later
+directory observation cannot replace them or invalidate an intermediate session.
+Existing materialized fixed references retain their exact bytes and authorization
+scope. Their former ID formula is recognized only for retained local manifests;
+current acquisition produces record-bound selections. This adds no remote history
+reader or permanent recovery service and uses the existing local retention rules.
 
 Source manifests and Contributions define the complete consumption directory.
 Source reading rows and generated bodies are not required for list/read/use/export

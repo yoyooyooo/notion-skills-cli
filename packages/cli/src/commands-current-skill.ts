@@ -195,7 +195,7 @@ const create = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Create one Notion-owned Skill. Markdown files become editable native bodies; other files become exact resources. The CLI supplies required fields and ownership, verifies complete current content, and closes its operation. A complete equal repeat writes nothing; existing different content requires update. Repeat the same command after interruption to reconcile its own unfinished intent.",
+    "Create one Notion-owned Skill. Markdown files become editable native bodies; other files become exact resources. The CLI supplies required fields and ownership, verifies complete current content, and closes its operation. Native Markdown can correct a precisely verified automatic link on original plain text within that same intent before final readback. A complete equal repeat writes nothing; existing different content requires update. Repeat the same command after interruption to reconcile its own unfinished intent.",
   ),
 )
 
@@ -277,7 +277,7 @@ const update = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Update only explicitly selected current bodies, files, metadata or relations. Unselected files retain their latest Notion content and identities. Markdown selections are native; other selections are resources. Missing flags preserve current values. The CLI validates the complete resulting directory and references, verifies changes and removes unreachable owned resources. Repeat the same command to resume its matching unfinished update; a different pending intent is never overwritten.",
+    "Update only explicitly selected current bodies, files, metadata or relations. Unselected files retain their latest Notion content and identities. Markdown selections are native; other selections are resources. Native Markdown uses the same verified plain-text correction and complete readback as create. Missing flags preserve current values. The CLI validates the complete resulting directory and references, verifies changes and removes unreachable owned resources. Repeat the same command to resume its matching unfinished update; a different pending intent is never overwritten.",
   ),
 )
 

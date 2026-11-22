@@ -3,12 +3,13 @@ import { cacheCapacity, DEFAULT_CACHE_CAPACITY } from "./cache-retention-model.t
 import { ConfigSchema, decode, fail, property, SkillsError, SnapshotSchema } from "./model.ts"
 import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
 import { publicSourceResourceConfiguration } from "./shared-source-config-model.ts"
+import { retainedSnapshotIdentityInputs } from "./snapshot-identity.ts"
 
-/** A current v5 selection freezes content and authority, while observations own
- * display/discovery fields and property bindings. An atomic install keeps the
- * first complete manifest; a same-content publisher must not overwrite it or
- * fail merely because it observed newer display metadata. Older contracts keep
- * their original full-payload comparison. */
+/** Record-bound IDs distinguish current display selections before publication.
+ * This content check also preserves the existing retained v5 manifests, whose
+ * IDs predate that distinction. An atomic install keeps the first full manifest;
+ * acquisition metadata cannot overwrite its selected content or authority.
+ * Older contracts keep their original full-payload comparison. */
 function comparableSnapshotContent(input: unknown): string {
   const snapshot = decode(SnapshotSchema, input)
   const { created_at: _createdAt, ...content } = snapshot
@@ -283,6 +284,22 @@ export const StoreLive = Layer.effect(
         )
     const validateObjects = (snapshot: typeof SnapshotSchema.Type) =>
       Effect.gen(function* () {
+        const identities = yield* Effect.forEach(
+          retainedSnapshotIdentityInputs(snapshot),
+          (input) =>
+            crypto
+              .digest("SHA-256", new TextEncoder().encode(input))
+              .pipe(
+                Effect.map(
+                  (hash) =>
+                    `s_${Array.from(hash, (b) => b.toString(16).padStart(2, "0")).join("")}`,
+                ),
+              ),
+        )
+        if (!identities.includes(snapshot.snapshot_id))
+          return yield* Effect.fail(
+            fail("STATE_CORRUPT", "Snapshot identity does not bind its retained selection."),
+          )
         const deferred = yield* Effect.try({
           try: () => validateSnapshotAcquisition(snapshot),
           catch: (error) =>
@@ -317,14 +334,7 @@ export const StoreLive = Layer.effect(
           try: () => decode(SnapshotSchema, JSON.parse(new TextDecoder().decode(bytes))),
           catch: () => fail("STATE_CORRUPT", "Retained snapshot manifest is invalid."),
         })
-        const digest = yield* crypto.digest(
-          "SHA-256",
-          new TextEncoder().encode(
-            JSON.stringify([snapshot.scope, snapshot.record.id, snapshot.version_id]),
-          ),
-        )
-        const id = `s_${Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("")}`
-        if (snapshot.snapshot_id !== id || key !== `snapshots/${id}.json`)
+        if (key !== `snapshots/${snapshot.snapshot_id}.json`)
           return yield* Effect.fail(
             fail("STATE_CORRUPT", "Retained snapshot identity does not match its manifest."),
           )
@@ -378,6 +388,10 @@ export const StoreLive = Layer.effect(
               try: () => decode(SnapshotSchema, value),
               catch: () => fail("STATE_CORRUPT", "Snapshot manifest is invalid."),
             })
+            if (key !== `snapshots/${snapshot.snapshot_id}.json`)
+              return yield* Effect.fail(
+                fail("STATE_CORRUPT", "Snapshot storage key differs from its identity."),
+              )
             yield* validateObjects(snapshot)
             // File publication precedes pointer registration. A crash can leave an unreferenced file,
             // Materialized document objects are durable; declared raw acquisition

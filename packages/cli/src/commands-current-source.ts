@@ -406,7 +406,7 @@ export const takeoverCurrentSourceCommand = defineCommand(
     { kind: "allowed_values", flag: "as", values: ["native", "resource"] },
   ]),
   Command.withDescription(
-    "Take over one exact Source file while preserving its File ID, physical page, target path and mode. Use the current Source original and add its exact member-relative contribution exclusion in the same finite intent. Resource is the default and preserves the original bytes; --as native verifies the complete editable body using the shared native Markdown contract and never silently falls back. Known formatting normalization, LF/CRLF and terminal blank lines are accepted; changed structure, text, code or links leave the intent pending. The selected original bytes remain exact. Other files and other Source contributions remain unchanged.",
+    "Take over one exact Source file while preserving its File ID, physical page, target path and mode. Use the current Source original and add its exact member-relative contribution exclusion in the same finite intent. Resource is the default and preserves the original bytes; --as native verifies the complete editable body using the shared native Markdown contract and never silently falls back. Known formatting normalization, LF/CRLF and terminal blank lines are accepted; changed structure, text, code or links leave the intent pending. For Markdown paths, a precisely verified automatic link on original plain text can be corrected within the same intent before final readback. The selected original bytes remain exact. Other files and other Source contributions remain unchanged.",
   ),
 )
 export const restoreFollowCurrentSourceCommand = defineCommand(
