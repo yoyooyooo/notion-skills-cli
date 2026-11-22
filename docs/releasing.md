@@ -6,7 +6,7 @@ Releases push an annotated tag and publish through GitHub Actions OIDC. The repo
 
 ## Before a release
 
-Use a clean checkout of `main`, with `origin` pointing to `yoyooyooo/notion-skills-cli`. Install Bun 1.4.3, Node 24, npm 11.15.0 or newer, Git, and GitHub CLI. Configure Git author identity and permission to push tags. npm registry reads must work; an unavailable registry stops the release.
+Use a clean checkout of `main`, with `origin` pointing to `yoyooyooo/notion-skills-cli`. Install Bun 1.4.3, Node 26.13.1, npm 12.2.3, Git, and GitHub CLI. Configure Git author identity and permission to push tags. npm registry reads must work; an unavailable registry stops the release.
 
 ```sh
 bun install --frozen-lockfile
@@ -38,9 +38,19 @@ Open [the package Access page](https://www.npmjs.com/package/ntn-skills/access) 
 | Environment | Leave empty |
 | Allowed action | Allow `npm publish` |
 
-The owner is the GitHub owner, which can differ from the npm username. The workflow does not set a GitHub environment. It uses a GitHub-hosted runner with `id-token: write`, Node 24, and npm 11.15.0. It does not use package-manager cache, `registry-url` in setup-node, or `NODE_AUTH_TOKEN`. Do not add npm tokens to Actions secrets.
+The owner is the GitHub owner, which can differ from the npm username. The workflow does not set a GitHub environment. It uses a GitHub-hosted runner with `id-token: write`, Node 26.13.1, and npm 12.2.3. It does not use package-manager cache, `registry-url` in setup-node, or `NODE_AUTH_TOKEN`. Do not add npm tokens to Actions secrets.
 
-Read the configuration back with `npm trust list ntn-skills`, or inspect the authenticated Access page if terminal 2FA is unavailable. A new configuration must complete its first successful OIDC publish within two days; otherwise delete the expired connection and recreate it. The "not yet validated" status means no publish has used that connection yet.
+Before publication, read the package configuration with `npm trust list ntn-skills --json`
+or the authenticated Access page. Compare the exact owner, repository, workflow,
+empty environment and direct `npm publish` permission with the table above.
+A stage-only connection does not authorize this workflow's direct publish.
+Authentication success or an OIDC declaration in YAML does not prove the registry
+configuration. If it cannot be read, retain `not_verified` and resolve that
+publication prerequisite before releasing. Follow the current
+[npm trust command](https://docs.npmjs.com/cli/v12/commands/npm-trust/) and
+[Trusted Publisher instructions](https://docs.npmjs.com/trusted-publishers/)
+for configuration status and renewal; do not infer a live account setting from
+an older setup record.
 
 ## Automated releases
 
