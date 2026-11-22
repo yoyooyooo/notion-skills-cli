@@ -146,6 +146,59 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
 }
 
 describe("once consume contract", () => {
+  test("retained legacy snapshots consume through the fixed local owner and decode without Store", async () => {
+    const f = await fixture({ a: {} })
+    const snapshot = f.get("a")
+    const retained = {
+      ...snapshot,
+      snapshot_id: `s_${digest(JSON.stringify([snapshot.scope, snapshot.record.id, snapshot.version_id]))}`,
+    }
+    f.json.set(`snapshots/${retained.snapshot_id}.json`, retained)
+    const target = fileRef(retained.record.id, retained.entrypoint, retained.snapshot_id, "main-a")
+    const crypto = await f.run(Crypto.Crypto)
+    for (const purpose of ["inspect", "use"] as const) {
+      const input = { ...f.input([target]), purpose }
+      const result = await f.run(consume(input))
+      expect(result.status).toBe("ready")
+      if (result.status !== "ready") throw new Error(JSON.stringify(result))
+      expect(result.preparation.nodes[0]).toMatchObject({
+        source: "local_snapshot",
+        freshness: { policy: "pinned" },
+        binding: { snapshot_id: retained.snapshot_id, record: retained.record },
+      })
+      expect(
+        await Effect.runPromise(
+          decodeConsumeResult(result, input).pipe(Effect.provideService(Crypto.Crypto, crypto)),
+        ),
+      ).toEqual(result)
+      for (const [source, policy] of [
+        ["local_cache", "pinned"],
+        ["notion", "refresh"],
+        ["local_snapshot", "offline"],
+      ]) {
+        const changed = {
+          ...result,
+          preparation: {
+            ...result.preparation,
+            nodes: result.preparation.nodes.map((node) =>
+              node.state === "prepared"
+                ? { ...node, source, freshness: { ...node.freshness, policy } }
+                : node,
+            ),
+          },
+        }
+        const decoded = await Effect.runPromise(
+          decodeConsumeResult(changed).pipe(
+            Effect.provideService(Crypto.Crypto, crypto),
+            Effect.result,
+          ),
+        )
+        expect(decoded._tag === "Failure" && decoded.failure.code).toBe("CONSUME_INVALID_PROOF")
+      }
+    }
+    expect(f.calls).toHaveLength(0)
+  })
+
   test("fixed selected names list the manifest without reading body objects or current metadata", async () => {
     const f = await fixture({ a: { name: "Selected Name" } })
     const snapshot = f.get("a")
