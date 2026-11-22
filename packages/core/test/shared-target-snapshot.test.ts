@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { decode, property, SnapshotSchema } from "../src/model.ts"
 import { readSkill, targetSnapshot } from "../src/snapshot.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
 import { parseTarget } from "../src/ref.ts"
 import { SHARED_FULL_BODY_MAX_AGE_MS } from "../src/shared-snapshot.ts"
 import {
@@ -84,7 +85,7 @@ describe("standard targetSnapshot shared-library integration", () => {
     ].sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
     // A directory entry without an exact physical binding is invalid even if its bytes hash matches.
     const version = digest(JSON.stringify(["pre-reference-check", first.version_id, files]))
-    const snapshotId = `s_${digest(JSON.stringify([first.scope, first.record.id, version]))}`
+    const snapshotId = `s_${digest(selectionSnapshotIdentityInput({ ...first, version_id: version }))}`
     const historical = decode(SnapshotSchema, {
       ...first,
       files,
@@ -315,13 +316,30 @@ describe("standard targetSnapshot shared-library integration", () => {
     f.clearCalls()
     const current = await f.target(parseTarget(stableRef), options)
     expect(current.record.description).toBe("New metadata description")
-    expect(current.snapshot_id).toBe(first.snapshot_id)
+    expect(current.snapshot_id).not.toBe(first.snapshot_id)
+    expect(current.version_id).toBe(first.version_id)
     expect(current.files).toEqual(first.files)
+    expect(f.selectedBytes(current, current.entrypoint)).toEqual(
+      f.selectedBytes(first, first.entrypoint),
+    )
     expect(new TextDecoder().decode(f.selectedBytes(current, current.entrypoint))).toContain(
       "description: Authored description.",
     )
     expect(f.bodyCalls().length).toBe(1)
     expect(f.semanticWrites().length).toBe(0)
     expect(f.records.size).toBe(recordsBefore)
+    f.clearCalls()
+    for (const selected of [first, current]) {
+      const fixed = await f.target(
+        { ...parseTarget(stableRef), snapshot: selected.snapshot_id },
+        { ...options, offline: true },
+      )
+      expect(fixed.record).toEqual(selected.record)
+      expect(fixed.files).toEqual(selected.files)
+      expect(f.selectedBytes(fixed, fixed.entrypoint)).toEqual(
+        f.selectedBytes(selected, selected.entrypoint),
+      )
+    }
+    expect(f.calls).toHaveLength(0)
   })
 })

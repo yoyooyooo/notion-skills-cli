@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
-import { property, text } from "../src/model.ts"
+import { decode, property, SnapshotSchema, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { parseTarget } from "../src/ref.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { targetSnapshot } from "../src/snapshot.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
 import { Store } from "../src/store.ts"
 import {
   currentDigest as digest,
@@ -194,22 +195,24 @@ describe("shared Router snapshot integration", () => {
   test("a damaged current Router directory cannot be used offline and is reselected online", async () => {
     const f = routerFixture()
     const first = await f.target()
-    const legacy = property(structuredClone(f.json.get(`snapshots/${first.snapshot_id}.json`)))
-    delete legacy.router_members
-    legacy.version_id = digest("legacy-router-version")
-    legacy.snapshot_id = `s_${digest(JSON.stringify([legacy.scope, property(legacy.record).id, legacy.version_id]))}`
-    const legacyId = String(legacy.snapshot_id)
-    f.json.set(`snapshots/${legacyId}.json`, legacy)
+    const damaged = {
+      ...decode(SnapshotSchema, f.json.get(`snapshots/${first.snapshot_id}.json`)),
+      router_members: undefined,
+      version_id: digest("damaged-router-version"),
+    }
+    damaged.snapshot_id = `s_${digest(selectionSnapshotIdentityInput(damaged))}`
+    const damagedId = damaged.snapshot_id
+    f.json.set(`snapshots/${damagedId}.json`, damaged)
     for (const [key, value] of f.json)
       if (key.startsWith("cache/latest/")) {
-        property(value).snapshot_id = legacyId
-        property(value).version_id = legacy.version_id
-        property(value).current_snapshot = legacy
+        property(value).snapshot_id = damagedId
+        property(value).version_id = damaged.version_id
+        property(value).current_snapshot = damaged
       }
     f.clearCalls()
     await expect(f.target({ offline: true })).rejects.toThrow("no frozen Members index")
     await expect(
-      f.run(targetSnapshot({ selector: skillPage, path: "ROUTER.md", snapshot: legacyId })),
+      f.run(targetSnapshot({ selector: skillPage, path: "ROUTER.md", snapshot: damagedId })),
     ).rejects.toThrow("no frozen Members index")
     expect(f.calls).toHaveLength(0)
     const refreshed = await f.target()
@@ -218,6 +221,6 @@ describe("shared Router snapshot integration", () => {
     expect(f.calls.length).toBeGreaterThan(0)
     expect(f.bodyCalls().length).toBe(0)
     expect(f.semanticWrites().length).toBe(0)
-    expect(property(f.json.get(`snapshots/${legacyId}.json`)).router_members).toBeUndefined()
+    expect(property(f.json.get(`snapshots/${damagedId}.json`)).router_members).toBeUndefined()
   })
 })

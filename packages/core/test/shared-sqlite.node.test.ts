@@ -196,6 +196,8 @@ import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
 import {Notion} from ${JSON.stringify(core + "notion.ts")};
 import {SnapshotSchema,decode} from ${JSON.stringify(core + "model.ts")};
 import {openSharedSnapshot} from ${JSON.stringify(core + "shared-snapshot.ts")};
+import {readSkill,targetSnapshot} from ${JSON.stringify(core + "snapshot.ts")};
+import {fileRef} from ${JSON.stringify(core + "ref.ts")};
 import {clearCache} from ${JSON.stringify(core + "cache.ts")};
 import {currentSnapshotFixture,currentLibrary,currentScope,currentSkillPage} from ${JSON.stringify(new URL("./shared-current-fixture.ts", import.meta.url).pathname)};
 process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};
@@ -207,14 +209,15 @@ const seed=decode(SnapshotSchema,await fixture.open());
 fixture.main.properties.Name.title[0].plain_text='Concurrent display';
 fixture.main.properties.Description.rich_text[0].plain_text='New current directory label.';
 fixture.main.properties.Description.rich_text[0].text.content='New current directory label.';
+fixture.main.properties['Default Context'].checkbox=true;
 const renamed=decode(SnapshotSchema,await fixture.open());
 const api=await fixture.run(Notion),http=await fixture.run(HttpClient.HttpClient);
 const services=Layer.mergeAll(NodeServices.layer,Layer.succeed(Notion,api),Layer.succeed(HttpClient.HttpClient,http),StoreLive.pipe(Layer.provideMerge(NodeServices.layer)));
 Effect.runPromise(Effect.gen(function*(){
  const store=yield* Store,fs=yield* FileSystem.FileSystem,key='snapshots/'+seed.snapshot_id+'.json';
  for(const file of seed.files)yield* store.writeBytes('objects/'+file.sha256,fixture.objects.get('objects/'+file.sha256));
- const alternate={...renamed,record:{...renamed.record,default_context:true},shared_acquisition:{...renamed.shared_acquisition,library:{...currentLibrary,files:{...currentLibrary.files,property_ids:{...currentLibrary.files.property_ids,'Reading status':'extra-display-property'}}}}};
- const contenders=yield* Effect.all([seed,alternate].map(value=>store.writeJson(key,value).pipe(Effect.result)),{concurrency:2});
+ const alternate={...renamed,shared_acquisition:{...renamed.shared_acquisition,library:{...currentLibrary,files:{...currentLibrary.files,property_ids:{...currentLibrary.files.property_ids,'Reading status':'extra-display-property'}}}}};
+ const contenders=yield* Effect.all([seed,alternate].map(value=>store.writeJson('snapshots/'+value.snapshot_id+'.json',value).pipe(Effect.result)),{concurrency:2});
  const first=yield* store.readJson(key,SnapshotSchema),physical=decode(SnapshotSchema,JSON.parse(yield* fs.readFileString(store.root+'/'+key)));
  const changed=[
   {...seed,files:seed.files.map((file,index)=>index===0?{...file,mode:'100755'}:file)},
@@ -226,6 +229,12 @@ Effect.runPromise(Effect.gen(function*(){
  const open=()=>openSharedSnapshot({library:currentLibrary,target:currentSkillPage,scope:currentScope,startedAt:Date.now()});
  fixture.clearCalls();yield* open();const coldBodies=fixture.bodyCalls().length;
  fixture.clearCalls();yield* open();const warmBodies=fixture.bodyCalls().length;
+ fixture.clearCalls();
+ const fixed=yield* Effect.forEach([seed,alternate],value=>targetSnapshot({selector:currentSkillPage,snapshot:value.snapshot_id},{offline:true}));
+ const fixedBodies=yield* Effect.forEach(fixed,value=>Effect.forEach(value.files,file=>readSkill(fileRef(value.record.id,file.path,value.snapshot_id,value.file_bindings.find(binding=>binding.path===file.path).file_id),{offline:true})));
+ const fixedRecords=fixed.map((value,index)=>JSON.stringify(value.record)===JSON.stringify([seed,alternate][index].record));
+ const completeReads=fixedBodies.every((files,index)=>files.every((file,n)=>file.has_more===false&&file.range.start===1&&file.range.end===file.range.total_lines&&file.content===new TextDecoder().decode(fixture.objects.get('objects/'+fixed[index].files[n].sha256))));
+ const fixedRequests=fixture.calls.length;
  const nativeKeys=yield* store.listKeys('cache/current-native-bodies'),observation=yield* store.readJson(nativeKeys[0],Schema.Unknown);
  const final=yield* store.readJson(key,SnapshotSchema);
  const objectMode=(yield* fs.stat(store.root+'/objects/'+seed.files[0].sha256)).mode&0o777;
@@ -234,7 +243,8 @@ Effect.runPromise(Effect.gen(function*(){
  const stale=yield* store.writeJson(nativeKeys[0],observation).pipe(Effect.result);
  console.log(JSON.stringify({
   contenders:contenders.map(result=>result._tag==='Success'?'ok':result.failure.code),
-  sameContent:seed.snapshot_id===renamed.snapshot_id,nativeMetadataChanged:seed.native_references.index_sha256!==renamed.native_references.index_sha256,
+  sameContent:seed.version_id===renamed.version_id&&JSON.stringify(seed.files)===JSON.stringify(renamed.files),differentSelection:seed.snapshot_id!==renamed.snapshot_id,
+  fixedRecords,completeReads,fixedRequests,nativeMetadataChanged:seed.native_references.index_sha256!==renamed.native_references.index_sha256,
   immutable:JSON.stringify(first)===JSON.stringify(final),physical:JSON.stringify(first)===JSON.stringify(physical),
   storedName:first.record.name,conflicts:conflicts.map(result=>result._tag==='Failure'?result.failure.code:'accepted'),
   coldBodies,warmBodies,nativeKeys,generation:observation.generation,objectMode,pending,
@@ -254,6 +264,10 @@ test("real Store current v5 publication tolerates concurrent display observation
       immutable: true,
       physical: true,
       sameContent: true,
+      differentSelection: true,
+      fixedRecords: [true, true],
+      completeReads: true,
+      fixedRequests: 0,
       nativeMetadataChanged: true,
       conflicts: ["STATE_CORRUPT", "STATE_CORRUPT", "STATE_CORRUPT", "STATE_CORRUPT"],
       coldBodies: 2,
@@ -263,7 +277,7 @@ test("real Store current v5 publication tolerates concurrent display observation
       afterClear: null,
       stale: "CACHE_INVALIDATED",
     })
-    expect(["Current demo", "Concurrent display"]).toContain(value.storedName)
+    expect(value.storedName).toBe("Current demo")
     expect(value.nativeKeys).toHaveLength(1)
     expect(value.nativeKeys[0]).toMatch(
       /^cache\/current-native-bodies\/[a-f0-9]{64}\/latest\.json$/u,
