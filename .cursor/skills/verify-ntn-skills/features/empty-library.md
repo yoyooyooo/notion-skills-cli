@@ -13,6 +13,22 @@
 3. 对同一对象重复初始化/检查，确认不会另建一组表。
 4. 在明确的独立 client config/state/cache 中执行当前 `list`，确认完整分页、空结果和远端零语义写。
 
+## 有限初始化续建
+
+源码入口为 `packages/core/test/shared-library.test.ts`；本地持久化沿
+`packages/core/test/shared-library-initialization.node.test.ts` 使用 Node 和真实 SQLite。
+初始化只有一个当前 pending，绑定凭据范围、授权父页、原 operation、已知表/属性身份和在途动作；完成后清理，不保留历史。
+
+在自有空父页验证一次有界中断。保留原命令输出、operation ID 和原 `NTN_SKILLS_HOME`，
+先执行 `ctl library init --parent PARENT --operation OPERATION`，核远端零写对账。
+再加 `--resume`，核已建表不变、未开始步骤补齐、四表关系和 descriptor 可由正式
+`init --entry` 验证。用新客户端按实际 entry 创建并完整读取一个测试 Skill，最后同操作重跑核零重复写入。
+
+针对性反例覆盖部分表、缺 Members/Requires 或 Origin、缺 descriptor、响应丢失、
+缺原本地状态及人工修改。已发出的未知 CREATE 或关系创建只读对账，未出现不能重发；
+已登记但响应丢失直接复用。精确 descriptor 替换在明确 resume 和身份检查下可幂等重试。
+保留首次失败，CLI 退出与业务结果分开；不要向生产库或其他会话 fixture 注入故障。
+
 表字段和状态以 [current contract](../../../../docs/current-contract.md) 为准。首次内容使用已公开的 [完整当前导入](import-create-recovery-dry-run.md)；Source refresh、跨对象治理与全库清理仍单独实现和验收，缺少的部分报告 blocked/not_run。
 
 ## Verify and stop

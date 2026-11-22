@@ -23,6 +23,13 @@ Use the returned `library.skills.database_id` as the entry.
 Initialization creates the current tables and descriptor. It does not convert an existing library.
 For an existing current entry, `ctl library init --entry LIBRARY_ENTRY` validates that entry.
 
+If creation stops, retain its exact parent, `operation_id`, and `NTN_SKILLS_HOME`.
+`init --parent PARENT_PAGE_ID --operation OPERATION_ID` only reconciles.
+Add `--resume` to continue known unfinished steps without replacing existing
+tables. Unknown creates must become visible before continuation can advance;
+an empty query cannot authorize another POST. See the
+[initialization continuation guide](../skills/notion/ntn-skills-maintain/references/setup.md#continue-an-interrupted-initialization).
+
 Keep registered database, data-source, and property identities intact.
 A similar table name does not make another table part of the library.
 Live table cleanup remains a separate cutover task.

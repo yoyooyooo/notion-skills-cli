@@ -10,6 +10,10 @@ import { trashPath } from "./local-locks.ts"
 import { fail, property, SkillsError } from "./model.ts"
 import { sharedSkillId } from "./shared-content.ts"
 import { probeSqliteRuntime } from "./sqlite-runtime-policy.ts"
+import {
+  LibraryInitializationPendingSchema,
+  preservesLibraryInitialization,
+} from "./shared-library-model.ts"
 
 // This physical schema identifies current local execution state, not content history.
 const currentApplicationId = 0x4e544e43
@@ -109,6 +113,11 @@ const sharedLocalDomains: readonly {
     prefix: "operations/current-write-pending",
     category: "dispatch",
     address: /^operations\/current-write-pending\/[a-f0-9]{64}\/pending\.json$/u,
+  },
+  {
+    prefix: "operations/library-init-pending",
+    category: "dispatch",
+    address: /^operations\/library-init-pending\/[a-f0-9]{64}\/pending\.json$/u,
   },
 ]
 
@@ -630,6 +639,55 @@ export function sqliteState(
                   }
                   return
                 }
+                if (key.startsWith("operations/library-init-pending/")) {
+                  const next = yield* Effect.try({
+                    try: () =>
+                      Schema.decodeUnknownSync(LibraryInitializationPendingSchema)(value, {
+                        onExcessProperty: "error",
+                      }),
+                    catch: () =>
+                      fail("STATE_CORRUPT", "Invalid unfinished library initialization."),
+                  })
+                  if (key !== `operations/library-init-pending/${next.scope}/pending.json`)
+                    return yield* Effect.fail(
+                      fail(
+                        "STATE_CONFLICT",
+                        "Initialization scope does not match its state address.",
+                      ),
+                    )
+                  yield* sql`UPDATE shared_local_records SET payload=payload WHERE key=${key} AND category='dispatch' AND retired=0`
+                  const rows = yield* sql<{
+                    payload: string
+                    category: string
+                    retired: number
+                  }>`SELECT payload,category,retired FROM shared_local_records WHERE key=${key}`
+                  const previous = rows[0]
+                  if (previous !== undefined) {
+                    const before = yield* Effect.try({
+                      try: () =>
+                        Schema.decodeUnknownSync(LibraryInitializationPendingSchema)(
+                          JSON.parse(previous.payload),
+                          { onExcessProperty: "error" },
+                        ),
+                      catch: () => fail("STATE_CORRUPT", "Invalid stored library initialization."),
+                    })
+                    if (
+                      previous.category !== "dispatch" ||
+                      previous.retired !== 0 ||
+                      !preservesLibraryInitialization(before, next)
+                    )
+                      return yield* Effect.fail(
+                        fail(
+                          "STATE_CONFLICT",
+                          "Unfinished initialization cannot replace its parent, operation or known table identities.",
+                          { key },
+                        ),
+                      )
+                    yield* sql`UPDATE shared_local_records SET payload=${payload} WHERE key=${key} AND category='dispatch' AND retired=0`
+                  } else
+                    yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},'dispatch',${payload},0)`
+                  return
+                }
                 if (key.startsWith("operations/current-write-pending/")) {
                   // Take the writer slot before comparing a predecessor. The compare
                   // and replacement are one SQLite transaction, never delete/insert.
@@ -898,6 +956,7 @@ export function sqliteState(
                   // Completion permits the next intent at the same address.
                   if (
                     key.startsWith("operations/shared-profile-pending/") ||
+                    key.startsWith("operations/library-init-pending/") ||
                     key.startsWith("operations/current-write-pending/")
                   )
                     yield* sql`DELETE FROM shared_local_records WHERE key=${key} AND category='dispatch'`
@@ -946,13 +1005,15 @@ export function sqliteState(
               }
               return keys.map((key) => ({
                 key,
-                retention_path: key.startsWith("operations/current-write-pending/")
-                  ? "sqlite_current_write_cleared"
-                  : key.startsWith("operations/shared-profile-pending/")
-                    ? "sqlite_current_profile_cleared"
-                    : sharedLocalCategory(key) === "dispatch"
-                      ? "sqlite_shared_dispatch_retirement"
-                      : "sqlite_observation_retirement",
+                retention_path: key.startsWith("operations/library-init-pending/")
+                  ? "sqlite_library_initialization_cleared"
+                  : key.startsWith("operations/current-write-pending/")
+                    ? "sqlite_current_write_cleared"
+                    : key.startsWith("operations/shared-profile-pending/")
+                      ? "sqlite_current_profile_cleared"
+                      : sharedLocalCategory(key) === "dispatch"
+                        ? "sqlite_shared_dispatch_retirement"
+                        : "sqlite_observation_retirement",
               }))
             }),
           )

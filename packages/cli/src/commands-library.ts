@@ -4,7 +4,7 @@ import { defineCommand } from "../../core/src/command-schema.ts"
 import { initializeSharedLibrary, loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { queryCurrentSkillIndex } from "../../core/src/shared-current-index.ts"
 import { Notion } from "../../core/src/notion.ts"
-import { emit, requiredSingleton, singleton } from "./command-options.ts"
+import { emit, requiredSingleton, singleton, switchFlag } from "./command-options.ts"
 import { libraryProfilesCommand } from "./commands-library-profiles.ts"
 import { currentSkillCommand } from "./commands-current-skill.ts"
 import { currentImportCommand } from "./commands-current-import.ts"
@@ -18,6 +18,10 @@ const initialize = defineCommand(
     parent: singleton("parent", "Create one current library under this exact parent page"),
     entry: singleton("entry", "Inspect an existing current library entry"),
     operation: singleton("operation", "Reconcile the exact pending table creation"),
+    resume: switchFlag(
+      "resume",
+      "Continue the exact initialization with --parent and --operation using its retained local state",
+    ),
   },
   (options) =>
     Effect.gen(function* () {
@@ -25,6 +29,7 @@ const initialize = defineCommand(
         parent: Option.getOrUndefined(options.parent),
         entry: Option.getOrUndefined(options.entry),
         operation: Option.getOrUndefined(options.operation),
+        resume: options.resume,
       })
       yield* emit({
         ...result,
@@ -43,7 +48,7 @@ const initialize = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Create the current Skills, Files, Records and Sources layout. Existing libraries must already use the current Content contract; this command does not convert old content or continue old publication operations.",
+    "Create the current Skills, Files, Records and Sources layout. --operation alone is read-only reconciliation; add --resume to continue the original initialization. Retain its local state until completion. Existing libraries must already use the current Content contract; this command does not convert old content or continue old publication operations.",
   ),
 )
 

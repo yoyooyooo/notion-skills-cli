@@ -159,6 +159,8 @@ ntn-skills ctl library init --parent PARENT_PAGE_ID
 
 这个命令创建当前结构，不导入本地 Skill，也不证明 Pi 已投递。具体边界见[设置说明](skills/notion/ntn-skills-maintain/references/setup.md)。
 
+初始化中断时保留原父页、operation ID 和本地状态。`ctl library init --parent PARENT_PAGE_ID --operation OPERATION_ID` 只读对账；加 `--resume` 才继续可确认的未完成步骤。未知创建结果和人工修改冲突会明确停止，不能靠另建一套库跳过。详见[初始化续建](skills/notion/ntn-skills-maintain/references/setup.md#continue-an-interrupted-initialization)。
+
 把完整本地树导入这个当前库：
 
 ```sh

@@ -29,6 +29,36 @@ Pi. Inspect the actual returned status and complete any explicitly returned
 pending-table action in its original scope. An unknown create is not permission
 to send another POST or create a replacement library.
 
+### Continue an interrupted initialization
+
+Keep the original parent, returned `operation_id`, and the same
+`NTN_SKILLS_HOME`. First inspect the original operation without remote writes:
+
+```sh
+ntn-skills ctl library init --parent AUTHORIZED_PARENT_PAGE --operation OPERATION_ID
+```
+
+To continue its known unfinished steps, add `--resume`:
+
+```sh
+ntn-skills ctl library init --parent AUTHORIZED_PARENT_PAGE --operation OPERATION_ID --resume
+```
+
+Continuation preserves known table, data-source and property IDs, creates only
+tables whose creation was not attempted or was definitively rejected, and
+completes the missing relationships and descriptor. A lost response is
+reconciled first. Unknown table or relation
+creation that remains invisible stays unresolved; it is not blindly repeated.
+The exact descriptor replacement is idempotent and can be retried after checking
+the original marker and registered table identities. Human edits or conflicting
+objects stop continuation with the original operation and next commands intact.
+
+Only unfinished initialization state is retained locally, and successful
+continuation clears it. Losing that state cannot authorize recreating a missing
+table. An already registered library can still be inspected or attached from a
+fresh client using its exact entry. Run one initializer per parent; local locks
+do not provide a cross-machine Notion transaction.
+
 For an existing current library:
 
 ```sh
