@@ -4,9 +4,19 @@
 
 Use Bun 1.4.3 with the committed lockfile. The CLI and SDK run on Node.js 22.22.3+ within 22.x, or Node.js 24.20.0+.
 
+For paired or parallel development, start with the Broker's
+[isolated development guide](https://github.com/yoyooyooo/pi-context-broker/blob/next/docs/isolated-development.md).
+Its `scripts/paired-environment.mjs` creates two independent clones from `next`,
+uses task branches, builds private CLI/Broker generations and gives every run
+separate application state. That guide owns the command contract. Do not rebuild
+a checkout used by the normal CLI or Pi installation for a development experiment.
+
+For a separately owned CLI-only checkout:
+
 ```bash
-git clone https://github.com/yoyooyooo/notion-skills-cli.git
+git clone --branch next https://github.com/yoyooyooo/notion-skills-cli.git
 cd notion-skills-cli
+git switch -c work/my-change
 bun install --frozen-lockfile
 bun run dev --help
 ```
@@ -37,6 +47,11 @@ bun run package:check
 The tests use controlled fixtures and must not depend on personal credentials or mutate production Notion. The package check builds a fresh external artifact, verifies its manifest, declaration closure and packaged links, installs it with npm, and runs the installed CLI and SDK. It checks current discovery, complete Files pagination, exact resource bytes, missing-cache reselection, limits, zero-write consumption and real HTTP cancellation. Its import journey checks dry run, current writes, per-file reads, exact export and unchanged reimport. It does not establish live Notion cutover or Pi daily acceptance.
 
 Use the existing verification entry and [verification review](docs/maintenance-verification-review.md) for a scoped implementation or migration check. A test definition is not a passing result. Report which actual command or user flow ran, its result and any remaining boundary. Keep live data conversion and daily Pi verification separate from the controlled package gate.
+
+The existing Broker [integration Skill](https://github.com/yoyooyooo/pi-context-broker/blob/next/.agents/skills/verify-notion-skills-integration/SKILL.md)
+owns paired environment isolation and CLI/SDK/Broker identity checks. An isolated
+run does not establish normal daily installation or natural Agent acceptance.
+The formal guards and strict current-`next` delivery requirements remain unchanged.
 
 After updating the authorized Notion Source for the distributed guidance, compare
 the selected installed package with the connected library:

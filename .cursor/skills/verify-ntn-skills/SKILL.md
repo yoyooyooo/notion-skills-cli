@@ -18,9 +18,15 @@ description: "定位 ntn-skills 当前实现、公共 CLI 与独立安装的验�
 | unknown、partial 和有限对账 | [操作恢复](../verify-notion-operation-recovery/SKILL.md) | Profile/resource 的当前边界；完整 writer 单列 |
 
 Broker 的 verify-notion-agent-workflows 负责自然用户旅程、混合来源选路及真实模型管理闭环；验证指引与私有判据不得预加载给被测模型。
-Broker 的 verify-notion-skills-integration 负责 CLI→SDK→Pi 的实际交接；AH-1197 管两机持续同步，AH-637 管 Mini 独立验收，AH-1198 汇总当前真实时间线。AH-1063 只作其版本的历史 Pro 基线。OMP/Tern 沿 AH-272 延期。
+Broker 的 verify-notion-skills-integration 负责双仓开发隔离及 CLI→SDK→Pi 的实际交接；AH-1197 管两机持续同步，AH-637 管 Mini 独立验收，AH-1198 汇总当前真实时间线。AH-1063 只作其版本的历史 Pro 基线。OMP/Tern 沿 AH-272 延期。
 
 ## Launch
+
+并行开发先沿 Broker 的[隔离开发规范](https://github.com/yoyooyooo/pi-context-broker/blob/next/docs/isolated-development.md)
+创建两个独立 clone 和任务分支，再选择明确的私有 build ID 运行。命令合同与隔离
+验证由该仓库现有 integration Skill 持有，不在 CLI 新增一套环境入口。不得在日用
+CLI/Pi 指向的 checkout 重建，不共享其他任务的依赖、构建或运行目录。隔离运行
+不放宽正式 next、formal 或正常日用环境检查，也不替代下述领域验收。
 
 从仓库根执行。复用 [harness Launch](references/harness.md#launch) 的运行目录、配置、状态、cache、data 隔离和凭据注入；不复制作者 Store。只补实际缺少的依赖/构建。controller 只负责 init/doctor/cli/empty/cleanup；安装直接运行现有 package:check，导入使用当前公开 CLI。
 
