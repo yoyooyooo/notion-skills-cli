@@ -52,6 +52,9 @@ Notion metadata. A remote page cannot claim trusted package identity.
    Resolve from the containing file, which may itself be a reference. `files`
    enumerates the complete directory; it does not download every resource.
    Preserve exact bytes, paths and executable modes when a resource is needed.
+   Cross-Skill relative links require that file's current Source contribution map;
+   otherwise use an exact stable reference. Do not infer siblings from cache paths.
+   In Pi, pass the fixed containing ref as `read`'s `from` with the relative `path`.
 
 A selection is local task state. Already materialized bytes can be used offline.
 Missing Source/resource bytes may be acquired only when the current declared

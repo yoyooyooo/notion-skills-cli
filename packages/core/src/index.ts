@@ -21,7 +21,15 @@ export {
 } from "./catalog.ts"
 export { listViews, type ViewOptions } from "./views.ts"
 export { resolveCatalogReference } from "./catalog-reference.ts"
-export { openSkill, readSkill, listSkill, resolveSkillRef, type ReadOptions } from "./snapshot.ts"
+export {
+  openSkill,
+  readSkill,
+  listSkill,
+  resolveSkillRef,
+  resolveReference,
+  type ReadOptions,
+  type ResolveReferenceOptions,
+} from "./snapshot.ts"
 export { prepareGraph } from "./graph-prepare.ts"
 export { consume, type ConsumeOptions } from "./consumer.ts"
 export { exportSkill, exportPortable, snapshotPortable, type ExportOptions } from "./export.ts"

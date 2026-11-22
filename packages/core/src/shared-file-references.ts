@@ -11,6 +11,11 @@ export type SharedFileReference = {
   readonly line: number
   readonly kind: "link" | "image"
 }
+export type SharedMarkdownLink = Omit<SharedFileReference, "target"> & {
+  readonly destination: string
+  readonly rewritable: boolean
+  readonly destination_start?: number
+}
 const punctuation = /\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/gu
 const unescape = (value: string) =>
   value
@@ -89,7 +94,7 @@ export function referenceProse(markdown: string): string {
     })
   const raw = lines
     .join("\n")
-    .replace(/^---[ \t]*\n[\s\S]*?\n(?:---|\.\.\.)[ \t]*(?:\n|$)/u, (frontmatter) =>
+    .replace(/^\uFEFF?---[ \t]*\n[\s\S]*?\n(?:---|\.\.\.)[ \t]*(?:\n|$)/u, (frontmatter) =>
       maskReferenceText(frontmatter),
     )
     .replace(/<!--[\s\S]*?(?:-->|$)/gu, (comment) => maskReferenceText(comment))
@@ -220,6 +225,8 @@ function scanSharedMarkdownReferences(
   path: string,
   markdown: string,
   visit?: (reference: SharedFileReference, destination: Destination) => void,
+  visitLink?: (reference: SharedMarkdownLink, destination?: Destination) => void,
+  resolveLocal = true,
 ): readonly SharedFileReference[] {
   // Every destination offset addresses the original UTF-16 string, including
   // astral characters hidden inside native code, frontmatter or comments.
@@ -245,13 +252,27 @@ function scanSharedMarkdownReferences(
     kind: SharedFileReference["kind"],
     destination?: Destination,
   ) => {
+    const line = 1 + text.slice(0, at).split("\n").length - 1
+    visitLink?.(
+      {
+        from: path,
+        href,
+        destination: unescape(href),
+        line,
+        kind,
+        rewritable: destination !== undefined,
+        ...(destination === undefined ? {} : { destination_start: destination.start }),
+      },
+      destination,
+    )
+    if (!resolveLocal) return
     const target = localTarget(path, href)
     if (target !== undefined) {
       const reference: SharedFileReference = {
         from: path,
         target,
         href,
-        line: 1 + text.slice(0, at).split("\n").length - 1,
+        line,
         kind,
       }
       result.push(reference)
@@ -316,6 +337,42 @@ export function sharedMarkdownReferences(
   markdown: string,
 ): readonly SharedFileReference[] {
   return scanSharedMarkdownReferences(path, markdown)
+}
+
+/** Inspect actual links without interpreting their owning filesystem or library. */
+export function sharedMarkdownLinks(path: string, markdown: string): readonly SharedMarkdownLink[] {
+  const links: SharedMarkdownLink[] = []
+  scanSharedMarkdownReferences(path, markdown, undefined, (link) => links.push(link), false)
+  return links
+}
+
+/** Preserve authored text except for explicitly selected parsed destinations. */
+export function mapSharedMarkdownLinks(
+  path: string,
+  markdown: string,
+  change: (reference: SharedMarkdownLink) => string,
+): string {
+  const edits = new Map<number, { readonly end: number; readonly text: string }>()
+  scanSharedMarkdownReferences(
+    path,
+    markdown,
+    undefined,
+    (reference, destination) => {
+      const text = change(reference)
+      if (text === reference.href) return
+      if (destination === undefined)
+        throw fail(
+          "SHARED_REFERENCE_INVALID",
+          "This link form cannot be rewritten without changing authored text.",
+        )
+      edits.set(destination.start, { end: destination.hrefEnd, text })
+    },
+    false,
+  )
+  let result = markdown
+  for (const [start, edit] of [...edits].sort(([a], [b]) => b - a))
+    result = result.slice(0, start) + edit.text + result.slice(edit.end)
+  return result
 }
 
 /** Edit only the actual parsed destination, never another literal with the same href. */

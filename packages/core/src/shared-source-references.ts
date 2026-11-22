@@ -29,30 +29,63 @@ export function resolveCurrentSourceReference(
       (entry) => entry.path === from && entry.kind === "source",
     )
     if (route?.kind !== "source") return yield* checked(() => resolveRef(local, relative))
-    const localResult = yield* checked(() => resolveRef(local, relative)).pipe(Effect.result)
-    if (localResult._tag === "Success") {
-      const path = parseRef(localResult.success).path
-      if (snapshot.files.some((file) => file.path === path)) {
-        const binding = snapshot.file_bindings?.find((file) => file.path === path)
-        return fileRef(snapshot.record.id, path, snapshot.snapshot_id, binding?.file_id)
-      }
-    }
-    const sourcePath = yield* checked(() => {
+    if (relative.startsWith("skill://")) return yield* checked(() => resolveRef(local, relative))
+    const sourceSelection = yield* checked(() => {
       // Apply the same path grammar before interpreting a repository path.
       if (relative.includes("?") || relative.includes("#") || /^[a-z]+:/iu.test(relative))
         throw fail("INVALID_PATH", "Only relative file paths can be resolved within a skill.")
       return normalizePath(relative, route.source_path)
-    })
-    const sameOwner = snapshot.shared_acquisition!.files.find(
+    }).pipe(Effect.result)
+    if (sourceSelection._tag === "Failure") {
+      // A mixed tree can explicitly link to a native companion outside its
+      // mounted Source root. Retain that owner-local address only when there is
+      // no repository-relative address at all; it cannot shadow a Source path.
+      if (
+        sourceSelection.failure.code === "INVALID_PATH" &&
+        sourceSelection.failure.message === "The path escapes the skill root."
+      ) {
+        const ownerLocal = yield* checked(() => resolveRef(local, relative)).pipe(Effect.result)
+        if (ownerLocal._tag === "Success") {
+          const path = parseRef(ownerLocal.success).path
+          const binding = snapshot.file_bindings?.find((file) => file.path === path)
+          if (
+            binding &&
+            snapshot.files.some((file) => file.path === path) &&
+            !snapshot.shared_acquisition!.files.some(
+              (file) => file.path === path && file.kind === "source",
+            )
+          )
+            return fileRef(snapshot.record.id, path, snapshot.snapshot_id, binding.file_id)
+        }
+      }
+      return yield* Effect.fail(sourceSelection.failure)
+    }
+    const sourcePath = sourceSelection.success
+    // Source bytes were authored in the repository tree. A coincidentally
+    // matching mounted/native path must not override that original address.
+    const sameOwner = snapshot.shared_acquisition!.files.filter(
       (entry) =>
         entry.kind === "source" &&
         entry.source_id === route.source_id &&
         entry.revision === route.revision &&
         entry.source_path === sourcePath,
     )
-    if (sameOwner !== undefined) {
-      const binding = snapshot.file_bindings?.find((file) => file.path === sameOwner.path)
-      return fileRef(snapshot.record.id, sameOwner.path, snapshot.snapshot_id, binding?.file_id)
+    if (sameOwner.length > 1)
+      return yield* Effect.fail(
+        fail(
+          "CURRENT_SOURCE_REFERENCE_AMBIGUOUS",
+          "This Source path has several mounted Files in the selected Skill; select one exact File reference.",
+          {
+            source_id: route.source_id,
+            source_path: sourcePath,
+            paths: sameOwner.map((file) => file.path),
+          },
+        ),
+      )
+    if (sameOwner.length === 1) {
+      const target = sameOwner[0]!
+      const binding = snapshot.file_bindings?.find((file) => file.path === target.path)
+      return fileRef(snapshot.record.id, target.path, snapshot.snapshot_id, binding?.file_id)
     }
     if (options.offline)
       return yield* Effect.fail(

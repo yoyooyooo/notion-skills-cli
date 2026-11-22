@@ -89,6 +89,12 @@ ntn-skills read references/checklist.md --from 'RETURNED_MAIN_REF'
 ntn-skills read 'RETURNED_FILE_REF' --lines 1-80
 ```
 
+Use the ref of the file that contains the link, including a nested supporting file.
+A cross-Skill relative link such as `../review/SKILL.md` works only when that file
+has a reliable current Source route and an exact contribution mapping. Otherwise
+use an explicit stable Skill ref; neighboring cache directories are not a lookup
+mechanism. Reading the target still inspects it without loading Requires.
+
 For current content, choose at most one of `--refresh`, `--offline`, or `--max-age 5m`.
 A returned fixed ref identifies a local selection. It does not accept refresh or max-age.
 If the selected bytes are no longer available, read the current Skill again.

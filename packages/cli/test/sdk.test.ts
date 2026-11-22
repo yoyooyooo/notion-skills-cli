@@ -14,6 +14,7 @@ import {
   compareNativeMarkdown,
   readResources,
   readSkill,
+  resolveReference,
   listCatalog,
   listSkills,
   listSkill,
@@ -52,6 +53,21 @@ function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
 }
 
 describe("Promise SDK boundary", () => {
+  test("relative identity resolution preserves cancellation, effects and zero-request receipts", async () => {
+    const reports: unknown[] = []
+    await expect(
+      resolveReference("../SKILL.md", {
+        from: resourceRef,
+        env: {},
+        signal: AbortSignal.abort(),
+        onRequestMetrics: (value) => reports.push(value),
+      }),
+    ).rejects.toMatchObject({
+      code: "CANCELLED",
+      details: { effects: { version: 1, remote_writes: "none", author_content: "unchanged" } },
+    })
+    expectUnstartedMetrics(reports, 1)
+  })
   test("name resolution is pure and manifest listing preserves the SDK cancellation boundary", async () => {
     expect(() =>
       resolveCatalogReference("skill://missing/SKILL.md", {

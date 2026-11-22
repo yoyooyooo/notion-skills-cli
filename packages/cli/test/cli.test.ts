@@ -226,6 +226,7 @@ test("current management and export schemas contain no historical compatibility 
         "import",
         "init",
         "inspect",
+        "members-plan",
         "operation",
         "profile",
         "projection",
@@ -308,6 +309,58 @@ test("current management and export schemas contain no historical compatibility 
   ])
     await invalid(["schema", ...path])
 }, 30000)
+
+test("members-plan schema and help describe read-only discovery offline", async () => {
+  const command = ["ctl", "library", "members-plan"]
+  const schema = await invoke(["schema", ...command], {
+    inaccessible: true,
+    traceOnline: true,
+  })
+  expect(schema.exit).toBe(0)
+  expect(schema.onlineCalled).toBe(false)
+  const result = JSON.parse(schema.stdout)
+  expect(result.command).toEqual(command)
+  const parameters = result.schema.parameters
+  for (const [name, kind] of [
+    ["input", "argument"],
+    ["entry", "flag"],
+    ["skill-id", "flag"],
+  ])
+    expect(parameters).toContainEqual(
+      expect.objectContaining({
+        name,
+        kind,
+        type: "string",
+        required: true,
+        min_occurrences: 1,
+        max_occurrences: 1,
+      }),
+    )
+  for (const name of ["bindings", "output"])
+    expect(parameters).toContainEqual(
+      expect.objectContaining({
+        name,
+        kind: "flag",
+        type: "string",
+        required: false,
+        min_occurrences: 0,
+        max_occurrences: 1,
+      }),
+    )
+  for (const name of ["operation", "resume", "supersede"])
+    expect(parameters.some((parameter: { name: string }) => parameter.name === name)).toBe(false)
+  const help = await invoke([...command, "--help"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
+  expect(help.exit).toBe(0)
+  expect(help.onlineCalled).toBe(false)
+  const prose = help.stdout.replace(/\s+/gu, " ")
+  expect(prose).toContain("without changing Notion")
+  expect(prose).toContain("Requires is retained and never inferred")
+  expect(prose).toContain("--bindings")
+  expect(prose).toContain("--output")
+}, 15000)
 
 test("unknown flags, obsolete selectors and conflicting paths fail before online handlers", async () => {
   for (const args of [

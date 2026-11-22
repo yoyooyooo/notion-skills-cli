@@ -160,6 +160,26 @@ Authors usually work with Skills and Files. The CLI manages the remaining
 relationships and internal metadata. A native Skill does not need a Source.
 See [the library contract](docs/current-contract.md) for fields and ownership.
 
+## Relationships and relative links
+
+`Members` lists related Skills that an Agent may choose. `Requires` lists mandatory
+dependencies loaded by `use`. Maintain `Requires` explicitly; mentioning a workflow
+or saying "must" in prose does not establish that dependency.
+
+A first local import can fill omitted `Members` from confirmed, exact Skill
+references. It preserves existing relationships and explicit sets, including `[]`.
+Discovery prefers missing a relation to creating the wrong one: names, similar
+filenames, code examples and template placeholders do not establish identity. For local sibling
+links, use [`members-plan`](docs/shared-authoring.md#discover-members-before-a-local-import)
+with explicit path-to-Skill bindings to prepare a portable copy. Review any
+unresolved references and maintain intended relationships that discovery misses.
+Import and its dry run report the discovery decision in `members_discovery`.
+
+Relative links inside a Skill use the containing file as their base. A cross-Skill
+relative link needs that file's reliable current Source contribution map or an
+explicit stable reference. Cache layout does not supply identity or preserve a
+local repository's sibling directories.
+
 ## Continue using the library
 
 | Task | Guide |

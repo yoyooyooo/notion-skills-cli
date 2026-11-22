@@ -24,6 +24,7 @@ The installed parser is the command reference:
 ```bash
 ntn-skills schema
 ntn-skills schema ctl library import
+ntn-skills schema ctl library members-plan
 ntn-skills schema ctl library projection
 ntn-skills schema ctl library profile set
 ```
@@ -41,6 +42,7 @@ The root schema is shallow; query an exact command path for its full definition.
 | `export` | Complete selected bytes in a local ZIP or directory |
 | `ctl library init/inspect/files` | Current descriptor, initialization, or selected-owner directory |
 | `ctl library import` | Complete current Skill replacement, dry run, or same-operation resume |
+| `ctl library members-plan` | Conservative relationship discovery and an optional portable copy with confirmed links |
 | `ctl library source apply/refresh` | Explicit Git contribution changes and same-parent finite recovery |
 | `ctl library projection` | Complete Notion text for one current Skill or the daily set, with read-only preview and single-Skill resume |
 | `ctl library profile` | Current shared Profile rules and machine selection |
@@ -56,7 +58,16 @@ The main file has a stable File ID on the Skills page. Every supporting path has
 
 A returned `skill://` ref can contain the selected file identity and local snapshot.
 Preserve returned refs rather than constructing them from a title.
-`read RELATIVE --from CONTAINING_REF` resolves within the containing file's selection.
+`read RELATIVE --from CONTAINING_REF` resolves from the actual containing file.
+Within one Skill it retains that selection. Crossing a Skill root requires the
+containing file's current Source route and a unique contribution mapping; otherwise
+use an explicit stable reference. Nested files use their own path and Source route.
+Cache directory adjacency and display names do not establish cross-Skill identity.
+
+For owner-local paths, `ctl resolve` with a fixed name or alias ref and no File
+ID remains a syntactic path calculation and makes no Notion request. A fixed canonical
+`shared_skill` ref or a File ID ref uses containing-file identity resolution.
+The SDK `resolveReference` still requires a fixed canonical containing File ref.
 
 A local snapshot fixes the manifest for one selection.
 A complete manifest does not imply that every file's bytes are cached.
@@ -99,13 +110,30 @@ apply/refresh for its supported mapping and exclusion changes. Takeover and
 Source removal remain separate work. Reading or exporting the target remains available.
 Portable version 2 supports the canonical main path for its content kind.
 Portable relations carry same-library unpinned `shared_skill` refs. Omitted Members
-or Requires preserves that field, `[]` clears it, and an array replaces the full set.
+or Requires preserves an existing field, `[]` clears it, and an array replaces the full set.
 Prompt inputs reject relations. Both fields require registered single-property
 relations to the same Skills data source. Names, page URLs, foreign libraries,
 duplicate/self targets, projection metadata and unknown fields fail admission.
 Changed sets are limited to 100 targets; larger unchanged sets are retained after
 complete pagination. Changed Requires checks its reachable dependency closure for
 cycles and rechecks the observed closure before ready. Export includes both sets.
+
+For a first import only, omitted Members can be discovered from confirmed exact
+canonical Skill links in active Markdown. An explicit Members set takes precedence, including
+`[]`; existing relationships are never replaced by a new scan. Requires is never
+inferred. Inline, fenced and indented code, comments and images are excluded. A naked mention,
+template placeholder or similar filename is insufficient evidence. Actual active
+prose links remain candidates even in prose describing an example. Import and
+dry-run expose this decision through `members_discovery`.
+
+`ctl library members-plan INPUT --entry ENTRY --skill-id ID [--bindings FILE]
+[--output DIR_OR_ZIP]` reports `member_policy`, `confirmed`, `unresolved`, `importable`
+and optional `relations` without Notion mutation. Omitted relations preserve existing
+sets; they are not returned as empty arrays. Each unresolved item has `blocks_import`.
+Bindings declare an original root plus exact repository
+paths and same-library stable refs. When the plan is importable, optional output
+creates a portable copy and rewrites only confirmed local links to canonical refs.
+Original input is unchanged. See [binding format and examples](shared-authoring.md#discover-members-before-a-local-import).
 
 `--dry-run` reads current metadata without remote mutation or operation allocation.
 It reports the input hash, desired files, removals, and the body checks still required during apply.
@@ -161,6 +189,7 @@ The package exports the Node ESM module `ntn-skills/sdk` and its TypeScript decl
 | --- | --- |
 | `listCatalog`, `listSkills` | Directory metadata and bounded list pages |
 | `readSkill`, `listSkill` | Selected file read or complete file directory |
+| `resolveReference` | Version 1 relative-reference identity resolution from a fixed canonical containing File ref |
 | `consume` | Contract version 1 instruction preparation with complete manifests |
 | `readResources` | Contract version 1 acquisition of a bounded exact file set |
 | `decodeConsumeResult`, `decodeResourceReadResult` | Local validation of the corresponding result contract |
@@ -169,6 +198,16 @@ The package exports the Node ESM module `ntn-skills/sdk` and its TypeScript decl
 SDK calls accept an optional environment, working directory, abort signal, and request-metrics callback.
 They use the same credential provider, Store, and request engine as the CLI.
 Consumption does not mutate Notion. Current import and Profile commands are CLI management entrypoints.
+
+`resolveReference(relative, { from, ...options })` returns
+`{ version: 1, from, ref, effects }`. `from` is the exact fixed canonical reference
+of the file containing the link, including a supporting file when appropriate.
+Resolution uses the same Source-aware path as `readSkill(relative, { from })`, but
+does not fetch the target body. A same-owner result retains its fixed reference;
+a cross-owner result supplies the target identity so the host can preserve that
+target's own selected snapshot. It does not activate instructions or expand Requires.
+Source revision changes, ambiguous contributions and unavailable mappings fail
+explicitly; a host must not guess from the cache layout or substitute current bytes.
 
 Consumption effects contain exactly `version: 1`, `remote_writes`, and `author_content`.
 `remote_writes: "none"` requires `author_content: "unchanged"` and is backed by the

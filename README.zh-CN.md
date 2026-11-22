@@ -155,6 +155,24 @@ ntn-skills read "$skill_ref" --database "$library_entry" --refresh --json
 作者通常操作 Skills 和 Files，CLI 管理其余关联和内部元数据。
 原生 Skill 不需要额外创建 Source。字段与归属见[库合同](docs/current-contract.md)。
 
+## 关系与相对引用
+
+`Members` 列出 Agent 可以按需选择的相关 Skill；`Requires` 列出执行 `use` 时
+必须加载的依赖。`Requires` 由作者明确维护，正文提及某个工作流或写了“必须”
+都不会自动变成依赖。
+
+首次本地导入且未明确提供 `Members` 时，可以从已确认的精确 Skill 引用建立关系。
+已有关系和显式填写的集合都会保留，包括 `[]`。自动发现宁可漏掉，也不根据名称、
+相似文件名、代码示例或模板占位符猜身份。本地跨 Skill 相对链接可通过
+[`members-plan`](docs/shared-authoring.md#discover-members-before-a-local-import)
+加上明确的路径到 Skill 身份绑定，生成可导入的 portable 副本。
+检查未解析引用，并补齐自动发现遗漏的预期关系。
+导入及其 dry run 都会在 `members_discovery` 中报告自动发现的决策和结果。
+
+Skill 内的相对引用以实际包含链接的文件为基准。跨 Skill 相对引用需要该文件可靠的
+当前 Source 贡献映射，或改成明确的稳定引用。缓存目录的位置不能提供身份依据，
+导入也不会自动保留本地仓库的相邻目录结构。
+
 ## 继续使用
 
 | 目标 | 指南 |

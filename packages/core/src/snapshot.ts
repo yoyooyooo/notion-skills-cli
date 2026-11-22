@@ -616,26 +616,32 @@ export function targetSnapshot(
   return acquireTargetSnapshot(target, options, access).pipe(Effect.map(({ snapshot }) => snapshot))
 }
 
-/** Local refs remain pure; a source-root crossing uses the same exact map as read --from. */
+/** Named local refs remain syntactic. Exact fixed containing refs use the same
+ * Source mapping as read --from, even when a mounted path looks locally resolvable. */
 export function resolveSkillRef(from: string, relative: string, options: CatalogOptions = {}) {
   return Effect.gen(function* () {
     const base = yield* Effect.try({
       try: () => parseRef(from),
       catch: (error) => error as SkillsError,
     })
-    if (base.file_id !== undefined) {
-      const containing = yield* targetSnapshot(base, options, "manifest")
-      const path = yield* Effect.try({
-        try: () => boundSnapshotPath(containing, base),
+    if (relative.startsWith("skill://"))
+      return yield* Effect.try({
+        try: () => {
+          parseRef(relative)
+          return relative
+        },
         catch: (error) => error as SkillsError,
       })
-      return yield* resolveCurrentRelative(
-        containing,
-        path || containing.entrypoint,
-        relative,
-        options,
-      )
-    }
+    if (/^[a-z]+:/i.test(relative))
+      return yield* Effect.try({
+        try: () => resolveRef(from, relative),
+        catch: (error) => error as SkillsError,
+      })
+    if (
+      base.file_id !== undefined ||
+      (base.snapshot !== undefined && base.selector.startsWith("shared_skill:"))
+    )
+      return (yield* resolveContainingReference(relative, from, options)).ref
     const local = yield* Effect.try({
       try: () => resolveRef(from, relative),
       catch: (error) => error as SkillsError,
@@ -646,13 +652,7 @@ export function resolveSkillRef(from: string, relative: string, options: Catalog
       local.failure.message !== "The path escapes the skill root."
     )
       return yield* Effect.fail(local.failure)
-    const containing = yield* targetSnapshot(base, options, "manifest")
-    return yield* resolveCurrentRelative(
-      containing,
-      base.path || containing.entrypoint,
-      relative,
-      options,
-    )
+    return (yield* resolveContainingReference(relative, from, options)).ref
   })
 }
 
@@ -663,6 +663,72 @@ export interface ReadOptions extends ReadPolicyOptions, ConsumptionObservationOp
   readonly lines?: string
   readonly output?: string
   readonly authoring?: boolean
+}
+
+export interface ResolveReferenceOptions extends CatalogOptions, ConsumptionObservationOptions {
+  /** Exact fixed reference to the file that contains the relative path. */
+  readonly from: string
+}
+
+/** Resolve identity before a consumer chooses the target's own session snapshot.
+ * This never acquires the target body or activates Members/Requires. */
+export function resolveReference(relative: string, options: ResolveReferenceOptions) {
+  return withConsumptionEffects(
+    resolveContainingReference(relative, options.from, options, true).pipe(
+      Effect.map(({ ref }) => ({ version: 1 as const, from: options.from, ref })),
+    ),
+    options,
+  )
+}
+
+/** Shared by reads and identity-only resolution; Source paths are based on the
+ * actual containing File binding, including nested resources and renamed Files. */
+function resolveContainingReference(
+  relative: string,
+  from: string,
+  options: CatalogOptions,
+  fixed = false,
+) {
+  return Effect.gen(function* () {
+    const base = yield* Effect.try({
+      try: () => {
+        if (!relative || /^[a-z]+:/i.test(relative) || relative.startsWith("s_"))
+          throw fail("INVALID_ARGUMENT", "--from requires a relative file path.")
+        if (relative.includes("?") || relative.includes("#"))
+          throw fail("INVALID_PATH", "Only relative file paths can be resolved within a skill.")
+        const parsed = parseRef(from)
+        if (
+          fixed &&
+          (!parsed.snapshot || !parsed.path || !parsed.selector.startsWith("shared_skill:"))
+        )
+          throw fail(
+            "EXACT_TARGET_REQUIRED",
+            "Reference resolution requires an exact fixed containing File reference.",
+          )
+        return parsed
+      },
+      catch: (error) => error as SkillsError,
+    })
+    const containing = yield* targetSnapshot(base, options, "manifest")
+    const fromPath = yield* Effect.try({
+      try: () => {
+        if (fixed && base.selector !== containing.record.id)
+          throw fail(
+            "EXACT_TARGET_REQUIRED",
+            "The containing reference must name its exact Skill identity.",
+          )
+        const path = boundSnapshotPath(containing, base) || containing.entrypoint
+        if (!containing.files.some((file) => file.path === path))
+          throw fail("FILE_NOT_FOUND", "The containing File does not exist in this snapshot.", {
+            path,
+          })
+        return path
+      },
+      catch: (error) => error as SkillsError,
+    })
+    const ref = yield* resolveCurrentRelative(containing, fromPath, relative, options)
+    return { containing, ref }
+  })
 }
 
 /** Output-only file and owner commitments; text reads retain their existing shape. */
@@ -701,29 +767,9 @@ function readSkillContent(input: string, options: ReadOptions) {
     let target: SkillTarget
     let acquired: Effect.Success<ReturnType<typeof acquireTargetSnapshot>>
     if (options.from) {
-      const base = yield* Effect.try({
-        try: () => {
-          if (/^[a-z]+:/i.test(input) || input.startsWith("s_"))
-            throw fail("INVALID_ARGUMENT", "--from requires a relative file path.")
-          if (input.includes("?") || input.includes("#"))
-            throw fail("INVALID_PATH", "Only relative file paths can be resolved within a skill.")
-          return parseRef(options.from!)
-        },
-        catch: (error) => error as SkillsError,
-      })
-      const containing = yield* targetSnapshot(base, options, "manifest")
-      const basePath = yield* Effect.try({
-        try: () => boundSnapshotPath(containing, base),
-        catch: (error) => error as SkillsError,
-      })
-      const resolved = yield* resolveCurrentRelative(
-        containing,
-        basePath ?? containing.entrypoint,
-        input,
-        options,
-      )
+      const { containing, ref } = yield* resolveContainingReference(input, options.from, options)
       target = yield* Effect.try({
-        try: () => parseTarget(resolved),
+        try: () => parseTarget(ref),
         catch: (error) => error as SkillsError,
       })
       if (

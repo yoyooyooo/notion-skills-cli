@@ -161,7 +161,7 @@ resource or native authority. An unchanged export is also refused. Use current
 Source apply/refresh for contributions or explicit takeover through ntn-skills-sync;
 omitting or reidentifying files is not a takeover route. Ordinary directory/ZIP input requires root `SKILL.md`. Portable v2
 uses the kind's canonical entrypoint. Relations contain same-library unpinned stable Skill
-refs; omitted fields preserve, [] clears, and a list replaces that entire field.
+refs; omitted fields preserve existing sets, [] clears, and a list replaces that entire field.
 Prompt relations, old projection/materialization and unknown fields are rejected.
 A single selected Markdown file is the only
 automatic entrypoint rename.
@@ -174,6 +174,58 @@ target needs matching changes to its inbound links in the complete input.
 Ordinary links may target real directories derived from that input, including
 directories without a README. Images must target files. Escaped HTML remains
 literal text; missing targets and paths escaping the Skill still fail validation.
+
+### Discover optional Members
+
+Members are candidates an Agent may choose; Requires are mandatory workflow
+dependencies. First import can fill omitted Members from confirmed exact canonical
+Skill links in active Markdown. An explicit Members set, including `[]`, takes precedence.
+Reimport and Source refresh preserve authored relationships. Never infer Requires
+from instruction wording, a link or a name.
+
+Use the read-only plan for local relative links with known identity bindings:
+
+```sh
+ntn-skills ctl library members-plan INPUT --entry ENTRY --skill-id SKILL_ID --bindings BINDINGS_JSON
+ntn-skills ctl library members-plan INPUT --entry ENTRY --skill-id SKILL_ID --bindings BINDINGS_JSON --output NEW_PORTABLE_DIRECTORY
+ntn-skills ctl library import NEW_PORTABLE_DIRECTORY --entry ENTRY --skill-id SKILL_ID --dry-run
+```
+
+Bindings contain `version:1`, `root` for this Skill's original repository path,
+and `targets` entries with an exact repository `path` and same-library canonical
+`ref`. Resolve relative links from each actual containing document under that root.
+Do not build these bindings from name or filename similarity. Review the returned
+`member_policy`, `confirmed`, `unresolved`, `importable` and optional `relations`.
+For an existing target with omitted relations, `preserve_existing` does not emit a
+replacement set; absent `relations` is not `[]`. Each unresolved item reports
+`blocks_import`; an unconfirmed canonical link can be nonblocking without creating
+a Member. Output is `null` when absent or blocked, and is created only for
+an importable plan; it converts confirmed links in a portable copy and leaves the
+original input and Requires unchanged. Unresolved cross-root links still need correction.
+
+The scan checks at most 100 distinct candidate ref strings; invalid or unconfirmed
+candidates also count, while repeats reuse the result. Treat `candidate_limit` as
+incomplete discovery. A skipped canonical link creates no Member; an unconverted
+cross-root link still blocks output. Review omitted identities explicitly.
+
+For `shared_destination_has_unselected_uses`, inspect all uses of the shared
+Markdown definition and correct their destinations explicitly. A definition shared
+with an image or an excluded use is not automatically rewritten. Put output in a
+separate directory or ZIP outside the input tree; symbolic-link paths back into the
+input are rejected. Confirmed link edits retain UTF-8 BOM and line endings such as CRLF.
+
+Inline, fenced and indented code, comments and images are excluded. Template placeholders, naked
+names and ordinary local files cannot establish a cross-Skill relationship. Actual
+links in active prose remain candidates, including prose describing an example.
+A router such as poteto-mode may describe valid choices without concrete links;
+maintain those Members explicitly after resolving exact
+identities. Discovery is best effort and does not certify a complete relationship set.
+
+Import and dry-run expose `members_discovery` with the policy, confirmed references
+and unresolved reasons. Inferred Members are frozen into the same operation intent
+as the files. A resume must reproduce that intent, not choose a new inferred set.
+
+### Apply the complete input
 
 Default resource import preserves exact originals and complete file metadata.
 Generate full text with the explicit projection command below; missing generated

@@ -22,7 +22,9 @@ import {
 import {
   readSkill as coreReadSkill,
   listSkill as coreListSkill,
+  resolveReference as coreResolveReference,
   type ReadOptions,
+  type ResolveReferenceOptions as CoreResolveReferenceOptions,
 } from "../../core/src/snapshot.ts"
 import {
   readResources as coreReadResources,
@@ -101,6 +103,8 @@ export type ConsumeOptions = SdkOptions & Omit<CoreConsumeOptions, "signal" | "o
 
 export type ReadSkillOptions = SdkOptions & Omit<ReadOptions, "onEffects">
 export type ReadSkillResult = Effect.Success<ReturnType<typeof coreReadSkill>>
+export type ResolveReferenceOptions = SdkOptions & Omit<CoreResolveReferenceOptions, "onEffects">
+export type ResolveReferenceResult = Effect.Success<ReturnType<typeof coreResolveReference>>
 export type ListSkillOptions = SdkOptions & NonNullable<Parameters<typeof coreListSkill>[1]>
 export type ListSkillResult = Effect.Success<ReturnType<typeof coreListSkill>>
 export type ResourceReadOptions = SdkOptions & Omit<CoreResourceReadOptions, "signal" | "onEffects">
@@ -311,6 +315,35 @@ export async function readSkill(
           lines: options.lines,
           output: options.output,
           authoring: options.authoring,
+          refresh: options.refresh,
+          offline: options.offline,
+          maxAge: options.maxAge,
+          onEffects: (value) => {
+            effects = value
+          },
+        }),
+      options,
+    )
+  } catch (error) {
+    if (error instanceof SkillsError)
+      throw fail(error.code, error.message, { ...property(error.details), effects })
+    throw error
+  }
+}
+
+/** Resolve a relative path from an exact fixed containing File. The returned
+ * target identity lets hosts apply their own target session pin before reading. */
+export async function resolveReference(
+  relative: string,
+  options: ResolveReferenceOptions,
+): Promise<ResolveReferenceResult> {
+  let effects = noConsumptionWrites()
+  try {
+    return await runOperation(
+      () =>
+        coreResolveReference(relative, {
+          from: options.from,
+          database: options.database,
           refresh: options.refresh,
           offline: options.offline,
           maxAge: options.maxAge,

@@ -334,10 +334,25 @@ Protocol numbers identify incompatible wire formats, not content versions.
 Validate local Markdown references against the complete current file tree. Ordinary
 links may identify files or real directories derived from those file paths, with
 or without a trailing slash; they do not require an invented README. Images must
-identify files. Missing targets, unsafe paths and relative paths escaping the
-Skill remain errors. Escaped HTML is literal authored text, not a link attribute.
-Cross-Skill targets require explicit stable references rather than guessing from
-adjacent display names.
+identify files. Missing targets and unsafe paths remain errors. Escaped HTML is
+literal authored text, not a link attribute. A cross-Skill relative path is resolved
+only when the containing file has reliable current Source authority: its frozen
+Source revision and original repository path must map through one current
+contribution to an exact target. Otherwise use an explicit stable Skill reference.
+Resolve Source paths before applying contribution mounts or renames; a coincidental
+local-path match cannot override a valid repository address. Only when resolving
+the original Source-relative path escapes the repository root may the reader
+select a native companion through an exact File binding in the same owner's
+fixed snapshot. That target must have no Source route. A valid repository address
+whose target is missing, excluded or ambiguous does not permit this fallback.
+A Source path with multiple mapped destinations is ambiguous rather than first-match wins.
+Display names and adjacent cache directories do not establish identity. A local
+import has no Source context merely because its files came from a repository.
+
+`read --from` and SDK `resolveReference` share the same containing-file resolver.
+The SDK requires a fixed canonical containing File ref and returns identity before
+the host selects the target's own snapshot. Pi preserves an already selected target
+pin. Resolution does not activate instructions, expand Requires or write relationships.
 
 The public SDK is version 2. Hosts must require this exact SDK contract before
 using current consumption. Source management methods and the public `readOnly`
@@ -700,8 +715,15 @@ parent/child operation records are then retired. An entirely equal invocation
 does not allocate any remote intent.
 
 Portable Members/Requires round-trip as complete current stable-ref sets. Omitted
-fields preserve, [] clears, and lists replace. Prompt relations are invalid. The
-writer checks same-library single-property schema, complete pagination and unique
+fields preserve existing sets, [] clears, and lists replace. For a first local import,
+omitted Members may be discovered from confirmed exact references; an explicit
+Members set takes precedence. Inline, fenced and indented code, comments and images are excluded;
+names, template placeholders and filename similarity cannot establish a target.
+Active prose links remain candidates. `ctl library members-plan` can use explicitly
+declared path-to-identity bindings and generate a portable copy with confirmed relative links normalized.
+It reports unresolved references and refuses an unimportable output. It does not
+infer Requires or continuously reconcile existing relationships. Prompt relations
+are invalid. The writer checks same-library single-property schema, complete pagination and unique
 enabled ready targets before mutation. Changed sets are limited to 100 targets;
 larger unchanged sets are retained. Changed Requires checks its reachable metadata
 closure for cycles and rechecks it before ready, including an unfinished resume.

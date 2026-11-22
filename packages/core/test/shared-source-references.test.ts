@@ -168,6 +168,55 @@ test("outside-member repository references expose their exact fixed upstream loc
   expect(f.mutations()).toEqual([])
 })
 
+test("a mounted path collision cannot override the original Source-relative target", async () => {
+  const { f, snapshot } = await setup()
+  const from = "references/nested/main.md",
+    collision = "references/beta/SKILL.md"
+  const mounted: Snapshot = {
+    ...snapshot,
+    entrypoint: from,
+    files: [
+      { ...snapshot.files[0]!, path: from },
+      { ...snapshot.files[0]!, path: collision },
+    ],
+    file_bindings: [
+      { ...snapshot.file_bindings![0]!, path: from },
+      { path: collision, file_id: "collision", page_id: id(801) },
+    ],
+    shared_acquisition: {
+      ...snapshot.shared_acquisition!,
+      files: [{ ...snapshot.shared_acquisition!.files[0]!, path: from }],
+    },
+  }
+  expect(
+    parseRef(await f.run(resolveCurrentSourceReference(mounted, from, "../beta/SKILL.md"))),
+  ).toEqual({ selector: sharedSkillId(library.library_id, "beta"), path: "SKILL.md" })
+  expect(f.mutations()).toEqual([])
+  expect(f.downloads).toEqual([])
+})
+
+test("duplicate mounts of one Source file require an explicit target instead of selecting the first", async () => {
+  const { f, snapshot } = await setup()
+  const ambiguous: Snapshot = {
+    ...snapshot,
+    files: [...snapshot.files, { ...snapshot.files[0]!, path: "copy/SKILL.md" }],
+    shared_acquisition: {
+      ...snapshot.shared_acquisition!,
+      files: [
+        ...snapshot.shared_acquisition!.files,
+        {
+          ...snapshot.shared_acquisition!.files[0]!,
+          path: "copy/SKILL.md",
+        },
+      ],
+    },
+  }
+  await expect(
+    f.run(resolveCurrentSourceReference(ambiguous, "SKILL.md", "./SKILL.md", { offline: true })),
+  ).rejects.toMatchObject({ code: "CURRENT_SOURCE_REFERENCE_AMBIGUOUS" })
+  expect(f.calls).toEqual([])
+})
+
 test("fixed local links need no remote query while cross-member offline and disabled reads fail", async () => {
   const { f, snapshot } = await setup()
   const local = await f.run(

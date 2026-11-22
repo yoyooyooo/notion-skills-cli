@@ -1,6 +1,6 @@
 ---
 name: ntn-skills-maintain
-description: Create, edit, register and delete Notion-native Skills and supporting files. Also import complete trees, generate reading pages, restore Trash and recover unfinished management work.
+description: Create, edit, register and delete Notion-native Skills and files. Import complete trees, generate reading pages, restore Trash and resume management.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-maintain
@@ -8,8 +8,8 @@ metadata:
 
 # Maintain the current library
 
-Use the task's executable and library, with Read and for writes Insert/Update access.
-Select an exact page ID, URL or stable Skill ID, never a fuzzy title.
+Use the task's executable and library. Reads need Read; writes need Insert/Update.
+Select an exact page ID/URL or stable Skill ID, never a fuzzy title.
 
 Read inspects. To apply, use this source's exact ref via `notion_use(ref)`
 or CLI `use REF` with Requires unless already prepared. Report unavailable adoption.
@@ -23,11 +23,11 @@ read is needed.
 The CLI handles Notion REST; load an API Skill only for direct API work.
 Open [setup](references/setup.md) only to create/connect a library or resolve a
 reported connection/schema problem. Adding a Skill is not library setup.
-Report progress before writes and during long verification.
+Report progress before writes and during verification.
 
 ## Prepare local input
 
-Use physical input paths, including parents:
+Use physical paths, including parents:
 
 ```sh
 skill_dir=$(mktemp -d)
@@ -35,12 +35,12 @@ skill_dir=$(cd "$skill_dir" && pwd -P)
 printf '%s\n' "$skill_dir"
 ```
 
-Input links remain rejected.
+Reject input and parent symlinks.
 
 ## Create or edit a native Skill
 
-Supply content and author metadata; do not construct those Notion fields
-that the CLI owns: identity, authority, relationships and finite state.
+Supply content and metadata; do not construct those Notion fields
+owned by the CLI: identity, authority, relationships and finite state.
 
 ```sh
 ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID
@@ -60,9 +60,9 @@ Native writes verify complete text, code, links and structure; formatting may
 normalize. Resources stay byte-exact. Native bodies stay editable;
 no projection is needed. See [native management](references/operations.md#manage-native-skills).
 
-## Register or remove an existing page
+## Register or remove
 
-Register an authored page in the current Skills table without replacing its body:
+Register a page in the current Skills table without replacing its body:
 
 ```sh
 ntn-skills ctl library skill register PAGE_ID --entry ENTRY
@@ -119,10 +119,10 @@ Complete import replaces the tree, removing omitted Notion-owned files:
 ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
 ```
 
-See [complete import](references/operations.md#import-a-complete-current-tree) and
-[projection and recovery](references/operations.md#generate-notion-text) for those tasks.
-Source apply/refresh,
-takeover, lifecycle and Profile/View rules use ntn-skills-sync.
+First import infers Members only from exact refs; existing sets and `[]` win.
+Requires stays explicit. Follow [import and Members planning](references/operations.md#import-a-complete-current-tree)
+or [projection/recovery](references/operations.md#generate-notion-text).
+Source operations and Profile/View rules use ntn-skills-sync.
 Read references with `ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF`.
 For package-selected instructions, use `ctl builtin read notion/ntn-skills-maintain
 --path RELATIVE_PATH`.

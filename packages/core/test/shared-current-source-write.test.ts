@@ -30,7 +30,8 @@ import { prepareCurrentSharedSourceContent } from "../src/shared-current-source.
 import { writePreparedCurrentSource } from "../src/shared-current-source-write.ts"
 import { prepareCurrentSkillWrite, writeCurrentSkill } from "../src/shared-current-write.ts"
 import { prepareCurrentWriteFile } from "../src/shared-current-write-input.ts"
-import { readSkill } from "../src/snapshot.ts"
+import { listSkill, readSkill, resolveReference, resolveSkillRef } from "../src/snapshot.ts"
+import { parseRef } from "../src/ref.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { sourceRich } from "../src/shared-source-definitions.ts"
 import type { SourceSnapshot } from "../src/upstream-source.ts"
@@ -924,6 +925,74 @@ test("Source writes reach ready without projection bodies and preserve current n
   ).toMatchObject({ content: nativeHeader + originalBody })
   expect(f.mutations()).toEqual([])
   await assertReady(f)
+})
+
+test("fixed nested File resolution uses the Source path and target mount without reading target bytes", async () => {
+  const f = currentWriteFixture(parent)
+  await seedNative(f)
+  const observed = observation(),
+    http = provider([observed])
+  const mapped: CurrentSourceDeclaration = {
+    ...declaration,
+    contributions: declaration.contributions.map((contribution) =>
+      contribution.skill_id === "skill-alpha"
+        ? { ...contribution, mapping: { "notes.md": "references/nested/note.md" } }
+        : contribution,
+    ),
+  }
+  const prepared = await f.run(prepareCurrentSourceFromDiscovery(mapped, observed))
+  await f.run(
+    http.use(
+      writePreparedCurrentSource(library, {
+        prepared,
+        operation_id: "source-relative-resolution",
+      }),
+    ),
+  )
+  const alpha = f
+    .table("skills")
+    .find((row) => fieldText(row, library.skills.property_ids["Skill ID"]!) === "skill-alpha")!
+  const selected = await f.run(
+    http.use(
+      readSkill(String(alpha.id), {
+        database: library.skills.database_id,
+        refresh: true,
+      }),
+    ),
+  )
+  const manifest = await f.run(listSkill(selected.snapshot_id, { offline: true }))
+  const from = manifest.files.find((file) => file.path === "references/nested/note.md")!.ref
+  const beforeDownloads = http.requests.length
+  f.clearCalls()
+  const resolved = await f.run(http.use(resolveReference("../beta/guide.md", { from })))
+  expect(parseRef(resolved.ref)).toEqual({
+    selector: `shared_skill:${library.library_id}:skill-beta`,
+    path: "vendor/guide.md",
+  })
+  expect(resolved).toMatchObject({
+    version: 1,
+    from,
+    effects: { version: 1, remote_writes: "none", author_content: "unchanged" },
+  })
+  expect(http.requests).toHaveLength(beforeDownloads)
+  expect(f.mutations()).toEqual([])
+  const withoutFileId = from.replace(/&file_id=[^&]+/u, "")
+  expect(await f.run(http.use(resolveSkillRef(withoutFileId, "../beta/guide.md")))).toBe(
+    resolved.ref,
+  )
+  const read = await f.run(
+    http.use(
+      readSkill("../beta/guide.md", {
+        from,
+        database: library.skills.database_id,
+      }),
+    ),
+  )
+  expect(read).toMatchObject({
+    path: "vendor/guide.md",
+    content: "# Source guide one\n\nEvery line is readable.\n",
+  })
+  expect(f.mutations()).toEqual([])
 })
 
 test("an unobserved Source CREATE remains one finite parent intent and never blindly creates another Source", async () => {

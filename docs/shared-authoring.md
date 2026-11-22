@@ -176,7 +176,8 @@ A multi-file input must already use the canonical entrypoint.
 Current portable manifest version 2 can select a Skill, Router, or Prompt.
 The canonical entrypoints are `SKILL.md`, `ROUTER.md`, and `PROMPT.md`.
 Portable Members/Requires accept unpinned `shared_skill` refs from the same library.
-An omitted field preserves its current set, `[]` clears it, and a list replaces it.
+For an existing Skill, an omitted field preserves its current set, `[]` clears it,
+and a list replaces it. A first import can discover omitted Members as described below.
 Export includes both complete sets, so editing and reimporting that manifest keeps
 the intended relations. Prompt inputs reject relations. Projection/materialization
 and unknown manifest fields are refused rather than discarded.
@@ -194,6 +195,92 @@ Use the resolved physical path when a platform directory is itself a symbolic li
 All local Markdown links must resolve inside the complete input. Update inbound links when
 deleting or moving their targets; an unresolved target is rejected before Notion access.
 
+## Discover Members before a local import
+
+Members are optional related Skills available for selection. Requires are mandatory
+workflow dependencies. The importer never infers Requires from links, names or
+instruction wording. An author must set that dependency explicitly.
+
+On a first import, omitted Members can be filled from exact canonical Skill links
+in active Markdown. Discovery validates unique, enabled, ready targets in the same
+library. It skips self references and ambiguous targets. Inline, fenced and indented
+code, comments and images are outside discovery; names and template placeholders do not
+establish identity. An actual link in active prose is still a candidate, even if
+its surrounding text describes an example. Existing Members are preserved on reimport;
+an explicit Members set, including an empty set, takes precedence. Source refresh does not
+rescan and replace authored relationships.
+
+Local relative links alone do not identify a Notion Skill. A filename match is
+insufficient, even if the package contains a supporting document with that name.
+For a known repository layout, declare exact path-to-Skill bindings in a JSON file:
+
+```json
+{
+  "version": 1,
+  "root": "skills/my-skill",
+  "targets": [
+    {
+      "path": "skills/review/SKILL.md",
+      "ref": "skill://shared_skill%3Amy-library%3Areview/SKILL.md"
+    }
+  ]
+}
+```
+
+Replace the sample ref with the target's exact current unpinned stable ref from
+`list` in your library. A fixed snapshot ref, page URL or display name is not a binding.
+`root` is the imported Skill's path in this declared repository context; each target
+path uses the same context. A link in `SKILL.md` to `../review/SKILL.md` can then
+identify that target. Links in supporting documents resolve from each containing
+document's directory. Bindings declare identity explicitly; they do not search by name.
+
+```bash
+ntn-skills ctl library members-plan ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --bindings ./members-bindings.json
+ntn-skills ctl library members-plan ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --bindings ./members-bindings.json --output ./my-skill-for-notion
+ntn-skills ctl library import ./my-skill-for-notion --entry LIBRARY_ENTRY --skill-id my-skill --dry-run
+```
+
+The plan is read only in Notion. Review its decision and evidence:
+
+| Field | Meaning |
+| --- | --- |
+| `member_policy` | `first_creation` permits inferred Members; `explicit` uses the supplied Members; `preserve_existing` leaves omitted existing Members alone; `not_applicable` excludes Prompt inference |
+| `confirmed` | The containing file, line, original link, exact target and whether a portable copy rewrites the link |
+| `unresolved` | A reason for each unconfirmed reference; `blocks_import: true` prevents an importable output |
+| `relations` | Optional intended portable relationship payload; absence preserves existing fields and is not an empty set or a readback of current relationships |
+| `importable` | Whether the candidate has valid file references and no blocking unresolved links |
+| `inspection` | The existing import writer's read-only preview, returned after an importable candidate passes its checks |
+| `output` | The optional portable export result, or `null` when no output was requested or the candidate is not importable |
+
+An unconfirmed canonical link may be nonblocking: it never creates an inferred
+Member, but its presence need not prevent file import. Confirmed targets still
+undergo the normal relationship and complete-import checks. `importable` does not
+mean anything has been written to Notion.
+
+Discovery checks at most 100 distinct candidate reference strings, including
+invalid or unconfirmed candidates; repeated references reuse their result. An
+unresolved `candidate_limit` means discovery is incomplete. Review the omitted
+identities explicitly. A canonical link remains in the input without an inferred
+Member; an unconverted cross-root link still prevents portable output.
+
+An unresolved `shared_destination_has_unselected_uses` means a Markdown reference
+definition is shared with an image or a use excluded from discovery. The plan leaves
+that definition unchanged. Review all its uses and correct their destinations
+explicitly before retrying; confirming one use does not authorize changing the others.
+
+`--output` creates a portable copy only when it is importable. Confirmed
+relative links become canonical Skill references in that copy; original input and
+Requires remain unchanged. Choose a separate output directory or ZIP outside the
+input directory; paths that point back into the input through symbolic links are
+also rejected. The copy retains UTF-8 BOM and line endings, including CRLF, outside
+the selected link edits. An unresolved cross-root link is not silently made
+importable. Correct the reference or supply its exact binding before importing.
+
+Discovery is deliberately incomplete. A workflow such as poteto-mode may name
+Skills in instructions or templates without concrete links. Maintain those intended
+Members explicitly after checking their exact identities. Do not infer a mandatory
+Requires relationship from the same mention.
+
 ## Review the current replacement
 
 Select the exact stable Skill ID within the intended library:
@@ -202,9 +289,14 @@ Select the exact stable Skill ID within the intended library:
 ntn-skills ctl library import ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --dry-run
 ```
 
-Review `input_sha256`, `metadata`, `files`, `relations`, `remove`, and `budget`.
+Review `input_sha256`, `metadata`, `files`, `relations`, `members_discovery`, `remove`, and `budget`.
 The dry run reports `replaces_complete_tree: true` and `remote_writes: 0`.
 It allocates no operation ID.
+
+Both dry-run and apply return `members_discovery` with `member_policy`, `confirmed`
+and `unresolved`. This explains a skipped scan as well as inferred Members. A resumed
+unchanged intent can report `retained_intent`. Inferred Members enter the same frozen
+operation intent as the files; resume cannot silently adopt a different inferred set.
 
 Existing Notion-owned supporting files omitted from the input are removed.
 Import does not interpret a small directory as a partial patch.
@@ -507,6 +599,18 @@ A pure Source member deleted upstream is retired with its Files. A complete empt
 The Source manifest and Contributions retain the complete consumption directory without requiring a Files row for each supporting path. Source refresh creates the main descriptor and updates existing supporting rows; projection creates selected reading pages and retires excluded Source rows. Generated reading projections do not block Source readiness or trigger ordinary consumption writes. The current manifest is inline or in one Source-owned resource; obsolete owned manifest resources are retired after verification.
 
 Repository-relative links retain their upstream spelling and are checked against the complete fixed Git manifest. Links to another selected member resolve through the current contribution map. A reference outside all selected members reports its exact fixed repository path and, for GitHub, a commit-pinned URL; it does not create an extra Skill or File.
+
+Resolve from the actual containing file's original `source_path`, including nested
+documents. Contribution mounts and renames do not turn its visible local path into
+the repository base. A coincidentally matching local file cannot override that Source
+meaning, and multiple mapped targets are ambiguous. Only when the original
+Source-relative path escapes the repository root can an exact File binding select
+a native companion in the same owner's fixed snapshot; that target must have no
+Source route. This does not recover a missing or ambiguous repository target.
+Use a canonical fixed ref returned by
+`read` or `files` with `read --from` or `ctl resolve` to retain the containing selection.
+Source refresh preserves authored Members and Requires; readable links do not
+automatically establish either relationship.
 
 All affected targets share one finite parent Source intent. Its original
 configuration, selected commit and affected IDs stay fixed across interruption.

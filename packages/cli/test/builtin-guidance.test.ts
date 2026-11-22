@@ -57,6 +57,7 @@ test("executable builtin examples stay within the public current command surface
     "operation",
     "skill",
     "import",
+    "members-plan",
     "source",
     "projection",
     "profile",

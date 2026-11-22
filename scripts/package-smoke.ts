@@ -110,6 +110,7 @@ assert.deepEqual(library.schema.commands.map((command: { name: string }) => comm
   "import",
   "init",
   "inspect",
+  "members-plan",
   "operation",
   "profile",
   "projection",

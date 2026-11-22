@@ -153,6 +153,13 @@ selects member roots. Contribution mapping/exclude uses exact member-relative fi
 paths; the effective path is mount_path plus the mapped path. Keep file exclusions
 to prevent a deliberately taken-over file from returning when upstream reintroduces it.
 
+Source-backed cross-Skill relative links keep their original spelling. Resolve them
+from the exact containing file's Source path and revision through the current
+contribution map. A unique target identity is required; cache adjacency and display
+names are not evidence. Cross-Skill links from native or resource files without
+that Source route need explicit stable refs. Source apply/refresh does not infer Requires or replace authored
+Members. A successful relative read inspects the target; it does not activate it.
+
 A desired upstream path replaces matching native/resource authority and preserves
 its File ID. Dry-run reports that overwrite before applying. Exclude the incoming
 `SKILL.md` when an existing native main should stay authoritative. Unrelated files,
