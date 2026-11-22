@@ -275,15 +275,29 @@ function readPublishedVersions(config: Config): string[] {
     false,
   )
   if (result.exitCode !== 0) {
-    if (result.stderr.includes("E404") || result.stdout.includes("E404")) return []
+    let error: unknown
+    try {
+      error = JSON.parse(result.stdout)
+    } catch {}
+    if (
+      error &&
+      typeof error === "object" &&
+      "error" in error &&
+      error.error &&
+      typeof error.error === "object" &&
+      "code" in error.error &&
+      error.error.code === "E404"
+    )
+      return []
     fail(
       `Unable to read npm versions for ${config.publishPackage}.\n${result.stderr || result.stdout}`,
     )
   }
-  const parsed = JSON.parse(result.stdout || "[]") as unknown
-  if (Array.isArray(parsed))
-    return parsed.filter((value): value is string => typeof value === "string" && isVersion(value))
-  return typeof parsed === "string" && isVersion(parsed) ? [parsed] : []
+  const parsed: unknown = JSON.parse(result.stdout)
+  const values: unknown[] = Array.isArray(parsed) ? parsed : [parsed]
+  if (values.some((value) => typeof value !== "string" || !isVersion(value)))
+    fail(`Malformed npm version response for ${config.publishPackage}; registry state is unknown.`)
+  return values.filter((value): value is string => typeof value === "string" && isVersion(value))
 }
 
 function readTagVersions(prefix: string): string[] {
