@@ -73,8 +73,15 @@ Native 允许支持范围内的表示规范化，不能再用“逐字相同”�
 原输入 bytes/hash/frontmatter/mode 仍冻结，Source/resource 仍按原字节核对。
 完整读回中的文本、代码、链接或结构改变不能当作 Native 成功。
 这些生产判定及其实际 Notion 验收不由模型的 `verified` 位代替。
+原生普通文本的自动链接校正仍属于同一内容意图：Markdown 结构动作结束后，先按完整正文和物理块绑定校正请求，
+再用原严格全文比较设置 Native 完成。中间结构阶段不代表 ready；校正响应丢失时，原 dispatch 按同一请求先观察再决定是否需要写入。
+`shared-native-plain-text.test.ts` 和 `shared-current-skill.test.ts` 验证精确文本、样式、代码、作者链接及接受后未知结果的恢复。
 对应实现与永久回归列在 [coverage.json](coverage.json) 的 `unmodeled_bindings`；
 列入该部分不表示已新增形式证明，也不替代本次实际运行回执。
+
+本地 selection manifest 的 opaque snapshot ID 同时绑定完整 observed record；名称、描述或 Default Context 改变可产生新 snapshot，
+而相同正文及文件仍保持原 content version。A→B→C 的原完整绑定、跨进程和 cache clear、伪造 record 拒绝与旧本地 manifest 恢复属于实现验证。
+本模型不枚举 record 字段或 ID 公式；该变更没有新增远端历史服务、持久存储 owner 或保留期限承诺。
 
 ## 成功恢复后的查询可见性
 
