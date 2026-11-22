@@ -179,6 +179,12 @@ with scoped `list --refresh`, read each returned ref, and inspect its file
 directory. Read supporting references from the same selection. No projection
 is needed for these native copies.
 
+Repeating `skill create` with the same ID and unchanged complete input reports
+`unchanged`. If the Notion copy was edited, creation rejects the different
+existing content with `CURRENT_SKILL_EXISTS`; it does not overwrite those edits.
+Inspect that copy and use an authorized `skill update` for selected changes.
+Upgrading the package does not update these Notion copies.
+
 For byte-exact package originals instead, use the separate
 [complete import](operations.md#import-a-complete-current-tree) resource route
 and generate its reading projection. Choose that authority before writing.

@@ -85,6 +85,9 @@ entry with `--entry` for management and `--database` for reading. You do not nee
 to configure the other three table IDs. An existing library can start with
 `init --entry` and skip creation.
 
+`init --entry` does not save a local default. In a new terminal or Agent session,
+set `library_entry` to this same saved ID and pass it to the commands below.
+
 If initialization stops, keep its error and operation ID. The
 [initialization recovery guide](skills/notion/ntn-skills-maintain/references/setup.md#interrupted-initialization)
 explains what read-only reconciliation can confirm and what remains unfinished.

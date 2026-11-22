@@ -83,6 +83,9 @@ ntn-skills ctl library init --entry "$library_entry"
 都传这一个 Skills 入口；不需要另外配置其他三张表的 ID。
 已有当前库可以直接从 `init --entry` 开始，跳过创建。
 
+`init --entry` 不会保存本地默认库。下一次终端或 Agent 会话中，把
+`library_entry` 设为这次保存的同一个 ID，再传给下面的命令。
+
 如果初始化中断，保留错误和 operation ID。
 [初始化恢复说明](skills/notion/ntn-skills-maintain/references/setup.md#interrupted-initialization)
 列出了只读对账能确认的结果，以及仍无法补齐的阶段。
