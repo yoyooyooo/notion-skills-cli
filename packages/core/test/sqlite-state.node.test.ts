@@ -9,7 +9,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { sqliteState } from "../src/sqlite-state.ts"
 import { Store, StoreLive, sha256 } from "../src/store.ts"
-import { assertKnownSnapshotAccess, ObservationSchema } from "../src/cache.ts"
+import { assertKnownSnapshotAccess, ObservationSchema, recordScope } from "../src/cache.ts"
+import { nodeRuntime } from "../../cli/src/runtime.ts"
 import { SnapshotSchema, decode } from "../src/model.ts"
 import { sharedSkillId } from "../src/shared-content.ts"
 import { aliasFor, type SharedSkillRecord } from "../src/model.ts"
@@ -203,6 +204,7 @@ it.live("explicit retirement during observation reads never returns a partial ol
       yield* Effect.gen(function* () {
         const store = yield* Store
         const state = yield* sqliteState(join(root, "state"), yield* FileSystem.FileSystem)
+        yield* recordScope("scope")
         const snapshot = decode(SnapshotSchema, {
           snapshot_id: "s_retained",
           scope: "scope",
@@ -292,13 +294,16 @@ it.live("explicit retirement during observation reads never returns a partial ol
         })
         expect(yield* store.readJson("snapshots/s_retained.json", SnapshotSchema)).toEqual(snapshot)
       }).pipe(
-        Effect.provide(StoreLive.pipe(Layer.provideMerge(NodeServices.layer))),
+        Effect.provide(nodeRuntime(process.cwd()).live),
         Effect.provide(
           ConfigProvider.layer(
             ConfigProvider.fromUnknown({
+              NOTION_API_TOKEN: "controlled-observation-race-credential",
               NTN_SKILLS_HOME: join(root, "state"),
               NTN_SKILLS_CONFIG_HOME: join(root, "config"),
               NTN_SKILLS_CACHE_HOME: join(root, "cache"),
+              NTN_SKILLS_DATA_HOME: join(root, "data"),
+              NTN_SKILLS_SCHEDULER_ROOT: join(root, "scheduler"),
             }),
           ),
         ),
