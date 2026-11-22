@@ -1,6 +1,6 @@
 # 当前验证合同与证据
 
-当前主线是 [AH-1188](https://linear.app/yoyooyooo/issue/AH-1188)，本入口由 [AH-1189](https://linear.app/yoyooyooo/issue/AH-1189) 维护。
+本入口维护当前实现的验证责任、场景与证据边界。具体交付进展和原始运行结果保留在对应 Issue/PR，不作为本合同的常量。
 [skill-domains.json](../verification/skill-domains.json) 是合同、领域 owner 和场景的唯一索引；它不是运行成绩册。
 先按改动读取对应合同及场景，再沿既有 Skill 执行最小完整范围。当前目标行为与实际实现结果分开，尚未运行的边界保持 not_run。
 
@@ -8,16 +8,16 @@
 
 | 合同 | 主要状态/验证 owner | 必须独立观察 |
 | --- | --- | --- |
-| C01–C04 | Broker consumer-state；AH-1191/1192 | 固定选择、准备、有效正文、provider 接受与后续 turn |
-| C05 | Broker consumer-state；AH-1193 | View 成员、精确资格、旧完整任务、显式 current |
-| C06 | CLI management；AH-1194 | 内容 authority/readiness、完整树与独立阅读投影 |
-| C07a | CLI consumption；AH-1190 | Store generation、clear、迟到发布及新 deny |
-| C07b | CLI operation-recovery；AH-1194 | unknown/partial、原意图恢复及有限退役 |
-| C07c | Broker consumer-state；AH-1191 | scope/epoch、fork、取消与迟到交付 |
-| C08 | Broker verify-notion-agent-workflows；AH-1196 | 自然任务结果、实际正文、工具必要性 |
-| C09 | CLI consumption；AH-503 | 共享获取、预算、取消、实际等待与完整性 |
-| C10 | Broker integration；AH-1197、AH-637 | 每机源码→产物→实际加载→新 Pi；后续同步 |
-| C11 | CLI verify-ntn-skills；AH-1189 | 合同→场景→运行→候选/加载→原件 |
+| C01–C04 | Broker consumer-state | 固定选择、准备、有效正文、provider 接受与后续 turn |
+| C05 | Broker consumer-state | View 成员、精确资格、旧完整任务、显式 current |
+| C06 | CLI management | 内容 authority/readiness、完整树与独立阅读投影 |
+| C07a | CLI consumption | Store generation、clear、迟到发布及新 deny |
+| C07b | CLI operation-recovery | unknown/partial、原意图恢复及有限退役 |
+| C07c | Broker consumer-state | scope/epoch、fork、取消与迟到交付 |
+| C08 | Broker verify-notion-agent-workflows | 自然任务结果、实际正文、工具必要性 |
+| C09 | CLI consumption | 共享获取、预算、取消、实际等待与完整性 |
+| C10 | Broker integration | 每机源码→产物→实际加载→新 Pi；后续同步 |
+| C11 | CLI verify-ntn-skills | 合同→场景→运行→候选/加载→原件 |
 
 C07 的总索引由 consumption 维护，三个状态子合同各有唯一 owner。
 resource-lifecycle 拥有 CLI 当前生命周期模型；operation-recovery 拥有实际管理恢复回放，两者互相引用，不重复 writer。
@@ -101,10 +101,9 @@ receipt-valid 只表示结构有效，不等于底层通过；缺字段、fixtur
 
 ## 当前与历史
 
-AH-500/560/639/871/1063 是各自版本的历史证据，不能成为当前两机默认通过。
-后续 AH-501/AH-1141 的真实 Pro 目录、冷读、SDK 与公开 cancel 结果按准确配对和范围复用；
-不把已收敛的两个旧 pending 继续报为现场阻塞，也不由它们推导长会话已通过。
-最终真实运行由 AH-1198 汇总，Mini 独立验收沿 AH-637；OMP/Tern 仍在 AH-272。
+历史结果只覆盖其原始版本、输入、安装与实际观察层。复用证据时先核对候选和受影响边界；
+不能由一次局部通过推导两机默认入口、长会话或未运行的宿主已通过。原失败、未知结果与
+未执行项继续保留，后续修复通过另记新运行。OMP/Tern 等其他宿主各自验收。
 
 当前已退役的 ACK/review/completion、永久历史 pin、旧工具和旧 reader 不恢复。
 有限清退完成后删一次性运行入口，静态失败证据保留。当前精确恢复、有界重试和能力降级沿唯一实现继续验证。

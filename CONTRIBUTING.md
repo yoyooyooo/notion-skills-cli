@@ -2,7 +2,7 @@
 
 ## Development setup
 
-Use Bun 1.4.3 with the committed lockfile. The CLI and SDK run on Node.js 22.22.3+ within 22.x, or Node.js 24.20.0+.
+Use Bun 1.4.3 with the committed lockfile. The CLI and SDK run on Node.js 22.23.5+ within 22.x, 24.22.3+ within 24.x, or 26.13.1+ within 26.x.
 
 For paired or parallel development, start with the Broker's
 [isolated development guide](https://github.com/yoyooyooo/pi-context-broker/blob/next/docs/isolated-development.md).
@@ -77,7 +77,29 @@ and model delivery also require their existing verification paths. The controlle
 contract cases run with `bun test packages/cli/test/verify-projected-builtins.test.ts`
 and are included by the root `test:unit` package-test glob; they do not access Notion.
 
-The compact `packages/core/test/fixtures/router-original/.ntn-skills.json` is a byte-preservation fixture. Its whitespace and final newline are intentional. Builtin lifecycle tests use isolated application and agent directories; preserve that isolation when extending a test.
+Builtin lifecycle tests use isolated application and agent directories; preserve
+that isolation when extending a test. Retain fixture bytes only while an actual
+test or documented research consumer uses them. Preserve original failure inputs
+and unique evidence before retiring an obsolete fixture.
+
+## Compatibility and documentation
+
+The public CLI, SDK and packaged guides follow the same release. During 0.x,
+minor releases may change commands, configuration or SDK formats. Patch releases
+are intended to preserve those public contracts. A necessary security correction
+may narrow unsafe behavior; document the affected behavior and upgrade steps in
+the changelog and current guides. There is no fixed deprecation grace period or
+promise to support every previous minor release. Keep versioned protocol guards
+explicit and remove retired callers with their implementation.
+
+Keep current user instructions in README and `docs/`, contributor constraints in
+AGENTS and verification Skills, and run status in the issue or PR. Before removing
+a document or fixture, check its consumers and move any unique current contract
+to its existing owner. Keep model sources, configuration, tool locks, coverage maps
+and executable fixtures. Generated charts belong in a new external run directory;
+retain useful failure originals with their run evidence. Ordinary superseded docs
+remain traceable through their exact Git commit. Update links and package guards
+in the same change; do not add a parallel archive to the active documentation.
 
 ## Build a fresh consumer artifact
 

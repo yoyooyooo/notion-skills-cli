@@ -18,7 +18,7 @@ adds optional Pi integration.
 
 ## Install
 
-Use Node.js 22.22.3 or newer in 22.x, or 24.20.0 or newer.
+Use Node.js 22.23.5+ in 22.x, 24.22.3+ in 24.x, or 26.13.1+ in 26.x.
 
 ```sh
 npm install --global ntn-skills --registry https://registry.npmjs.org

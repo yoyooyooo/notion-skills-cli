@@ -6,7 +6,7 @@ The [current library contract](current-contract.md) defines the data model and r
 
 ## Install the package
 
-Use Node.js 22.22.3 or later within 22.x, or Node.js 24.20.0 or later.
+Use Node.js 22.23.5+ within 22.x, 24.22.3+ within 24.x, or 26.13.1+ within 26.x.
 The product uses Node's SQLite runtime. Bun is a repository build and test tool.
 
 For a published build:

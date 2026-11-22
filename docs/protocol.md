@@ -249,7 +249,7 @@ A cache hit does not improve discovery coverage.
 
 ## Environment and local storage
 
-The runtime requires Node.js 22.22.3 or later within 22.x, or Node.js 24.20.0 or later.
+The runtime requires Node.js 22.23.5+ within 22.x, 24.22.3+ within 24.x, or 26.13.1+ within 26.x.
 Bun builds the repository and runs applicable tests; it is not the product runtime.
 
 Authentication selects nonempty `config.token` before nonempty `NOTION_API_TOKEN`.

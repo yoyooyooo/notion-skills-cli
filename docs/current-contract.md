@@ -5,14 +5,12 @@ management decisions and Notion-authored content. Git-only, mixed and Notion-nat
 Skills share this contract. The system does not retain content versions, page
 generations, historical graph releases or permanent recovery pins.
 
-The work is tracked by [AH-499](https://linear.app/yoyooyooo/issue/AH-499) and its
-[implementation parent](https://linear.app/yoyooyooo/issue/AH-498). This document
-defines the current behavior and its remaining delivery scope. The installed Pro
-CLI/SDK/Broker already has a bounded native, Git and resource consumption baseline.
-That baseline does not establish that every daily Skill or the long tail has been
-converted. Daily acceptance also requires complete main bodies and selected human-readable
-Markdown supporting documents in Notion. The last section separates that work from non-daily projection,
-binary presentation and unrelated cleanup.
+This document defines current behavior and implementation constraints. Use the
+[verification review](maintenance-verification-review.md) for checks and the
+[verification contracts](https://github.com/yoyooyooo/notion-skills-cli/blob/next/docs/verification-contracts.md) for evidence boundaries.
+Delivery progress and individual run results belong to the corresponding issue or
+PR. A source implementation or an earlier installation does not establish that a
+particular Notion library has been converted or its reading pages projected.
 
 ## One current owner for each fact
 
@@ -432,7 +430,8 @@ legacy flags or a parallel daily protocol:
    Remove each completed batch's one-time conversion entry and runtime admission
    wiring. Unmigrated non-daily rows do not justify retaining an old runtime path.
    Notion projection and unrelated old-data cleanup remain separate work. Keep
-   agent-kit main-path Skills and global exposure; isolate Pi verification with `pi -ns`.
+   existing local Skills and host registrations until their selected replacement
+   has been verified; isolate Pi verification with `pi -ns`.
 5. Clear incompatible disposable sessions/caches and select current content. Keep
    any still-unique local author copy until that item has a verified current home.
 
@@ -447,20 +446,18 @@ the state database. Current pending operations and fixed local content survive
 normal process restarts within the current schema; an old operation is not silently
 reinterpreted as a new one. This schema boundary is not content version management.
 
-Pro inventory distinguishes active local assets and real host registrations from
-copies in old worktrees, package caches and verification exports. Physical
-`SKILL.md` counts are not the migration denominator. An uninspected or sensitive
-scope remains explicitly unresolved; it is never silently counted as migrated.
-AK Models, Agents, providers and unrelated host operations remain separate assets.
+A cutover inventory distinguishes active local assets and real host registrations
+from copies in old worktrees, package caches and verification exports. Physical
+`SKILL.md` counts are not the migration denominator. Keep uninspected scopes and
+unrelated Agent/provider configuration separate from the selected Skill inventory.
 
 Use the existing verification Skills and the
 [bounded current-convergence journey](https://github.com/yoyooyooo/notion-skills-cli/blob/next/.cursor/skills/verify-ntn-skills/features/current-convergence.md).
-The six checks have explicit stop conditions; do not add another runner, evidence
-archive, recursive proof requirement or broad new platform. The final shared
-journey is the real Notion → CLI/SDK → Pi use, followed by the scoped residue check.
-First daily use does not close the separate Pro-wide migration task.
+Select the checks for the changed boundary and their stop conditions. Actual
+Notion → CLI/SDK → Pi use and scoped residue inspection have separate results;
+first use of one library does not establish a machine-wide migration.
 
-## Implementation status and remaining cutover blockers
+## Current management behavior
 
 Current tree assembly reads complete Source manifests and Contributions, then
 merges Notion-owned Skills/Files `Content`. Physical Source rows only describe
@@ -757,32 +754,23 @@ migration command families are not active authoring routes. Source actions use
 the current coordinator; general cross-object governance still needs implementation.
 Removing a command does not prove that every old module, export or guide is gone.
 
-The current delivery scope is the user-selected daily set, tracked by AH-504/AH-516.
-The selection is Source 日用 (all real members) ∪ Skill 日用 ∪ Default Context,
-with actual upstream membership used to repair broken Origin relations. 日用 does
-not imply Default Context. The initial analysis selected 142 current members;
-complete discovery recalculates that number when upstream changes.
+A daily acceptance scope is the user-selected set: Source 日用 current members ∪
+Skill 日用 ∪ Default Context. Discover actual upstream membership to repair broken
+Origin relations and recalculate the set when upstream changes. 日用 does not imply
+Default Context.
 
-- AH-504/AH-499: one public sync/rebuild path, same-version zero writes, explicit
-  finite legacy admission and same-wave removal of replaced runtime paths.
-- AH-516/AH-500: apply that path to actual daily sources, verify full trees and
-  relationships, and reuse the resulting evidence for ordinary zero-write consumption.
-- AH-617: update only SDK/Broker behavior actually changed by this implementation,
-  pair the built artifacts, and verify necessary real Pi samples. The first native,
-  Git and resource daily baselines are already recorded in AH-1063/AH-516.
-- AH-501/AH-1141: complete daily main/selected reading documents in Notion through the public
-  projection command, including readback and same-version zero writes. Non-daily
-  text and additional binary presentation remain deferred. Code availability is
-  not evidence that the live daily batch has already been projected.
-- AH-505/AH-507/AH-1143: additional governance, recovery and broader documentation
-  only when needed; changed public help and current guidance are updated now.
-- AH-513: non-daily legacy data. AH-517: obsolete static migration materials only.
-  Neither issue postpones cleanup of runtime code replaced in this implementation.
+Verify complete paths, bytes, modes, relationships, preserved user policy,
+upstream removals and same-version zero writes through the public routes. Use a
+matching CLI/SDK/Broker installation for host delivery. Reading-page acceptance
+also requires full main and selected supporting text in Notion, complete readback
+and a zero-write repeat of the public projection command. Code availability does
+not prove that a live batch has been projected. Report unselected data, non-text
+presentation and unrelated governance separately.
 
 Run only the applicable checks in the existing current-convergence entry. Current
 schema/index, native tree, exact resource, Source, acquisition and complete-import
 tests establish their controlled boundaries. They do not certify live table cleanup,
 every authoring operation, an installed package or real Pi delivery. The old
 resource-lifecycle and ACK recovery models and their dedicated recipes are retired.
-The two request-engine models retain their original bounded properties; current
-writer safety is checked by the existing implementation and real HTTP tests.
+The retained models prove only their [declared finite properties](https://github.com/yoyooyooo/notion-skills-cli/blob/next/docs/formal-verification-maintenance.md);
+current writer safety also requires the existing implementation and real HTTP tests.
