@@ -35,9 +35,9 @@ entry chooses the necessary group. It does not run every table entry for every c
 ## What the current tree checks
 
 A cold native read fetches current Skill metadata, complete selected Files metadata
-and necessary native bodies, then rechecks the current owner. The three-native-file
-fixture needs six requests cold, or three requests with zero body reads on unchanged
-metadata revalidation. A valid outer TTL cache hit is a separate zero-HTTP path.
+and necessary native bodies, then rechecks the current owner. The current snapshot
+tests bind request counts to their exact fixture. Unchanged metadata revalidation
+reuses body bytes; a valid outer TTL cache hit is a separate zero-HTTP path.
 The reader never queries event DAGs, original-operation
 proofs or remote snapshot history. Warm metadata revalidation reuses verified
 native bytes; editing one body's timestamp requires that body, and a missing
@@ -104,37 +104,38 @@ Do not restore them to satisfy an old command example or test.
 The operation-recovery and resource-lifecycle models, coverage files, dedicated
 mutation scripts and historical diagrams are retired with their cancelled
 protocols. Current resource and recovery Skills select the existing implementation
-regressions. The two request-engine models retain all 21 configurations and their
-original rules; they do not prove the multi-step current writer.
+regressions and [retained finite models](https://github.com/yoyooyooo/notion-skills-cli/blob/next/docs/formal-verification-maintenance.md).
+Keep each model's complete configured rules and negative controls; request-engine
+results do not prove the multi-step current writer.
 
-## Daily acceptance and deferred work
+## Daily acceptance scope
 
-AH-500 reuses the public sync, rebuild and consumption results from AH-504/AH-516.
 Check the selected daily set, complete paths/bytes/modes, preserved user policies,
 upstream removals, same-version zero writes and consumption after a physical page
-is rebuilt. Replaced runtime code, callers and completed one-time conversion
-wiring leave in the same implementation wave; AH-517 covers static leftovers only.
+is rebuilt. Remove replaced runtime callers and completed conversion wiring in the
+same implementation change. Retain still-unique author copies until the selected
+replacement has been verified.
 
-Use the matching CLI/SDK package and Broker for the necessary actual Pro Pi
-samples. A controlled HTTP fixture is not live Notion, default installation,
-host delivery or a model result. Keep the original Store when testing a rebuilt
-Skill, and isolate global Skills with `pi -ns`. AH-1063 records the first native/Git
-baseline; it does not certify a later pairing or the full daily batch.
+Use the matching CLI/SDK package and Broker for actual Pi samples. A controlled
+HTTP fixture does not establish live Notion, the normal installation, host delivery
+or model behavior. Keep the original Store when testing a rebuilt Skill; use the
+chosen verification profile's declared native Skill and extension settings. Earlier
+results remain bound to their original package, inputs and run scope.
 
-Required Files metadata and original bytes belong to current consumption.
-AH-501/AH-1141 now require full daily main and supporting text in Notion. Run the
-public projection command, read back actual bodies and repeat to establish zero
-semantic writes. Report native bodies as verified and non-text files as skipped.
-The public command and controlled tests do not prove live daily coverage. Non-daily
-text and binary presentation remain deferred. AH-505/AH-507/AH-513 cover additional
-governance, recovery and non-daily data; those tasks do not block the daily batch.
-Agent-kit main-path Skills and global exposure stay available. OMP/Tern and other
-hosts remain deferred.
+Required Files metadata and original bytes belong to consumption. Reading-page
+acceptance uses the public projection command, full actual body readback and a
+repeat with zero semantic writes. Report native bodies as verified and non-text
+files as skipped. Record coverage of unselected data and other hosts separately;
+source tests do not establish those deployments.
 
 ## Native daily authoring acceptance
 
 Use the existing management tests, package gate and paired Pi integration. This
 procedure defines required observations, not a passing result or a new harness.
+When a real provider changes content, preserve the original input, complete
+readback and HTTP outcome before reducing it to a regression. Keep nearby unsafe
+cases strict, including changed code and link targets; do not normalize away an
+unknown write or replay it to obtain a clean sample.
 
 1. Exercise public `skill create` with supported Markdown main/supporting content
    and an exact resource. Verify full Notion readback and the returned native
@@ -157,7 +158,9 @@ procedure defines required observations, not a passing result or a new harness.
    observed while the target is live, before Trash hides them. Check complete
    pagination, bounded replacement, interruption recovery and a zero-write repeat.
    An auxiliary Agent may not patch fields, relations or pending state to finish.
-5. Use the user's actual `pi -ne` entry with group/worker for the natural journey.
+5. Use the installed Pi entry and the selected verification profile with
+   group/worker for the natural journey. Keep that profile's extension and native
+   Skill settings explicit.
    Provide the author task, content and authorized scope; let the installed main
    builtin route to maintain and its public actions. Do not seed the prompt with
    the correct command, internal fields or expected answer. Check real worker

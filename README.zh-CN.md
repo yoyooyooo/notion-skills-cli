@@ -18,7 +18,7 @@
 
 ## 安装
 
-使用 Node.js 22.x 中的 22.22.3 或更新版本，或者 24.20.0 及以上版本。
+使用 Node.js 22.x 中的 22.23.5+、24.x 中的 24.22.3+，或 26.x 中的 26.13.1+。
 
 ```sh
 npm install --global ntn-skills --registry https://registry.npmjs.org

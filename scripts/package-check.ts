@@ -130,6 +130,14 @@ for (const file of publicFiles) {
   const bytes = await readFile(join(root, file))
   const bundled = await run(["tar", "-xOf", archive, `package/${file}`])
   if (bundled !== bytes.toString("utf8")) throw new Error(`Bundled document is stale: ${file}`)
+  if (
+    /(?:\/Users\/[^/\s]+\/|\/home\/[^/\s]+\/|https:\/\/(?:linear\.app|app\.notion\.com|(?:www\.)?notion\.so)\/)/u.test(
+      bundled,
+    )
+  )
+    throw new Error(
+      `Public document contains a private workspace path or workspace-only link: ${file}`,
+    )
   // Examples describe a Skill's own file tree. Only rendered document links,
   // including nested and reference links, must resolve inside this package.
   const links = documentLinks(SourceLexer.lex(bundled))
