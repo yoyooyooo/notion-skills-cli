@@ -3,6 +3,7 @@ import { spawn, spawnSync } from "node:child_process"
 import { mkdir, mkdtemp, readFile, realpath, rename, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import { expect, test, vi } from "vitest"
 import { ConfigProvider, Effect } from "effect"
 import {
@@ -15,7 +16,7 @@ import {
   SkillsError,
 } from "../../cli/src/sdk.ts"
 import { nodeRuntime } from "../../cli/src/runtime.ts"
-import { clearCache } from "../src/cache.ts"
+import { clearCache, locallySelectedScope } from "../src/cache.ts"
 import { property } from "../src/model.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { currentSourceConsumerFixture } from "./shared-current-source-consumer-fixture.ts"
@@ -488,6 +489,187 @@ test("public SDK preserves fixed-object failure details without replacing the pi
   })
 })
 
+test("public SDK binds complete pins to the selected credential across rejection, clear and restore", async () => {
+  await setup(async ({ source, input, options }) => {
+    ready(await readResources(input, options))
+    const directory = new URL(input.refs[0]!)
+    directory.pathname = "/"
+    directory.searchParams.delete("file_id")
+    const listing = await listSkill(directory.toString(), options)
+    const main = listing.files.find((file) => file.path === listing.entrypoint)!
+    const original = await readSkill(main.ref, { ...options, offline: true })
+    if (!("content" in original)) throw new Error("Expected the native main body")
+    const other = {
+      ...options,
+      env: { ...options.env, NOTION_API_TOKEN: "other-controlled-credential" },
+    }
+    const fixedRefused = async (selected: typeof options, code: string) => {
+      const before = source.requests.length
+      for (const offline of [false, true]) {
+        const selectedOptions = { ...selected, offline }
+        for (const ref of [main.ref, input.refs[0]!])
+          await expect(readSkill(ref, selectedOptions)).rejects.toMatchObject({ code })
+        await expect(listSkill(directory.toString(), selectedOptions)).rejects.toMatchObject({
+          code,
+        })
+        const batch = await readResources(input, selectedOptions)
+        expect(batch).toMatchObject({ status: "failed", error: { code } })
+        expect("files" in batch).toBe(false)
+        expect(await decodeResourceReadResult(batch, input)).toEqual(batch)
+      }
+      expect(source.requests).toHaveLength(before)
+    }
+    const prepare = (selected: typeof options, purpose: "inspect" | "use", offline = true) =>
+      consume(
+        {
+          version: 1,
+          targets: [main.ref],
+          purpose,
+          freshness: { policy: offline ? "offline" : "default" },
+        },
+        selected,
+      )
+
+    // The complete native body and resource already exist in this real Store.
+    // Each SDK invocation opens its own scoped runtime for the selected env.
+    await fixedRefused(other, "CACHE_SCOPE_UNAVAILABLE")
+    await fixedRefused(
+      { ...options, env: { ...options.env, NOTION_API_BASE_URL: "http://127.0.0.1:1" } },
+      "CACHE_SCOPE_UNAVAILABLE",
+    )
+    source.setPhase("credential-b-denied", { denyAuthentication: true })
+    await expect(readSkill(skillPage, { ...other, refresh: true })).rejects.toMatchObject({
+      code: "AUTH_REQUIRED",
+    })
+    expect(source.requests.some((row: { status: number }) => row.status === 401)).toBe(true)
+    for (const retired of [false, true]) {
+      if (retired) {
+        const cleared = await Effect.runPromise(
+          clearCache(undefined, { all: true }).pipe(
+            Effect.provide(nodeRuntime(process.cwd()).live),
+            Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(other.env))),
+            Effect.scoped,
+          ),
+        )
+        expect(cleared.entries.some((key) => key.startsWith("cache/identities/"))).toBe(false)
+        expect(cleared.retired.some((entry) => entry.key.startsWith("cache/identities/"))).toBe(
+          false,
+        )
+      }
+      await fixedRefused(other, "CACHE_SCOPE_UNAVAILABLE")
+      for (const purpose of ["inspect", "use"] as const) {
+        const before = source.requests.length
+        const offline = await prepare(other, purpose)
+        expect(offline).toMatchObject({
+          status: "failed",
+          error: { code: "CACHE_SCOPE_UNAVAILABLE" },
+        })
+        expect("preparation" in offline).toBe(false)
+        expect(source.requests).toHaveLength(before)
+        expect(await prepare(other, purpose, false)).toMatchObject({
+          status: "failed",
+          error: { code: "AUTH_REQUIRED" },
+        })
+      }
+      // B's actual rejection never becomes a denial of A. Clear preserves the
+      // credential association, not disposable current/body freshness.
+      const before = source.requests.length
+      expect(await readSkill(main.ref, { ...options, offline: true })).toMatchObject({
+        content: original.content,
+        snapshot_id: original.snapshot_id,
+        version_id: original.version_id,
+        scope: original.scope,
+      })
+      ready(await readResources(input, { ...options, offline: true }))
+      for (const purpose of ["inspect", "use"] as const)
+        expect(await prepare(options, purpose)).toMatchObject({ status: "ready" })
+      expect(source.requests).toHaveLength(before)
+    }
+
+    // A different successfully authenticated credential still cannot read A's
+    // selection, even when this controlled service reports the same principal.
+    source.setPhase("credential-b-granted", { denyAuthentication: false })
+    const second = await readSkill(skillPage, { ...other, refresh: true })
+    expect(second.scope).not.toBe(original.scope)
+    await fixedRefused(other, "SNAPSHOT_SCOPE_MISMATCH")
+    const beforeOtherPrepare = source.requests.length
+    for (const purpose of ["inspect", "use"] as const) {
+      const prepared = await prepare(other, purpose)
+      expect(prepared).toMatchObject({
+        status: "failed",
+        error: { code: "SNAPSHOT_SCOPE_MISMATCH" },
+      })
+      expect("preparation" in prepared).toBe(false)
+    }
+    expect(source.requests).toHaveLength(beforeOtherPrepare)
+
+    // A real rejection of A remains authoritative until fresh A validation.
+    source.setPhase("credential-a-denied", { denyAuthentication: true })
+    await expect(readSkill(skillPage, { ...options, refresh: true })).rejects.toMatchObject({
+      code: "AUTH_REQUIRED",
+    })
+    await fixedRefused(options, "AUTH_REQUIRED")
+    source.setPhase("credential-a-restored", { denyAuthentication: false })
+    await readSkill(skillPage, { ...options, refresh: true })
+    const before = source.requests.length
+    expect(await readSkill(main.ref, { ...options, offline: true })).toMatchObject({
+      content: original.content,
+      snapshot_id: original.snapshot_id,
+      version_id: original.version_id,
+      scope: original.scope,
+    })
+    ready(await readResources(input, { ...options, offline: true }))
+    expect(source.requests).toHaveLength(before)
+    expect(source.requests.some((row: { semantic_write: boolean }) => row.semantic_write)).toBe(
+      false,
+    )
+  })
+})
+
+test("public SDK fixed scope checks preserve the actual SQLite identity-read failure", async () => {
+  await setup(async ({ source, input, options }) => {
+    ready(await readResources(input, options))
+    const directory = new URL(input.refs[0]!)
+    directory.pathname = "/"
+    directory.searchParams.delete("file_id")
+    const database = new DatabaseSync(join(options.env.NTN_SKILLS_HOME, "state.sqlite"))
+    try {
+      // Only this test Store is changed. Its fixed manifests and objects remain
+      // readable; the real SQLite identity query must expose its original cause.
+      database.exec("ALTER TABLE identities RENAME TO t05_unavailable_identities")
+      const before = source.requests.length
+      const original = await Effect.runPromise(
+        locallySelectedScope().pipe(
+          Effect.provide(nodeRuntime(process.cwd()).live),
+          Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(options.env))),
+          Effect.scoped,
+          Effect.result,
+        ),
+      )
+      expect(original._tag).toBe("Failure")
+      if (original._tag !== "Failure") throw new Error("Expected the actual SQLite query error")
+      if (!(original.failure instanceof SkillsError)) throw original.failure
+      expect(original.failure).toMatchObject({
+        code: "STATE_CONFIG_ERROR",
+        details: { phase: "sqlite_state" },
+      })
+      await expect(listSkill(directory.toString(), options)).rejects.toEqual(original.failure)
+      await expect(readSkill(input.refs[0]!, options)).rejects.toMatchObject({
+        code: original.failure.code,
+        message: original.failure.message,
+        details: original.failure.details,
+      })
+      expect(source.requests).toHaveLength(before)
+    } finally {
+      database.exec("ALTER TABLE t05_unavailable_identities RENAME TO identities")
+      database.close()
+    }
+    const before = source.requests.length
+    ready(await readResources(input, { ...options, offline: true }))
+    expect(source.requests).toHaveLength(before)
+  })
+})
+
 for (const code of ["ACCESS_DENIED", "AUTH_REQUIRED"] as const)
   test(`public SDK retains observed ${code} across offline reads and cache retirement`, async () => {
     await setup(async ({ source, input, options }) => {
@@ -542,13 +724,9 @@ for (const code of ["ACCESS_DENIED", "AUTH_REQUIRED"] as const)
               },
               options,
             )
-            // all-clear removes the disposable account identity for a target
-            // denial. Offline preparation then fails before it can choose a
-            // scope; the scalar/batch checks above still prove the denial is
-            // retained. A scope denial retains its identity association.
-            const preparationCode =
-              retired && offline && code === "ACCESS_DENIED" ? "CACHE_SCOPE_UNAVAILABLE" : code
-            expect(prepared).toMatchObject({ status: "failed", error: { code: preparationCode } })
+            // All-clear retains the credential binding and the exact denial;
+            // offline preparation cannot hide it behind a missing scope.
+            expect(prepared).toMatchObject({ status: "failed", error: { code } })
             expect("preparation" in prepared).toBe(false)
             expect(await decodeConsumeResult(prepared)).toEqual(prepared)
           }

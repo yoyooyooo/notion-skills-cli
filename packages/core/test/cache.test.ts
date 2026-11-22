@@ -375,6 +375,64 @@ test("C8 credential scopes isolate cache and a new credential requires online va
   expect(f.requests.length).toBeGreaterThan(requests)
 })
 
+test("T05 fixed inventories and exports require the selected credential scope after clear", async () => {
+  const f = fixture()
+  const original = await f.run(openSkill(page))
+  const originalBody = await f.run(readSkill(original.snapshot_id, { offline: true }))
+  if (!("content" in originalBody)) throw new Error("Expected the complete native main body")
+  const identities = [...f.json.keys()].filter((key) => key.startsWith("cache/identities/"))
+  expect(identities).toHaveLength(1)
+  const refused = async (code: string) => {
+    const before = f.requests.length
+    for (const offline of [false, true]) {
+      const rejected = await Promise.all([
+        f.run(readSkill(original.snapshot_id, { offline }).pipe(Effect.flip)),
+        f.run(listSkill(original.snapshot_id, { offline }).pipe(Effect.flip)),
+        f.run(
+          exportSkill(original.snapshot_id, {
+            offline,
+            output: "/controlled/t05-refused",
+          }).pipe(Effect.flip),
+        ),
+      ])
+      for (const error of rejected)
+        expect(error).toMatchObject({
+          code,
+          details: {
+            phase: "fixed_access",
+            snapshot_id: original.snapshot_id,
+            scope: original.scope,
+          },
+        })
+    }
+    expect(f.requests.length).toBe(before)
+  }
+  f.credential("credential-two")
+  await refused("CACHE_SCOPE_UNAVAILABLE")
+  const second = await f.run(readSkill(page))
+  expect(second.scope).not.toBe(original.scope)
+  await refused("SNAPSHOT_SCOPE_MISMATCH")
+  const cleared = await f.run(clearCache(undefined, { all: true }))
+  for (const key of identities) {
+    expect(cleared.entries).not.toContain(key)
+    expect(cleared.retired.some((entry) => entry.key === key)).toBe(false)
+    expect(f.json.has(key)).toBe(true)
+  }
+  await refused("SNAPSHOT_SCOPE_MISMATCH")
+  f.credential("credential-one")
+  const before = f.requests.length
+  expect(await f.run(readSkill(original.snapshot_id, { offline: true }))).toMatchObject({
+    content: originalBody.content,
+    snapshot_id: original.snapshot_id,
+    scope: original.scope,
+  })
+  expect((await f.run(listSkill(original.snapshot_id, { offline: true }))).files).toHaveLength(2)
+  expect(f.requests.length).toBe(before)
+  // Missing identity state is not reconstructed from content hashes or a pin.
+  f.json.delete(identities[0]!)
+  await refused("CACHE_SCOPE_UNAVAILABLE")
+})
+
 for (const target of [page, "sample-skill"])
   for (const code of ["ACCESS_DENIED", "AUTH_REQUIRED", "NOT_FOUND"] as const)
     test(`SC12 ${code} during refresh fences current ${target} without changing old pins`, async () => {

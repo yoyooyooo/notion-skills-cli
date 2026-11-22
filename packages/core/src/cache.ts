@@ -591,9 +591,33 @@ export function recordScopeAccess(scope: string, generation: number, denied?: Ac
 export function recordPhysicalPageGrant(scope: string, page: string, generation: number) {
   return recordAccessObservation(scope, page, generation)
 }
-/** This checks known denials only. Hashes never become a new permission grant. */
+/** Require the selected credential's known scope, then honor known denials.
+ * Neither content hashes nor a fixed reference grant access to another scope. */
 export function assertKnownSnapshotAccess(snapshot: Snapshot) {
   return Effect.gen(function* () {
+    const context = {
+      phase: "fixed_access",
+      record_id: snapshot.record.id,
+      snapshot_id: snapshot.snapshot_id,
+      scope: snapshot.scope,
+    }
+    const selected = yield* locallySelectedScope()
+    if (selected === undefined)
+      return yield* Effect.fail(
+        fail(
+          "CACHE_SCOPE_UNAVAILABLE",
+          "No locally identifiable cached account scope is available.",
+          context,
+        ),
+      )
+    if (selected !== snapshot.scope)
+      return yield* Effect.fail(
+        fail(
+          "SNAPSHOT_SCOPE_MISMATCH",
+          "The fixed snapshot belongs to another credential scope; select current content with this credential.",
+          { ...context, selected_scope: selected },
+        ),
+      )
     const scope = yield* latestObservation(scopeAccessIdentity, snapshot.scope)
     const target = yield* latestObservation(snapshot.record.id, snapshot.scope)
     const physical =
@@ -606,7 +630,7 @@ export function assertKnownSnapshotAccess(snapshot: Snapshot) {
         fail(
           denied,
           "Known access rejection prevents reading these selected bytes; revalidate the current authority.",
-          { record_id: snapshot.record.id, snapshot_id: snapshot.snapshot_id },
+          context,
         ),
       )
   })
@@ -991,6 +1015,10 @@ export function clearCache(
         : `cache/shared-derived-graphs/${selected.scope}/${yield* sha256(selected.page)}/`
     const keys: string[] = []
     for (const key of yield* store.listKeys("cache")) {
+      // Credential-to-scope bindings are authorization facts, not disposable
+      // freshness. Retaining them lets the same credential use its fixed bytes
+      // offline; the separate known-denial and generation fences still apply.
+      if (key.startsWith("cache/identities/")) continue
       if (!selected) {
         keys.push(key)
         continue

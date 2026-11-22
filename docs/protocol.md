@@ -267,6 +267,15 @@ Configuration output omits the token.
 An explicit root names the application directory itself.
 Pending current operations belong to local state and are not cache entries.
 `ctl cache clear` retires disposable observations without resolving an operation or changing Notion.
+It preserves credential-to-scope authorization bindings and known denials, and does not
+delete fixed manifests or content objects. Its `entries` and `retired` receipts exclude
+the preserved identity bindings. Current eligibility and body freshness still retire.
+Fixed reads, directory inspection and exports require a locally known binding for the
+selected credential and API origin that matches the snapshot's scope. An unknown
+binding fails with `CACHE_SCOPE_UNAVAILABLE`; a different bound scope fails with
+`SNAPSHOT_SCOPE_MISMATCH`. The same credential can read complete fixed bytes offline
+after clearing observations, subject to known denials. This check makes no remote
+authorization request; a missing binding requires explicit current validation first.
 Uninstalling the package does not remove these directories.
 
 ## Failure boundaries
