@@ -8,7 +8,7 @@ metadata:
 
 # Use the current Notion Skill library
 
-Requires ntn-skills on Node.js 22.22.3+ within 22.x or 24.20.0+. Online reads use
+Requires ntn-skills on Node.js `^22.23.5 || ^24.22.3 || ^26.13.1`. Online reads use
 the existing Notion connection and Read access. A native host tool needs its adapter.
 
 Use the executable and library scope supplied by the host. Select exact returned
