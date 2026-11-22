@@ -64,6 +64,18 @@ test("native code fences recognize Notion's sh-to-bash spelling without changing
   ).toBe("different")
 })
 
+test.each(["SKILL.md", "SKILL\\.md"])(
+  "native comparison rejects an unexpected filename link even when the input is escaped: %s",
+  (filename) => {
+    expect(
+      compareNativeMarkdown({
+        expected: `A new Skill requires root ${filename}.`,
+        observed: "A new Skill requires root [SKILL.md](http://SKILL.md).",
+      }),
+    ).toBe("different")
+  },
+)
+
 test.each([
   ["Use `code`.", "Use <code>code</code>."],
   ["`&amp;` and `` `literal` ``.", "<code>&amp;</code> and <code>`literal`</code>."],

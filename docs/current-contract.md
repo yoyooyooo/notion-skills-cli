@@ -176,6 +176,12 @@ The observed Notion code-block label normalization from `sh` to `bash` is also
 accepted with an exact code payload. This concerns the presentation label;
 POSIX `sh` and Bash interpreters are not interchangeable.
 
+Notion may turn an ordinary filename such as `SKILL.md` into an external link,
+even when its dot is backslash-escaped. Author a literal filename as inline code
+when it should remain code text. An unexpected link still fails complete
+verification and leaves the operation unfinished; general plain-text fidelity
+across Notion's automatic linking is not resolved by the Markdown transport.
+
 The original input bytes/hash and operation fingerprint remain fixed. Stored
 frontmatter and executable mode remain exact. Native reads and exports use the
 actual current Notion body, so native authoring does not promise original Markdown

@@ -159,7 +159,7 @@ input. A target with any Source main or supporting file returns
 CURRENT_SOURCE_MANAGEMENT_REQUIRED in dry-run and apply because import selects
 resource or native authority. An unchanged export is also refused. Use current
 Source apply/refresh for contributions or explicit takeover through ntn-skills-sync;
-omitting or reidentifying files is not a takeover route. Ordinary directory/ZIP input requires root SKILL.md. Portable v2
+omitting or reidentifying files is not a takeover route. Ordinary directory/ZIP input requires root `SKILL.md`. Portable v2
 uses the kind's canonical entrypoint. Relations contain same-library unpinned stable Skill
 refs; omitted fields preserve, [] clears, and a list replaces that entire field.
 Prompt relations, old projection/materialization and unknown fields are rejected.

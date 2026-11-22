@@ -178,39 +178,52 @@ test("native create freezes authored bytes while sending equivalent soft wraps a
   expect(f.mutations()).toEqual([])
 })
 
-test("native create keeps a literal br inside code unfinished after full readback", async () => {
-  const f = currentWriteFixture(parent)
-  const plan = await f.run(
-    prepareCurrentSkillWrite(
-      input({
-        files: [
-          {
-            path: "SKILL.md",
-            bytes: testBytes("Read `list --database\nENTRY`.\n"),
-            authority: { kind: "native" },
-          },
-        ],
-      }),
-    ),
-  )
-  f.rewrite((path, response) =>
-    path.includes("/markdown") && typeof response.markdown === "string"
-      ? {
-          ...response,
-          markdown: response.markdown.replace(
-            "`list --database ENTRY`",
-            "<code>list --database<br>ENTRY</code>",
-          ),
-        }
-      : response,
-  )
-  await expect(f.run(createCurrentNotionSkill(library, { plan }))).rejects.toMatchObject({
-    code: "WRITE_OUTCOME_UNKNOWN",
-    details: { cause_code: "CURRENT_NATIVE_ROUNDTRIP" },
-  })
-  expect(pending(f)).toHaveLength(1)
-  expect(f.mutations().filter((call) => call.path.includes("/markdown"))).toHaveLength(1)
-})
+test.each([
+  {
+    difference: "a literal br inside code",
+    markdown: "Read `list --database\nENTRY`.\n",
+    wire: "`list --database ENTRY`",
+    observed: "<code>list --database<br>ENTRY</code>",
+  },
+  {
+    difference: "an unexpected filename link",
+    markdown: "A new Skill requires root SKILL.md.\n",
+    wire: "SKILL.md",
+    observed: "[SKILL.md](http://SKILL.md)",
+  },
+])(
+  "native create keeps $difference unfinished after full readback",
+  async ({ markdown, wire, observed }) => {
+    const f = currentWriteFixture(parent)
+    const plan = await f.run(
+      prepareCurrentSkillWrite(
+        input({
+          files: [
+            {
+              path: "SKILL.md",
+              bytes: testBytes(markdown),
+              authority: { kind: "native" },
+            },
+          ],
+        }),
+      ),
+    )
+    f.rewrite((path, response) =>
+      path.includes("/markdown") && typeof response.markdown === "string"
+        ? {
+            ...response,
+            markdown: response.markdown.replace(wire, observed),
+          }
+        : response,
+    )
+    await expect(f.run(createCurrentNotionSkill(library, { plan }))).rejects.toMatchObject({
+      code: "WRITE_OUTCOME_UNKNOWN",
+      details: { cause_code: "CURRENT_NATIVE_ROUNDTRIP" },
+    })
+    expect(pending(f)).toHaveLength(1)
+    expect(f.mutations().filter((call) => call.path.includes("/markdown"))).toHaveLength(1)
+  },
+)
 
 for (const difference of ["metadata", "support-body", "file-count"] as const)
   test(`create refuses an existing different ${difference} without replacement writes`, async () => {
