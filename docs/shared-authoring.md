@@ -28,7 +28,7 @@ If creation stops, retain its exact parent, `operation_id`, and `NTN_SKILLS_HOME
 Add `--resume` to continue known unfinished steps without replacing existing
 tables. Unknown creates must become visible before continuation can advance;
 an empty query cannot authorize another POST. See the
-[initialization continuation guide](../skills/notion/ntn-skills-maintain/references/setup.md#continue-an-interrupted-initialization).
+[initialization continuation guide](../skills/notion/ntn-skills-maintain/references/setup.md#interrupted-initialization).
 
 Keep registered database, data-source, and property identities intact.
 A similar table name does not make another table part of the library.
