@@ -23,7 +23,7 @@ import {
 import { currentUploadFileSpec } from "./shared-current-upload.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
-import { nativeMarkdownTransport, validateNativeMarkdown } from "./shared-native-markdown.ts"
+import { nativeFileTransport, validateNativeMarkdown } from "./shared-native-markdown.ts"
 
 export type CurrentWriteAuthority =
   | { readonly kind: "resource" }
@@ -157,7 +157,7 @@ export function prepareCurrentWriteFile(
             JSON.stringify({
               markdown_version: "v2",
               type: "replace_content",
-              replace_content: { new_str: nativeMarkdownTransport(markdown) },
+              replace_content: { new_str: nativeFileTransport({ path: inputFile.path, markdown }) },
             }),
           ).byteLength > 480000
         )
@@ -307,7 +307,7 @@ function validatePreparedCurrentWriteFile(
             JSON.stringify({
               markdown_version: "v2",
               type: "replace_content",
-              replace_content: { new_str: nativeMarkdownTransport(file.markdown) },
+              replace_content: { new_str: nativeFileTransport(file) },
             }),
           ).byteLength > 480000
         )

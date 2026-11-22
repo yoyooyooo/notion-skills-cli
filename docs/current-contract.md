@@ -163,8 +163,10 @@ supported document structure. Formatting-only differences can complete and are
 reported through `native.verified` and `native.normalized_paths`. Lost content,
 changed meaning or an unconfirmed full body cannot publish ready.
 
-The native transport folds ordinary soft line wraps and line endings inside
-Markdown code spans to spaces, following their CommonMark meaning. Explicit hard
+For `.md` and `.markdown` paths, the native transport folds ordinary soft line
+wraps and line endings inside Markdown code spans to spaces, following their
+CommonMark meaning. Other explicitly selected native paths retain their previous
+text transport: CRLF becomes LF without folding line boundaries. Explicit hard
 breaks, fenced code payloads, native `<code>` literals and link destinations stay
 unchanged. The complete structure must still match before any write. Readback
 also recognizes the attribute-free `<p>` paragraph wrapper that Notion emits for

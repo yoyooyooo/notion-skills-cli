@@ -115,6 +115,9 @@ function inlineTransport(input: readonly unknown[], links: Context["links"]): st
         .map((raw) => {
           const token = property(raw),
             source = string(token.raw)
+          // Autolink labels are literal. Re-lexing their text would produce the
+          // same autolink again; their raw spelling contains no soft line wrap.
+          if (token.type === "link" && token.autolink === true) return source
           if (
             token.tokens !== undefined &&
             (token.type === "strong" ||
@@ -208,6 +211,17 @@ export function nativeMarkdownTransport(markdown: string): string {
     transport = blockTransport(tokens, tokens.links)
   if (signature(transport) !== expected) throw invalid("transport_structure_changed")
   return transport
+}
+
+/** Explicit native selection also admits other text paths. Only the existing
+ * Markdown file domain opts into Markdown wire normalization. */
+export function nativeFileTransport(input: {
+  readonly path: string
+  readonly markdown: string
+}): string {
+  return /\.(md|markdown)$/iu.test(input.path)
+    ? nativeMarkdownTransport(input.markdown)
+    : normalizedEncoding(input.markdown)
 }
 
 function entities(text: string): string {
