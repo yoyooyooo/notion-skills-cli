@@ -140,7 +140,7 @@ must be regular UTF-8 and at most 512 KiB. This writer accepts regular Git files
 from GitHub and credential-free private HTTP(S) Git origins, with manual or pinned
 policy. GitHub SSH repository spellings normalize to the same shared identity.
 Authentication stays on the machine. Unknown providers, options, transformations
-and symlinks fail. Source options.storage are rejected, as are auto policy and
+and symlinks fail. Source `options.storage` are rejected, as are auto policy and
 check_interval_ms. The only current option is accepted_ref for an explicitly fixed discovery
 commit. Do not retain that option for a declaration intended to follow a branch.
 Selection.mapping supplies new Skill names; it is not a file mapping.
@@ -155,7 +155,7 @@ to prevent a deliberately taken-over file from returning when upstream reintrodu
 
 A desired upstream path replaces matching native/resource authority and preserves
 its File ID. Dry-run reports that overwrite before applying. Exclude the incoming
-SKILL.md when an existing native main should stay authoritative. Unrelated files,
+`SKILL.md` when an existing native main should stay authoritative. Unrelated files,
 other Sources and existing Skill metadata remain preserved; another Source at the
 same desired path is a conflict. When a member disappears, archive its Files and
 Skill only if the complete target is owned by this Source. Retaining unrelated
