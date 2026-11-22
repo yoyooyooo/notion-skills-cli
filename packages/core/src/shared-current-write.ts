@@ -92,6 +92,12 @@ import type { SharedLibrary } from "./shared-library-model.ts"
 import { observeSharedBody } from "./shared-page-body.ts"
 import { compareNativeMarkdown, nativeFileTransport } from "./shared-native-markdown.ts"
 import {
+  applyCurrentNativePlainText,
+  nativePlainTextPlan,
+  planCurrentNativePlainText,
+  type CurrentNativePlainTextTarget,
+} from "./shared-native-plain-text.ts"
+import {
   compileSharedNativeReferences,
   type NativeReferenceSource,
 } from "./shared-native-references.ts"
@@ -2904,12 +2910,35 @@ function applyPreparedCurrentSkillWrite(
           for (const file of writableFiles) {
             const page = filePages.get(file.path)!
             if (file.kind === "native") {
+              let corrections: readonly CurrentNativePlainTextTarget[] | undefined
               const observe = () =>
                 Effect.gen(function* () {
                   const body = yield* observeSharedBody(page)
                   const comparison = yield* checked(() =>
                     compareNativeMarkdown({ expected: file.markdown, observed: body.markdown }),
                   )
+                  corrections = undefined
+                  if (
+                    input.completedNativeTransfer !== true &&
+                    /\.(?:md|markdown)$/iu.test(file.path) &&
+                    (comparison === "different" ||
+                      session.pendingActionKey?.startsWith(`native:${page}:plain:`))
+                  ) {
+                    const groups = yield* checked(() =>
+                      nativePlainTextPlan({ expected: file.markdown, observed: body.markdown }),
+                    )
+                    if (groups !== undefined) {
+                      corrections = yield* planCurrentNativePlainText({
+                        page,
+                        groups,
+                        pendingAction: session.pendingActionKey,
+                      })
+                      // The Markdown action has completed its structure stage. A
+                      // plain-span correction is still pending in this same intent.
+                      // Only the final strict read below verifies authored content.
+                      return { status: "complete", value: undefined } as const
+                    }
+                  }
                   if (comparison === "different" && input.completedNativeTransfer !== true)
                     return { status: "missing" } as const
                   nativeVerified.set(file.path, comparison === "different" ? "current" : comparison)
@@ -2948,6 +2977,29 @@ function applyPreparedCurrentSkillWrite(
                       )
                   }),
               })
+              if (corrections !== undefined) {
+                yield* applyCurrentNativePlainText({
+                  page,
+                  targets: corrections,
+                  dispatch: coordinatedDispatch(
+                    resolved.find((selected) => selected.input.path === file.path)!,
+                    page,
+                  ),
+                })
+                const body = yield* observeSharedBody(page)
+                const comparison = yield* checked(() =>
+                  compareNativeMarkdown({ expected: file.markdown, observed: body.markdown }),
+                )
+                if (comparison === "different")
+                  return yield* Effect.fail(
+                    fail(
+                      "CURRENT_NATIVE_ROUNDTRIP",
+                      "The complete corrected native body still differs from the original author intent. The current intent remains pending.",
+                      { path: file.path },
+                    ),
+                  )
+                nativeVerified.set(file.path, comparison)
+              }
               continue
             }
           }

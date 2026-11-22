@@ -70,6 +70,9 @@ ID remains a syntactic path calculation and makes no Notion request. A fixed can
 The SDK `resolveReference` still requires a fixed canonical containing File ref.
 
 A local snapshot fixes the manifest for one selection.
+Its opaque ID includes the observed record metadata. A metadata-only refresh can
+change that ID while preserving content version and file hashes. Earlier complete
+session bindings keep their own exact local manifest; current metadata does not replace them.
 A complete manifest does not imply that every file's bytes are cached.
 Missing bytes can be fetched only through that selection's unchanged current acquisition route.
 An unavailable selection returns an explicit failure and requires current reselection.
@@ -101,6 +104,10 @@ mode. All native writers accept normal LF/CRLF and terminal newlines, verify ful
 Notion readback for structural equivalence and report formatting normalization.
 Original input fingerprints remain fixed; native read/export uses the current
 Notion body. Lost content or changed meaning cannot complete an intent.
+For Markdown paths, an automatic link added to original plain text can be
+corrected through its precisely bound rich-text block in the same operation.
+This is a management write followed by strict complete readback; reads do not
+modify content, and existing links, code, styles and other differences are not ignored.
 Unknown or noncanonical native paths are rejected locally; the selection is part
 of the input fingerprint and must match on resume. A target containing any Source
 main or supporting file returns `CURRENT_SOURCE_MANAGEMENT_REQUIRED` in both dry-run

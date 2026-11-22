@@ -21,6 +21,7 @@ import { Notion } from "../src/notion.ts"
 import { graphLibrary, nativeGraphFixture as nativeFixture } from "./graph-prepare-live-fixture.ts"
 import { fileRef } from "../src/ref.ts"
 import { Store } from "../src/store.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
 import {
   currentDigest as digest,
   currentBytes as encode,
@@ -29,6 +30,7 @@ import {
   currentScope as scope,
   currentSnapshotFixture,
   currentSkillPage as skillPage,
+  currentRich,
 } from "./shared-current-fixture.ts"
 
 type Definition = {
@@ -71,7 +73,7 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
     }
     const snapshot: Snapshot = {
       scope,
-      snapshot_id: `s_${digest(JSON.stringify([scope, record.id, version]))}`,
+      snapshot_id: `s_${digest(selectionSnapshotIdentityInput({ scope, record, version_id: version }))}`,
       version_id: version,
       created_at: 1000,
       record,
@@ -287,6 +289,87 @@ describe("graph prepare", () => {
       (await f.incomplete([conflict], { sessionBindings: first.session_bindings })).error.code,
     ).toBe("PREPARE_VERSION_CONFLICT")
     expect((await f.incomplete([f.ref("a"), conflict])).error.code).toBe("PREPARE_VERSION_CONFLICT")
+  })
+
+  test("successive metadata observations retain complete independent bindings without changing content version", async () => {
+    const f = currentSnapshotFixture({ fileCount: 0 })
+    const first = await f.open()
+    await f.run(recordScope(scope))
+    const root = fileRef(first.record.id, first.entrypoint)
+    const inspect = () => f.run(prepareGraph({ roots: [root], purpose: "inspect" }))
+    const selections = [await inspect()]
+    const edits = [
+      () => {
+        f.main.properties["Default Context"].checkbox = true
+      },
+      () => {
+        f.main.properties.Name.title[0]!.plain_text = "Second display"
+      },
+      () => {
+        f.main.properties.Description = currentRich("description", "Third directory description.")
+      },
+    ]
+    for (const [index, edit] of edits.entries()) {
+      edit()
+      f.main.last_edited_time = `2026-11-18T00:0${index + 1}:00.000Z`
+      const observed = await f.open()
+      expect(observed.version_id).toBe(first.version_id)
+      expect(observed.files).toEqual(first.files)
+      selections.push(await inspect())
+    }
+    const bindings = selections.map((selection) => selection.session_bindings[0]!)
+    expect(new Set(bindings.map((binding) => binding.snapshot_id)).size).toBe(4)
+    expect(new Set(bindings.map((binding) => binding.version_id)).size).toBe(1)
+    expect(new Set(bindings.map((binding) => binding.body_sha256)).size).toBe(1)
+    f.clearCalls()
+    for (const selection of selections) {
+      const fixed = await f.run(
+        prepareGraph({
+          roots: [root],
+          purpose: "use",
+          sessionBindings: selection.session_bindings,
+          freshness: { policy: "offline" },
+        }),
+      )
+      expect(fixed.session_bindings).toEqual(selection.session_bindings)
+    }
+    expect(f.calls).toEqual([])
+    const selected = bindings[1]!
+    for (const record of [
+      { ...selected.record, default_context: !selected.record.default_context },
+      { ...selected.record, name: "Forged", alias: aliasFor("Forged") },
+      { ...selected.record, description: "Forged description" },
+      { ...selected.record, enabled: false },
+    ]) {
+      const result = await f.run(
+        prepareGraph({
+          roots: [root],
+          purpose: "use",
+          sessionBindings: [{ ...selected, record }],
+          freshness: { policy: "offline" },
+        }).pipe(Effect.result),
+      )
+      expect(result._tag === "Failure" && result.failure.code).toBe("PREPARE_BINDING_CONFLICT")
+    }
+    f.bodies.set(skillPage, "# Changed content\n\nThe author changed the instruction.\n")
+    f.main.last_edited_time = "2026-11-18T00:05:00.000Z"
+    const changed = await f.open()
+    expect(changed.version_id).not.toBe(first.version_id)
+    expect(changed.snapshot_id).not.toBe(bindings.at(-1)!.snapshot_id)
+    for (const selection of selections)
+      expect(
+        (
+          await f.run(
+            prepareGraph({
+              roots: [root],
+              purpose: "use",
+              sessionBindings: selection.session_bindings,
+              freshness: { policy: "offline" },
+            }),
+          )
+        ).session_bindings,
+      ).toEqual(selection.session_bindings)
+    expect(f.semanticWrites()).toEqual([])
   })
 
   test("a reused pin cannot authorize a different explicit owner", async () => {

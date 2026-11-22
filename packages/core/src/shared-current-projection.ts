@@ -627,7 +627,8 @@ function observedBlock(raw: unknown, owner: string): ObservedBlock {
     throw invalid("The projection contains a foreign or unavailable block.")
   return { id: exactPage(value.id), value }
 }
-function readProjectionBlocks(page: string) {
+/** Complete physical children shared by projection and authored native management. */
+export function readCurrentBodyBlocks(page: string) {
   return Effect.gen(function* () {
     const api = yield* Notion
     const blocks: ObservedBlock[] = [],
@@ -698,7 +699,7 @@ function assertReplaceableTree(roots: readonly ObservedBlock[]) {
           ),
         )
       if (block.value.has_children === true)
-        pending.push(...(yield* readProjectionBlocks(block.id)))
+        pending.push(...(yield* readCurrentBodyBlocks(block.id)))
     }
   })
 }
@@ -707,7 +708,7 @@ function assertReplaceableTree(roots: readonly ObservedBlock[]) {
 export function assertCurrentBodyReplaceable(pageId: string) {
   return Effect.gen(function* () {
     const page = yield* checked(() => exactPage(pageId))
-    yield* assertReplaceableTree(yield* readProjectionBlocks(page))
+    yield* assertReplaceableTree(yield* readCurrentBodyBlocks(page))
   })
 }
 
@@ -731,7 +732,7 @@ export function inspectCurrentProjection(input: {
   return Effect.gen(function* () {
     const page = yield* checked(() => exactPage(input.pageId))
     const expected = yield* expectedProjection(input.plan, input.attachment)
-    const actual = yield* readProjectionBlocks(page)
+    const actual = yield* readCurrentBodyBlocks(page)
     return {
       page_id: page,
       path: input.plan.path,
@@ -795,7 +796,7 @@ export function currentProjectionPendingAction(input: {
             },
       observe: () =>
         Effect.gen(function* () {
-          const actual = yield* readProjectionBlocks(page)
+          const actual = yield* readCurrentBodyBlocks(page)
           const prefix =
             actual.length <= expected.length &&
             actual.every((block, index) => canonicalBlock(block.value) === expected[index])
@@ -849,14 +850,14 @@ export function applyCurrentProjection<R>(input: {
       batchBoundaries.add(boundary)
     }
     yield* input.assertCurrent
-    let actual = yield* readProjectionBlocks(page)
+    let actual = yield* readCurrentBodyBlocks(page)
     const original = actual.map((block) => canonicalBlock(block.value))
     const prefix = () =>
       actual.length <= expected.length &&
       actual.every((block, index) => canonicalBlock(block.value) === expected[index])
     const refresh = (fresh: boolean) =>
       fresh
-        ? readProjectionBlocks(page).pipe(
+        ? readCurrentBodyBlocks(page).pipe(
             Effect.map((blocks) => {
               actual = blocks
             }),
@@ -965,7 +966,7 @@ export function applyCurrentProjection<R>(input: {
     const unchanged =
       original.length === expected.length &&
       original.every((value, index) => value === expected[index])
-    if (!unchanged) actual = yield* readProjectionBlocks(page)
+    if (!unchanged) actual = yield* readCurrentBodyBlocks(page)
     if (actual.length !== expected.length || !prefix())
       return yield* Effect.fail(
         fail(

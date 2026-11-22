@@ -880,7 +880,7 @@ test("catalog independent expiry/offline metadata preserves coverage without upg
   expect(offline.freshness.stale).toBe(true)
 })
 
-test("checkbox-only refresh updates current metadata while preserving pinned snapshot bytes and identity", async () => {
+test("checkbox-only refresh selects a new record while preserving the earlier pin and content version", async () => {
   const f = fixture()
   const first = await f.run(openSkill(page))
   expect(first.record.default_context).toBe(false)
@@ -888,7 +888,7 @@ test("checkbox-only refresh updates current metadata while preserving pinned sna
   const checked = await f.run(openSkill(page, { refresh: true }))
   expect(checked.record.default_context).toBe(true)
   expect((await f.run(openSkill(page))).record.default_context).toBe(true)
-  expect(checked.snapshot_id).toBe(first.snapshot_id)
+  expect(checked.snapshot_id).not.toBe(first.snapshot_id)
   expect(checked.version_id).toBe(first.version_id)
   expect(checked.files).toEqual(first.files)
   const pinned = await f.run(targetSnapshot(parseTarget(first.snapshot_id)))

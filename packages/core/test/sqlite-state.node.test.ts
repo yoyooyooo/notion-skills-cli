@@ -9,6 +9,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { sqliteState } from "../src/sqlite-state.ts"
 import { Store, StoreLive, sha256 } from "../src/store.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
 import { assertKnownSnapshotAccess, ObservationSchema, recordScope } from "../src/cache.ts"
 import { nodeRuntime } from "../../cli/src/runtime.ts"
 import { SnapshotSchema, decode } from "../src/model.ts"
@@ -208,16 +209,17 @@ it.live("explicit retirement during observation reads never returns a partial ol
         const store = yield* Store
         const state = yield* sqliteState(join(root, "state"), yield* FileSystem.FileSystem)
         yield* recordScope("scope")
+        const record = currentRecord({ skillId: "retained", name: "retained" })
         const snapshot = decode(SnapshotSchema, {
-          snapshot_id: "s_retained",
+          snapshot_id: `s_${yield* sha256(selectionSnapshotIdentityInput({ scope: "scope", record, version_id: "retained-version" }))}`,
           scope: "scope",
           version_id: "retained-version",
           entrypoint: "SKILL.md",
           created_at: 0,
-          record: currentRecord({ skillId: "retained", name: "retained" }),
+          record,
           files: [],
         })
-        yield* store.writeJson("snapshots/s_retained.json", snapshot)
+        yield* store.writeJson(`snapshots/${snapshot.snapshot_id}.json`, snapshot)
         const prefix = `cache/latest/scope/${snapshot.record.id}`
         const grantKey = `${prefix}/0-grant.json`
         const grantGeneration = yield* store.reserveCacheGeneration("scope", snapshot.record.id)
@@ -295,7 +297,9 @@ it.live("explicit retirement during observation reads never returns a partial ol
         expect(yield* store.readJson(keys[0]!, ObservationSchema)).toMatchObject({
           access_denied: "ACCESS_DENIED",
         })
-        expect(yield* store.readJson("snapshots/s_retained.json", SnapshotSchema)).toEqual(snapshot)
+        expect(
+          yield* store.readJson(`snapshots/${snapshot.snapshot_id}.json`, SnapshotSchema),
+        ).toEqual(snapshot)
       }).pipe(
         Effect.provide(nodeRuntime(process.cwd()).live),
         Effect.provide(
@@ -492,29 +496,30 @@ test("missing objects never produce visible snapshot pointers and standalone bac
     NTN_SKILLS_CACHE_HOME: join(directory, "cache"),
   })
   try {
-    await Effect.runPromise(
+    const snapshotId = await Effect.runPromise(
       Effect.gen(function* () {
         const store = yield* Store
         const bytes = new TextEncoder().encode("durable content")
         const hash = yield* sha256(bytes)
+        const record = currentRecord({ skillId: "fixture", name: "fixture" })
         const snapshot = {
-          snapshot_id: "s_fixture",
+          snapshot_id: `s_${yield* sha256(selectionSnapshotIdentityInput({ scope: "scope", record, version_id: "v_fixture" }))}`,
           scope: "scope",
           version_id: "v_fixture",
           entrypoint: "SKILL.md",
           created_at: 0,
-          record: currentRecord({ skillId: "fixture", name: "fixture" }),
+          record,
           files: [{ path: "SKILL.md", bytes: bytes.length, sha256: hash }],
         }
-        expect(
-          (yield* store.writeJson("snapshots/s_fixture.json", snapshot).pipe(Effect.result))._tag,
-        ).toBe("Failure")
-        expect(yield* store.readJson("snapshots/s_fixture.json", SnapshotSchema)).toBeUndefined()
+        const key = `snapshots/${snapshot.snapshot_id}.json`
+        expect((yield* store.writeJson(key, snapshot).pipe(Effect.result))._tag).toBe("Failure")
+        expect(yield* store.readJson(key, SnapshotSchema)).toBeUndefined()
         yield* store.writeBytes(`objects/${hash}`, bytes)
-        yield* store.writeJson("snapshots/s_fixture.json", snapshot)
+        yield* store.writeJson(key, snapshot)
         yield* store.writeJson(pendingKey, pending)
         yield* store.backup(join(directory, "backup"))
         expect(yield* store.readJson(pendingKey, Schema.Unknown)).toEqual(pending)
+        return snapshot.snapshot_id
       }).pipe(
         Effect.provide(StoreLive.pipe(Layer.provideMerge(NodeServices.layer))),
         Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())),
@@ -522,7 +527,7 @@ test("missing objects never produce visible snapshot pointers and standalone bac
     )
     const restored = await child(
       join(directory, "backup"),
-      `console.log(JSON.stringify(yield* state.read('snapshots/s_fixture.json')))`,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(`snapshots/${snapshotId}.json`)})))`,
     )
     expect(restored.exit).toBe(0)
     const snapshot = JSON.parse(restored.stdout)
