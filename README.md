@@ -1,79 +1,24 @@
-# ntn-skills
+<h1 align="center">Notion Skills</h1>
 
-Read the current Notion Skill library from an Agent or terminal.
+<p align="center">Create, edit, and use reusable Agent workflows in Notion with <code>ntn-skills</code>.</p>
 
-[简体中文](README.zh-CN.md) · [Current contract](docs/current-contract.md) · [Documentation](docs/README.md)
+<p align="center">
+	<a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a><br>
+	<a href="#quick-start">Quick start</a> · <a href="#agent-setup">Agent setup</a> · <a href="docs/README.md">Documentation</a>
+</p>
 
-The `next` line is implementing one current contract across Notion, CLI, SDK and
-Pi. Notion owns current management and Notion-authored content. Git-only, mixed
-and Notion-native content use the same reader. This branch does not establish
-that the production library, published npm package or installed Pi has migrated.
+Keep instructions and their supporting files in a Notion library. Edit native
+Skills in Notion, discover them from a terminal or Agent, and load the workflow
+you need. The CLI manages the tables, file identities, and relationships.
 
-## Current capability
+The quick start creates four linked tables and a `decision-review` Skill.
+You can then open its page in Notion and read the same instructions through the
+CLI. [pi-context-broker](https://github.com/yoyooyooo/pi-context-broker/blob/next/README.md)
+adds optional Pi integration.
 
-| Task | Current entry |
-| --- | --- |
-| Discover metadata without workflow bodies | `list` |
-| Inspect one file | `read` |
-| Apply a selected workflow and its Requires | `use` |
-| List the complete selected directory | `files` |
-| Export a complete selection locally | `export` |
-| Inspect current file ownership and operation state | `ctl library files` |
-| Inspect an unfinished intent without replaying it | `ctl library operation`, with an exact owner ID and kind |
-| Create, edit, register or delete a Notion-native Skill | `ctl library skill create`, `update`, `register`, `remove` |
-| Import or replace one complete local tree | `ctl library import`, with `--dry-run` and same-intent `--resume` |
-| Apply or refresh declared Git contributions | `ctl library source apply`, `ctl library source refresh` |
-| Generate complete Notion text for one Skill or the daily set | `ctl library projection PAGE_ID`, or `ctl library projection --daily` |
-| Restore an exact Skill from Trash and complete its reading pages | `ctl library projection PAGE_ID --restore` |
-| Take over a file or restore its current Source binding | `ctl library source takeover`, `ctl library source restore-follow` |
-| Enable, disable or remove an unreferenced Source | `ctl library source enable`, `disable`, `remove` |
-| Create or inspect a current four-table layout | `ctl library init`, `ctl library inspect` |
-| Manage shared current Profile rules | `ctl library profile` |
+## Install
 
-Ordinary list/read/use/resource-read/export performs zero semantic Notion writes.
-A native Notion edit is read as current content; reading it does not create an
-adoption event or retain a remote version. A generated Source/resource reading
-page does not become author content merely because someone edited its display.
-
-Use `ctl library skill` for daily authoring. Create selects native Markdown by
-default; update preserves files and properties outside the requested changes.
-The CLI handles registration, supporting files, managed relationships and finite
-operation cleanup. Direct native edits need no projection.
-
-Complete import writes exact resource originals; repeat `--native PATH` for text
-files whose current Notion body should be editable. Complete file metadata and
-original bytes establish consumption readiness. Use `ctl library projection`
-after import or Source refresh to generate complete readable text. Every daily
-Skill main and text supporting file must be readable in Notion; non-text files
-are reported as skipped. Projection does not block consumption readiness. Portable Members/Requires
-round-trip through export and complete import, with complete target validation
-and dependency checks. One invocation budget covers lookup, writes and cleanup.
-Source apply/refresh discovers the complete selected Git member set, adds members,
-updates exact upstream files, and retires removed pure Source members. Existing
-assignments retain stable identities; new members receive deterministic identities.
-Save the declaration outside Notion to rebuild a deleted Source with `source apply`.
-GitHub and private HTTP(S) Git origins share this path and local authentication.
-Source takeover and restore-follow keep the same File and Notion page identities,
-update the exact contribution exclusion, and use the Source's selected original.
-Source enablement controls consumption; removal refuses remaining file or Origin
-references. An interrupted content writer can resume its original input or accept an
-explicit complete successor with `--operation NEW --supersede OLD` after the old
-writer stops. Completed operations keep no predecessor or content history.
-Old top-level create/apply/write/replace/adopt, sync, snapshot/archive and repair commands
-are retired from the active CLI. Current data conversion, actual library coverage,
-obsolete object cleanup and Pi installation remain separate delivery gates.
-
-## Installation
-
-Use Node.js 22.22.3+ within 22.x, or 24.20.0+.
-
-Git source acquisition also requires the selected Git executable to support
-`--no-lazy-fetch`. Git 2.50.1 is verified; this is not a claimed minimum version.
-The CLI checks this capability before remote acquisition and reports
-`UPSTREAM_GIT_RUNTIME_UNSUPPORTED` for an unsupported executable. Select a supported
-Git on the invoking process's `PATH`; no global Git configuration is changed.
-
-The published package is installed with:
+Use Node.js 22.22.3 or newer in 22.x, or 24.20.0 or newer.
 
 ```sh
 npm install --global ntn-skills --registry https://registry.npmjs.org
@@ -81,264 +26,198 @@ ntn-skills --version
 ntn-skills --help
 ```
 
-The published version may precede this branch's current contract. Build and install
-the selected `next` candidate through [Contributing](CONTRIBUTING.md#development-setup)
-when validating this change. Pair the CLI and SDK from that complete package with
-the matching Broker candidate; installing an older release does not convert the
-Notion library.
-
-The package talks directly to Notion through its request engine. Use the existing
-`NOTION_API_TOKEN`, or pipe a token from a trusted secret source to
-`ntn-skills ctl config set-token --stdin`. Do not paste credentials into chat.
-`ctl config show` reports token presence. Saved configuration takes precedence
-over the environment.
+This README describes `next`. The published package may precede this branch.
+To try the current candidate, follow [the source setup](CONTRIBUTING.md#development-setup).
+For that source checkout, replace `ntn-skills` in the examples below with
+`bun run /absolute/notion-skills-cli/scripts/dev.ts`, using its actual path.
+Use your installed command's `--help` or `schema COMMAND...` for its actual syntax.
 
 ## Quick start
 
-Use a current registered library with actual content. Keep the returned entry and
-refs; names and aliases are discovery aids, not unique identities.
+### 1. Give the CLI access to Notion
+
+Create an [internal Notion connection](https://developers.notion.com/guides/authorization/overview#internal-connection-auth-flow-set-up)
+with Read content, Insert content, and Update content capabilities.
+Create a new empty Notion page and add that connection through the page's
+**Add connections** menu. Keep the page ID or URL for the next step.
+
+The CLI reads `NOTION_API_TOKEN` from its process environment. If your secret
+manager already supplies it, run `ntn-skills ctl doctor`. For a first terminal
+session, run this line in Bash or Zsh, paste the token, and press Enter.
+Input stays hidden:
 
 ```sh
-ntn-skills ctl library inspect ENTRY_DATABASE_ID
-ntn-skills list --database ENTRY_DATABASE_ID --json
-ntn-skills read REF_FROM_LIST --database ENTRY_DATABASE_ID --json
-ntn-skills files SNAPSHOT_ID_FROM_READ
-ntn-skills read RELATIVE_PATH --from PINNED_CONTAINING_FILE_REF
+read -r -s NOTION_API_TOKEN
 ```
 
-To execute the selected workflow, use `ntn-skills use REF_FROM_LIST` or the host's
-Notion use tool. Reading for inspection does not activate a workflow.
-
-Follow every returned cursor when a complete directory observation is needed.
-Search and filtered Views cannot prove that another object is absent. Use an exact
-returned ref when names collide. Skills use `SKILL.md`, Routers use `ROUTER.md`,
-and explicit user Prompts use `PROMPT.md`. Requires loads mandatory dependencies;
-Members lists candidates without loading every member body.
-
-Markdown links can target files or directories present in the complete selected
-tree; a directory link does not require a README. Images must target files.
-Links to another Skill require an explicit stable ref; relative paths must stay
-within their owner. Use `files` to inspect a directory; `read` selects one file.
-
-A task selection keeps its complete file directory and selected bytes in local
-cache. It is not a remote history entry. Missing selected source/resource bytes can
-be acquired only while current owner, locator and source revision still match.
-An absent local selection or changed current binding requires reselection; it never
-revives an old remote snapshot or substitutes a later native body into an old selection.
-
-Use `--refresh` on a current target for online validation. Eligible TTL reads may
-reuse the existing observation; metadata revalidation does not extend the independent
-native full-body deadline. A fixed ref does not select newer content. `--offline`
-requires the selected local bytes.
+Then export the token and check authentication:
 
 ```sh
-ntn-skills read CURRENT_REF --database ENTRY_DATABASE_ID --refresh --metrics
-ntn-skills read EXACT_FILE_REF --output ./selected-file.bin
-ntn-skills export SNAPSHOT_ID_FROM_READ --output ./selected-skill
+printf '\n'
+export NOTION_API_TOKEN
+ntn-skills ctl doctor
 ```
 
-Export preserves complete selected bytes and executable modes. Existing differing
-output is rejected. Reading or exporting a script does not execute it. An arbitrary
-multi-path partial export is not yet exposed as a public command; use an exact
-file read with `--output` for one file.
+Doctor checks authentication here; it does not yet check access to the parent
+page. A saved `config.token` takes precedence over the environment.
+To save a token instead, pipe it from a trusted secret source into
+`ctl config set-token --stdin`. See [credential setup](skills/notion/ntn-skills-maintain/references/setup.md#credentials).
 
-## Create and maintain native Skills
+### 2. Create the library and keep its entry
 
-Use one stable identity when creating a Skill. Markdown files become editable
-native content; other files retain exact resource originals:
+Replace the placeholder with that empty page's actual ID or URL:
 
 ```sh
-ntn-skills ctl library skill create ./my-skill --entry ENTRY_DATABASE_ID --skill-id my-skill
-ntn-skills ctl library skill update my-skill --entry ENTRY_DATABASE_ID --input ./SKILL.md
-ntn-skills ctl library skill update my-skill --entry ENTRY_DATABASE_ID --file references/guide.md=./guide.md
+parent_page='PASTE_AUTHORIZED_PARENT_PAGE_ID_OR_URL'
+ntn-skills ctl library init --parent "$parent_page"
 ```
 
-Update changes only the selected main, supporting files or metadata. Use
-`--remove-file PATH` for an explicit supporting-file removal. Unmentioned files
-retain current Notion edits and stable identities. `--name`, `--description`,
-`--enabled true|false` and `--default-context true|false` change author metadata;
-repeated `--members TARGET` or `--requires TARGET` replaces that set, and a lone
-empty string clears it. Targets are exact page IDs/URLs or stable Skill IDs.
-
-To register a page already authored in this library's Skills table, or remove a Skill:
+The command creates Skills, Files, Records, and Sources under the parent page.
+Copy `library.skills.database_id` from its JSON result into `library_entry`:
 
 ```sh
-ntn-skills ctl library skill register SKILL_PAGE_ID --entry ENTRY_DATABASE_ID
-ntn-skills ctl library skill remove my-skill --entry ENTRY_DATABASE_ID --dry-run
-ntn-skills ctl library skill remove my-skill --entry ENTRY_DATABASE_ID
+library_entry='PASTE_LIBRARY_SKILLS_DATABASE_ID'
+ntn-skills ctl library init --entry "$library_entry"
 ```
 
-Register preserves the body and supplies missing machine metadata. Provide
-`--name` or `--description` if valid business metadata is missing. Removal also
-handles supporting Files, unused owned resources and same-library incoming
-Members/Requires links. It preserves other Skills and their remaining relations.
-All four actions support dry run and request budgets; repeat the same intent
-after interruption. Internal columns do not require an Agent to fill or clear them.
+This second command validates the registered tables. Keep using this one Skills
+entry with `--entry` for management and `--database` for reading. You do not need
+to configure the other three table IDs. An existing library can start with
+`init --entry` and skip creation.
 
-Native writes verify equivalent content in the full Notion readback and report
-supported formatting normalization. The current Notion body is authoritative;
-source/resource originals remain byte-exact. Read a native edit with `--refresh`
-when immediate validation is needed. See [daily authoring](docs/shared-authoring.md#manage-native-skills).
+`init --entry` does not save a local default. In a new terminal or Agent session,
+set `library_entry` to this same saved ID and pass it to the commands below.
+
+If initialization stops, keep its parent, error, operation ID, and local state.
+First reconcile without remote writes; add `--resume` only to continue that
+original initialization's confirmed unfinished steps. The
+[initialization recovery guide](skills/notion/ntn-skills-maintain/references/setup.md#interrupted-initialization)
+explains both commands and the unknown results that still need reconciliation.
+
+### 3. Create your first Skill
+
+Prepare a fresh directory. `pwd -P` resolves temporary-directory aliases so the
+input also works on macOS:
+
+```sh
+skill_dir=$(mktemp -d "${TMPDIR:-/tmp}/ntn-skill.XXXXXX")
+skill_dir=$(cd "$skill_dir" && pwd -P)
+
+cat > "$skill_dir/SKILL.md" <<'SKILL'
+---
+name: decision-review
+description: Review a proposed decision before implementation.
+---
+
+When reviewing a decision:
+1. State the goal and constraints.
+2. Compare the proposed choice with one viable alternative.
+3. Identify the biggest risk and a concrete next step.
+SKILL
+
+ntn-skills ctl library skill create "$skill_dir" \
+	--entry "$library_entry" --skill-id decision-review
+```
+
+Successful creation reports `status: "created"` and `state: "ready"`.
+Open the new `decision-review` page in the Skills table to see its editable
+instructions. Markdown becomes native Notion content; supporting non-text files
+retain their exact resource originals. The CLI supplies the internal fields.
+
+### 4. Find and read it
+
+```sh
+ntn-skills list --database "$library_entry" \
+	--query decision-review --refresh --json
+```
+
+Find the record in `records` and copy its actual `ref`:
+
+```sh
+skill_ref='PASTE_REF_FROM_LIST'
+ntn-skills read "$skill_ref" --database "$library_entry" --refresh --json
+```
+
+Check that `path` is `SKILL.md` and `content` contains the complete instructions.
+You can edit the native page in Notion and read it again with `--refresh`.
+Native edits need no projection step.
+
+`read` inspects a workflow. When you want an Agent to apply it, use
+`ntn-skills use "$skill_ref" --database "$library_entry" --json` to load its
+required workflows too. Ordinary discovery, reading, use, and export make no
+semantic writes to Notion.
 
 ## The four tables
 
-| Table | Current responsibility |
+| Table | What it holds |
 | --- | --- |
-| Skills | Identity, discovery metadata, enablement, Members/Requires, main Content descriptor and current operation state |
-| Files | Authoritative Notion-owned files and selected Source reading documents, with exact owner, File ID, path and Content |
-| Sources | Stable source definition, current selected plan, target contributions and unfinished operation |
-| Records | Necessary current exact resources, one current Profile and unfinished management intents |
+| Skills | Workflow names, descriptions, enablement, main content, and Members/Requires relationships |
+| Files | Notion-owned supporting files and selected Source reading pages |
+| Sources | Git source definitions, selected upstream content, and contributions to Skills |
+| Records | Exact resources, shared Profile rules, and unfinished management operations |
 
-All four roles are registered even when a Notion view displays fewer tables.
-Authors normally work with Skills and Files; Sources describes upstream content,
-and the CLI manages Records. A pure native Skill needs no artificial Source.
+Authors usually work with Skills and Files. The CLI manages the remaining
+relationships and internal metadata. A native Skill does not need a Source.
+See [the library contract](docs/current-contract.md) for fields and ownership.
 
-The `Content` descriptor selects native author Markdown, a Notion-owned exact
-resource, or a selected Source file. Main content lives on Skills. Notion-owned
-supporting files retain their Files rows and native bodies remain authoritative.
-The complete Source manifest and Contributions supply every Git consumption file,
-including scripts and tests, independently of the reading rows. Explicit projection
-selects Markdown documents by default, excludes tests/fixtures and generated or
-dependency directories, and creates or prunes Source reading pages accordingly.
-Native/resource authority is preserved. Non-text display is optional. See the
-[current contract](docs/current-contract.md) for the daily coverage boundary.
+## Continue using the library
 
-Inspect the physical Notion page inventory without fetching bodies:
+| Task | Guide |
+| --- | --- |
+| Edit selected files or metadata, register a page, or remove a Skill | [Native authoring](docs/shared-authoring.md#manage-native-skills) |
+| Read supporting files, inspect a complete directory, or export a selection | [Everyday commands](docs/usage.md) |
+| Replace a complete local tree, choose native files, or resume an import | [Complete import](docs/shared-authoring.md#prepare-the-entire-replacement-tree) |
+| Apply or refresh Git contributions, manage Sources, or take over a file | [Source management](skills/notion/ntn-skills-sync/references/synchronization.md#current-source-boundaries) |
+| Generate Notion reading pages for imported or Source content | [Reading projections](docs/shared-authoring.md#generate-readable-text-in-notion) |
+| Restore an exact Skill from Trash | [Trash recovery](docs/shared-authoring.md#restore-a-trashed-skill) |
+| Choose Views, shared Profile rules, or freshness settings | [Profiles and Views](docs/usage.md#choose-a-profile-or-view) |
+| Inspect an unfinished operation | [Operation recovery](skills/notion/ntn-skills-maintain/references/operations.md#incomplete-current-work) |
 
-```sh
-ntn-skills ctl library files SKILL_PAGE_ID --entry ENTRY_DATABASE_ID
-```
+Complete import replaces the selected Skill's whole file tree. Review its
+`--dry-run` before replacing existing content. Source acquisition also requires
+a Git executable that supports `--no-lazy-fetch`; see
+[Git requirements](docs/usage.md#install-the-package).
 
-A missing current descriptor returns `CURRENT_SCHEMA_REQUIRED`. An applying or
-attention state identifies one unfinished current operation. Reads neither migrate
-the schema nor reconcile that operation.
+Follow returned cursors for complete discovery and retain exact refs when names
+collide. A fixed selection keeps its chosen content locally; it is not remote
+history. `--offline` needs the selected local bytes. See [reading and cache
+behavior](skills/ntn-skills/references/integration.md#current-selection-and-cache).
 
-## Read daily content in Notion
+## Agent setup
 
-After synchronizing current content, inspect and generate its text bodies:
-
-```sh
-ntn-skills ctl library projection --daily --entry ENTRY_DATABASE_ID --dry-run
-ntn-skills ctl library projection --daily --entry ENTRY_DATABASE_ID
-```
-
-Daily means Source 日用 members, Skill 日用 and Default Context combined. Existing
-Enabled and 期望删除 values are reported and preserved. To select one Skill, replace
-`--daily` with its exact page ID. Repeat `--include GLOB` or `--exclude GLOB` to
-replace the respective default reading filter. These filters never change actual
-consumption exclusions. Dry-run reports selected/excluded paths and row/body
-changes. Equal complete reading pages cause zero semantic writes.
-Use `--include ''` for only the main and Notion-owned files, or `--exclude ''` for
-no exclusion patterns. An empty value cannot be mixed with other patterns for
-that flag. Omitted flags still use defaults.
-Repeat the same single-Skill or daily command after interruption. Without
-`--operation`, it continues a pending projection when the target, reading policy
-and complete current input still match. Conflicts and unconfirmed CREATE/append
-outcomes stop with completed targets and an exact recovery command carrying the
-original policy and requested budgets. Explicit `--operation ID --resume` uses
-the frozen policy for omitted filters. To stop an intent before
-changing reading policy, use the exact `--operation ID --cancel`; only the pending
-action is reconciled, with no remaining projection work executed. Native bodies remain
-authoritative, and projection failure leaves already-ready consumption available.
-See [projection management](docs/shared-authoring.md#generate-readable-text-in-notion).
-
-To recover a completed Skill that was later moved to Trash, use its original page ID:
+An Agent with a shell can use this CLI directly. Before a library exists, read
+the packaged setup guide offline:
 
 ```sh
-ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry ENTRY_DATABASE_ID
+ntn-skills ctl builtin read notion/ntn-skills-maintain --path references/setup.md
 ```
 
-This restores the same page and then runs the normal projection, preserving its
-identity, human properties and native/resource authority. Both stages share one
-budget. Repeat the same command if either stage is interrupted; a live, complete
-result makes zero semantic writes. `--restore` accepts reading filters and budget
-limits, and requires a single exact page without `--daily`, `--dry-run`,
-`--operation`, `--resume` or `--cancel`. It uses the current Source selection.
-Unavailable originals, permanent deletion and conflicting current work fail;
-moving a page to Trash while an older projection is unfinished also fails without
-overwriting that intent. See [Trash recovery](docs/shared-authoring.md#restore-a-trashed-skill).
+Give the Agent the intended parent page or library entry and the same credential
+environment. The guide covers initialization, native creation, and
+[optional copies of the three packaged workflows](skills/notion/ntn-skills-maintain/references/setup.md#copy-packaged-workflows-into-notion).
+Those copies are editable native Skills and do not update automatically with
+the package.
 
-## Setup and Profiles
+For routine work in a connected library, discover `ntn-skills-maintain` in that
+library and read its exact returned ref. Use `use` when applying the workflow
+and its Requires. Inspect the edited target without activating it.
+A failed or partial search does not prove that a workflow is absent.
+The packaged catalog remains available for explicit bootstrap or offline use.
 
-For a new authorized parent:
+For Pi, follow [the Broker setup](https://github.com/yoyooyooo/pi-context-broker/blob/next/README.md).
+The Broker consumes the same library through its paired SDK and owns Pi
+connection configuration. Saving a connection is separate from reading content
+in a Pi session. OMP/Tern adaptation is deferred on `next`.
 
-```sh
-ntn-skills ctl library init --parent PARENT_PAGE_ID
-```
+## Documentation and development
 
-This creates the current layout. It does not import local Skills or establish Pi
-delivery. Follow the [setup reference](skills/notion/ntn-skills-maintain/references/setup.md)
-for the exact boundary and current inspection path.
+[Documentation](docs/README.md) covers commands, authoring, output contracts,
+and current implementation limits. [Contributing](CONTRIBUTING.md) covers
+development on `next` and links to the shared
+[isolated development guide](https://github.com/yoyooyooo/pi-context-broker/blob/next/docs/isolated-development.md).
 
-If initialization stops, keep the original parent, operation ID and local state.
-`ctl library init --parent PARENT_PAGE_ID --operation OPERATION_ID` reconciles
-without remote writes; add `--resume` to continue confirmed unfinished steps.
-Unknown creates and conflicting edits remain explicit. See
-[interrupted initialization](skills/notion/ntn-skills-maintain/references/setup.md#continue-an-interrupted-initialization).
+Initialization creates the current schema; it does not convert an older library.
+Source tests, independent package installation, live Notion behavior, and actual
+Agent use have separate [verification scopes](docs/maintenance-verification-review.md).
 
-Import a complete local tree into that current library:
-
-```sh
-ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID --dry-run
-ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID
-```
-
-Import preserves exact resource originals; run `ctl library projection` for reading pages. Use
-`--native SKILL.md --native references/guide.md` to select editable Markdown.
-Native uses the same semantic verification and reported normalization as daily
-authoring; original input and native selection remain fixed on resume. It replaces the
-whole file tree for that stable identity; review removals in dry-run. Repeat equal
-input for a zero-write no-op. Resume unfinished work with the same input and
-`--operation OPERATION_ID --resume`. See [current authoring](docs/shared-authoring.md).
-
-Profiles hold current View/freshness rules on one stable Record:
-
-```sh
-ntn-skills ctl library profile list --entry ENTRY_DATABASE_ID
-ntn-skills ctl library profile show PROFILE_ID --entry ENTRY_DATABASE_ID
-ntn-skills list --profile PROFILE_ID --database ENTRY_DATABASE_ID
-```
-
-Use `profile set --help` for a complete authorized replacement. It requires
-`--name`, `--enabled` and the current `--expect` fingerprint. Omitted optional
-rules are removed. A Profile fingerprint detects an observed conflict, not distributed
-CAS. Profiles and Views never grant permission.
-
-## Agent integration
-
-In a connected library, discover `ntn-skills` and `ntn-skills-maintain` through
-the scoped Notion directory and read their exact returned refs with ordinary
-`read`. Read references from the same selection with `read --from`. The default
-View may omit a workflow; query its name within the connected library before
-concluding it is absent. Failed discovery is not absence.
-
-Reading only inspects a workflow. To apply it, use that source's exact ref with
-Pi `notion_use(ref)` or CLI `use REF --database ENTRY --json` to load its Requires,
-unless already prepared for this task. Use only an available route; otherwise
-report unavailable adoption. Inspect the edited target without activating it.
-
-Without a connected library, or for explicit offline/package inspection, use the
-`ctl builtin` catalog or an exact host `@builtin` identity. Package and Notion
-copies can differ: installing a package does not refresh a Notion Source or its
-reading projection. Neither route silently replaces an active task selection.
-
-`ntn-skills-maintain` covers native creation, partial edits, registration,
-removal, setup, complete import and finite
-recovery. `ntn-skills-sync` covers current Profile rules and explicit Git
-Source apply/refresh, file authority changes and Source lifecycle management,
-including mixed-tree preservation.
-
-Pi is the first daily host. Its Notion consumption uses the matching SDK for
-discovery, use and resource reads. OMP/Tern adaptation is deferred. Their local
-Skill content remains within the Pro migration inventory.
-
-Use `ntn-skills schema` or an exact subcommand `--help` when syntax is unclear.
-Old guide commands are not a reason to restore compatibility routes.
-
-## Development and verification
-
-Follow [Contributing](CONTRIBUTING.md). The existing
-[current-convergence journey](https://github.com/yoyooyooo/notion-skills-cli/blob/next/.cursor/skills/verify-ntn-skills/features/current-convergence.md)
-keeps six bounded groups. Current source tests, live Notion cleanup, independent
-package installation and actual Pi delivery establish different outcomes.
-A passing controlled reader test does not complete migration or install a host.
+[MIT license](LICENSE) · [Security policy](SECURITY.md) · [Issues](https://github.com/yoyooyooo/notion-skills-cli/issues)
