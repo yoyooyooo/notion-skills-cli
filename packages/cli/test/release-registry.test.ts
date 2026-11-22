@@ -34,6 +34,7 @@ const cases = [
   { name: "authentication failure", stdout: '{"error":{"code":"E401"}}', status: 1, expected: 1 },
   { name: "malformed successful object", stdout: "{}", status: 0, expected: 1 },
   { name: "empty successful response", stdout: "", status: 0, expected: 1 },
+  { name: "empty successful version array", stdout: "[]", status: 0, expected: 1 },
   { name: "non-version member", stdout: '["0.3.0",null]', status: 0, expected: 1 },
   { name: "invalid version string", stdout: '"unavailable"', status: 0, expected: 1 },
 ]
