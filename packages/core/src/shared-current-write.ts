@@ -90,7 +90,7 @@ import {
 } from "./shared-current-write-input.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { observeSharedBody } from "./shared-page-body.ts"
-import { compareNativeMarkdown, nativeMarkdownTransport } from "./shared-native-markdown.ts"
+import { compareNativeMarkdown, nativeFileTransport } from "./shared-native-markdown.ts"
 import {
   compileSharedNativeReferences,
   type NativeReferenceSource,
@@ -2926,7 +2926,7 @@ function applyPreparedCurrentSkillWrite(
                   body: {
                     markdown_version: "v2",
                     type: "replace_content",
-                    replace_content: { new_str: nativeMarkdownTransport(file.markdown) },
+                    replace_content: { new_str: nativeFileTransport(file) },
                   },
                   options: { method: "PATCH" },
                 },

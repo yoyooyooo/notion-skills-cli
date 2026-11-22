@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import {
   compareNativeMarkdown,
+  nativeFileTransport,
   nativeMarkdownTransport,
   validateNativeMarkdown,
 } from "../src/shared-native-markdown.ts"
@@ -107,6 +108,32 @@ test("native transport folds soft wraps and Markdown code-span line endings", ()
     'Read the selected metadata, then use `ntn-skills read --json` with **complete context** and [the source](https://example.com/a?next=one%20two "Stable title").\n'
   expect(nativeMarkdownTransport(source)).toBe(wire)
   expect(compareNativeMarkdown({ expected: source, observed: wire })).toBe("normalized")
+})
+
+test("native file transport preserves line boundaries outside the Markdown path domain", () => {
+  const markdown = "#!/bin/sh\r\nprintf 'installed current original\\n'"
+  expect(nativeFileTransport({ path: "scripts/run.sh", markdown })).toBe(
+    markdown.replaceAll("\r\n", "\n"),
+  )
+  expect(nativeFileTransport({ path: "notes.MARKDOWN", markdown: "soft\nwrap" })).toBe("soft wrap")
+  expect(nativeFileTransport({ path: "notes.md", markdown: "soft\nwrap" })).toBe("soft wrap")
+})
+
+test.each([
+  "https://example.com/docs",
+  "<https://example.com/docs>",
+  "[https://example.com/docs](https://example.com/target)",
+])("native transport preserves literal autolink labels without re-lexing them: %s", (link) => {
+  const source = `See ${link}\nfor more.`
+  const wire = `See ${link} for more.`
+  expect(nativeMarkdownTransport(source)).toBe(wire)
+  expect(compareNativeMarkdown({ expected: source, observed: wire })).toBe("normalized")
+  expect(
+    compareNativeMarkdown({
+      expected: source,
+      observed: wire.replaceAll("example.com", "changed.example"),
+    }),
+  ).toBe("different")
 })
 
 test("native transport preserves explicit breaks, fenced payloads and native code literals", () => {
