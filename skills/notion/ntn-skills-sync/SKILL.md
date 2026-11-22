@@ -8,7 +8,7 @@ metadata:
 
 # Manage current Sources and Profiles
 
-Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, and exact library access. Source management needs Notion Insert and Update; Profiles need Records access.
+Requires ntn-skills, Node.js `^22.23.5 || ^24.22.3 || ^26.13.1`, and exact library access. Source management needs Notion Insert and Update; Profiles need Records access.
 
 Use the task's executable, exact library and stable identities. Ordinary
 consumption never updates Source content. Reading a script does not authorize

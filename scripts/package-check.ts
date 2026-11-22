@@ -68,10 +68,8 @@ if (
   !entries.includes("package/dist/sdk.js")
 )
   throw new Error("Packed SDK export or generated declarations are missing.")
-if (manifest.engines?.node !== "^22.22.3 || >=24.20.0" || manifest.engines?.bun)
-  throw new Error(
-    "Packed consumer runtime must be Node.js 22.22.3+ within 22.x, or Node.js 24.20.0+.",
-  )
+if (manifest.engines?.node !== "^22.23.5 || ^24.22.3 || ^26.13.1" || manifest.engines?.bun)
+  throw new Error("Packed consumer runtime must be Node.js ^22.23.5, ^24.22.3, or ^26.13.1.")
 for (const section of ["dependencies", "optionalDependencies", "peerDependencies"])
   for (const [dependency, value] of Object.entries(manifest[section] ?? {}))
     if (typeof value !== "string" || /^(?:catalog|workspace|file|link):/.test(value))
