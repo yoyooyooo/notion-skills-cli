@@ -4,7 +4,7 @@ import { ConfigProvider, Effect, FileSystem, Layer, Schema } from "effect"
 import { SqlClient } from "effect/sql"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, readFile, realpath, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { sqliteState } from "../src/sqlite-state.ts"
@@ -196,7 +196,10 @@ test("repeated online observations reuse one causal slot and preserve durable st
 
 it.live("explicit retirement during observation reads never returns a partial old grant", () =>
   Effect.gen(function* () {
-    const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "ntn-observation-race-")))
+    // The scheduler rejects symlink ancestors, including macOS's /var temp alias.
+    const directory = yield* Effect.promise(async () =>
+      mkdtemp(join(await realpath(tmpdir()), "ntn-observation-race-")),
+    )
     if (process.platform === "darwin")
       yield* Effect.addFinalizer(() => trashPath(directory).pipe(Effect.orDie))
     for (const scenario of ["replaced-denial", "continuous"] as const) {
