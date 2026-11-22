@@ -90,12 +90,24 @@ For a repair after a newer version has shipped, the selected dist-tag may alread
 
 The maintainer handles registry changes, release corrections, and security coordination. Report vulnerabilities through [SECURITY.md](../SECURITY.md). Prepare a fix through normal review, release a higher patch version, and describe the affected versions and upgrade path without exposing credentials or private reports.
 
-Deprecation changes registry metadata and requires approval. For an affected version, use a precise, actionable message:
+Registry metadata changes require explicit incident approval. First retain the current channel and affected-version metadata. For a temporary channel rollback, also verify the exact known-good version's registry integrity, provenance/signatures and fresh independent installation. Replace the uppercase version placeholders with reviewed exact versions:
 
 ```sh
-npm deprecate ntn-skills@0.1.1 "Security issue fixed in 0.1.2; upgrade to 0.1.2 or newer." --registry https://registry.npmjs.org
-npm view ntn-skills@0.1.1 deprecated --registry https://registry.npmjs.org
+npm view ntn-skills dist-tags --json --registry https://registry.npmjs.org
+npm view ntn-skills@BAD_VERSION version deprecated dist --json --registry https://registry.npmjs.org
+npm view ntn-skills@KNOWN_GOOD_VERSION version dist --json --registry https://registry.npmjs.org
 ```
+
+If an incident requires directing new default installs to an older verified version while a patch is prepared, an authorized maintainer may run `npm dist-tag add ntn-skills@KNOWN_GOOD_VERSION latest --registry https://registry.npmjs.org`. Read `npm view ntn-skills dist-tags --json --registry https://registry.npmjs.org` afterward and confirm the exact expected value. Use the original `next` channel when handling a prerelease. This explicit incident operation is outside the forward-only release/repair workflow. Existing installations still need a concrete upgrade or pin instruction.
+
+For a specific affected version, use a precise, actionable deprecation message and read it back:
+
+```sh
+npm deprecate ntn-skills@BAD_VERSION "Affected by ISSUE; upgrade to FIXED_VERSION." --registry https://registry.npmjs.org
+npm view ntn-skills@BAD_VERSION deprecated --registry https://registry.npmjs.org
+```
+
+If the result is unknown, preserve the first attempt and reconcile the exact registry state before retrying. A deprecation notice does not replace archive bytes or change a dist-tag.
 
 Replace the versions and message with the verified incident facts. Prefer a patch and deprecation to withdrawal. If a compromised archive or exposed secret requires removal, follow npm's unpublish policy and obtain explicit incident approval before running `npm unpublish ntn-skills@VERSION --registry https://registry.npmjs.org`. Never unpublish as routine rollback. Rotate exposed credentials independently of package withdrawal. Published version numbers and their Git tags remain permanently reserved.
 
