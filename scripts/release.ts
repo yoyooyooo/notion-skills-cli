@@ -295,10 +295,7 @@ function readPublishedVersions(config: Config): string[] {
   }
   const parsed: unknown = JSON.parse(result.stdout)
   const values: unknown[] = Array.isArray(parsed) ? parsed : [parsed]
-  if (
-    values.length === 0 ||
-    values.some((value) => typeof value !== "string" || !isVersion(value))
-  )
+  if (values.length === 0 || values.some((value) => typeof value !== "string" || !isVersion(value)))
     fail(`Malformed npm version response for ${config.publishPackage}; registry state is unknown.`)
   return values.filter((value): value is string => typeof value === "string" && isVersion(value))
 }
