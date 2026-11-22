@@ -30,7 +30,7 @@ export const configShow = defineCommand("show", {}, () =>
 ).pipe(
   Command.withShortDescription("Show local configuration with token presence only"),
   Command.withDescription(
-    "Read local configuration and effective cache policy offline. Token values are omitted; token_configured reports a non-empty configured token. Authentication priority: config.token > NOTION_API_TOKEN. The default database selects the current writer's library; cache policy controls current reads and catalog observations.",
+    "Read local configuration and effective cache policy offline. Token values are omitted; token_configured reports a non-empty configured token. Authentication priority: config.token > NOTION_API_TOKEN. Saved default_database does not select a writer target; use the target arguments documented by each library command. Cache policy controls current reads and catalog observations.",
   ),
 )
 export const configurationKeys =
@@ -171,7 +171,7 @@ export const configClearToken = defineCommand("clear-token", {}, () =>
 export const configCommand = defineCommand("config").pipe(
   Command.withShortDescription("Manage local authentication and database preferences"),
   Command.withDescription(
-    `Configuration: NTN_SKILLS_CONFIG_HOME > XDG_CONFIG_HOME/ntn-skills > ~/.config/ntn-skills. Supported set/unset keys: ${configurationKeys}. Cache values are integer milliseconds; unset restores the corresponding built-in default. Database set validates online; unset works offline. Use set-token --stdin and clear-token for credentials. All output omits token values. default_database selects the current writer's default library. No Notion writes.`,
+    `Configuration: NTN_SKILLS_CONFIG_HOME > XDG_CONFIG_HOME/ntn-skills > ~/.config/ntn-skills. Supported set/unset keys: ${configurationKeys}. Cache values are integer milliseconds; unset restores the corresponding built-in default. Database set validates online; unset works offline. Use set-token --stdin and clear-token for credentials. All output omits token values. Saved default_database does not select a writer target; use the target arguments documented by each library command. No Notion writes.`,
   ),
   Command.withSubcommands([configShow, configSetToken, configClearToken, configSet, configUnset]),
 )
