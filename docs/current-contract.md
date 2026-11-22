@@ -170,6 +170,9 @@ unchanged. The complete structure must still match before any write. Readback
 also recognizes the attribute-free `<p>` paragraph wrapper that Notion emits for
 list children; its inline body remains one paragraph. A literal `<br>` inside
 code is content, not a line-break spelling, and cannot pass as a space.
+The observed Notion code-block label normalization from `sh` to `bash` is also
+accepted with an exact code payload. This concerns the presentation label;
+POSIX `sh` and Bash interpreters are not interchangeable.
 
 The original input bytes/hash and operation fingerprint remain fixed. Stored
 frontmatter and executable mode remain exact. Native reads and exports use the

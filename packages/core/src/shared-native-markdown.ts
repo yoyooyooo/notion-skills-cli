@@ -283,6 +283,8 @@ function language(value: unknown): string {
       return "c++"
     case "csharp":
       return "c#"
+    case "sh":
+      return "bash"
     default:
       return name
   }

@@ -50,6 +50,19 @@ test("native comparison retains link definitions and escaped or code text", () =
   )
 })
 
+test("native code fences recognize Notion's sh-to-bash spelling without changing payload or transport", () => {
+  const expected = "```sh\nntn-skills read EXACT_REF --database ENTRY --json\n```\n"
+  const observed = expected.replace("```sh", "```bash")
+  expect(compareNativeMarkdown({ expected, observed })).toBe("normalized")
+  expect(nativeMarkdownTransport(expected)).toBe(expected)
+  expect(
+    compareNativeMarkdown({ expected, observed: observed.replace("--json", "--output FILE") }),
+  ).toBe("different")
+  expect(
+    compareNativeMarkdown({ expected, observed: observed.replace("```bash", "```python") }),
+  ).toBe("different")
+})
+
 test.each([
   ["Use `code`.", "Use <code>code</code>."],
   ["`&amp;` and `` `literal` ``.", "<code>&amp;</code> and <code>`literal`</code>."],
