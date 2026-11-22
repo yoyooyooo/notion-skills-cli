@@ -18,7 +18,7 @@
     "packages/core/test/notion-request-scheduler.node.test.ts": "185e8f352da47e5b3fa44bb4ffcb06fffdc052fcb685321e9eb61b9ac570f286",
     "packages/core/test/notion-scheduler-multiprocess.node.test.ts": "c8f0a75d2969d347e4578e768ae797a5947b12672ceae7bf3b8bf28de5ddf7cd",
     "packages/core/package.json": "ac30318d9593be57d80d803f89f9c7a2cb933b5e690823d10849828223ce59b6",
-    "bun.lock": "42654c0debaf0924cd2685d0af9e5e22d32c9c401b851724c730c7cc10f084b9",
+    "bun.lock": "6bc8237b714f67b00a08fc7ccf126affc80bbfd1e02c3f647d177cd9584704dc",
     "node_modules/effect/dist/Cache.js": "435911c3d851939b72c8cd189d78e928cdd6ac861495c5435d3c658e8c39c16c",
     "packages/core/src/shared-immutable-read.ts": "e99cb0238e19486ad3d56c7063a38df0655183669ac56b92693810bbae924ca9",
     "packages/core/src/resource-read.ts": "5867ce3096fe370aa7e04c648e78e4707169b4db8e38fdc0ad3d126834f9b3c4",
@@ -439,6 +439,13 @@
       "guard_file": "node_modules/effect/dist/Cache.js",
       "source_hash_field": "files",
       "scope": "Only the pending Cache reference-counting and current-entry cleanup guards called by makeSharedResultCoalescer and the service-local wrapper; not whole-library verification."
+    },
+    "undici": {
+      "version": "8.13.1",
+      "reviewed_from": "87c5bfcd2cfbcd5ab993307ac760fac802163b0d",
+      "scope": "The sole lock change replaces Undici 8.11.2 with 8.13.1 and its registry integrity. Effect remains 4.0.5; the protected Cache reference-counting/current-entry implementation and both platform child-process files retain their exact reviewed hashes. Every named producer/admission guard, both finite models, all 21 case/rule inventories and all 19 mutation targets are unchanged.",
+      "runtime_boundary": "The standard Notion and detached read paths use NodeHttpClient.layerFetch, which re-exports the fetch-based layer and uses the selected Node runtime. The external Undici backend remains a runtime dependency through @effect/platform-node and is not classified as dev-only. Source lock, independently installed production graph and Node built-in fetch require separate security/runtime evidence.",
+      "proof_limit": "This dependency review establishes the unchanged guard correspondence, not security or transport correctness. Current HTTP/SDK/runtime regressions and the existing finite/guard CI gates must run on the updated inputs; no existing model proves all Undici behavior."
     }
   },
   "implementation_bindings": [
