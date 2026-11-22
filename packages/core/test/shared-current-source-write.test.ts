@@ -22,10 +22,14 @@ import {
   type CurrentSourceDeclaration,
   type PreparedCurrentSourceInput,
 } from "../src/shared-current-source-input.ts"
-import { queryCurrentSourceManagement } from "../src/shared-current-source-management.ts"
+import {
+  currentSourceWriteProperties,
+  queryCurrentSourceManagement,
+} from "../src/shared-current-source-management.ts"
 import { prepareCurrentSharedSourceContent } from "../src/shared-current-source.ts"
 import { writePreparedCurrentSource } from "../src/shared-current-source-write.ts"
 import { prepareCurrentSkillWrite, writeCurrentSkill } from "../src/shared-current-write.ts"
+import { prepareCurrentWriteFile } from "../src/shared-current-write-input.ts"
 import { readSkill } from "../src/snapshot.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { sourceRich } from "../src/shared-source-definitions.ts"
@@ -1953,8 +1957,77 @@ test("an unchanged 58-target 515-file Source completes a new apply within the de
   const prepared = await f.run(prepareCurrentSourceFromDiscovery(selected, observed))
   expect(prepared.targets).toHaveLength(58)
   expect(prepared.targets.reduce((sum, target) => sum + target.files.length, 0)).toBe(515)
+  // This case measures an unchanged apply over an existing complete inventory.
+  // Seed its persisted facts directly; projecting 58 owners during setup tests a
+  // different write path and can consume the timeout before the budgeted scan.
   await f.run(
-    http.use(writePreparedCurrentSource(library, { prepared, operation_id: "daily-scale-seed" })),
+    Effect.gen(function* () {
+      const api = yield* Notion
+      const source = property(
+        yield* api.request(
+          "v1/pages",
+          {
+            parent: { type: "data_source_id", data_source_id: library.sources.data_source_id },
+            properties: {
+              ...currentSourceWriteProperties(library, {
+                declaration: prepared.declaration,
+                content: prepared.prepared_source.content,
+                revision: prepared.prepared_source.revision,
+              }),
+              [library.sources.property_ids.Status!]: { select: { name: "ready" } },
+              [library.sources.property_ids.Operation!]: { rich_text: [] },
+            },
+          },
+          { method: "POST" },
+        ),
+      )
+      const sourcePageId = String(source.id)
+      const resource =
+        "resource" in prepared.prepared_source ? prepared.prepared_source.resource : undefined
+      if (resource !== undefined) {
+        const uploadId = id(9000)
+        if (resource.status === "needs_attachment") {
+          f.uploads.set(uploadId, { status: "uploaded" })
+          f.uploadedBytes.set(uploadId, resource.bytes)
+        }
+        const request = yield* currentOwnedResourceCreateRequest(library, {
+          owner: { kind: "source", page_id: sourcePageId },
+          objectId: resource.content.object_id,
+          payload: resource.manifest,
+          ...(resource.status === "needs_attachment"
+            ? { upload: { id: uploadId, name: "source-plan.json" } }
+            : {}),
+        })
+        yield* api.request(request.path, request.body, request.options)
+      }
+      const fields = library.skills.property_ids
+      const rich = (value: string) => ({ rich_text: sourceRich(value) })
+      for (const target of prepared.targets) {
+        const main = yield* prepareCurrentWriteFile(
+          target.files.find((file) => file.path === "SKILL.md")!,
+        )
+        yield* api.request(
+          "v1/pages",
+          {
+            parent: { type: "data_source_id", data_source_id: library.skills.data_source_id },
+            properties: {
+              [fields.Name!]: { title: sourceRich(target.defaults.name) },
+              [fields.Description!]: rich(target.defaults.description),
+              [fields.Kind!]: { select: { name: target.kind } },
+              [fields.Enabled!]: { checkbox: true },
+              [fields["Default Context"]!]: { checkbox: false },
+              [fields["Skill ID"]!]: rich(target.skill_id),
+              [fields["Main File ID"]!]: rich(`main-${target.skill_id}`),
+              [fields.Content!]: rich(canonicalSharedJson(main.content)),
+              [fields["Current State"]!]: { select: { name: "ready" } },
+              [fields.Operation!]: { rich_text: [] },
+              [fields.Origin!]: { relation: [{ id: sourcePageId }] },
+            },
+          },
+          { method: "POST" },
+        )
+      }
+    }),
   )
   const pages = f.table("skills").map((row) => String(row.id))
   f.clearCalls()
