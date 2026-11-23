@@ -680,6 +680,13 @@ Enabled and 期望删除 are preserved and reported, including disabled daily ch
 Absent current metadata, unavailable bytes or incomplete traversal cannot become
 an omitted or successful target.
 
+Generated Source/resource reading bodies omit frontmatter only from the bound
+main `SKILL.md`, `ROUTER.md` or `PROMPT.md`. It must be a leading, `---`-delimited YAML
+mapping with string `name` and `description`. All keys remain in the exact original
+bytes; discovery Name/Description are unchanged. Supporting files, even with
+another canonical entrypoint filename, and unrecognized headers retain their
+complete text. Native authoring keeps its existing stored-frontmatter contract.
+
 At the CLI boundary, a sole `--include ''` or `--exclude ''` selects an explicit
 empty array for that filter; omission keeps defaults. Empty include retains the
 mandatory main and all Notion-owned files. Empty exclude removes directory
@@ -691,6 +698,10 @@ It leaves the real Skill ready and does not bind generated-body recovery to
 ordinary consumption. The intent freezes authoritative consumption facts, Source
 fingerprint and stores the effective reading policy in that same intent; disposable row allocation and rewritten links do
 not change its input identity. Each actual mutation still freezes its exact request.
+The input fingerprint binds the renderer revision as well. Resuming an unfinished
+intent from a different renderer is rejected without semantic writes; complete or
+cancel it with the original executable before upgrading. Completed bodies are compared
+against the new rendering and regenerated without changing consumption identity.
 Native bodies are checked without writing them. Without an explicit operation,
 repeating the single-Skill or daily command resumes an existing projection only
 when its target, effective policy and complete input fingerprint still match.

@@ -176,6 +176,7 @@ export function cancelCurrentSkillProjection(
             const plan = yield* checked(() =>
               renderCurrentProjection({
                 path: file.path,
+                role: file.path === index.main.path ? "main" : "supporting",
                 bytes: prepared.bytes,
                 rewriteLink: currentProjectionLinkRewriter(
                   file.path,

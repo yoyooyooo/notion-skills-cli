@@ -444,6 +444,14 @@ never enter Contributions.exclude. Notion-owned native/resource rows are outside
 this filter. Native bodies are verified without replacement, resource text remains
 readable and non-text originals need no generated body.
 
+For the bound main `SKILL.md`, `ROUTER.md` or `PROMPT.md`, Source/resource reading
+bodies omit a leading, `---`-delimited YAML frontmatter mapping with string `name` and
+`description` values. The page starts with the actual body. Original bytes retain
+the entire header, including additional metadata, for reads and export. Notion
+Name/Description stay independently managed. Supporting documents, including a
+root file named for another entrypoint, keep their complete text. Ordinary Markdown
+separators and unrecognized or malformed headers remain visible.
+
 The actual selected bodies are read back. A link, hash, truncated excerpt or local
 cache path is not selected text coverage. Equal rows and bodies produce zero
 semantic writes. Dry-run reports full consumption count, selected/excluded paths
@@ -469,6 +477,12 @@ explicit `--operation`, the CLI continues the existing projection only when its
 target, effective policy and complete current input fingerprint match. It uses
 the existing operation's finite recovery rules and makes no retry loop. A content
 operation, changed input or policy, and an unconfirmed CREATE/append remain blocked.
+
+The input fingerprint also binds the renderer revision. Before upgrading a
+renderer, complete or cancel unfinished projections with their original executable.
+A newer renderer refuses to resume an older intent; it does not replace pending
+requests or clear their state. Completed pages can be projected again normally,
+then repeat with zero writes once their bodies match.
 
 Explicit recovery remains available with the returned exact operation:
 
