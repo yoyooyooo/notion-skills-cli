@@ -1,7 +1,9 @@
 # 当前生命周期的有限模型
 
 本套件由 [resource-lifecycle Skill](../../../.cursor/skills/verify-notion-resource-lifecycle/SKILL.md) 维护。
-它检查 C06/C07b 与 current 读取的一个有限交错切片，不恢复旧 ACK、永久 pin 或历史管理模型。
+CurrentLifecycle 检查 C06/C07b 与 current 读取的有限交错；SourceSync 检查当前 Source 同步的有限协调次序；
+SourceSyncProgress 检查投影和 full 批次的两个有限完成前缀。
+三者不恢复旧 ACK、永久 pin 或历史管理模型。
 源码行为由实际 reader/operation 测试回放；模型与生产 guard mutation 各有独立结果。
 
 ## 运行
@@ -16,13 +18,18 @@ node scripts/verify-formal.mjs --suite current-lifecycle \
   --out /absolute/new-lifecycle-model-run
 python3 scripts/check-formal-mutations.py --suite current-lifecycle \
   --out /absolute/new-lifecycle-guard-run
-bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-projection-write.test.ts --timeout 60000
+bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-projection-write.test.ts packages/core/test/shared-current-source-sync-guards.test.ts packages/core/test/shared-current-source-sync-batch.test.ts packages/core/test/shared-current-source-sync-batch-model.test.ts --timeout 60000
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-sqlite.node.test.ts
 ```
 
 PSTACK_STATECHART_ROOT/TLA2TOOLS 可替代两项工具参数。使用本次新的外部输出目录；错误运行也保留。
-正例为 content/projection/restore 三个配置；四个反例分别移除读回 fence、projection 分类、unknown 不重放和非内容完成资格。
-每个配置检查同一份完整规则清单，expected_broken 独立维护。
+CurrentLifecycle 正例为 content/projection/restore 三个配置；四个反例分别移除读回 fence、projection 分类、unknown 不重放和非内容完成资格。
+SourceSync 有 fresh/resume/projection/foreign 四个正例和七个故意缺陷配置。
+SourceSyncProgress 有 full/resume/hard/completion/foreign-completion 五个正例和八个故意缺陷配置；完整套件共 31 个配置。
+同一模型的每个配置检查同一份完整规则清单，expected_broken 独立维护。
 缺工具、规则遗漏、cut、超时和解析异常都不算通过。
+
+单独检查同步协调或有限进度时使用 `--model SourceSync` 或 `--model SourceSyncProgress`；完整 current-lifecycle 组仍运行三个模型的全部配置。
 
 ## 两条状态轴与有限范围
 
@@ -106,6 +113,104 @@ ReadEventuallyExplained 仅针对已经开始的读取，要求最终发布或�
 验证/完成/退役与已开始的读继续得到执行。它们不证明永久断网下成功，不自动替用户恢复未知写，
 也不保证 Notion 与 provider 的任意延迟。没有这些假设只声明 safety。NoDeadlock 不能替代这些进展性质。
 
+## Source 同步协调
+
+SourceSync 将一次同步调用与当前 Source 的 readiness、有限意图和阅读投影分开。
+其状态从检查原意图开始；只有原意图已经处理，才对新 upstream observation 作决定。
+Source 已 ready 但父意图尚未退役时，仍沿原 operation 完成退役，不能凭相同 SHA 返回 unchanged。
+
+有限域为一个 Source、两个受影响 Skill、两个 commit 与配置身份、一个旧意图，以及最多一次进程中断和一次上游分支移动。
+第二个 Skill 已从新目标集合移除，但仍在完整 affected 集合内；它的旧投影必须在第一条 Source mutation 前收敛。
+本任务的投影可以按原 frozen input 续接；外来的 Source 或 projection 意图必须明确阻塞。
+续接旧投影成功后完成本轮，下一次调用才选择新的 upstream commit；不会把原意图的完成回执绑定到后来移动的 HEAD。
+模型中的 owned/foreign 只抽象已验证的恢复资格，不证明 manager 字符串或凭据本身提供权限隔离。
+
+| 规则 | 协调义务 | 故意缺陷 |
+| --- | --- | --- |
+| PendingResolvedBeforeDecision | 先处理当前有限 Source 意图，再决定新检查或 no-op | pending 配置跳过原意图选择 |
+| AllAffectedProjectionsSettledBeforeSourceWrite | 旧、新目标并集中的投影都先于 Source mutation 收敛 | projection-scope 只检查仍在新集合中的 Skill |
+| FrozenCommitPreserved | 一次 operation 始终使用已冻结 commit | moving-ref 在写入时重读移动分支 |
+| ConfigurationBoundToNoop | 轻量 no-op 同时比较 commit 与配置身份 | configuration 只比较 commit |
+| OnlyAuthorizedIntentResumed | 自动续接只处理已授权意图 | source-owner/projection-owner 接走外来意图 |
+| ProjectionFailurePreservesSourceReady | 后续阅读失败保留已经完成的 Source 内容资格 | projection-readiness 将内容降回非 ready |
+| NoFalseSyncCompletion | 完成回执要求原 Source 意图退役、目标完成且无旧投影 | 在所有配置检查，不用 ready 位替代这些事实 |
+
+`shared-current-source-sync-guards.test.ts` 只替换 Git provider 边界，实际运行同步协调、Source writer、投影 writer 和有限 operation 内核。
+统一 mutation runner 增加五条真实回放；连同 CurrentLifecycle 的四条，共九条。
+
+| 真实 mutation | 对应回放 |
+| --- | --- |
+| Source fence 只保留新目标，漏掉 removed owner | 原 beta 投影 append 已接受但丢 ACK；Source 在任何 mutation 前拒绝，原 intent 与旧 revision 保留 |
+| 同时跳过 local pipeline 与 remote parent 的 pending 拒绝 | Source 已 ready、旧 receipt 仍匹配，但原父意图未退役；重复命令必须收敛原意图，不能返回新的 no-op |
+| 去掉初次 prepare 的 exactCommit | ref 检查后分支从 A 移到 B；实际发布仍必须是 A |
+| 去掉成功 receipt 的 configuration 比较 | commit 不变而 Selection 缩小；必须执行真实成员 retirement，不能沿旧 receipt 省略 |
+| 去掉 manager 与 execution generation 比较 | 新身份不得消费、修改或清退原 pipeline；原身份仍能恢复 |
+
+pending 的两层拒绝是明确的 compound mutation，不能解释为一个 `if` 缺失。
+SourceSync 的 projection-owner/projection-readiness 反例是协调义务；完整 affected fence、原有限内核的 projection 分类守卫及直接恢复测试分别约束实际路径。
+不会把它们声称为两个新的一行 guard mutation，也不把 lower writer 安全拒绝误报为错误内容已经发布。
+
+完成 Source 写入后，本地 phase 保存仍可能失败。专属回归在此处注入 Store 失败，再将真实 Skill 主文 Content 指到另一成员的 source_path，
+要求原输入只读核验并拒绝漂移：Source、Record 与 owner 均零新写，原 pending 保留；恢复原 metadata 后只读收敛。
+该 Store seam 使用内存 Map；真实 SQLite 与独立进程验证仍须单列。
+
+child cursor 只有 0、1、2；每次前进抽象的是一个已观察并核验的目标。
+CREATE/append 接受却丢响应、父游标写入丢响应、实际 SQLite 崩溃、完整目录和逐文件字节不在这个原子步骤内。
+它们继续由现有 Source writer、operation 与专属 sync guard 回归验证，不能把本模型通过当作全部 writer 的证明。
+provider 不可达产生 explained blocked，模型不会把失败转换成完整空集；完整 discovery 的真实性仍由生产边界验证。
+
+SyncEventuallyExplained 只保证到达 complete、unchanged、partial 或 blocked 之一。
+它假设该 affected 范围内只有一个协作内容 writer，外部观察能够返回，已开始的步骤与一次原意图重入得到弱公平调度。
+partial 保留 Source 成功与投影未完成的区别；blocked 可以保留未决意图，均不算业务全成功。
+没有跨机 CAS、调度器 exactly-once、永久断网下成功或 Notion 多 owner 原子事务的保证。
+
+模型不替代 Mini 的调度、重启、时区、installed package generation、持久 Store、磁盘保留和实际请求成本验收。
+`SourceSync.view.mjs` 保留旧投影归属、被移除的 owner、ready-but-pending 与候选/上游分支差异。
+图合并已验证 child 的具体序号、绝对 commit 值和违反同一规则之后的状态；同标签内的动作不画箭头。
+所有动作仍参与 TLC 检查，反例路径上的关键变化与不同规则的失败状态保持可见。
+运行器输出的每个 Mermaid 和反例路径用于核对真实 guard，不能只交一张人工流程图作为形式验证结果。
+
+## 预算中断后的有限进度
+
+SourceSyncProgress 从已经冻结的输入开始，单独枚举两种当前前缀：每个 Source 的投影 `next_index`，以及 full 批次的终结结果序列。
+投影成功核验后才保存下一游标；进程在两者之间退出时，可以重验当前未提交目标，但不能重新进入已经持久完成的前缀。
+full 的 retryable 项不进入终结前缀；hard failure 会进入前缀并保留完整失败结果，不能在后来重跑成功时消失。
+Source 的成功终结项先写入原 dispatch parent，再清理该 Source child。
+如果 parent 已保存而 child 清理中断，只有完全匹配的成功终结项才能允许纯本地收尾；不能凭 parent 存在或历史 hard failure 清理 child。
+批次结束后退役唯一在途记录，不保留逐 tick 历史。可重建的 latest observation 不承担 full 进度。
+
+| 规则 | 有限义务 | 故意缺陷 |
+| --- | --- | --- |
+| ProjectionCursorVerified | 游标只越过已经核验的目标 | skip-target 在只核验目标 1 后保存游标 2 |
+| CursorBoundToFrozenInput | 原游标只能继续原冻结输入 | rebind-input 用新输入续接旧前缀 |
+| CommittedTargetNotReentered | 重入不再处理已提交的投影前缀 | repeat-target 从目标 1 重来 |
+| CommittedSourceNotReentered | 同一 full 批次不再处理已提交的 Source 前缀 | drop-batch-prefix 重启时丢弃已保存结果 |
+| OnlyTerminalSourceResults | retryable 不能成为已完成 Source | advance-retry 将重试项写入终结前缀 |
+| HardFailureRetained | 最终报告保留此前的 hard failure | forget-hard-failure 在最后一次调用只报告后续成功 |
+| ParentCompletionBeforeChildRetirement | 模型中原 parent 的下一成功项先保存；免远端复核的 child 收尾只认精确成功资格 | early-child-retirement 提前清 child；foreign-parent-proof 接受不匹配的 parent 资格 |
+
+有限域为两个 Source、每个两个投影目标、一次进程中断、一次 retryable 停止，最多六次调用。
+这一次中断可以发生在目标核验后、游标保存前，也可以发生在 parent 成功项保存后、child 清理前。
+completion 与 foreign-completion 分别从匹配和不匹配的成功 parent 开始，后者必须保留 child 并明确拒绝。
+hard 场景在 child 分配前失败；模型不枚举旧 hard 前缀后的 child 续接，以及 parent 已退役或换代的情况。
+生产在这些情况下仍须实际核验原 Source/projection，保留既有 hard 结果且不创建或改写其他 parent；它们不能使用成功 parent 的免远端复核捷径。
+每次预算为“完整 scope preflight + 一个目标核验”；真实系统也必须留出完整 preflight 后至少推进一个剩余目标的预算。
+模型不证明任意小预算都能前进，也不证明生产 HTTP 数量或耗时。
+ProgressEventuallyExplained 在单协作 writer、外部观察返回及原输入得到弱公平重入的前提下，最终完成或明确阻塞；不承诺永久错误后业务成功。
+
+实际实现映射到 `continueOwned` 的成功后保存、`checkpointSourceCompletion` 的 parent 先行、`completedBatchChild` 的精确资格、`executeBatch` 的终结前缀，以及 batch helper/schema 和 SQLite 的单步不可变检查。
+专属 guard 用实际共享 RequestBudget 停在第一个目标后，检查重跑只读取剩余目标的正文；游标保存失败允许重验当前目标，但不重复其已完成正文 mutation。
+batch 回归覆盖预算续接、保留早先 hard failure，以及 full 的 B 由 changed 完成后，再连续发布 C/D 仍不丢失原 parent 前缀；原 full 返回其 B 结果，新 full 才重新对账。
+缓存的 `completed_at` 改为 0 或未来值也不参与这个资格。parent 保存失败时 child 必须保留，下一次先完成原 checkpoint，不能被新 HEAD 或后续 cache 覆盖替代。
+另一组 guard 在 parent 保存成功后让 child 清理报 STATE_BUSY：本轮报告 75，并保留双方记录；下一 full 只做本地清理，再报告完成。
+operation ID、commit、配置、revision 或投影目标任一字段不符，full 与 changed 都拒绝清 child；恢复精确 parent 后 changed 只清理，原 full 结果仍保留到 full 返回并退役。
+这些测试运行真实协调与 writer 内核，受控 provider/Notion 与内存 Map 不代表 SQLite 持久性；独立进程的 SQLite 回归另外验证初始空前缀、仅原位或下一项、原输入/目标顺序/批次身份不可变，以及退役后不增长历史。
+
+已完成投影前缀后来出现 pending，即使使用原 deterministic operation ID，也必须在下一目标写入前阻塞。
+该精确 guard 和配置漂移由实现回归覆盖，本模型未增加“完成后新远端 intent”状态；九个实际 mutation 的范围也不因此扩大。
+parent 完成资格抽象为两个身份，并不枚举真实 UUID、每个字段的值或 SQLite 的断电行为；真实字段比较和两个 Store 边界由上述实际回归约束。
+前缀表示本轮曾完成该目标，不是跨 owner 的持续原子快照。Source 的合法权威转移会修改当前 Contributions，受冻结配置检查约束；不把 Main descriptor 的 schema 合法误称为完整 Source authority 校验，也不为已完成前缀重读所有正文。
+
 ## 图、源码对应及未覆盖范围
 
 runner 为每次配置保留实际 TLA/cfg/view、TLC 原件、规则结果、报告和可生成的 Mermaid。
@@ -114,5 +219,6 @@ view 按内容 owner、finite intent 和 current read 展开并行区域；相�
 
 [coverage.json](coverage.json) 固定实际 source/test 输入和原子边界。
 源码变更先审具体 diff；更新 hash 只表示对应关系已审，不是 refinement 或新的通过回执。
-模型没有枚举 Source 父子游标、多个文件/owner、schema 升级、multipart、SQLite 崩溃、跨机 CAS、
+CurrentLifecycle 没有枚举 Source 父子游标；SourceSync 的抽象 child 步骤不等于持久投影/批次前缀，后者由 SourceSyncProgress 在上述范围内单独检查。
+三者均未枚举完整多文件/owner 写入、schema 升级、multipart、SQLite 崩溃、跨机 CAS、
 精确 path/hash/mode、自然语言、Pi 会话及 provider 行为。它们沿各自现役入口验证，不由本套件代填。

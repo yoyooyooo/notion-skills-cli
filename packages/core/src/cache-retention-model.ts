@@ -10,13 +10,15 @@ export const DEFAULT_CACHE_CAPACITY: CacheCapacity = {
 export const REBUILDABLE_CACHE_PREFIXES = [
   "cache/shared-github-blobs/",
   "cache/shared-derived-graphs/",
+  "cache/current-source-sync/",
 ] as const
 
 /** This one predicate owns admission, diagnostics and reclamation. */
 export function rebuildableCacheKey(key: string): boolean {
   return (
     /^cache\/shared-github-blobs\/[a-f0-9]{40}\.json$/u.test(key) ||
-    /^cache\/shared-derived-graphs\/[a-f0-9]{64}\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u.test(key)
+    /^cache\/shared-derived-graphs\/[a-f0-9]{64}\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u.test(key) ||
+    /^cache\/current-source-sync\/[a-f0-9]{64}\/latest\.json$/u.test(key)
   )
 }
 

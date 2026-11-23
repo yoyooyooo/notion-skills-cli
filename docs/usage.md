@@ -345,6 +345,15 @@ ntn-skills ctl cache clear --all
 
 Cache clearing does not resolve an unfinished import or clean remote Notion tables.
 
+## Synchronize upstream Git
+
+Use `ntn-skills ctl library source check --entry LIBRARY_ID --source SOURCE_ID`
+to inspect an explicit current Source without publishing. Use the corresponding
+`source sync` command or `ntn-skills/management` to publish exact newer content
+and resume compatible unfinished work. Scheduling stays with Dagu, cron or the
+calling application. See [Source synchronization](source-sync.md) for identities,
+budgets, projection and exit codes.
+
 ## Upgrade or uninstall
 
 Install the desired package version or matching candidate tarball.

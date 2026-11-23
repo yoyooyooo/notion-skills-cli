@@ -203,6 +203,7 @@ local repository's sibling directories.
 | Read supporting files, inspect a complete directory, or export a selection | [Everyday commands](docs/usage.md) |
 | Replace a complete local tree, choose native files, or resume an import | [Complete import](docs/shared-authoring.md#prepare-the-entire-replacement-tree) |
 | Apply or refresh Git contributions, manage Sources, or take over a file | [Source management](skills/notion/ntn-skills-sync/references/synchronization.md#current-source-boundaries) |
+| Check or synchronize upstream Git through the CLI, SDK or a scheduler | [Source synchronization](docs/source-sync.md) |
 | Generate Notion reading pages for imported or Source content | [Reading projections](docs/shared-authoring.md#generate-readable-text-in-notion) |
 | Restore an exact Skill from Trash | [Trash recovery](docs/shared-authoring.md#restore-a-trashed-skill) |
 | Choose Views, shared Profile rules, or freshness settings | [Profiles and Views](docs/usage.md#choose-a-profile-or-view) |

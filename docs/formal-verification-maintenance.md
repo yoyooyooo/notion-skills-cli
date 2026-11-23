@@ -8,7 +8,7 @@
 
 原 resource-lifecycle、operation-recovery 模型、专属突变脚本、旧图册和旧维护配方已经退役。它们依赖已取消的 event、永久 pin、ACK/review/completion 和独立接受协议。Git 中的历史足以追溯，不保留可误运行的兼容入口，也不把旧模型通过算作当前实现通过。
 
-当前资源与有限意图由 [资源状态 Skill](../.cursor/skills/verify-notion-resource-lifecycle/SKILL.md) 维护 [current-lifecycle](../verification/models/current-lifecycle/README.md) 的一组模型和七个配置。内容 owner Operation 与 projection/restore 的有限意图分开；覆盖当前读取与 writer 交错、未知写不重放、完成资格，以及声明假设下的进展。[操作恢复 Skill](../.cursor/skills/verify-notion-operation-recovery/SKILL.md) 仍拥有实际 writer/HTTP/SQLite 回放。两组复用同一 runner，不增加总验证平台。
+当前资源与有限意图由 [资源状态 Skill](../.cursor/skills/verify-notion-resource-lifecycle/SKILL.md) 维护 [current-lifecycle](../verification/models/current-lifecycle/README.md)。CurrentLifecycle 保留七个配置，分开内容 owner Operation 与 projection/restore 的有限意图；覆盖当前读取与 writer 交错、未知写不重放、完成资格，以及声明假设下的进展。SourceSync 的十一个配置另查有限 Source 同步协调：原意图优先、完整 affected owner 的旧投影 fence、冻结 commit、配置参与 no-op、授权恢复，以及 Source 与投影结果分离。SourceSyncProgress 的十三个配置单独检查预算重入后保留投影游标和 full 批次终结前缀、硬失败不丢失，以及 parent 成功项先保存、child 清理只认精确终结资格。[操作恢复 Skill](../.cursor/skills/verify-notion-operation-recovery/SKILL.md) 仍拥有实际 writer/HTTP/SQLite 回放。三个模型共 31 个配置，复用同一 runner，不增加总验证平台。
 
 Hosted Notion MCP 的独立凭据由 [消费验证 Skill](../.cursor/skills/verify-notion-consumption/SKILL.md) 维护 [notion-mcp-auth](../verification/models/notion-mcp-auth/README.md)。保留审核后的 AuthAcquisition v5 与 RefreshRotation v7，共 31 个完整配置：8 个候选正例、19 个故意缺陷和 4 个成功可达性见证。源代码对应只绑定已审阅的认证、store 和同机锁守卫；这不是完整实现精化证明，也不借模型的 Enabled/sessionEpoch 输入证明 Broker 接线。
 
@@ -27,7 +27,7 @@ node scripts/verify-formal.mjs --suite notion-mcp-search --out /absolute/new-mcp
 node --test scripts/formal-runner-contract.test.mjs
 ```
 
-`--model SharedProducer`、`--model RequestAdmission`、`--model AuthAcquisition`、`--model RefreshRotation` 或 `--model SearchAdmission` 选择该模型的全部正负配置。只接受 request-engine/current-lifecycle/notion-mcp-auth/notion-mcp-search 四个现役 suite，不兼容已退役模型。输出使用本次新的外部空绝对目录；失败保留原结果，下一次使用新目录。
+`--model SharedProducer`、`--model RequestAdmission`、`--model CurrentLifecycle`、`--model SourceSync`、`--model SourceSyncProgress`、`--model AuthAcquisition`、`--model RefreshRotation` 或 `--model SearchAdmission` 选择该模型的全部正负配置。只接受 request-engine/current-lifecycle/notion-mcp-auth/notion-mcp-search 四个现役 suite，不兼容已退役模型。输出使用本次新的外部空绝对目录；失败保留原结果，下一次使用新目录。
 
 运行器检查源码对应、工具字节、完整规则清单和每个配置。正例的 broken 集合必须为空；负例必须精确等于声明的集合。未执行的规则、缺失 NoDeadlock、cut、超时、解析失败、额外失败和工具异常都不能算通过。不能从已经删减的配置反向生成较弱规则清单。
 
@@ -41,9 +41,19 @@ node --test scripts/formal-runner-contract.test.mjs
 
 coverage hash 用于阻止未经审阅的漂移。先核当前行为，再更新准确映射；不批量刷新 hash 来制造通过。删除产品协议时，连同不再适用的模型和调用入口退役，保留仍适用的权限、完整性、预算和取消守卫。
 
+真实 mutation 可以运行在官方 paired run 的无 `.git` 私有源码快照中。
+现役 runner 核对 `PAIRED_CLI_SOURCE` 的实际路径、run/build 的 root 与身份、原始源码清单摘要，
+并要求受保护 source/test、coverage 和验证器字节与选定 build 一致；原有 coverage hash 检查仍执行。
+回执明确记录 `checkout_commit: null`、原仓库 commit 与 paired snapshot 身份，不伪造 Git checkout。
+普通 Git checkout 路径保持原行为。缺失、无效或互相不符的 provenance 由同一 runner contract 拒绝。
+
 `scripts/check-formal-mutations.py --suite request-engine` 在独立副本中回放 19 个实际 guard。每个必须原件通过、突变导致行为断言失败、恢复后通过。`formal_mutation_result.py` 只接受真实断言诊断；expect 统计行、超时、导入失败或语法错误都不算捕获，混有断言的工具失败也拒绝。现有 runner contract 测试用实际 Bun 输出和 Vitest 结构化错误核对判据。异步用例必须无条件释放自有 latch，让断言错误能够完成退出。当前 immutable runtime case 修改 `shared-current-resource.ts`，并通过公开 SDK 取消 creator，确认另一个 runtime 的读取仍可完成。
 
-同一入口的 `--suite current-lifecycle` 回放四个实际 guard：current 最后读回 fence、projection 分类、never-replay 的未知 action、非内容完成时的 owner 资格。只改外层 activation 条件会被下一层写入边界拒绝；这种未触发行为断言的异常不是该性质已被杀死。每个保留负例都需与模型的真实路径一致。
+同一入口的 `--suite current-lifecycle` 回放九个实际 guard：原有 current 最后读回 fence、projection 分类、never-replay 的未知 action、非内容完成时的 owner 资格；新增 Source 完整 affected 范围、pending 优先、精确 observed commit、no-op 配置 receipt 与 manager/generation 恢复资格。pending mutation 同时移除本地 pipeline 和远端原意图两道拒绝，因为单独去掉一层仍会安全阻塞。只改 projection 外层 activation 条件也会被下一层写入边界拒绝；这种未触发对应行为断言的异常不是该性质已被杀死。各 mutation 必须与模型的真实坏路径一致。
+
+SourceSync 的七个故意缺陷配置不等于七个独立实现 guard。旧投影归属和 Source/projection 结果分离还依赖原有有限内核，专属 sync 回归在真实协调路径中验证它们，不虚构每条性质都有一个可删除的 `if`。完成 Source 写入后丢失本地 phase 保存，再发生人工 Main metadata 漂移的情况由真实 writer 的只读 `verify_only` 回放；该边界没有被两个抽象 child 步骤证明。
+
+SourceSyncProgress 的八个故意缺陷也不是新增的八条生产 mutation。对应的真实进度、配置冻结、游标保存失败、completed prefix 新 pending、批次预算续接、硬失败保留、parent checkpoint 失败及成功后 child 清理中断回归分别运行协调内核。只有同 batch 的精确成功终结项能授权本地清 child；可重建缓存不承担 full 进度，后续 changed 发布和缓存时间戳都不能抹去原 parent 前缀。真实 SQLite 独立进程验证原子单步与不可变身份。Map 夹具不能替代磁盘证明，有限模型的核验动作也不展开真实 HTTP、Files 或完整 authority inventory。completed prefix 记录过去完成事实，不提供后续外部编辑下的全库原子快照。
 
 `--suite notion-mcp-auth` 回放十二个实际 guard 变体：callback issuer、独立 waiter 取消、退出后的 code exchange 与 grant commit、派发前在途标记、跨进程刷新互斥、崩溃与独立 deadline 后禁止重放、过期 store 发布，以及定时器尚未执行时过期 waiter 的 exchange/commit 和原子发布前 owner 核对。前置 exchange 和未知刷新有多层防御；对应 mutation 明确同时移除这些防御，不能称作单个 if 缺失。锁 mutation 观测的是失去等待重读后第二进程无法复用赢家，pending 守卫仍阻止双派发；不声称该回放观察到重叠 HTTP。断电持久性、真实浏览器、发行包、Hosted 服务行为和跨机锁不在该回放证明内。
 
@@ -55,6 +65,6 @@ RequestAdmission 不建模多步骤 import、字节流、multipart 或有限 Ope
 
 `.github/workflows/formal.yml` 按现役 suite 运行模型、严格结果测试、实际 guard mutation 和对应实现回归，包含 next 的相关变更。CI 是否通过以该提交的实际日志为准，本地通过不替代它。当前必需回执及原始失败保存到本轮已有证据归档；不能只依赖会过期的 CI artifact 链接，也不建立内容版本库或新证明平台。
 
-请求模型仍只证明 safety/NoDeadlock；CurrentLifecycle 的条件进展要求外部调用返回、准确显式 resume 及所列弱公平性。blocked 是保留未知意图的明确结果，不是业务完成；这些假设必须随回执保留。
+请求模型仍只证明 safety/NoDeadlock；CurrentLifecycle 的条件进展要求外部调用返回、准确显式 resume 及所列弱公平性。SourceSync 另假设 affected 范围内的单写者与一次保留原意图的重入；它的两个 child 步骤不证明真实多文件事务、未知请求或 SQLite 持久性。SourceSyncProgress 限于两个 Source 各两个目标、一次崩溃及一次 retryable，最多六次调用，且每次预算必须覆盖完整 scope preflight 加一个剩余目标。这一次崩溃可在目标游标保存前或 parent checkpoint 成功后发生；精确 parent 完成资格抽象为两个身份。永久失败和任意小预算不在进展承诺内；full 进度保存在原 dispatch parent，缓存和墙钟不授权 child 清理。blocked 是保留未知意图的明确结果，partial 也不算业务全完成；这些假设必须随回执保留。Mini 调度、时区、升级、installed package generation 和磁盘治理沿真实运行验收，不能由模型代填。
 
 发现当前未建模的具体风险，优先给实际行为加必要的反例；只有状态分析确实需要时才扩展对应模型。达到本次行为和边界的验证目标后停止。

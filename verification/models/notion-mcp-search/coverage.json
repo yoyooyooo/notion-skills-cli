@@ -4,7 +4,7 @@
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "kind": "Bounded search admission design model with reviewed concrete guards; not a production refinement proof.",
   "correspondence": "One request, nine remote result classes, two fixed selection pins, four independent epoch owners and a two-tick deadline. Source hashes bind reviewed working-tree bytes; source_base is their baseline, not a claim that new bytes were already committed.",
-  "review_basis": "Preserves SearchAdmission v4 transitions, complete independent expected rule inventories and expected counterexamples. Reviews REST preflight before MCP dispatch, verified same-physical-entry access, explicit connection/grant epoch checks before and after refresh, current physical page/owner/stable-claim/source admission, retained disabled observations, supporting File binding rereads, and final source/credential/deadline fences. The hosted wire decoder accepts only observed workspace_search shapes and never upgrades remote matching to exact consumption-byte proof. Broker owns disabled tool registration, host session/metadata qualification and active pins; its separate suite and installed Pi acceptance must establish those obligations. Node source-mode review: the package-version import now uses the existing default JSON import with type=json attribute and reads the same manifest.version. This corrects native Node module loading; operation, admission, deadline, credential and result semantics are unchanged. The existing real source-mode dev-launcher regression and full installed-package check must pass. Native Node type-erasure review: NotionMcpClient stores the identical options through an explicit readonly field and constructor assignment instead of a TypeScript parameter property. Transport, schema, byte/deadline budgets and result guards are unchanged; the real source-mode launcher, transport and SDK regressions verify this boundary.",
+  "review_basis": "Preserves SearchAdmission v4 transitions, complete independent expected rule inventories and expected counterexamples. Reviews REST preflight before MCP dispatch, verified same-physical-entry access, explicit connection/grant epoch checks before and after refresh, current physical page/owner/stable-claim/source admission, retained disabled observations, supporting File binding rereads, and final source/credential/deadline fences. The hosted wire decoder accepts only observed workspace_search shapes and never upgrades remote matching to exact consumption-byte proof. Broker owns disabled tool registration, host session/metadata qualification and active pins; its separate suite and installed Pi acceptance must establish those obligations. Node source-mode review: the package-version import now uses the existing default JSON import with type=json attribute and reads the same manifest.version. This corrects native Node module loading; operation, admission, deadline, credential and result semantics are unchanged. The existing real source-mode dev-launcher regression and full installed-package check must pass. Native Node type-erasure review: NotionMcpClient stores the identical options through an explicit readonly field and constructor assignment instead of a TypeScript parameter property. Transport, schema, byte/deadline budgets and result guards are unchanged; the real source-mode launcher, transport and SDK regressions verify this boundary. Reviewed the AH-1277 SDK boundary extraction at 90051b844aa15a86975054c81df83981c3c3a028 against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. runOperation now delegates to the shared runRuntimeOperation while retaining the consumption capability check before service acquisition. The complete per-call environment, pre-abort check, nodeRuntime/ConfigProvider, Notion acquisition, Effect.scoped lifetime, AbortSignal, error propagation and final metrics callback retain their reviewed behavior. The helper is independently hash-bound below so moving the implementation does not remove its protection. Resolving cwd now precedes rejection of an invalid readOnly option; this changes no legal invocation or network admission and is outside the finite model. Management chooses its own factory; consumption still uses its existing read-only boundary. No finite model, configuration, independent rule inventory or existing guard mutation target changes. This is a source-correspondence review, not a new verification result.",
   "files": {
     "packages/core/src/notion-mcp-search.ts": "c8e97baf785ede69d0da6f8d67c14676ab77e23a85f8fe5d246e5819a8e01632",
     "packages/core/src/shared-current-index.ts": "3f904a6a590fd3e2be765caf7343125c2c474485f38278995df5c2d70848ff62",
@@ -12,7 +12,8 @@
     "packages/core/src/shared-content.ts": "520ce63a7174c60edaf9e29a0b437eef191ae15e38b6e127c4761268f5ff21dc",
     "packages/core/test/notion-mcp-search.test.ts": "4a264aa1b763bfa9e4d50480fd2ad0fbaf436bd53bcb260568921ada403c1772",
     "packages/core/test/shared-current-fixture.ts": "15c96f0556956bbac3138ecf49118a765e66f3c7fe35fff4913476e1b0cd4b1e",
-    "packages/cli/src/sdk.ts": "fb1bc1742fa6bf0ee17c285338e722cf1081d58b7ba680248f6866c0e3f3844a",
+    "packages/cli/src/sdk.ts": "e75784b900fd1c7c0722b15e81da5c2d3cf5cac18d2d31e2fbcf1269f44b94ac",
+    "packages/cli/src/operation-runtime.ts": "51d97df5587658afb4f5159e374c77062f47583ccf29f21c19c115ee766ace64",
     "packages/cli/src/commands-content.ts": "f5243b69ba79b57e0df25a9f9ad36ba64713caea738f05777ad4f466487b9274",
     "packages/core/src/notion-mcp-client.ts": "e30a584dd1e0f73df0f2876170c84d055b7808100c8c0bb374ac8bf380b4ae46",
     "packages/core/test/notion-mcp-client.test.ts": "05d4ec7de65e1b7bd815e89a1a7f89a2ddc7855e1d2a4a409d763269b48e8f1f",
@@ -38,7 +39,11 @@
   "implementation_bindings": [
     {
       "name": "fresh_source_and_connection",
-      "files": ["packages/cli/src/sdk.ts", "packages/core/src/notion-mcp-search.ts"],
+      "files": [
+        "packages/cli/src/sdk.ts",
+        "packages/cli/src/operation-runtime.ts",
+        "packages/core/src/notion-mcp-search.ts"
+      ],
       "scope": "REST resolves before authorization. Source scope and descriptor are reread after authorization and at publication. The MCP user/workspace is verified and the exact selected entry fetched before query. An OAuth refresh cannot switch connection or grant epoch for the old request."
     },
     {
@@ -63,7 +68,11 @@
     },
     {
       "name": "public_sdk_boundary_regression",
-      "files": ["packages/core/test/sdk-mcp-search.node.test.ts"],
+      "files": [
+        "packages/core/test/sdk-mcp-search.node.test.ts",
+        "packages/cli/src/sdk.ts",
+        "packages/cli/src/operation-runtime.ts"
+      ],
       "scope": "Real loopback REST and MCP services, independent private credential store, preflight dispatch ordering, no explicit-token fallback, wrong workspace/entry suppression, positive/empty responses, revoked/replaced grants during query/401 refresh, cancellation and deadline propagation. No product function is mocked."
     }
   ],

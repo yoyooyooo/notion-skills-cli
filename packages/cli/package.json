@@ -36,18 +36,25 @@
       "import": "./dist/sdk.js",
       "default": "./dist/sdk.js"
     },
+    "./management": {
+      "types": "./dist/types/cli/src/management.d.ts",
+      "import": "./dist/management.js",
+      "default": "./dist/management.js"
+    },
     "./package.json": "./package.json",
     "./dist/ntn-skills.js": "./dist/ntn-skills.js"
   },
   "files": [
     "dist/ntn-skills.js",
     "dist/sdk.js",
+    "dist/management.js",
     "dist/types",
     "skills",
     "docs/README.md",
     "docs/current-contract.md",
     "docs/usage.md",
     "docs/notion-mcp.md",
+    "docs/source-sync.md",
     "docs/shared-authoring.md",
     "docs/protocol.md",
     "docs/maintenance-verification-review.md",

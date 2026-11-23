@@ -68,6 +68,13 @@ if (
   !entries.includes("package/dist/sdk.js")
 )
   throw new Error("Packed SDK export or generated declarations are missing.")
+if (
+  manifest.exports?.["./management"]?.import !== "./dist/management.js" ||
+  manifest.exports?.["./management"]?.default !== "./dist/management.js" ||
+  manifest.exports?.["./management"]?.types !== "./dist/types/cli/src/management.d.ts" ||
+  !entries.includes("package/dist/management.js")
+)
+  throw new Error("Packed management export or generated declarations are missing.")
 if (manifest.engines?.node !== "^22.23.5 || ^24.22.3 || ^26.13.1" || manifest.engines?.bun)
   throw new Error("Packed consumer runtime must be Node.js ^22.23.5, ^24.22.3, or ^26.13.1.")
 for (const section of ["dependencies", "optionalDependencies", "peerDependencies"])
@@ -88,6 +95,7 @@ const publicFiles = [
   "docs/current-contract.md",
   "docs/usage.md",
   "docs/notion-mcp.md",
+  "docs/source-sync.md",
   "docs/shared-authoring.md",
   "docs/protocol.md",
   "docs/maintenance-verification-review.md",
@@ -103,8 +111,9 @@ const publicFiles = [
 const declarations = (await readdir(join(target, "dist/types"), { recursive: true }))
   .filter((file) => file.endsWith(".d.ts"))
   .map((file) => `dist/types/${file}`)
-if (!declarations.includes("dist/types/cli/src/sdk.d.ts"))
-  throw new Error("Public SDK declaration entrypoint is missing.")
+for (const entry of ["sdk", "management"])
+  if (!declarations.includes(`dist/types/cli/src/${entry}.d.ts`))
+    throw new Error(`Public ${entry} declaration entrypoint is missing.`)
 for (const file of declarations) {
   const declaration = await readFile(join(target, file), "utf8")
   const packedDeclaration = await run(["tar", "-xOf", archive, `package/${file}`])
@@ -118,6 +127,7 @@ const expected = new Set([
   "package/package.json",
   "package/dist/ntn-skills.js",
   "package/dist/sdk.js",
+  "package/dist/management.js",
   ...declarations.map((file) => `package/${file}`),
   ...publicFiles.map((file) => `package/${file}`),
 ])
@@ -229,6 +239,6 @@ if (
   sdk?.contract !== "current-only" ||
   sdk.selection !== "all" ||
   sdk.failed !== 0 ||
-  sdk.passed !== 11
+  sdk.passed !== 12
 )
-  throw new Error("The installed current SDK gate did not complete its 11 current contract cases.")
+  throw new Error("The installed current SDK gate did not complete its 12 current contract cases.")

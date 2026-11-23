@@ -78,7 +78,8 @@ jobs:
               node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-immutable-read.node.test.ts > "${{ runner.temp }}/formal-${{ matrix.suite }}/sdk-regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/sdk-regressions.stderr"
               ;;
             current-lifecycle)
-              bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-projection-write.test.ts --timeout 60000 > "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stderr"
+              bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-projection-write.test.ts packages/core/test/shared-current-source-sync-guards.test.ts packages/core/test/shared-current-source-sync-batch.test.ts packages/core/test/shared-current-source-sync-batch-model.test.ts --timeout 60000 > "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stderr"
+              node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-sqlite.node.test.ts > "${{ runner.temp }}/formal-${{ matrix.suite }}/sqlite-regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/sqlite-regressions.stderr"
               ;;
             notion-mcp-auth)
               node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/notion-mcp-auth.node.test.ts packages/core/test/notion-mcp-credential-store.node.test.ts > "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stderr"

@@ -1,6 +1,6 @@
 ---
 name: ntn-skills-sync
-description: Manage current Git Source contributions, take over or restore one exact file, enable, disable or remove a Source, and manage Profiles, View defaults and freshness. Use for Source onboarding, refresh, authority changes and current discovery policy.
+description: Manage current Git Source contributions, check or sync an explicit upstream batch, take over or restore one exact file, enable, disable or remove a Source, and manage Profiles, View defaults and freshness. Use for Source onboarding, scheduled sync, refresh, authority changes and current discovery policy.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-sync
@@ -81,6 +81,29 @@ Context without changing Default Context to match the daily set. Installed/App
 Skills use repeatable complete imports through ntn-skills-maintain; genuine
 Notion originals retain native authority and use complete exports as recovery input.
 
+## Check or sync an upstream batch
+
+Use one invocation for the explicit Source set:
+
+```sh
+ntn-skills ctl library source check --entry ENTRY --source SOURCE_A --source SOURCE_B
+ntn-skills ctl library source sync --entry ENTRY --source SOURCE_A --source SOURCE_B --manager MANAGER_ID --execution-id PACKAGE_DIGEST --mode changed --projection none
+```
+
+Check observes current declarations and exact refs without publishing. Sync freezes
+each observed commit and uses the existing Source writer. The default changed
+mode needs a matching prior successful local receipt to skip work; full mode
+reconciles current targets at the same commit. Disabled, pinned and fixed-commit
+Sources are skipped. Use `--projection markdown` when reading pages are requested.
+An unchanged upstream result alone does not prove target or projection completeness.
+
+An external scheduler chooses the interval. It calls the same command with an
+unchanged manager, execution identity and local Store for compatible recovery;
+it does not implement its own prepare/apply sequence. Results are JSON on stdout.
+Exit 0 is complete, 75 is retryable, 1 is another incomplete result, and 2 is usage.
+Inspect the report before retrying blocked work. See
+[batch synchronization](references/synchronization.md#scheduled-upstream-batches).
+
 ## File authority and lifecycle
 
 Inspect `ctl library files PAGE_ID --entry ENTRY` to obtain exact Skill/File IDs.
@@ -111,6 +134,10 @@ does not delete Skills or repair arbitrary inbound links. See
 [authority and lifecycle](references/synchronization.md#file-authority-and-lifecycle).
 
 ## Unfinished Source work
+
+For `source sync`, repeat the same explicit selection, manager and execution
+identity with its original Store; compatible unfinished work resumes internally.
+The following explicit operation controls apply to single Source actions.
 
 Resume the original action with --operation OPERATION_ID --resume. Declaration
 resume freezes its commit and uses the original INPUT_JSON when Notion differs.

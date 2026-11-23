@@ -15,6 +15,7 @@ description: "验证当前 Source 计划、逐文件来源、完整目录、精�
 
 ~~~sh
 bun test packages/core/test/shared-current-source.test.ts packages/core/test/shared-current-source-input.test.ts packages/core/test/shared-current-source-management.test.ts packages/core/test/shared-current-source-write.test.ts packages/core/test/shared-current-source-file.test.ts packages/core/test/shared-current-source-lifecycle.test.ts packages/core/test/shared-acquisition-contract.test.ts packages/core/test/shared-current-resource.test.ts --timeout 60000
+bun test packages/core/test/shared-current-source-check.test.ts packages/core/test/shared-current-source-sync-guards.test.ts packages/core/test/shared-current-source-sync-batch.test.ts packages/cli/test/current-source-sync.test.ts packages/cli/test/management.test.ts --timeout 60000
 ~~~
 
 这些检查覆盖当前 plan、Git 声明、批量管理范围、真实协调 writer/HTTP、逐文件获取与原件资源。受控成员写入通过仍不能替代实库全量 Files 和阅读覆盖。
@@ -30,6 +31,7 @@ bun test packages/core/test/shared-current-source.test.ts packages/core/test/sha
 7. AH-516 先对账日用并集与真实更新来源。provider 可达、成员完整、字节完整、投影完整和当前可消费分别判定。GitHub 与私有 HTTP(S) Git 使用同一固定对象入口；保存声明可重建 Source。权限故障、不完整发现或未知状态不能当上游删除。
 8. 对一个 exact Source/path/Skill/File 执行 takeover，核同 File/page/path、当前原件、精确 exclude；人改 native 后 refresh 必须保留。restore-follow 使用当前已选 manifest，覆盖选中文件并撤 exclude，不重新发现 Git HEAD，不保留历史 Origin。native 实际往返失败不能假成功或悄悄变 resource。disabled 但完整 Source 可以接管，恢复跟随要求 enabled。
 9. enable/disable 只改 Source 消费资格，不改 Skill 的人工 Enabled。remove 先完整查库内 Skills/Main/Files 的语义引用和 Origin；缺 Origin、跨分页文件或孤儿均不能漏。先显式接管被引用文件，再清退无引用 Source 及自有资源。无变化启停 0 写，metadata 动作不产生逐 Skill 写入。
+10. `source check/sync` 只接显式 Source 集合；SDK 管理 subpath 与消费 SDK 分开。核同批预算/ref 观察共用、完整分页后才启动、耗尽后剩余 not_started、同 Store 重叠调用 retryable/75 且零新增业务写。changed 首次或配置变更完整对账，后续 no-op 必须匹配成功本地 receipt；full 同 SHA 仍核完整 owner。先拒绝旧目标未完成投影，再冻结所观察 commit，branch 后移不可换输入。原 Store、manager/execution 的兼容待办先恢复；发布与 projection 独立报状态。调度器只选时机，不另造 writer、恢复账本或 consumer 跟随 HEAD。
 
 [resource-sources](../verify-ntn-skills/features/resource-sources.md) 连接当前测试、精确原件与实际安装边界。来源读取、Source 写入和实库全文覆盖分别验收；未支持 provider 明确拒绝，没执行的真实范围记 not_run。
 

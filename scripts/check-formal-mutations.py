@@ -3,6 +3,7 @@
 from pathlib import Path
 import argparse, hashlib, json, shutil, subprocess, sys, time
 from formal_mutation_result import failed_assertion
+from formal_source_identity import source_identity
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--suite", choices=["request-engine", "current-lifecycle", "notion-mcp-auth", "notion-mcp-search"], required=True)
@@ -18,9 +19,15 @@ shutil.copy2(coverage_path, out / "coverage.json")
 shutil.copy2(Path(__file__), out / "check-formal-mutations.py")
 classifier_path = Path(__file__).with_name("formal_mutation_result.py")
 shutil.copy2(classifier_path, out / classifier_path.name)
+identity_path = Path(__file__).with_name("formal_source_identity.py")
+shutil.copy2(identity_path, out / identity_path.name)
 sha = lambda value: hashlib.sha256(value).hexdigest()
 for name, expected in coverage["files"].items():
     assert sha((repo / name).read_bytes()) == expected, f"Review source correspondence first: {name}"
+identity_files = dict(coverage["files"])
+for path in [coverage_path, Path(__file__), classifier_path, identity_path]:
+    identity_files[str(path.relative_to(repo))] = sha(path.read_bytes())
+identity = source_identity(repo, identity_files)
 
 fixture = out / "fixture"
 fixture.mkdir()
@@ -144,6 +151,16 @@ request_cases = [
 ]
 operation = "packages/core/src/shared-current-operation.ts"
 operation_test = "packages/core/test/shared-current-operation.test.ts"
+source_sync = "packages/core/src/shared-current-source-sync.ts"
+source_sync_test = "packages/core/test/shared-current-source-sync-guards.test.ts"
+# Both the local pipeline and the original remote Source intent reject a new
+# decision. This is deliberately a compound mutation, not one absent guard.
+source_pending_bypass = [
+    ('if (pending !== undefined) {\n      progress.operation_id',
+     'if (false && pending !== undefined) {\n      progress.operation_id'),
+    ('parent !== undefined &&\n      (own?.phase !== "content" ||',
+     'false && parent !== undefined &&\n      (own?.phase !== "content" ||'),
+]
 lifecycle_cases = [
     ("current-read-final-fence", "packages/core/src/shared-snapshot.ts",
      [("if (consumptionFence(finalIndex, finalConsumption) !== consumptionFence(index, consumption))",
@@ -161,6 +178,27 @@ lifecycle_cases = [
      [('if (preserveReadyOwner && state.state !== "ready")',
        'if (false && preserveReadyOwner && state.state !== "ready")')],
      operation_test, "an owner becoming unready during projection", "NonContentCompletionQualified"),
+    ("source-sync-projection-scope", "packages/core/src/shared-current-source-write.ts",
+     [("const targetFence = assertCurrentSourceTargetsAvailable(\n      library,\n      affected,\n      intent,",
+       "const targetFence = assertCurrentSourceTargetsAvailable(\n      library,\n      prepared.targets.map((target) => target.skill_id),\n      intent,")],
+     source_sync_test,
+     "Source sync guard fences the removed owner", "AllAffectedProjectionsSettledBeforeSourceWrite"),
+    ("source-sync-pending-before-decision", source_sync, source_pending_bypass,
+     source_sync_test, "Source sync guard resolves a ready pending intent",
+     "PendingResolvedBeforeDecision"),
+    ("source-sync-frozen-observation", source_sync,
+     [('      exactCommit: observed.observation.resolved_commit,\n', '')],
+     source_sync_test, "Source sync guard freezes the observed commit",
+     "FrozenCommitPreserved"),
+    ("source-sync-configuration-receipt", source_sync,
+     [('previous.configuration_sha256 === observed.configuration_sha256 &&', 'true &&')],
+     source_sync_test, "Source sync guard reconciles changed configuration",
+     "ConfigurationBoundToNoop"),
+    ("source-sync-owned-generation", source_sync,
+     [('pending.manager_id !== command.manager_id ||\n        pending.execution_id !== command.execution_id',
+       'false')],
+     source_sync_test, "Source sync guard refuses a different manager or execution",
+     "OnlyAuthorizedIntentResumed"),
 ]
 auth = "packages/core/src/notion-mcp-auth.ts"
 auth_test = "packages/core/test/notion-mcp-auth.node.test.ts"
@@ -249,9 +287,10 @@ results = []
 summary = {
     "complete": False, "passed": False, "suite": args.suite,
     "fixture": str(fixture), "source_commit": coverage.get("synchronized_commit", coverage.get("source_base")),
-    "checkout_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
+    **identity,
     "verifier_sha256": sha(Path(__file__).read_bytes()),
     "result_classifier_sha256": sha(classifier_path.read_bytes()),
+    "source_identity_sha256": sha(identity_path.read_bytes()),
     "coverage_sha256": sha(coverage_path.read_bytes()),
     "runtime": {"bun": subprocess.check_output(["bun", "--version"], text=True).strip(),
                 "node": subprocess.check_output(["node", "--version"], text=True).strip(),
@@ -261,7 +300,7 @@ summary = {
                    if args.suite == "request-engine" else None),
     "scope": ("Controlled public Notion service/coalescer/scheduler and SDK code. The immutable runtime case uses an owned local HTTP server, independent public SDK runtimes and a frozen fixture; no real credentials or remote Notion mutations."
               if args.suite == "request-engine" else
-              "Production current reader and finite operation kernel with controlled Notion service responses. Each guard is removed in an isolated source copy and checked by its existing behavioral assertion. No live Notion, Pi or provider claim."
+              "Production current reader, finite operation kernel and Source sync coordinator with controlled Notion/Git service responses. Each guard is removed in an isolated source copy and checked by its behavioral assertion. The pending-before-decision case deliberately removes both local-pipeline and remote-intent checks. No live Notion, Pi, real provider or persistence claim."
               if args.suite == "current-lifecycle" else
               "Production MCP authorization and credential store with real loopback OAuth HTTP, fake credentials, independent Node processes and an owned SIGKILL crash. Every mutation must fail an existing behavior assertion, then restore and pass. The pre-exchange, abandoned-refresh and expired-publication cases remove multiple defensive checks. No real OAuth, remote Notion, browser, cross-machine or power-loss guarantee."
               if args.suite == "notion-mcp-auth" else

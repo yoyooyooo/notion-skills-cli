@@ -125,7 +125,17 @@ assert.deepEqual(
 const sourceSchema = await cli(["schema", "ctl", "library", "source"])
 assert.deepEqual(
   sourceSchema.schema.commands.map((command: { name: string }) => command.name).sort(),
-  ["apply", "disable", "enable", "refresh", "remove", "restore-follow", "takeover"],
+  [
+    "apply",
+    "check",
+    "disable",
+    "enable",
+    "refresh",
+    "remove",
+    "restore-follow",
+    "sync",
+    "takeover",
+  ],
 )
 for (const path of [
   ["create"],

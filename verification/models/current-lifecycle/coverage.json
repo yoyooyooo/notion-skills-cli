@@ -2,8 +2,8 @@
   "version": 1,
   "synchronized_commit": "6f9abd76e00400bcd2754e7db6457edea5c71a7d",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
-  "correspondence": "One finite current content, projection or same-page restore intent interleaved with one current read and one external writer. Separate owner readiness/Operation from local/Record finite intent. Safety plus conditional progress; no claim of distributed CAS or complete management verification.",
-  "review_basis": "Reviewed the protected operation source at 6c4cee6 against 93a895f3, together with native write validation, the partial-update writer, management wrappers, registration and removal. The four modeled production guards remain unchanged: final current-read fence, projection classification, unknown never-replay action and non-content completion qualification. The new skill_action union uses content-owner semantics; only registration may seed the exact existing page before binding, and that path still requires its stable identity, applying state and original operation. Native completion now compares a complete observed body by supported structural equivalence while freezing the original input bytes; Source/resource remain exact. VerifyTarget abstracts the successful verification result and does not prove Markdown equivalence. Automatic matching resume still requires a caller to repeat the original frozen input. Registration before owner binding, preservation of unselected bodies and removal's terminal Trash/relations/Files/Resources sequence are not enumerated by this one-action model; their permanent production and fault regressions are identified below. The earlier metadata-first restore boundary for hidden Trash relations remains outside the model's single Trash bit. Only the reviewed operation source hash changes; all seven configurations, complete rule inventories and four actual guard mutations remain intact. These hashes bind inspected inputs, not a refinement proof or a substitute for actual run results. Reviewed the offline known-denial change at 9ebd9c2215f97934f0746125382415b2f338f572 and its integration with incoming native management at 0070dfb: the sole assertKnownSnapshotAccess now rejects observed target ACCESS_DENIED and scope AUTH_REQUIRED before selected object reads for online and offline consumption. The offline exemption argument, successful access_denied result and pinned stale-success branch are deleted together. Ordinary current/name reads, fixed main/resources, batches and consume reuse that boundary. Unknown transport failure, ambiguous NOT_FOUND, unaffected scopes, historical metadata and complete bytes under business Enabled changes remain distinct. The public SDK regressions obtain actual controlled 401/403 before checking body refusal and real SQLite retirement; offline prepare may fail earlier with CACHE_SCOPE_UNAVAILABLE after target-only all-clear, while fixed scalar/batch retain exact denial. No extra terminal permission probe or byte-hash authorization grant is claimed. These are concrete implementation regressions, not additional finite-model properties; model variables, case/rule inventories and existing mutation guards are unchanged. Reviewed successful-untrash visibility convergence against e95f813163c6c5fcbc12aa7b2c238206e0e077fd. Only the successful restore action acknowledgement may observe an exact live ready owner whose complete stable-identity query is temporarily empty; it checks the frozen Source/owner fingerprint on every observation and performs at most five observations with four interruptible waits under the same invocation deadline. Initial guards, mutation admission, explicit lost-ACK reconciliation, duplicate/foreign/partial-query rejection and strict final verification remain unchanged. No mutation is replayed by this convergence loop. The model still abstracts Trash and does not enumerate separately lagging page/index observations; the new positive, permanent-gap, concurrent-change, deadline and cancellation cases are implementation regressions, not additional formal properties. Reviewed the bounded current-metadata and physical-denial delta against 414a9ec9ba63a12e4f604f04687984854a4c629e. Selected stable claims choose identity only; the exact owner GET still precedes body reads and the original final owner/Files/Source consumptionFence remains a new observation after provider I/O. Physical access generation is reserved before dependent I/O, and a grant is recorded only after that original fence and publication. Exact related-page rejection is saved before alias lookup or stable publication can fail. Scope, stable and physical denial use the existing byte-delivery guard and generation/retirement mechanism. Public SQLite keeps frozen page aliases and rejects rebinding after retirement; the changed-alias case is an explicitly constructed Store boundary, while the public SDK replays two content versions under one stable identity. These metadata, alias, offline and authorization obligations are concrete regressions, not new finite properties. The four existing modeled guards, all seven cases and their rule inventories are unchanged. AH-1198 adds three coupled public SDK/HTTP/SQLite T14 regressions: a creator cancellation plus actual 429 pagination while Source is applying, all-waiter cancellation after a partial response, and two original per-call deadlines during Retry-After followed by fresh revision selection. Each caller completes its own current eligibility before sharing exact Notion-owned resource bytes; an already admitted A acquisition may finish, whereas a later missing-byte acquisition observes applying. The resource identity remains unchanged while an unrequested Source contribution advances the complete tree. Source row transitions are explicitly controlled service facts, not executions of a live management writer. Partial or timed-out work exposes no files or cached object; the new selection preserves the old manifest. This test-only change does not alter production guards, finite models, case/rule inventories or mutation targets, and adds no model property. Reviewed the T05 fixed-byte credential switch defect against 715e5368a6e19281ddea1d9cf30551ec48267e75. The existing fixed access guard now requires the locally recorded scope for the selected credential digest and API origin before any fixed inventory or object read. Unknown binding and mismatched scope fail structurally without remote authentication or a content-hash grant; underlying Store errors preserve their original diagnostic fields. Public cache clear retains credential-to-scope authorization facts and excludes them from retirement receipts, while current/body observations and the original denial/generation fences still retire as before. The complete-byte public SDK regression uses a real SQLite Store and controlled HTTP to cover unknown and authenticated alternate credentials, actual 401, origin changes, scalar/batch/inventory/use/inspect, clear, same-credential offline reuse, and fresh recovery. A separate real identity-table query failure checks exact Store error propagation; the existing SQLite observation-race fixture supplies the now-required local credential association without changing its race or denial assertions. Current lifecycle and RequestEngine finite variables do not model credential associations or cache-clear identity retention. These are concrete regressions; finite models, case/rule inventories and mutation targets are unchanged. Reviewed Source-relative identity resolution against 9200b9afcb328006ee3dcd8fd48a031a628eef3e. Fixed containing references now share the read-from manifest and stable File-binding path before the original repository Source path is mapped to one exact owner. Identity-only resolution does not acquire target bodies, activate dependencies or mutate Notion. The target read still uses the existing fixed/current acquisition, authorization, scope and final publication fences. Mounted-path collisions and duplicate Source mounts are concrete regressions in shared-source-references and shared-current-source-write; native, missing and stale-path File bindings are covered by shared-current-relative. Named local CLI refs retain pure syntactic resolution. A Source-mounted reference can retain an exact same-owner native companion only when its original relative path escapes the repository root, with a frozen File binding and no Source acquisition route; a valid Source address always takes precedence. Existing CLI syntactic and mixed native/Source composition regressions cover these compatibility boundaries. The Source mapping and import Members inference are not variables in this finite lifecycle model. No operation kernel, model, case inventory or production mutation guard changed; this correspondence update does not claim a new formal property. Reviewed e6d67119e09fe7330d57baaf74f096d8803716e7 against 87c5bfcd2cfbcd5ab993307ac760fac802163b0d: local selection IDs now bind the full observed record while content version and bytes keep their existing identity. Current producers emit only record-bound IDs; retained old IDs are recognized solely for existing local fixed-manifest validation and recovery. Current cache metadata must equal its selected manifest; the complete preparation binding guard is unchanged. Independent SDK processes cover A/B/C/D metadata selections, cache clear, original intermediate bindings, forged records and an actual content-version change. Native management may complete its Markdown structure action before correcting only proven added automatic links on original plain spans. Complete Markdown structure and physical block inventory bind each correction; the existing operation dispatch freezes its request, observes accepted unknown writes before replay, and the original strict full-body comparison alone sets native verification before ready. Ordinary consumption does not correct content. The finite lifecycle model does not enumerate Markdown spans, multiple block actions, record fields or local snapshot formulas. Its four production guards, seven configurations and complete rule inventories are unchanged; the new identity, transport and recovery obligations are concrete implementation and installed/live regressions, not additional finite properties. Reviewed the rebased integration at 6f9abd76e00400bcd2754e7db6457edea5c71a7d on current next 3f8f58d2c635e60d2a50805b6c0ed33ba17464cb. The retained-ID decoder now follows the actual fixed producer: local_snapshot with pinned freshness only; local_cache, current/Notion and non-pinned legacy claims remain rejected. The public consume and Crypto-only decoder regression preserves complete binding checks. This local compatibility repair and the release empty-array guard are outside the finite models. Existing file pins, model/case inventories and mutation targets remain unchanged; this entry records source review, not a new run result. Reviewed AH-1268 commit 084699e35e6fcea17fd3df11a37700bb37665dc3 against incoming next 34f34295265943deb884daa8ae47494f9e320603 during the merge. querySelectedSkillMetadataWithClaims returns the same exact physical target map plus the complete observations already produced by querySkillClaims; an empty target set returns both empty maps. Physical GET admission, complete stable-claim pagination, disabled-duplicate participation and assertUnique remain unchanged. Existing shared-graph-read-context callers continue through querySelectedSkillMetadata, whose Effect.map returns only value.targets and preserves the previous return shape and query behavior. The new MCP search caller alone consumes claim observations to detect differing current metadata. Current reader publication/consumptionFence, finite intent ownership, non-content completion and unknown-write no-replay guards are untouched. Search admission and claim freshness belong to the separately owned notion-mcp-search suite and concrete metadata/SDK regressions, not a new CurrentLifecycle property. Only the reviewed shared-skill-targets source hash is rebound; all seven configurations, complete rule inventories and four current-lifecycle mutation targets remain unchanged. This records source review, not a rerun result. Reviewed main-file frontmatter projection against 34f34295265943deb884daa8ae47494f9e320603. An explicit main/supporting role limits header omission to the canonical main; Source/resource original bytes, discovery metadata and native author bodies remain unchanged. The projection input fingerprint advances with the renderer so an older unfinished intent is refused on resume before semantic writes; cancellation reconstructs requests with the same role and preserves changed-request conflicts. The four modeled production guards, seven configurations, complete rule inventories and mutation targets are unchanged. Only the reviewed projection writer-test hash is rebound. YAML recognition, rendered blocks and renderer revisions remain implementation regressions outside this finite model; this records source review, not a formal run result. Rechecked the coverage binding after rebasing onto incoming next 9710dbc09d79146818229dcb56137d533145d0cb; the incoming shared-skill-targets source hash and source-review record are preserved.",
+  "correspondence": "Two bounded slices: one finite current content/projection/restore intent interleaved with one reader and external writer, plus one Source sync coordination episode with two affected owners, frozen input and independent projection completion. Safety and conditional progress only; no distributed CAS, complete management verification or implementation refinement claim.",
+  "review_basis": "Reviewed the protected operation source at 6c4cee6 against 93a895f3, together with native write validation, the partial-update writer, management wrappers, registration and removal. The four modeled production guards remain unchanged: final current-read fence, projection classification, unknown never-replay action and non-content completion qualification. The new skill_action union uses content-owner semantics; only registration may seed the exact existing page before binding, and that path still requires its stable identity, applying state and original operation. Native completion now compares a complete observed body by supported structural equivalence while freezing the original input bytes; Source/resource remain exact. VerifyTarget abstracts the successful verification result and does not prove Markdown equivalence. Automatic matching resume still requires a caller to repeat the original frozen input. Registration before owner binding, preservation of unselected bodies and removal's terminal Trash/relations/Files/Resources sequence are not enumerated by this one-action model; their permanent production and fault regressions are identified below. The earlier metadata-first restore boundary for hidden Trash relations remains outside the model's single Trash bit. Only the reviewed operation source hash changes; all seven configurations, complete rule inventories and four actual guard mutations remain intact. These hashes bind inspected inputs, not a refinement proof or a substitute for actual run results. Reviewed the offline known-denial change at 9ebd9c2215f97934f0746125382415b2f338f572 and its integration with incoming native management at 0070dfb: the sole assertKnownSnapshotAccess now rejects observed target ACCESS_DENIED and scope AUTH_REQUIRED before selected object reads for online and offline consumption. The offline exemption argument, successful access_denied result and pinned stale-success branch are deleted together. Ordinary current/name reads, fixed main/resources, batches and consume reuse that boundary. Unknown transport failure, ambiguous NOT_FOUND, unaffected scopes, historical metadata and complete bytes under business Enabled changes remain distinct. The public SDK regressions obtain actual controlled 401/403 before checking body refusal and real SQLite retirement; offline prepare may fail earlier with CACHE_SCOPE_UNAVAILABLE after target-only all-clear, while fixed scalar/batch retain exact denial. No extra terminal permission probe or byte-hash authorization grant is claimed. These are concrete implementation regressions, not additional finite-model properties; model variables, case/rule inventories and existing mutation guards are unchanged. Reviewed successful-untrash visibility convergence against e95f813163c6c5fcbc12aa7b2c238206e0e077fd. Only the successful restore action acknowledgement may observe an exact live ready owner whose complete stable-identity query is temporarily empty; it checks the frozen Source/owner fingerprint on every observation and performs at most five observations with four interruptible waits under the same invocation deadline. Initial guards, mutation admission, explicit lost-ACK reconciliation, duplicate/foreign/partial-query rejection and strict final verification remain unchanged. No mutation is replayed by this convergence loop. The model still abstracts Trash and does not enumerate separately lagging page/index observations; the new positive, permanent-gap, concurrent-change, deadline and cancellation cases are implementation regressions, not additional formal properties. Reviewed the bounded current-metadata and physical-denial delta against 414a9ec9ba63a12e4f604f04687984854a4c629e. Selected stable claims choose identity only; the exact owner GET still precedes body reads and the original final owner/Files/Source consumptionFence remains a new observation after provider I/O. Physical access generation is reserved before dependent I/O, and a grant is recorded only after that original fence and publication. Exact related-page rejection is saved before alias lookup or stable publication can fail. Scope, stable and physical denial use the existing byte-delivery guard and generation/retirement mechanism. Public SQLite keeps frozen page aliases and rejects rebinding after retirement; the changed-alias case is an explicitly constructed Store boundary, while the public SDK replays two content versions under one stable identity. These metadata, alias, offline and authorization obligations are concrete regressions, not new finite properties. The four existing modeled guards, all seven cases and their rule inventories are unchanged. AH-1198 adds three coupled public SDK/HTTP/SQLite T14 regressions: a creator cancellation plus actual 429 pagination while Source is applying, all-waiter cancellation after a partial response, and two original per-call deadlines during Retry-After followed by fresh revision selection. Each caller completes its own current eligibility before sharing exact Notion-owned resource bytes; an already admitted A acquisition may finish, whereas a later missing-byte acquisition observes applying. The resource identity remains unchanged while an unrequested Source contribution advances the complete tree. Source row transitions are explicitly controlled service facts, not executions of a live management writer. Partial or timed-out work exposes no files or cached object; the new selection preserves the old manifest. This test-only change does not alter production guards, finite models, case/rule inventories or mutation targets, and adds no model property. Reviewed the T05 fixed-byte credential switch defect against 715e5368a6e19281ddea1d9cf30551ec48267e75. The existing fixed access guard now requires the locally recorded scope for the selected credential digest and API origin before any fixed inventory or object read. Unknown binding and mismatched scope fail structurally without remote authentication or a content-hash grant; underlying Store errors preserve their original diagnostic fields. Public cache clear retains credential-to-scope authorization facts and excludes them from retirement receipts, while current/body observations and the original denial/generation fences still retire as before. The complete-byte public SDK regression uses a real SQLite Store and controlled HTTP to cover unknown and authenticated alternate credentials, actual 401, origin changes, scalar/batch/inventory/use/inspect, clear, same-credential offline reuse, and fresh recovery. A separate real identity-table query failure checks exact Store error propagation; the existing SQLite observation-race fixture supplies the now-required local credential association without changing its race or denial assertions. Current lifecycle and RequestEngine finite variables do not model credential associations or cache-clear identity retention. These are concrete regressions; finite models, case/rule inventories and mutation targets are unchanged. Reviewed Source-relative identity resolution against 9200b9afcb328006ee3dcd8fd48a031a628eef3e. Fixed containing references now share the read-from manifest and stable File-binding path before the original repository Source path is mapped to one exact owner. Identity-only resolution does not acquire target bodies, activate dependencies or mutate Notion. The target read still uses the existing fixed/current acquisition, authorization, scope and final publication fences. Mounted-path collisions and duplicate Source mounts are concrete regressions in shared-source-references and shared-current-source-write; native, missing and stale-path File bindings are covered by shared-current-relative. Named local CLI refs retain pure syntactic resolution. A Source-mounted reference can retain an exact same-owner native companion only when its original relative path escapes the repository root, with a frozen File binding and no Source acquisition route; a valid Source address always takes precedence. Existing CLI syntactic and mixed native/Source composition regressions cover these compatibility boundaries. The Source mapping and import Members inference are not variables in this finite lifecycle model. No operation kernel, model, case inventory or production mutation guard changed; this correspondence update does not claim a new formal property. Reviewed e6d67119e09fe7330d57baaf74f096d8803716e7 against 87c5bfcd2cfbcd5ab993307ac760fac802163b0d: local selection IDs now bind the full observed record while content version and bytes keep their existing identity. Current producers emit only record-bound IDs; retained old IDs are recognized solely for existing local fixed-manifest validation and recovery. Current cache metadata must equal its selected manifest; the complete preparation binding guard is unchanged. Independent SDK processes cover A/B/C/D metadata selections, cache clear, original intermediate bindings, forged records and an actual content-version change. Native management may complete its Markdown structure action before correcting only proven added automatic links on original plain spans. Complete Markdown structure and physical block inventory bind each correction; the existing operation dispatch freezes its request, observes accepted unknown writes before replay, and the original strict full-body comparison alone sets native verification before ready. Ordinary consumption does not correct content. The finite lifecycle model does not enumerate Markdown spans, multiple block actions, record fields or local snapshot formulas. Its four production guards, seven configurations and complete rule inventories are unchanged; the new identity, transport and recovery obligations are concrete implementation and installed/live regressions, not additional finite properties. Reviewed the rebased integration at 6f9abd76e00400bcd2754e7db6457edea5c71a7d on current next 3f8f58d2c635e60d2a50805b6c0ed33ba17464cb. The retained-ID decoder now follows the actual fixed producer: local_snapshot with pinned freshness only; local_cache, current/Notion and non-pinned legacy claims remain rejected. The public consume and Crypto-only decoder regression preserves complete binding checks. This local compatibility repair and the release empty-array guard are outside the finite models. Existing file pins, model/case inventories and mutation targets remain unchanged; this entry records source review, not a new run result. Reviewed AH-1268 commit 084699e35e6fcea17fd3df11a37700bb37665dc3 against incoming next 34f34295265943deb884daa8ae47494f9e320603 during the merge. querySelectedSkillMetadataWithClaims returns the same exact physical target map plus the complete observations already produced by querySkillClaims; an empty target set returns both empty maps. Physical GET admission, complete stable-claim pagination, disabled-duplicate participation and assertUnique remain unchanged. Existing shared-graph-read-context callers continue through querySelectedSkillMetadata, whose Effect.map returns only value.targets and preserves the previous return shape and query behavior. The new MCP search caller alone consumes claim observations to detect differing current metadata. Current reader publication/consumptionFence, finite intent ownership, non-content completion and unknown-write no-replay guards are untouched. Search admission and claim freshness belong to the separately owned notion-mcp-search suite and concrete metadata/SDK regressions, not a new CurrentLifecycle property. Only the reviewed shared-skill-targets source hash is rebound; all seven configurations, complete rule inventories and four current-lifecycle mutation targets remain unchanged. This records source review, not a rerun result. Reviewed main-file frontmatter projection against 34f34295265943deb884daa8ae47494f9e320603. An explicit main/supporting role limits header omission to the canonical main; Source/resource original bytes, discovery metadata and native author bodies remain unchanged. The projection input fingerprint advances with the renderer so an older unfinished intent is refused on resume before semantic writes; cancellation reconstructs requests with the same role and preserves changed-request conflicts. The four modeled production guards, seven configurations, complete rule inventories and mutation targets are unchanged. Only the reviewed projection writer-test hash is rebound. YAML recognition, rendered blocks and renderer revisions remain implementation regressions outside this finite model; this records source review, not a formal run result. Rechecked the coverage binding after rebasing onto incoming next 9710dbc09d79146818229dcb56137d533145d0cb; the incoming shared-skill-targets source hash and source-review record are preserved. Reviewed AH-1282 Source sync against next base ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1: processSource resolves the single saved pipeline before provider checks or cached no-op; manager and execution generation must match. pendingOwners rejects foreign parents and affected Skill intents, including removed owners. writePreparedCurrentSource repeats the complete affected-owner fence before its first mutation using the existing operation hook. The initial prepare receives the exact observed commit, and recovery reproduces the complete saved declaration/commit/configuration/revision. A successful receipt compares scope, physical Source, configuration, commit, revision and requested projection coverage. continueOwned publishes Source content before independent projection, recovers only deterministic owned target operations, and returns after finishing the original operation. The concrete lost-local-phase regression verifies the published result without rewriting later manual metadata. Five added real guard mutations bind pending-first (two defensive guards removed together), removed-owner projection scope, exact observed commit, configuration receipt and manager/generation to their behavior assertions. Projection ownership and failure separation also have direct kernel regressions; their model faults do not imply a newly removed single implementation guard. Neither Map fixtures nor the finite child steps prove SQLite or live provider behavior. The final writer review preserves its existing CURRENT_OPERATION_PENDING public code. A resumed exact parent may also admit the single recorded predecessor child; explicit supersede still selects only its original parent. The pre-existing selectedSourceMode and handoff qualification remain before this fence. Ancestor-child transfer is an existing concrete writer regression, not a new SourceSync model state. Reviewed the bounded progress delta on base ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1 after live no-op costs exposed repeated-prefix starvation. continueOwned freezes ordered target IDs/pages, resumes next_index, performs complete preflight again and persists +1 only after exact projection success. A completed-prefix remote projection intent, even with the original deterministic operation ID, blocks rather than being silently skipped. Full batches retain one ordered terminal prefix, exclude retryable results and preserve earlier hard failures. Review found that a disposable latest receipt, even tagged with batch_id, can be displaced by later hourly updates before daily full resumes; requiring a fresh unchanged HEAD can also reopen already completed work. That intermediate design is removed rather than treated as proved. Source completion now checkpoints the existing exact dispatch parent before clearing its finite child. completedBatchChild admits local cleanup only with exact parent scope/batch identity and owner/generation, matching operation ID, published selection and completed projection IDs/cursor. Existing hard results are never replaced; missing or different parents are not recreated. The full loop reloads the parent to observe the child's single append and keeps cleanup failures visible without changing the durable success result or retiring the parent. changed may finish that same original child and checkpoint its parent, then later ordinary updates can replace cache observations without losing full progress. The actual Source and projection writers are unchanged by this local checkpoint ordering. Batch schema/helper and SQLite preserve frozen identities, complete terminal prefix items, ordered target pages and only same/+1 progress; independent process tests cover their actual transitions and retirement. SourceSyncProgress now has thirteen configurations for two Sources with two targets, one crash at a cursor or parent/child boundary, one retryable stop and sufficient preflight-plus-one-target budget. Parent completion authority is abstracted as two identities, not a proof of every UUID/field or SQLite durability. Original eighteen configurations and nine production mutations remain separate in scope. Controlled guards cover parent checkpoint failure, post-parent child cleanup failure/75, exact local cleanup and five mismatched completion fields; batch regressions retain B progress through later C/D publications and ignore disposable cache times. The model does not prove production request cost, arbitrary repeated failures, later remote-intent/authority changes, scheduler or installed-package behavior. All other protected files retain their earlier reviewed hashes. This records exact source correspondence and must be accompanied by final snapshot run evidence.",
   "files": {
     "packages/core/src/shared-snapshot.ts": "8178b1d1f461c5cecb49367b72176d9727bb7e9d30af8537e7ea473c7ccfdf1a",
     "packages/core/src/shared-current-operation.ts": "2f5fc39f9e315caf24d51142098cfd98a5da5b04558824cb04620c6566703e5e",
@@ -19,7 +19,18 @@
     "packages/core/src/shared-current-projection-restore.ts": "c6a4059593749afd5f52b335e5139920650c9be5213eaf8ddd5e162c22783831",
     "packages/core/src/shared-skill-targets.ts": "ab86b12588bc421710caba6ec461cb80a412b5e29b92c4b0e483aae29cc4e60e",
     "packages/core/test/bounded-graph-metadata.test.ts": "79b5b3a888afac868633a91ce1bccde60a6bb80e21bec2241d7c38ecdc3505fb",
-    "packages/core/test/sdk-bounded-metadata.node.test.ts": "258a96eba5874fd34b51482c62236f49e9013e09c24233ccb8461e6aaec6740b"
+    "packages/core/test/sdk-bounded-metadata.node.test.ts": "258a96eba5874fd34b51482c62236f49e9013e09c24233ccb8461e6aaec6740b",
+    "packages/core/src/shared-current-source-sync.ts": "5c52ce6c74300093006e8525d8d29bb6afb79213b01577ce2c3e9a83b34bc37c",
+    "packages/core/src/shared-current-source-sync-model.ts": "4101dd6867e0c3a8187b8c466170d49b6e0d2e5ad4f89473e18d5417e4052792",
+    "packages/core/src/shared-current-source-check.ts": "c0b033b11123a50778c5586b05b165e47d57a355a15e7b14efa34903bc69c2f6",
+    "packages/core/src/shared-current-source-write.ts": "b5d9172495dfadd89bb2aed1ba44b0f380619a2eb9af184342871d9621e7ae5e",
+    "packages/core/test/shared-current-source-sync-guards.test.ts": "3c3fb38e2d0e4b1955a41382b59cd59e88233d936012a35527b4d549f38ccf7f",
+    "packages/core/src/shared-current-source-sync-batch-model.ts": "443e3ba367e800685c9951080232d8dff66d296b7b51537f4ac62a56846ce8a8",
+    "packages/core/src/shared-current-source-sync-batch-helper.ts": "84cf795d8b0a7551d08db5f92a77acdbca600f634d9e467c58c1bc838853de58",
+    "packages/core/test/shared-current-source-sync-batch-model.test.ts": "1d27dff4dd284c1afc75c262143eb86b9c82db686b5125917813f904d2b1857b",
+    "packages/core/test/shared-current-source-sync-batch.test.ts": "197aa05d1e640e268d750dec72aaaf713fb6985c9d5bf955e0eab3afe2960e51",
+    "packages/core/src/sqlite-state.ts": "09ef29c9a7748108079fd808a7923ac9147d8e7f725486262f76487c9c172d1c",
+    "packages/core/test/shared-sqlite.node.test.ts": "ab10860c84b96945aded415decd543c9b9b0622f95b0573f3ec28c921d21edbc"
   },
   "models": {
     "CurrentLifecycle": {
@@ -34,6 +45,31 @@
       "bounds": "One owner with two abstract content identities; one finite intent of fixed kind content/projection/restore; one non-idempotent product action with known/unknown accepted/unknown absent outcomes; at most one foreign writer; one current read; dispatch count 0..2.",
       "assumptions": "Metadata/body/dispatch/observation actions eventually return. Weak fairness covers operation dispatch, caller reinvocation with the original frozen input (including automatic matching resume), verification/finalization/retirement and an already-started read. Without these assumptions the model makes no eventual-success claim. Unknown absent ends in an explained blocked state with the intent retained.",
       "scope": "A ready owner has no content Operation while projection/restore may retain a separate finite intent. Completion qualification records the state at completion; a later writer does not retroactively invalidate a completed read. Same-page restore abstracts Trash as one bit and shares readiness guards. Bound create/update content steps use the content abstraction, but initial unbound creation/registration and terminal owner deletion are not represented: content Finish returns the owner to ready. Exact page identity, policy, budgets, physical retirement and Source parent/child cursors remain production regressions."
+    },
+    "SourceSync": {
+      "kind": "bounded_source_sync_coordination",
+      "symbols": [
+        "Source sync pending-intent selection",
+        "Source affected-owner projection fence",
+        "Frozen commit selection",
+        "Commit and configuration no-op decision",
+        "Separate Source and projection result"
+      ],
+      "bounds": "One Source, two affected Skill owners (one absent from the new target set), two commit/configuration identities, an existing owned or foreign finite intent, two verified child steps, at most one process restart and one upstream branch move.",
+      "assumptions": "One cooperating content writer for the complete affected scope. Metadata/provider and finite-writer observations return; weak fairness applies to started coordination actions and the single reinvocation. Child steps abstract verified lower-writer results. Unknown results may reach blocked with their intent retained. No claim of cross-machine CAS, atomic multi-Skill writes, complete discovery or actual SDK/CLI/provider behavior.",
+      "scope": "The coordinator distinguishes ready content from a pending finite input, refuses new upstream decisions before owned recovery, checks the union of old/new affected owners before Source mutation, freezes the observed commit for preparation, and requires both configuration and commit identity for a cheap no-op. Owned old projection recovery completes this invocation; a later invocation selects new upstream. Source success and later projection failure are independent results. Existing CurrentLifecycle and lower-writer regressions own non-idempotent dispatch and full child checkpoints. The source/test hashes below bind reviewed inputs, not an implementation refinement proof."
+    },
+    "SourceSyncProgress": {
+      "kind": "bounded_source_sync_progress",
+      "symbols": [
+        "projection next_index",
+        "full-batch terminal result prefix",
+        "frozen pending input",
+        "qualified durable parent completion before child retirement"
+      ],
+      "bounds": "Two Sources with two projection targets each; one crash before a target cursor save or after a parent completion save, one retryable stop, a budget of one full preflight plus one target per invocation, at most six invocations.",
+      "assumptions": "One cooperative writer, returning provider/Notion observations and eventual resumption of the same frozen inputs. Each invocation can pay for complete scope preflight plus one remaining target. The verified target step abstracts the existing exact projection writer; no latency, real request-count, persistence or arbitrary repeated-failure proof. The hard-failure scenario stops before child allocation. Later recovery of a child whose old parent already has a hard result, or whose parent retired/changed generation, is outside this finite slice; production must verify the actual frozen Source/projection rather than treating those parents as successful local-cleanup proof.",
+      "scope": "The two finite prefixes survive budget renewal. A target cursor advances only after verification; completed target/source prefixes are not reentered, retryable items are not terminal, and hard failures remain in the final report. While this Source is the next unfinished member of the modeled active full batch, its verified successful child remains until the exact terminal result reaches the dispatch parent. A crash after that save resumes only qualified local child cleanup, never another upstream decision. The reviewed completedBatchChild/checkpointSourceCompletion and executeBatch implement these boundaries; the model abstracts the operation/selection/projection/parent ownership tuple as two identities. Disposable observations are not full-batch progress evidence. Thirteen configurations and their complete rule inventories do not add new production mutation cases."
     }
   },
   "cases": [
@@ -162,6 +198,414 @@
         "ReadEventuallyExplained",
         "NoDeadlock"
       ]
+    },
+    {
+      "model": "SourceSync",
+      "config": "fresh.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "PendingResolvedBeforeDecision",
+        "AllAffectedProjectionsSettledBeforeSourceWrite",
+        "FrozenCommitPreserved",
+        "ConfigurationBoundToNoop",
+        "OnlyAuthorizedIntentResumed",
+        "ProjectionFailurePreservesSourceReady",
+        "NoFalseSyncCompletion",
+        "SyncEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSync",
+      "config": "resume.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "PendingResolvedBeforeDecision",
+        "AllAffectedProjectionsSettledBeforeSourceWrite",
+        "FrozenCommitPreserved",
+        "ConfigurationBoundToNoop",
+        "OnlyAuthorizedIntentResumed",
+        "ProjectionFailurePreservesSourceReady",
+        "NoFalseSyncCompletion",
+        "SyncEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSync",
+      "config": "projection.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "PendingResolvedBeforeDecision",
+        "AllAffectedProjectionsSettledBeforeSourceWrite",
+        "FrozenCommitPreserved",
+        "ConfigurationBoundToNoop",
+        "OnlyAuthorizedIntentResumed",
+        "ProjectionFailurePreservesSourceReady",
+        "NoFalseSyncCompletion",
+        "SyncEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSync",
+      "config": "foreign.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "PendingResolvedBeforeDecision",
+        "AllAffectedProjectionsSettledBeforeSourceWrite",
+        "FrozenCommitPreserved",
+        "ConfigurationBoundToNoop",
+        "OnlyAuthorizedIntentResumed",
+        "ProjectionFailurePreservesSourceReady",
+        "NoFalseSyncCompletion",
+        "SyncEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSync",
+      "config": "pending.cfg",
+      "expected_broken": ["PendingResolvedBeforeDecision"],
+      "expected_rules": [
+        "TypeOK",
+        "PendingResolvedBeforeDecision",
+        "AllAffectedProjectionsSettledBeforeSourceWrite",
+        "FrozenCommitPreserved",
+        "ConfigurationBoundToNoop",
+        "OnlyAuthorizedIntentResumed",
+        "ProjectionFailurePreservesSourceReady",
+        "NoFalseSyncCompletion",
+        "SyncEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSync",
+      "config": "projection-scope.cfg",
+      "expected_broken": ["AllAffectedProjectionsSettledBeforeSourceWrite"],
+      "expected_rules": [
+        "TypeOK",
+        "PendingResolvedBeforeDecision",
+        "AllAffectedProjectionsSettledBeforeSourceWrite",
+        "FrozenCommitPreserved",
+        "ConfigurationBoundToNoop",
+        "OnlyAuthorizedIntentResumed",
+        "ProjectionFailurePreservesSourceReady",
+        "NoFalseSyncCompletion",
+        "SyncEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSync",
+      "config": "moving-ref.cfg",
+      "expected_broken": ["FrozenCommitPreserved"],
+      "expected_rules": [
+        "TypeOK",
+        "PendingResolvedBeforeDecision",
+        "AllAffectedProjectionsSettledBeforeSourceWrite",
+        "FrozenCommitPreserved",
+        "ConfigurationBoundToNoop",
+        "OnlyAuthorizedIntentResumed",
+        "ProjectionFailurePreservesSourceReady",
+        "NoFalseSyncCompletion",
+        "SyncEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSync",
+      "config": "configuration.cfg",
+      "expected_broken": ["ConfigurationBoundToNoop"],
+      "expected_rules": [
+        "TypeOK",
+        "PendingResolvedBeforeDecision",
+        "AllAffectedProjectionsSettledBeforeSourceWrite",
+        "FrozenCommitPreserved",
+        "ConfigurationBoundToNoop",
+        "OnlyAuthorizedIntentResumed",
+        "ProjectionFailurePreservesSourceReady",
+        "NoFalseSyncCompletion",
+        "SyncEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSync",
+      "config": "source-owner.cfg",
+      "expected_broken": ["OnlyAuthorizedIntentResumed"],
+      "expected_rules": [
+        "TypeOK",
+        "PendingResolvedBeforeDecision",
+        "AllAffectedProjectionsSettledBeforeSourceWrite",
+        "FrozenCommitPreserved",
+        "ConfigurationBoundToNoop",
+        "OnlyAuthorizedIntentResumed",
+        "ProjectionFailurePreservesSourceReady",
+        "NoFalseSyncCompletion",
+        "SyncEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSync",
+      "config": "projection-owner.cfg",
+      "expected_broken": ["OnlyAuthorizedIntentResumed"],
+      "expected_rules": [
+        "TypeOK",
+        "PendingResolvedBeforeDecision",
+        "AllAffectedProjectionsSettledBeforeSourceWrite",
+        "FrozenCommitPreserved",
+        "ConfigurationBoundToNoop",
+        "OnlyAuthorizedIntentResumed",
+        "ProjectionFailurePreservesSourceReady",
+        "NoFalseSyncCompletion",
+        "SyncEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSync",
+      "config": "projection-readiness.cfg",
+      "expected_broken": ["ProjectionFailurePreservesSourceReady"],
+      "expected_rules": [
+        "TypeOK",
+        "PendingResolvedBeforeDecision",
+        "AllAffectedProjectionsSettledBeforeSourceWrite",
+        "FrozenCommitPreserved",
+        "ConfigurationBoundToNoop",
+        "OnlyAuthorizedIntentResumed",
+        "ProjectionFailurePreservesSourceReady",
+        "NoFalseSyncCompletion",
+        "SyncEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "full.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "resume.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "hard.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "completion.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "foreign-completion.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "skip-target.cfg",
+      "expected_broken": ["ProjectionCursorVerified"],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "rebind-input.cfg",
+      "expected_broken": ["CursorBoundToFrozenInput"],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "repeat-target.cfg",
+      "expected_broken": ["CommittedTargetNotReentered"],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "drop-batch-prefix.cfg",
+      "expected_broken": ["CommittedSourceNotReentered"],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "advance-retry.cfg",
+      "expected_broken": ["OnlyTerminalSourceResults"],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "forget-hard-failure.cfg",
+      "expected_broken": ["HardFailureRetained"],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "foreign-parent-proof.cfg",
+      "expected_broken": ["ParentCompletionBeforeChildRetirement"],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceSyncProgress",
+      "config": "early-child-retirement.cfg",
+      "expected_broken": ["ParentCompletionBeforeChildRetirement"],
+      "expected_rules": [
+        "TypeOK",
+        "ProjectionCursorVerified",
+        "CursorBoundToFrozenInput",
+        "CommittedTargetNotReentered",
+        "CommittedSourceNotReentered",
+        "OnlyTerminalSourceResults",
+        "HardFailureRetained",
+        "ParentCompletionBeforeChildRetirement",
+        "ProgressEventuallyExplained",
+        "NoDeadlock"
+      ]
     }
   ],
   "implementation_bindings": [
@@ -181,6 +625,76 @@
         "packages/core/test/shared-current-projection-write.test.ts"
       ],
       "scope": "preserveReadyOwner distinguishes projection/restore from authoritative writes; a precise non-ready owner blocks their completion. A never-replay action with an unobservable prior result retains its intent. The model's blocked state is an explained stop, not automatic recovery."
+    },
+    {
+      "name": "source_sync_decision_and_frozen_input",
+      "files": [
+        "packages/core/src/shared-current-source-sync.ts",
+        "packages/core/src/shared-current-source-sync-model.ts",
+        "packages/core/src/shared-current-source-check.ts",
+        "packages/core/test/shared-current-source-sync-guards.test.ts"
+      ],
+      "scope": "processSource pending selection precedes provider.check and the successful-observation no-op gate; the gate binds the complete normalized configuration as well as selected commit and revision. Initial prepare receives exactCommit from the one observation; resumed prepare receives the saved exact input. Manager and execution generation qualify recovery of that one Store pipeline. The corresponding five-case group in check-formal-mutations.py includes a deliberate two-guard pending bypass because removing only one guard still rejects safely. The Provider seam controls only Git observations/preparation; the real Source, projection and operation kernels execute."
+    },
+    {
+      "name": "source_sync_affected_projection_fence",
+      "files": [
+        "packages/core/src/shared-current-source-write.ts",
+        "packages/core/src/shared-current-operation.ts",
+        "packages/core/test/shared-current-source-sync-guards.test.ts"
+      ],
+      "scope": "assertCurrentSourceTargetsAvailable checks the complete affected set, including a removed Skill, and accepts only the exact source-bound child of the current or explicit predecessor parent. The existing beforeMutation hook repeats this fence. The removed-owner regression asserts zero Source/Record/owner mutations before the rejection; narrowing the fence to prepared targets permits a real early Source mutation, reproducing projection-scope. A local lock is not a cross-machine compare-and-swap."
+    },
+    {
+      "name": "source_sync_separate_projection_completion",
+      "files": [
+        "packages/core/src/shared-current-source-sync.ts",
+        "packages/core/src/shared-current-operation.ts",
+        "packages/core/test/shared-current-source-sync-guards.test.ts",
+        "packages/core/test/shared-current-projection-write.test.ts"
+      ],
+      "scope": "continueOwned saves published content separately from projection status, resumes only an original deterministic projection intent, and settles it before any later upstream check. The controlled accepted-unknown append regression preserves ready current content and then resumes the same operation while the branch moves. Existing CurrentLifecycle projection-classification mutation owns the lower non-content readiness guard. The SourceSync projection-owner and projection-readiness faults are broader coordination faults; this entry does not claim a new one-line implementation mutation for each."
+    },
+    {
+      "name": "source_sync_projection_progress",
+      "files": [
+        "packages/core/src/shared-current-source-sync.ts",
+        "packages/core/src/shared-current-source-sync-model.ts",
+        "packages/core/test/shared-current-source-sync-guards.test.ts"
+      ],
+      "scope": "continueOwned resumes at the frozen projection next_index only after complete current Source/affected-owner and physical-target checks. Successful projectCurrentSkill precedes saving exactly index + 1; a failed save leaves the current target uncommitted and may reobserve it, but earlier committed target bodies are not reacquired. Controlled real-budget exhaustion after the first target, changed configuration and lost cursor-save regressions run the actual coordinator/projection writer. They abstract Notion/provider responses and use a Map Store; they do not establish real HTTP costs or disk durability."
+    },
+    {
+      "name": "source_sync_full_terminal_prefix",
+      "files": [
+        "packages/core/src/shared-current-source-sync.ts",
+        "packages/core/src/shared-current-source-sync-batch-helper.ts",
+        "packages/core/src/shared-current-source-sync-batch-model.ts",
+        "packages/core/test/shared-current-source-sync-batch.test.ts",
+        "packages/core/test/shared-current-source-sync-batch-model.test.ts"
+      ],
+      "scope": "executeBatch reuses exactly the saved terminal prefix and inventories only the remaining ordered Source IDs on resume. appendCurrentSourceSyncBatchResult and preservesCurrentSourceSyncBatch admit equal writes or one next terminal result while preserving the complete prior items and frozen scope/generation. Retryable/not_started/update_available cannot advance; hard failures remain visible in the final report. The loop reloads the protected parent after a Source call to recognize the child checkpoint instead of double-appending. A child cleanup error remains visible in that invocation without changing the durable success item or retiring the batch. A finished traversal retires its single journal only after qualified completed children have been cleaned. Budget-resume, earlier-hard-failure and repeated later changed publications are actual high-level batch regressions, not helper-only stand-ins."
+    },
+    {
+      "name": "source_sync_parent_completion_before_child_retirement",
+      "files": [
+        "packages/core/src/shared-current-source-sync.ts",
+        "packages/core/src/shared-current-source-sync-model.ts",
+        "packages/core/src/shared-current-source-sync-batch-model.ts",
+        "packages/core/test/shared-current-source-sync-batch.test.ts",
+        "packages/core/test/shared-current-source-sync-guards.test.ts"
+      ],
+      "scope": "continueOwned writes its successful observation, checkpoints the exact terminal item into the still-owned full dispatch parent, and only then retires the Source pending record. The optional pending full_batch scope/batch_id identifies the existing parent; manager, execution, library, Sources data source and selected Source qualify that relationship. Missing/retired/replaced parents are not created or overwritten. A prior hard result remains unchanged. completedBatchChild permits pure local cleanup only for an applied/reconciled success with the original operation_id, published configuration/commit/revision and exact completed projection mode/cursor/target IDs. Full carry-prefix and changed pending recovery both use that proof before upstream decisions; a cleanup failure is reported without retiring the parent. The real regressions fail parent checkpoint before child retirement, fail child retirement after parent success, reject five mismatched completion fields through both entry paths, and publish C/D after changed finishes the original B without losing the parent prefix. A new full traversal rechecks current content. Observation.full_batch and full receipt fast-path are removed: disposable cache timestamps or later replacement cannot authorize or erase full progress."
+    },
+    {
+      "name": "source_sync_sqlite_transition_guards",
+      "files": [
+        "packages/core/src/sqlite-state.ts",
+        "packages/core/src/shared-current-source-sync-model.ts",
+        "packages/core/src/shared-current-source-sync-batch-model.ts",
+        "packages/core/test/shared-sqlite.node.test.ts"
+      ],
+      "scope": "The existing SQLite transaction freezes Source sync input, manager, execution and optional full-batch tag; content can advance to projection only at zero, and projection preserves ordered physical targets while accepting only the same cursor or +1. Full batches start empty and preserve one exact terminal prefix. Independent real-process regressions exercise restart, illegal in-range 0-to-2 jumps, target/order/page changes, changed scope/generation, two first writers, old hard-result immutability and retirement without completed history. The finite model treats these saves as atomic; it does not prove SQLite, fsync, power-loss behavior or cross-machine locking."
     }
   ],
   "unmodeled_bindings": [
@@ -295,6 +809,26 @@
         "packages/core/test/shared-current-projection-write.test.ts"
       ],
       "scope": "Only an explicitly selected canonical main omits a leading, closed YAML mapping with string name and description from its generated reading body. Supporting files retain their complete text even when their root filename is SKILL.md, ROUTER.md or PROMPT.md; ordinary separators, malformed or unrecognized headers and body examples remain visible. Original Source/resource bytes, file mode, discovery metadata, native author content and consumption identity stay unchanged. Concrete regressions cover BOM/CRLF, additional metadata, replacement of old YAML heading blocks, zero-write repetition and preservation of an older pending append when resume detects a renderer fingerprint mismatch or cancellation detects an exact-request mismatch. The lifecycle model does not enumerate YAML syntax, physical Notion blocks, main/supporting paths or renderer revisions."
+    },
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "source_sync_completed_phase_readback",
+      "files": [
+        "packages/core/src/shared-current-source-sync.ts",
+        "packages/core/src/shared-current-source-write.ts",
+        "packages/core/test/shared-current-source-sync-guards.test.ts",
+        "packages/core/test/shared-sqlite.node.test.ts"
+      ],
+      "scope": "Failure to save the local projection phase after the actual Source writer completed leaves the original content input. When no original remote intent remains and the selected Source matches, recovery uses verify_only and checks frozen retirements before advancing; it refuses later main-binding drift without another Notion mutation. The Map Store fault regression establishes this coordinator path, not filesystem persistence. Independent SQLite process/retention tests establish only their own actual durable operations. The finite model does not enumerate this content-writer/local-phase handoff, arbitrary metadata drift, real Git discovery completeness, complete byte verification, batch request accounting, scheduler execution or installed-package upgrades."
+    },
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "source_sync_completed_projection_prefix_fence",
+      "files": [
+        "packages/core/src/shared-current-source-sync.ts",
+        "packages/core/test/shared-current-source-sync-guards.test.ts"
+      ],
+      "scope": "A previously committed projection prefix may gain a new remote projection intent. pendingOwners blocks before continuing even when that intent has the original deterministic projection ID; the dedicated real-writer regression establishes zero new Source/Record/owner writes and preserved original pending state. SourceSyncProgress does not enumerate a new remote intent after prefix commitment; its childPending variable is the local Source sync pipeline. A completed prefix records its prior completed work, not a persistent atomic snapshot against arbitrary later ready edits. Legal Source authority takeover/mapping changes alter Contributions and are rejected by the frozen configuration check; metadata schema decoding alone is not a complete authority inventory proof."
     }
   ],
   "maintenance": {

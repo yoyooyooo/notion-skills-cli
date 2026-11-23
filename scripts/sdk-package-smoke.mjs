@@ -32,7 +32,7 @@ const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
 const originalCwd = process.cwd(),
   originalToken = process.env.NOTION_API_TOKEN
 const cases = []
-let sdkPath, packageVersion, source
+let sdkPath, managementPath, packageVersion, source
 async function command(argv, options = {}) {
   const child = spawn(argv[0], argv.slice(1), {
     cwd: root,
@@ -146,12 +146,21 @@ try {
   sdkPath = require.resolve("ntn-skills/sdk")
   assert.ok(sdkPath.startsWith(join(root, "node_modules", "ntn-skills")))
   const sdk = await import(pathToFileURL(sdkPath).href)
+  managementPath = require.resolve("ntn-skills/management")
+  assert.ok(managementPath.startsWith(join(root, "node_modules", "ntn-skills")))
+  const management = await import(pathToFileURL(managementPath).href)
   const manifest = require("ntn-skills/package.json")
   packageVersion = manifest.version
   const cli = require.resolve("ntn-skills/dist/ntn-skills.js")
   assert.equal(sdk.SDK_VERSION, 2)
   assert.equal(sdk.CONSUMER_CONTRACT_VERSION, 1)
   assert.equal(sdk.RESOURCE_READ_CONTRACT_VERSION, 1)
+  assert.equal(management.MANAGEMENT_VERSION, 1)
+  assert.equal(management.PACKAGE_VERSION, packageVersion)
+  assert.equal(Object.hasOwn(sdk, "checkSources"), false)
+  assert.equal(Object.hasOwn(sdk, "syncSources"), false)
+  assert.equal(typeof management.checkSources, "function")
+  assert.equal(typeof management.syncSources, "function")
   await test("installed-sdk-contract", "current", async () => {
     for (const name of [
       "listCatalog",
@@ -197,7 +206,7 @@ try {
     )
     await writeFile(
       join(root, "sdk-contract.ts"),
-      `import { SDK_VERSION, consume, readSkill, listSkill, readResources, type ConsumeOptions } from 'ntn-skills/sdk';\nconst version: 2 = SDK_VERSION;\nconst options: ConsumeOptions = { env: {}, database: '${fixture.database}' };\nvoid consume({version:1,targets:['${fixture.root_page_id}'],purpose:'use'}, options);\nvoid readSkill('${fixture.root_page_id}', options);\nvoid listSkill('${fixture.root_page_id}', options);\nvoid readResources({version:1,refs:[]}, options);\n// @ts-expect-error removed SDK option\nconst removed: ConsumeOptions = { readOnly: true };\n// @ts-expect-error retired Source management API\nimport { planSourceRefresh } from 'ntn-skills/sdk';\n`,
+      `import { SDK_VERSION, consume, readSkill, listSkill, readResources, type ConsumeOptions } from 'ntn-skills/sdk';\nimport { MANAGEMENT_VERSION, checkSources, syncSources, currentSourceSyncExitCode, type SourceSyncInput, type ManagementOptions } from 'ntn-skills/management';\nconst version: 2 = SDK_VERSION;\nconst managementVersion: 1 = MANAGEMENT_VERSION;\nconst options: ConsumeOptions = { env: {}, database: '${fixture.database}' };\nconst managementOptions: ManagementOptions = { env: {} };\nconst synchronization: SourceSyncInput = { entry: '${fixture.database}', source_ids: ['fixture'], manager_id: 'installed-fixture', execution_id: '${"a".repeat(64)}' };\nvoid checkSources({ entry: synchronization.entry, source_ids: synchronization.source_ids }, managementOptions);\nvoid syncSources(synchronization, managementOptions).then(currentSourceSyncExitCode);\nvoid consume({version:1,targets:['${fixture.root_page_id}'],purpose:'use'}, options);\nvoid readSkill('${fixture.root_page_id}', options);\nvoid listSkill('${fixture.root_page_id}', options);\nvoid readResources({version:1,refs:[]}, options);\n// @ts-expect-error removed SDK option\nconst removed: ConsumeOptions = { readOnly: true };\n// @ts-expect-error management requires explicit owner and execution\nconst missingSyncIdentity: SourceSyncInput = { entry: '${fixture.database}', source_ids: ['fixture'] };\n// @ts-expect-error management remains a separate capability\nimport { syncSources as consumerSync } from 'ntn-skills/sdk';\n// @ts-expect-error retired Source management API\nimport { planSourceRefresh } from 'ntn-skills/sdk';\n`,
     )
     await command([
       process.execPath,
@@ -234,6 +243,95 @@ try {
     ...extra,
   })
   const shared = options("current")
+  await test("installed-management-check-sync-and-cli-report", "current", async () => {
+    const reports = []
+    const selection = { entry: fixture.database, source_ids: ["missing-installed-source"] }
+    const start = source.requests.length
+    const check = await management.checkSources(selection, {
+      ...shared,
+      onRequestMetrics: (value) => reports.push(value),
+    })
+    const sync = await management.syncSources(
+      {
+        ...selection,
+        manager_id: "installed-fixture",
+        execution_id: hash(await readFile(archive)),
+      },
+      {
+        ...shared,
+        onRequestMetrics: (value) => reports.push(value),
+      },
+    )
+    for (const [action, result] of [
+      ["check", check],
+      ["sync", sync],
+    ]) {
+      assert.equal(result.version, 1)
+      assert.equal(result.kind, "current_source_sync")
+      assert.equal(result.action, action)
+      assert.equal(result.status, "failed")
+      assert.equal(result.results.length, 1)
+      assert.equal(result.results[0].source_id, "missing-installed-source")
+      assert.equal(result.results[0].error.code, "CURRENT_SOURCE_NOT_FOUND")
+      assert.equal(management.currentSourceSyncExitCode(result), 1)
+      assert.ok(result.budget.attempts > 0)
+    }
+    assert.equal(reports.length, 2)
+    assert.ok(reports.every((value) => value !== null && value.in_flight === 0))
+    const cliEnv = { ...process.env, ...shared.env }
+    for (const action of ["check", "sync"]) {
+      const output = JSON.parse(
+        await command(
+          [
+            process.execPath,
+            cli,
+            "ctl",
+            "library",
+            "source",
+            action,
+            "--entry",
+            fixture.database,
+            "--source",
+            "missing-installed-source",
+          ],
+          { cwd: shared.cwd, env: cliEnv, expectedExit: 1 },
+        ),
+      )
+      assert.equal(output.ok, false)
+      assert.equal(output.kind, "current_source_sync")
+      assert.equal(output.action, action)
+      assert.equal(output.status, "failed")
+      assert.equal(output.results[0].error.code, "CURRENT_SOURCE_NOT_FOUND")
+    }
+    const usage = JSON.parse(
+      await command(
+        [process.execPath, cli, "ctl", "library", "source", "check", "--entry", fixture.database],
+        { cwd: shared.cwd, env: cliEnv, expectedExit: 2 },
+      ),
+    )
+    assert.equal(usage.error.code, "INVALID_ARGUMENT")
+    const calls = source.requests.slice(start)
+    assert.ok(
+      calls.some(
+        (row) =>
+          row.path === `/v1/data_sources/${fixture.notion.library.sources.data_source_id}/query`,
+      ),
+    )
+    assert.ok(
+      calls.every(
+        (row) => row.method === "GET" || (row.method === "POST" && row.path.endsWith("/query")),
+      ),
+    )
+    return {
+      management_version: management.MANAGEMENT_VERSION,
+      source_selection: "explicit",
+      missing_source: "reported",
+      semantic_writes: 0,
+      cli_result_exit: 1,
+      cli_usage_exit: 2,
+      installed_bundle_identity: "default accepted",
+    }
+  })
   let main, listing
   await test("current-catalog-complete-pagination", "current", async () => {
     const start = source.requests.length
@@ -478,6 +576,7 @@ try {
     archive_sha256: hash(await readFile(archive)),
     installed_package: packageVersion,
     sdk_path: sdkPath,
+    management_path: managementPath,
     fixture: fixturePath,
     selection,
     passed: cases.filter((value) => value.status === "passed").length,
