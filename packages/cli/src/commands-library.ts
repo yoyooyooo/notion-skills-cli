@@ -49,7 +49,7 @@ const initialize = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Create the current Skills, Files, Records and Sources layout. --operation alone is read-only reconciliation; add --resume to continue the original initialization. Retain its local state until completion. Existing libraries must already use the current Content contract; this command does not convert old content or continue old publication operations.",
+    "Create or validate the current Skills, Files, Records and Sources layout. Success means the structure is ready; keep library.skills.database_id as the single entry. next.argv is a read-only list and may return an empty library. This does not create Skills or copy builtins, save a default library, or configure a host. --operation alone is read-only reconciliation; add --resume to continue the original initialization. Retain its local state until completion. Existing libraries must already use the current Content contract; this command does not convert old content or continue old publication operations.",
   ),
 )
 

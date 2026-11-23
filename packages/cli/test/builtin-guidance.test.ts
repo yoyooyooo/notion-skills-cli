@@ -201,18 +201,29 @@ test("projection completion ends routine writes without blocking requested repea
   expect(synchronization).toContain("Uncertain actions remain pending")
 })
 
-test("connected maintenance guidance reads projected workflows and preserves their selected references", () => {
-  const consumer = fileText("notion/ntn-skills", "SKILL.md")
-  const maintain = fileText("notion/ntn-skills-maintain", "SKILL.md")
-  const sync = fileText("notion/ntn-skills-sync", "SKILL.md")
-  const integration = fileText("notion/ntn-skills", "references/integration.md")
-  expect(consumer).toContain("list --database ENTRY --query ntn-skills-maintain")
-  expect(consumer).toContain("exact ref with ordinary")
-  expect(consumer).toContain("To apply the maintenance workflow")
+test("product guidance defaults to the execution package and preserves explicit remote selections", () => {
+  const prose = (id: string, path: string) => fileText(id, path).replace(/\s+/g, " ")
+  const consumer = prose("notion/ntn-skills", "SKILL.md")
+  const maintain = prose("notion/ntn-skills-maintain", "SKILL.md")
+  const sync = prose("notion/ntn-skills-sync", "SKILL.md")
+  const commands = prose("notion/ntn-skills", "references/commands.md")
+  const integration = prose("notion/ntn-skills", "references/integration.md")
+  for (const guidance of [consumer, commands, integration]) {
+    expect(guidance).toContain("ctl builtin read notion/ntn-skills-maintain")
+    expect(guidance).toContain("ctl builtin read notion/ntn-skills-sync")
+    expect(guidance).toContain("including with a connected library")
+    expect(guidance).toContain("Ordinary business")
+    expect(guidance).toContain("pending content")
+    expect(guidance).toContain("denied access")
+  }
+  expect(consumer).toContain("the task's executable")
+  expect(consumer).toContain("no Notion copy or remote workflow search")
+  expect(consumer).toContain("If the user explicitly selects a Notion/team workflow")
   expect(consumer).toContain("use 'EXACT_WORKFLOW_REF'")
   expect(consumer).toContain("Inspect the edited target; do not activate it")
-  expect(consumer).toContain("Failed or partial discovery does not authorize switching")
-  expect(consumer).toContain("Without a connected library")
+  expect(consumer).toContain("never a reason to substitute a package workflow")
+  expect(consumer).toContain("cannot replace the package default")
+  expect(consumer).toContain("Keep an already selected task's identity and content")
   expect(consumer).toContain("An npm update does not refresh a Notion Source")
   expect(maintain).toContain("ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF")
   expect(maintain).toContain("For package-selected instructions")
@@ -220,11 +231,14 @@ test("connected maintenance guidance reads projected workflows and preserves the
   for (const guidance of [maintain, sync, integration]) {
     expect(guidance).toContain("notion_use")
     expect(guidance).toContain("Requires")
+    expect(guidance).toMatch(/never substitute/i)
   }
+  expect(integration).toContain("from its paired SDK")
+  expect(integration).toContain("Without an enabled source, it does not inject")
   expect(integration).toContain("startup directory")
   expect(integration).toContain("query the connected library explicitly")
   expect(integration).toContain("An independent CLI `list --refresh` does not refresh")
-  expect(integration).toContain("Do not combine refresh with an\nold pagination cursor")
+  expect(integration).toContain("Do not combine refresh with an old pagination cursor")
 })
 
 test("the published documentation allowlist contains only current guides", () => {

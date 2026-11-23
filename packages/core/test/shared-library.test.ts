@@ -240,7 +240,7 @@ function fixture(
   }
 }
 
-test("one parent initializes four related tables and repeats without writes or body reads", async () => {
+test("one parent initializes only four related tables and repeats without writes or body reads", async () => {
   const f = fixture()
   const first = await f.run(initializeSharedLibrary({ parent }))
   expect(first.reused).toBe(false)
@@ -252,6 +252,11 @@ test("one parent initializes four related tables and repeats without writes or b
   expect(first.library.records.property_ids.Origin).toBeDefined()
   expect(first.library.files.property_ids.Origin).toBe("extra-Origin")
   expect(first.library.sources).toBeDefined()
+  expect(
+    f.calls
+      .filter((call) => call.write)
+      .every((call) => /^v1\/(?:databases|data_sources)(?:\/|$)/.test(call.path)),
+  ).toBe(true)
   const membersWrite = f.calls.findIndex(
     (call) =>
       call.method === "PATCH" &&

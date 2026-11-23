@@ -180,10 +180,12 @@ AH-1197 配对当前 CLI/SDK/Broker 并核两机 next 的实际加载字节；AH
 
 完成自然查找→选用→子文档读取，再按当前已具备的管理/单文件导出能力继续消费。检查实际模型输入、必要全文、去重和成本；mock、准备稿或 enqueue 不是投递。未接通的内容管理不能由 Profile 改动代称。
 
-原生管理新增验收使用实际 `pi -ne` 与 group/worker，沿
+原生管理新增验收使用普通 Pi、自动加载的 Broker 与 group/worker，按场景补 `pi -ns`，沿
 [skill-maintenance](skill-maintenance.md#原生日常管理与实际-pi) 跑自然作者任务。
-已连接库应发现并普通读取 maintain；实际采用时沿同来源精确 ref 用 notion_use/CLI use
-加载 Requires，再选择四动作。只查看说明和被编辑目标仍只 inspect。
+维护和 Source sync 默认读取实际执行包的 Builtin，已连接库也不先搜远端同名工作流。
+显式选择 Notion／团队工作流时，采用沿同来源精确 ref 用 notion_use/CLI use 加载 Requires，
+错误或不完整发现不静默改选。已选任务内容保持；普通业务仍在库里发现。
+只查看说明和被编辑目标仍只 inspect。
 不能靠提示里塞命令、手填机器字段或
 外部 Agent 事后补写取得通过。独立安装加载字节和实际 Notion/Pi 回执都须留存。
 
