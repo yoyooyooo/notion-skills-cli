@@ -8,6 +8,7 @@ guides for later changes and the reference documents for exact behavior.
 | Install, authenticate, create four tables, and read your first Skill | [English quick start](../README.md#quick-start) or [中文快速开始](../README.zh-CN.md#快速开始) |
 | Set up an existing library, copy packaged workflows, or inspect interrupted initialization | [Setup](../skills/notion/ntn-skills-maintain/references/setup.md) |
 | Discover, read, use, and export content | [Usage](usage.md) |
+| Authorize hosted MCP and search remote Notion content | [Remote content search](notion-mcp.md) |
 | Create, edit, register, or remove native Skills | [Native authoring](shared-authoring.md#manage-native-skills) |
 | Import a complete tree, generate reading pages, or resume a write | [Authoring](shared-authoring.md) |
 | Work through an Agent | [Entrypoint Skill](../skills/ntn-skills/SKILL.md) |
@@ -24,7 +25,8 @@ guides for later changes and the reference documents for exact behavior.
 Use `ntn-skills schema COMMAND...` or the selected command's `--help`. Both
 come from the registered parser.
 
-The root commands are `list`, `read`, `use`, `files`, `export`, `schema`, and `ctl`.
+The root commands are `list`, `read`, `use`, `files`, `export`, `schema`, `auth`, and `ctl`.
+`auth mcp` manages the independent hosted-search token or OAuth connection.
 `ctl library` contains `init`, `inspect`, `files`, `operation`, `skill`, `import`,
 `projection`, `source`, and the singular `profile` family.
 

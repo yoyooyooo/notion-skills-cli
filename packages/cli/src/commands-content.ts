@@ -14,6 +14,7 @@ import {
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
 import { fail } from "../../core/src/model.ts"
 import { listSkills } from "../../core/src/catalog-consumption.ts"
+import { contentSearch } from "./sdk.ts"
 
 import {
   filesConstraints,
@@ -60,14 +61,66 @@ export const listCommand = defineCommand(
     ),
     ...readPolicyFlags,
     metrics: requestMetricsFlag,
-    query: singleton("query", "Case-insensitive filter on Name, invocation alias and Description"),
-    limit: singleton("limit", "Maximum metadata records, 1-500 (default 50)"),
+    query: singleton(
+      "query",
+      "Filter Name, alias and Description; with --search-in content, send keywords to hosted Notion search",
+    ),
+    searchIn: singleton(
+      "search-in",
+      "metadata (default) or content via hosted Notion MCP; content requires --database and --query",
+    ),
+    limit: singleton(
+      "limit",
+      "Metadata: 1-500 (default 50); content: 1-50 remote matches before eligibility filtering (default 20)",
+    ),
     cursor: singleton("cursor", "Copy next_cursor from the same directory and query"),
     json: switchFlag("json", "Emit the structured JSON result (the default)"),
   },
   (config) =>
     Effect.gen(function* () {
       const startedAt = yield* Clock.currentTimeMillis
+      const searchIn = Option.getOrElse(config.searchIn, () => "metadata")
+      if (searchIn !== "metadata" && searchIn !== "content")
+        return yield* Effect.fail(
+          fail("INVALID_ARGUMENT", "--search-in must be metadata or content."),
+        )
+      if (searchIn === "content") {
+        if (
+          Option.isNone(config.database) ||
+          Option.isNone(config.query) ||
+          Option.isSome(config.cursor) ||
+          Option.isSome(config.view) ||
+          config.defaultView ||
+          Option.isSome(config.profile) ||
+          config.offline ||
+          Option.isSome(config.maxAge) ||
+          config.metrics
+        )
+          return yield* Effect.fail(
+            fail(
+              "INVALID_ARGUMENT",
+              "Content search requires --database and --query; cursors, Views, shared Profiles, offline/cache policies and REST-only metrics do not apply.",
+            ),
+          )
+        const database = config.database.value,
+          query = config.query.value
+        const result = yield* Effect.tryPromise({
+          try: (signal) =>
+            contentSearch(
+              {
+                query,
+                limit: Option.isSome(config.limit) ? Number(config.limit.value) : undefined,
+              },
+              { database, signal },
+            ),
+          catch: (error) =>
+            error instanceof SkillsError
+              ? error
+              : fail("MCP_SEARCH_FAILED", "Remote content search could not complete."),
+        })
+        yield* emit({ ...result, count: result.records.length, next_cursor: null })
+        return
+      }
       if (Option.isSome(config.view) && config.defaultView)
         return yield* Effect.fail(
           new SkillsError({
@@ -93,7 +146,7 @@ export const listCommand = defineCommand(
 ).pipe(
   Command.withShortDescription("List available skills with names, descriptions and refs"),
   Command.withDescription(
-    "Use --view ID/Notion-URL for an exact session View, or --default-view for the bound shared Profile default and otherwise the first View in API order; --view and --default-view are mutually exclusive. --profile ID --database ENTRY selects a shared Profile for this invocation. An explicit --view takes precedence over Profile rules. A machine binding is consulted only with --default-view; an explicit different database uses that database's first View. Default capability directories omit Prompts. Bare list discovers the accessible source scope, including Prompts, regardless of the machine binding. Output defaults to 50 records (maximum --limit 500); follow next_cursor with --cursor until has_more is false. count is this page and total_count is the filtered observation; neither upgrades source coverage. Copy the returned cursor unchanged with the same query and selection; changed observations return LIST_CURSOR_STALE. --json is explicit; structured JSON is the default. View membership uses the native query including quick filters, not an additional Default Context gate; Profile and View rules never grant access. List paginated lightweight metadata from current libraries with explicit successful-query coverage. Routers expose current Members; each Skill remains independently available. --query filters Name/alias/Description while retaining the database map. Catalog age defaults to 60s; --refresh validates online, --offline uses stored observations, --max-age overrides age. These policies are mutually exclusive. Cache freshness never improves discovery coverage; failed sources stay explicit. --database accepts one ID, URL or exact registered alias; Search is not workspace-exhaustive.",
+    "Use --view ID/Notion-URL for an exact session View, or --default-view for the bound shared Profile default and otherwise the first View in API order; --view and --default-view are mutually exclusive. --profile ID --database ENTRY selects a shared Profile for this invocation. An explicit --view takes precedence over Profile rules. A machine binding is consulted only with --default-view; an explicit different database uses that database's first View. Default capability directories omit Prompts. Bare list discovers the accessible source scope, including Prompts, regardless of the machine binding. Output defaults to 50 records (maximum --limit 500); follow next_cursor with --cursor until has_more is false. count is this page and total_count is the filtered observation; neither upgrades source coverage. Copy the returned cursor unchanged with the same query and selection; changed observations return LIST_CURSOR_STALE. --json is explicit; structured JSON is the default. View membership uses the native query including quick filters, not an additional Default Context gate; Profile and View rules never grant access. List paginated lightweight metadata from current libraries with explicit successful-query coverage. Routers expose current Members; each Skill remains independently available. --query filters Name/alias/Description while retaining the database map. Catalog age defaults to 60s; --refresh validates online, --offline uses stored observations, --max-age overrides age. These policies are mutually exclusive. Cache freshness never improves discovery coverage; failed sources stay explicit. --database accepts one ID, URL or exact registered alias; Search is not workspace-exhaustive. For remote title and body matching, use --search-in content with --database and a nonempty --query. Configure NOTION_MCP_TOKEN or run auth mcp login first; CLI search never starts an interactive login. Content mode accepts --limit 1-50, always validates current REST eligibility, and returns no cursor or exhaustive absence claim. Views, shared Profiles, offline/cache policies and REST-only metrics do not apply to content mode.",
   ),
   Command.withExamples([
     {
@@ -103,6 +156,11 @@ export const listCommand = defineCommand(
     {
       command: "ntn-skills list --query governance --refresh",
       description: "Filter current metadata by Name, alias or Description",
+    },
+    {
+      command: "ntn-skills list --database LIBRARY_ENTRY --search-in content --query governance",
+      description:
+        "Search remote Notion content after configuring an MCP token or running auth mcp login",
     },
     {
       command: "ntn-skills list --database DATABASE_ID",

@@ -297,7 +297,7 @@ export function querySelectedSkillIdentity(library: SharedLibrary, skillId: stri
 
 /** Fetch only requested physical targets, then exhaust exact stable-ID claim queries.
  * Disabled claims participate. Neither a partial page set nor a filtered list is complete inventory. */
-export function querySelectedSkillMetadata(
+export function querySelectedSkillMetadataWithClaims(
   library: SharedLibrary,
   ids: readonly string[],
   seeds: readonly unknown[] = [],
@@ -352,13 +352,25 @@ export function querySelectedSkillMetadata(
         )
       targets.set(id, target)
     }
-    if (targets.size === 0) return targets
-    const { claims } = yield* querySkillClaims(library, [
+    if (targets.size === 0)
+      return { targets, observations: new Map<string, SelectedSharedSkillMetadata>() }
+    const { claims, observations } = yield* querySkillClaims(library, [
       ...new Set([...targets.values()].map((target) => target.record.locator.skill_id)),
     ])
     yield* checked(() => {
       for (const target of targets.values()) assertUnique(target, claims)
     })
-    return targets
+    return { targets, observations }
   })
+}
+
+/** Existing consumers select exact targets; discovery can also retain newer claim observations. */
+export function querySelectedSkillMetadata(
+  library: SharedLibrary,
+  ids: readonly string[],
+  seeds: readonly unknown[] = [],
+) {
+  return querySelectedSkillMetadataWithClaims(library, ids, seeds).pipe(
+    Effect.map((value) => value.targets),
+  )
 }

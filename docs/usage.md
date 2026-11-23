@@ -107,6 +107,11 @@ not automatically updated package copies or Source reading projections.
 
 ## Find and read a Skill
 
+For remote title and body matching, configure the separate MCP connection and use
+`list --database LIBRARY_ENTRY --search-in content --query "keywords"`.
+See [Remote content search](notion-mcp.md) for token/OAuth setup, Pi authorization,
+eligibility rules and the limits of remote matching.
+
 Start with a bounded metadata page:
 
 ```bash

@@ -38,7 +38,7 @@ test("bundled current instructions include every relative reference without chec
 })
 
 test("executable builtin examples stay within the public current command surface", () => {
-  const roots = new Set(["list", "read", "use", "files", "export", "schema", "ctl"])
+  const roots = new Set(["list", "read", "use", "files", "export", "schema", "ctl", "auth"])
   const controls = new Set([
     "library",
     "config",
@@ -249,6 +249,7 @@ test("the published documentation allowlist contains only current guides", () =>
     "docs/README.md",
     "docs/current-contract.md",
     "docs/usage.md",
+    "docs/notion-mcp.md",
     "docs/shared-authoring.md",
     "docs/protocol.md",
     "docs/maintenance-verification-review.md",

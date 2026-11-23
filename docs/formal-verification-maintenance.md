@@ -10,6 +10,10 @@
 
 当前资源与有限意图由 [资源状态 Skill](../.cursor/skills/verify-notion-resource-lifecycle/SKILL.md) 维护 [current-lifecycle](../verification/models/current-lifecycle/README.md) 的一组模型和七个配置。内容 owner Operation 与 projection/restore 的有限意图分开；覆盖当前读取与 writer 交错、未知写不重放、完成资格，以及声明假设下的进展。[操作恢复 Skill](../.cursor/skills/verify-notion-operation-recovery/SKILL.md) 仍拥有实际 writer/HTTP/SQLite 回放。两组复用同一 runner，不增加总验证平台。
 
+Hosted Notion MCP 的独立凭据由 [消费验证 Skill](../.cursor/skills/verify-notion-consumption/SKILL.md) 维护 [notion-mcp-auth](../verification/models/notion-mcp-auth/README.md)。保留审核后的 AuthAcquisition v5 与 RefreshRotation v7，共 31 个完整配置：8 个候选正例、19 个故意缺陷和 4 个成功可达性见证。源代码对应只绑定已审阅的认证、store 和同机锁守卫；这不是完整实现精化证明，也不借模型的 Enabled/sessionEpoch 输入证明 Broker 接线。
+
+同一消费验证 owner 的 [notion-mcp-search](../verification/models/notion-mcp-search/README.md) 独立拥有 SearchAdmission 的 core 资格判定和 SDK Source/auth fence。它复用同一 runner 与冻结工具，保持独立规则与 mutation 清单；Broker 会话和工具投递仍由 Broker 验收。
+
 ## 运行入口
 
 先安装仓库锁定依赖，按 [request-engine README](../verification/models/request-engine/README.md) 配置与 `tool-lock.json` 相同的 statechart 工具及 TLC jar。
@@ -18,10 +22,12 @@
 node --test scripts/formal-result-contract.test.mjs
 node scripts/verify-formal.mjs --suite request-engine --out /absolute/new-model-run
 node scripts/verify-formal.mjs --suite current-lifecycle --out /absolute/new-lifecycle-run
+node scripts/verify-formal.mjs --suite notion-mcp-auth --out /absolute/new-mcp-auth-run
+node scripts/verify-formal.mjs --suite notion-mcp-search --out /absolute/new-mcp-search-run
 node --test scripts/formal-runner-contract.test.mjs
 ```
 
-`--model SharedProducer` 或 `--model RequestAdmission` 选择该模型的全部正负配置。只接受 request-engine/current-lifecycle 两个现役 suite，不兼容已退役模型。输出使用本次新的外部空绝对目录；失败保留原结果，下一次使用新目录。
+`--model SharedProducer`、`--model RequestAdmission`、`--model AuthAcquisition`、`--model RefreshRotation` 或 `--model SearchAdmission` 选择该模型的全部正负配置。只接受 request-engine/current-lifecycle/notion-mcp-auth/notion-mcp-search 四个现役 suite，不兼容已退役模型。输出使用本次新的外部空绝对目录；失败保留原结果，下一次使用新目录。
 
 运行器检查源码对应、工具字节、完整规则清单和每个配置。正例的 broken 集合必须为空；负例必须精确等于声明的集合。未执行的规则、缺失 NoDeadlock、cut、超时、解析失败、额外失败和工具异常都不能算通过。不能从已经删减的配置反向生成较弱规则清单。
 
@@ -38,6 +44,10 @@ coverage hash 用于阻止未经审阅的漂移。先核当前行为，再更新
 `scripts/check-formal-mutations.py --suite request-engine` 在独立副本中回放 19 个实际 guard。每个必须原件通过、突变导致行为断言失败、恢复后通过。`formal_mutation_result.py` 只接受真实断言诊断；expect 统计行、超时、导入失败或语法错误都不算捕获，混有断言的工具失败也拒绝。现有 runner contract 测试用实际 Bun 输出和 Vitest 结构化错误核对判据。异步用例必须无条件释放自有 latch，让断言错误能够完成退出。当前 immutable runtime case 修改 `shared-current-resource.ts`，并通过公开 SDK 取消 creator，确认另一个 runtime 的读取仍可完成。
 
 同一入口的 `--suite current-lifecycle` 回放四个实际 guard：current 最后读回 fence、projection 分类、never-replay 的未知 action、非内容完成时的 owner 资格。只改外层 activation 条件会被下一层写入边界拒绝；这种未触发行为断言的异常不是该性质已被杀死。每个保留负例都需与模型的真实路径一致。
+
+`--suite notion-mcp-auth` 回放十二个实际 guard 变体：callback issuer、独立 waiter 取消、退出后的 code exchange 与 grant commit、派发前在途标记、跨进程刷新互斥、崩溃与独立 deadline 后禁止重放、过期 store 发布，以及定时器尚未执行时过期 waiter 的 exchange/commit 和原子发布前 owner 核对。前置 exchange 和未知刷新有多层防御；对应 mutation 明确同时移除这些防御，不能称作单个 if 缺失。锁 mutation 观测的是失去等待重读后第二进程无法复用赢家，pending 守卫仍阻止双派发；不声称该回放观察到重叠 HTTP。断电持久性、真实浏览器、发行包、Hosted 服务行为和跨机锁不在该回放证明内。
+
+AuthAcquisition 只穷举两位同时开始的 waiter 和一份抽象期限；真实不同 deadline 由 Node 回归覆盖。RefreshRotation 为两个进程分别推进期限，保留崩溃前派发标记及未知结果。生产实现对受信 issuer 已解析的 invalid_scope 拒绝保留原 grant，但普通 403/429 不能证明 refresh token 未被消费；模型的 Reject 只抽象终结的 grant 拒绝。查看对应 README 的分层边界，不能把抽象原子提交扩大成真实 fsync/OS 证明。
 
 RequestAdmission 不建模多步骤 import、字节流、multipart 或有限 Operation。默认总预算、嵌套共用预算、耗尽后停止派发、partial writer 与显式 resume 由 `shared-current-invocation.test.ts` 和已有当前操作测试验证。不要把请求模型通过扩大成整个 writer 的证明。
 

@@ -1,6 +1,7 @@
 import { resolve } from "node:path"
+import { randomUUID } from "node:crypto"
 import { Cause, ConfigProvider, Effect, Exit, Layer, Option } from "effect"
-import { version } from "../package.json"
+import packageManifest from "../package.json" with { type: "json" }
 import {
   consume as coreConsume,
   decodeConsumeInput,
@@ -49,12 +50,42 @@ import {
   type ListCatalogDirectoryResult,
   type ListSkillsResult,
 } from "../../core/src/catalog-consumption.ts"
+import {
+  getMcpAuthStatus,
+  loginMcp,
+  logoutMcp,
+  setMcpToken,
+  resolveMcpCredential,
+  type McpAuthOptions,
+  type McpAuthStatus,
+  type McpAuthorizationRequest,
+} from "../../core/src/notion-mcp-auth.ts"
+import {
+  getNotionMcpIdentity,
+  searchNotionMcp,
+  verifyNotionMcpSource,
+} from "../../core/src/notion-mcp-client.ts"
+import {
+  contentSearchSource,
+  assertContentSearchSource,
+  admitContentSearchMatches,
+  validateContentSearchInput,
+  type ContentSearchInput,
+  type ContentSearchResult,
+} from "../../core/src/notion-mcp-search.ts"
 
 export const SDK_VERSION = 2
 /** Selected CLI can expose the complete HTTP ledger independently of compact
  * stdout, with an exact closed-output SHA-256 proof. Not remote authority. */
 export const COMMAND_OUTPUT_PROOF_VERSION = 1
-export const PACKAGE_VERSION = version
+export const PACKAGE_VERSION = packageManifest.version
+export { CONTENT_SEARCH_CONTRACT_VERSION } from "../../core/src/notion-mcp-search.ts"
+export type {
+  ContentSearchInput,
+  ContentSearchResult,
+  ContentSearchRecord,
+} from "../../core/src/notion-mcp-search.ts"
+export type { McpAuthStatus, McpAuthorizationRequest } from "../../core/src/notion-mcp-auth.ts"
 export { CONSUMPTION_EFFECTS_VERSION } from "../../core/src/consumption-effects.ts"
 export type { ConsumptionEffects } from "../../core/src/consumption-effects.ts"
 export {
@@ -97,6 +128,219 @@ export interface SdkOptions {
   readonly metrics?: boolean
   /** Called once after cleanup; unacquired transport has zero attempts, absent acquired metrics are null. */
   readonly onRequestMetrics?: (snapshot: RequestMetricsSnapshot | null) => void
+}
+
+export type McpOptions = Pick<SdkOptions, "env" | "cwd" | "signal"> &
+  Pick<McpAuthOptions, "profile" | "deadline" | "onAuthorize" | "serverUrl">
+export type ContentSearchOptions = McpOptions & { readonly database: string }
+
+function mcpOptions(options: McpOptions): McpAuthOptions {
+  const env = { ...(options.env ?? process.env) }
+  const home = env.HOME ?? env.USERPROFILE
+  const root =
+    env.NTN_SKILLS_CONFIG_HOME ??
+    (env.XDG_CONFIG_HOME === undefined
+      ? home === undefined
+        ? undefined
+        : resolve(options.cwd ?? ".", home, ".config", "ntn-skills")
+      : resolve(options.cwd ?? ".", env.XDG_CONFIG_HOME, "ntn-skills"))
+  return {
+    env,
+    ...(root === undefined ? {} : { configHome: resolve(options.cwd ?? ".", root) }),
+    profile: options.profile,
+    serverUrl: options.serverUrl,
+    signal: options.signal,
+    deadline: options.deadline,
+    onAuthorize: options.onAuthorize,
+    resolveIdentity: getNotionMcpIdentity,
+  }
+}
+
+/** MCP authentication is independent of the REST service and never returns credentials. */
+export function mcpAuthStatus(options: McpOptions = {}): Promise<McpAuthStatus> {
+  return getMcpAuthStatus(mcpOptions(options))
+}
+export function mcpLogin(options: McpOptions = {}): Promise<McpAuthStatus> {
+  return loginMcp(mcpOptions(options))
+}
+export function mcpLogout(options: McpOptions = {}): Promise<McpAuthStatus> {
+  return logoutMcp(mcpOptions(options))
+}
+export function mcpSetToken(
+  token: string | undefined,
+  options: McpOptions = {},
+): Promise<McpAuthStatus> {
+  return setMcpToken(token, mcpOptions(options))
+}
+
+async function withinSearchDeadline<A>(
+  deadline: number,
+  signal: AbortSignal | undefined,
+  run: (signal: AbortSignal) => Promise<A>,
+): Promise<A> {
+  if (!Number.isSafeInteger(deadline) || deadline <= Date.now())
+    throw fail("MCP_TIMEOUT", "Content search reached its deadline.")
+  if (signal?.aborted) throw fail("MCP_CANCELLED", "Content search was cancelled.")
+  const controller = new AbortController()
+  const cancel = () => controller.abort()
+  signal?.addEventListener("abort", cancel, { once: true })
+  const timer = setTimeout(cancel, deadline - Date.now())
+  try {
+    const value = await run(controller.signal)
+    if (signal?.aborted) throw fail("MCP_CANCELLED", "Content search was cancelled.")
+    if (controller.signal.aborted || Date.now() >= deadline)
+      throw fail("MCP_TIMEOUT", "Content search reached its deadline.")
+    return value
+  } catch (error) {
+    if (signal?.aborted) throw fail("MCP_CANCELLED", "Content search was cancelled.")
+    if (controller.signal.aborted || Date.now() >= deadline)
+      throw fail("MCP_TIMEOUT", "Content search reached its deadline.")
+    throw error
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener("abort", cancel)
+  }
+}
+
+/** Remote discovery only. Every returned page is admitted by fresh REST metadata;
+ * Views and local pins are untouched and the result never claims exact byte matching. */
+export async function contentSearch(
+  input: ContentSearchInput,
+  options: ContentSearchOptions,
+): Promise<ContentSearchResult> {
+  const request = validateContentSearchInput(input)
+  if (typeof options?.database !== "string" || !options.database.trim())
+    throw fail("INVALID_ARGUMENT", "Content search requires one explicit library entry.")
+  const env = { ...(options.env ?? process.env) }
+  const complete = { ...options, env }
+  const deadline = options.deadline ?? Date.now() + 360_000
+  const before = await withinSearchDeadline(
+    Math.min(deadline, Date.now() + 30_000),
+    options.signal,
+    (signal) => runOperation(() => contentSearchSource(options.database), { ...complete, signal }),
+  )
+  const auth = mcpOptions({ ...complete, deadline: Math.min(deadline, Date.now() + 300_000) })
+  let credential = await resolveMcpCredential({
+    ...auth,
+    interactive: options.onAuthorize !== undefined,
+  })
+  return withinSearchDeadline(
+    Math.min(deadline, Date.now() + 60_000),
+    options.signal,
+    async (signal) => {
+      const searchDeadline = Math.min(deadline, Date.now() + 60_000)
+      const authorized = credential
+      credential = await resolveMcpCredential({
+        ...mcpOptions({ ...complete, signal, deadline: searchDeadline }),
+        interactive: false,
+      })
+      if (
+        credential.connectionId !== authorized.connectionId ||
+        credential.grantEpoch !== authorized.grantEpoch
+      )
+        throw fail("MCP_SEARCH_STALE", "The MCP connection changed after authorization.")
+      const runtime = { ...complete, signal }
+      const selected = await runOperation(() => contentSearchSource(options.database), runtime)
+      assertContentSearchSource(before, selected)
+      const perform = async () => {
+        await credential.assertCurrent()
+        if (selected.workspaceId !== null && selected.workspaceId !== credential.workspaceId)
+          throw fail(
+            "MCP_SOURCE_UNAVAILABLE",
+            "The MCP workspace does not match the selected REST library.",
+          )
+        const connection = {
+          bearer: credential.bearer,
+          serverUrl: options.serverUrl,
+          signal,
+          deadline: searchDeadline,
+        }
+        // Access to the same physical entry binds the verified MCP workspace to this REST source.
+        await verifyNotionMcpSource({ ...connection, pageId: selected.source.database_id })
+        await credential.assertCurrent()
+        return searchNotionMcp({
+          ...connection,
+          query: request.query,
+          pageSize: request.limit,
+          pageUrl: `https://www.notion.so/${selected.source.shared_library.parent_page_id.replaceAll("-", "")}`,
+        })
+      }
+      let remote
+      try {
+        remote = await perform()
+      } catch (error) {
+        if (
+          !(error instanceof SkillsError) ||
+          error.code !== "MCP_AUTH_REQUIRED" ||
+          credential.kind !== "oauth"
+        )
+          throw error
+        credential = await resolveMcpCredential({
+          ...auth,
+          signal,
+          deadline: searchDeadline,
+          interactive: false,
+          forceRefresh: true,
+        })
+        if (
+          credential.connectionId !== authorized.connectionId ||
+          credential.grantEpoch !== authorized.grantEpoch
+        )
+          throw fail(
+            "MCP_SEARCH_STALE",
+            "The MCP connection changed while refreshing the search credential.",
+          )
+        remote = await perform()
+      }
+      await credential.assertCurrent()
+      const admission = await runOperation(
+        () => admitContentSearchMatches(selected, remote.matches),
+        runtime,
+      )
+      const latest = await runOperation(() => contentSearchSource(options.database), runtime)
+      assertContentSearchSource(selected, latest)
+      await credential.assertCurrent()
+      const partial =
+        remote.notices.length > 0 ||
+        admission.rejected > 0 ||
+        remote.matches.length >= request.limit
+      const notices = [
+        {
+          code: "REMOTE_NON_EXHAUSTIVE",
+          message:
+            "Notion remote matches may include titles and display projections. Empty results do not prove absence, and matches do not prove exact current file bytes.",
+        },
+        ...(remote.notices.length === 0
+          ? []
+          : [
+              {
+                code: "REMOTE_NOTICE",
+                message:
+                  "The remote service reported search limitations. Local eligibility checks still apply.",
+              },
+            ]),
+        ...(admission.rejected === 0
+          ? []
+          : [
+              {
+                code: "RESULTS_FILTERED",
+                message:
+                  "Some remote matches could not be admitted under current library eligibility.",
+              },
+            ]),
+      ]
+      return {
+        kind: "results",
+        records: admission.records,
+        connection: { id: credential.connectionId, grantEpoch: credential.grantEpoch },
+        resultId: randomUUID(),
+        coverage: "remote_non_exhaustive",
+        partial,
+        notices,
+        exhaustive: false,
+      }
+    },
+  )
 }
 
 export type ConsumeOptions = SdkOptions & Omit<CoreConsumeOptions, "signal" | "onEffects">
