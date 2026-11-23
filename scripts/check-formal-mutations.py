@@ -2,6 +2,7 @@
 """Replay current formal guards in retained, isolated source/dependency fixtures."""
 from pathlib import Path
 import argparse, hashlib, json, shutil, subprocess, sys, time
+from formal_mutation_result import failed_assertion
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--suite", choices=["request-engine", "current-lifecycle"], required=True)
@@ -15,6 +16,8 @@ coverage_path = repo / "verification/models" / args.suite / "coverage.json"
 coverage = json.loads(coverage_path.read_text())
 shutil.copy2(coverage_path, out / "coverage.json")
 shutil.copy2(Path(__file__), out / "check-formal-mutations.py")
+classifier_path = Path(__file__).with_name("formal_mutation_result.py")
+shutil.copy2(classifier_path, out / classifier_path.name)
 sha = lambda value: hashlib.sha256(value).hexdigest()
 for name, expected in coverage["files"].items():
     assert sha((repo / name).read_bytes()) == expected, f"Review source correspondence first: {name}"
@@ -168,6 +171,7 @@ summary = {
     "fixture": str(fixture), "source_commit": coverage["synchronized_commit"],
     "checkout_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
     "verifier_sha256": sha(Path(__file__).read_bytes()),
+    "result_classifier_sha256": sha(classifier_path.read_bytes()),
     "coverage_sha256": sha(coverage_path.read_bytes()),
     "runtime": {"bun": subprocess.check_output(["bun", "--version"], text=True).strip(),
                 "node": subprocess.check_output(["node", "--version"], text=True).strip(),
@@ -213,10 +217,6 @@ def run(label, test, pattern):
 def passed_test(p):
     return (any(a["status"] == "passed" for a in p.real_assertions)
             if hasattr(p, "real_assertions") else "(pass)" in p.stdout + p.stderr)
-def failed_assertion(p):
-    return (any("AssertionError" in message for message in p.assertion_failures)
-            if hasattr(p, "assertion_failures") else
-            "(fail)" in p.stdout + p.stderr and "expect(" in p.stdout + p.stderr)
 save()
 for name, filename, replacements, test, pattern, rule in cases:
     target = fixture / filename
@@ -237,7 +237,6 @@ for name, filename, replacements, test, pattern, rule in cases:
         output = broken.stdout + broken.stderr
         assert broken.returncode != 0, (name, "real mutation escaped")
         assert failed_assertion(broken), (name, "not an assertion failure", output)
-        assert "error: Cannot find" not in output and "SyntaxError:" not in output, (name, "tool error")
         if name == "immutable-runtime-scope":
             assert any("NOTION_SCHEDULER_UNAVAILABLE" in message
                        for message in broken.assertion_failures), (
