@@ -1,7 +1,7 @@
 import { resolve } from "node:path"
 import { randomUUID } from "node:crypto"
 import { Cause, ConfigProvider, Effect, Exit, Layer, Option } from "effect"
-import { version } from "../package.json"
+import packageManifest from "../package.json" with { type: "json" }
 import {
   consume as coreConsume,
   decodeConsumeInput,
@@ -78,7 +78,7 @@ export const SDK_VERSION = 2
 /** Selected CLI can expose the complete HTTP ledger independently of compact
  * stdout, with an exact closed-output SHA-256 proof. Not remote authority. */
 export const COMMAND_OUTPUT_PROOF_VERSION = 1
-export const PACKAGE_VERSION = version
+export const PACKAGE_VERSION = packageManifest.version
 export { CONTENT_SEARCH_CONTRACT_VERSION } from "../../core/src/notion-mcp-search.ts"
 export type {
   ContentSearchInput,
