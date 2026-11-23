@@ -1,10 +1,21 @@
 import { expect, test } from "bun:test"
+import { Effect } from "effect"
 import { Command } from "effect/cli"
-import { mkdir, mkdtemp, readFile, realpath, stat, symlink, writeFile } from "node:fs/promises"
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  stat,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { property } from "../../core/src/model.ts"
 import { thawCurrentImportSkill } from "../../core/src/shared-current-import-plan.ts"
+import { prepareCurrentSkillWrite, writeCurrentSkill } from "../../core/src/shared-current-write.ts"
 import { currentWriteFixture, library } from "../../core/test/shared-current-write-fixture.ts"
 import {
   currentImportBatchCommand,
@@ -211,6 +222,167 @@ test("foreign relationships require exact copy authorization and only batch-owne
       ),
     ),
   ).rejects.toMatchObject({ code: "PORTABLE_RELATION_SCOPE" })
+  expect(f.mutations()).toEqual([])
+})
+
+test("portable origin binds external short refs before batch Members inference", async () => {
+  const { root, manifest, f } = await fixture({ a: "[External](skill://outside/SKILL.md)" })
+  const outside = await f.run(
+    prepareCurrentSkillWrite({
+      skill_id: "outside",
+      kind: "skill",
+      name: "Destination outside",
+      description: "Different owner",
+      files: [
+        {
+          path: "SKILL.md",
+          bytes: new TextEncoder().encode(header("outside") + "# Destination B"),
+        },
+      ],
+    }),
+  )
+  await f.run(
+    writeCurrentSkill(library, { plan: outside, operation_id: "seed-destination-outside" }),
+  )
+  await writeFile(
+    join(root, "a", ".ntn-skills.json"),
+    portable({
+      version: 1,
+      ownership: "notion",
+      library_id: "production",
+    }),
+  )
+  const original = await readFile(join(root, "a", "SKILL.md"), "utf8")
+  f.clearCalls()
+  const result = await f.run(
+    compileCurrentImportBatch(
+      library,
+      await f.run(loadCurrentImportBatch(manifest, "production")),
+    ).pipe(Effect.result),
+  )
+  expect(result._tag).toBe("Success")
+  if (result._tag !== "Success") return
+  const item = result.success.items.find((item) => item.skill_id === "a")!
+  expect(item.relations?.members).toBeUndefined()
+  expect(item.relations?.requires).toBeUndefined()
+  const derived = await f.run(thawCurrentImportSkill(item.body))
+  expect(new TextDecoder().decode(derived.files[0]!.bytes)).toBe(
+    original.replace("skill://outside/SKILL.md", "skill://outside/SKILL.md?library=production"),
+  )
+  expect(result.success.rewrites).toContainEqual({
+    skill_id: "a",
+    from: "SKILL.md:5",
+    before: "skill://outside/SKILL.md",
+    after: "skill://outside/SKILL.md?library=production",
+  })
+  expect(await readFile(join(root, "a", "SKILL.md"), "utf8")).toBe(original)
+  expect(f.mutations()).toEqual([])
+  expect(
+    f.calls.filter(
+      (call) => call.path.endsWith("/query") && JSON.stringify(call.body).includes('"outside"'),
+    ),
+  ).toEqual([])
+})
+
+test("portable batch short refs keep origin unless exact current copy mapping is authorized", async () => {
+  const pin = "s_" + "a".repeat(64)
+  const { root, manifest, f } = await fixture({
+    a: `[B](skill://b/SKILL.md)\n[Missing](skill://b/missing.md)\n[Fixed](skill://b/SKILL.md?snapshot=${pin})`,
+    b: "# B",
+  })
+  const original = await readFile(join(root, "a", "SKILL.md"), "utf8")
+  const metadata = join(root, "a", ".ntn-skills.json")
+  await writeFile(metadata, portable({ version: 1, ownership: "notion", library_id: "production" }))
+  for (const authorized of [false, true]) {
+    const result = await f.run(
+      compileCurrentImportBatch(
+        library,
+        await f.run(loadCurrentImportBatch(manifest, authorized ? "production" : undefined)),
+      ).pipe(Effect.result),
+    )
+    expect(result._tag).toBe("Success")
+    if (result._tag !== "Success") continue
+    const item = result.success.items.find((item) => item.skill_id === "a")!
+    const derived = await f.run(thawCurrentImportSkill(item.body))
+    const text = new TextDecoder().decode(derived.files[0]!.bytes)
+    expect(text).toContain(
+      `[B](skill://b/SKILL.md?library=${authorized ? library.library_id : "production"})`,
+    )
+    expect(text).toContain("[Missing](skill://b/missing.md?library=production)")
+    expect(text).toContain(`[Fixed](skill://b/SKILL.md?library=production&snapshot=${pin})`)
+    expect(item.relations?.members).toEqual(
+      authorized ? [`skill://b?library=${library.library_id}`] : undefined,
+    )
+    expect(result.success.rewrites).toHaveLength(3)
+  }
+  await writeFile(
+    metadata,
+    portable({
+      version: 1,
+      ownership: "notion",
+      library_id: "production",
+      members: [],
+      requires: [],
+    }),
+  )
+  const empty = await f.run(
+    compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest))),
+  )
+  expect(empty.items.find((item) => item.skill_id === "a")?.relations).toMatchObject({
+    members: [],
+    requires: [],
+  })
+  for (const field of ["members", "requires"]) {
+    await writeFile(
+      metadata,
+      portable({
+        version: 1,
+        ownership: "notion",
+        library_id: "production",
+        [field]: ["skill://b"],
+      }),
+    )
+    await expect(
+      f.run(compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest)))),
+    ).rejects.toMatchObject({ code: "PORTABLE_RELATION_SCOPE" })
+  }
+  await unlink(metadata)
+  const local = await f.run(
+    compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest, "production"))),
+  )
+  const localItem = local.items.find((item) => item.skill_id === "a")!
+  const localBody = await f.run(thawCurrentImportSkill(localItem.body))
+  expect(new TextDecoder().decode(localBody.files[0]!.bytes)).toBe(original)
+  expect(localItem.relations?.members).toEqual([`skill://b?library=${library.library_id}`])
+  expect(local.rewrites).toEqual([])
+  expect(f.mutations()).toEqual([])
+})
+
+test("portable origin blocks active shared image destinations but leaves inert mentions unchanged", async () => {
+  const { root, manifest, f } = await fixture({
+    a: "[Use][x]\n![Image][x]\n\n[x]: skill://b/SKILL.md",
+    b: "# B",
+  })
+  await writeFile(
+    join(root, "a", ".ntn-skills.json"),
+    portable({ version: 1, ownership: "notion", library_id: "production" }),
+  )
+  await expect(
+    f.run(compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest)))),
+  ).rejects.toMatchObject({ code: "PORTABLE_REFERENCE_CONTEXT" })
+  const inert =
+    header("a") +
+    "`skill://b/SKILL.md`\n\n~~~md\n[code](skill://b/SKILL.md)\n~~~\n\n    [code](skill://b/SKILL.md)\n\n<!-- [comment](skill://b/SKILL.md) -->\n\n![Image](skill://b/SKILL.md)"
+  await writeFile(join(root, "a", "SKILL.md"), inert)
+  const plan = await f.run(
+    compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest))),
+  )
+  const item = plan.items.find((item) => item.skill_id === "a")!
+  expect(
+    new TextDecoder().decode((await f.run(thawCurrentImportSkill(item.body))).files[0]!.bytes),
+  ).toBe(inert)
+  expect(item.relations?.members).toBeUndefined()
+  expect(plan.rewrites).toEqual([])
   expect(f.mutations()).toEqual([])
 })
 

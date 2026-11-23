@@ -172,7 +172,7 @@ function selectFiles(snapshot: Snapshot, input: ResourceReadInput, database?: st
     const locator = snapshot.record.locator
     const selectedDatabase = locator.type === "local" ? undefined : locator.database_id
     if (database !== undefined && selectedDatabase !== database)
-      throw fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database.")
+      throw fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected database.")
     const path = boundSnapshotPath(snapshot, target)
     const file = snapshot.files.find((file) => file.path === path)
     if (file === undefined)

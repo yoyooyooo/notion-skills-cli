@@ -1,7 +1,60 @@
 import { expect, test } from "bun:test"
 import { fileRef } from "../src/ref.ts"
+import { readResources } from "../src/resource-read.ts"
 import { readSkill } from "../src/snapshot.ts"
-import { currentSnapshotFixture } from "./shared-current-fixture.ts"
+import { currentId, currentSnapshotFixture } from "./shared-current-fixture.ts"
+
+test.each(["current", "fixed", "resources"] as const)(
+  "an explicit database conflict keeps its Library error without I/O for %s selection",
+  async (selection) => {
+    const f = currentSnapshotFixture({ fileCount: 1 })
+    const selected = await f.open()
+    await f.run(readSkill(fileRef(selected.record.id, selected.entrypoint)))
+    const options = { database: currentId(9999) }
+    f.clearCalls()
+    if (selection === "resources") {
+      const resource = selected.files.find((file) => file.path !== selected.entrypoint)
+      if (resource === undefined) throw new Error("The fixture needs a supporting file")
+      expect(
+        await f.run(
+          readResources(
+            {
+              version: 1,
+              refs: [fileRef(selected.record.id, resource.path, selected.snapshot_id)],
+            },
+            options,
+          ),
+        ),
+      ).toMatchObject({ status: "failed", error: { code: "LIBRARY_SCOPE_MISMATCH" } })
+    } else {
+      await expect(
+        f.run(
+          readSkill(
+            fileRef(
+              selected.record.id,
+              selected.entrypoint,
+              selection === "fixed" ? selected.snapshot_id : undefined,
+            ),
+            options,
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "LIBRARY_SCOPE_MISMATCH" })
+    }
+    expect(f.calls).toEqual([])
+    expect(f.semanticWrites()).toEqual([])
+  },
+)
+
+test("an explicit physical page keeps its database containment error on a warm read", async () => {
+  const f = currentSnapshotFixture({ fileCount: 0 })
+  await f.run(readSkill(f.main.id))
+  f.clearCalls()
+  await expect(f.run(readSkill(f.main.id, { database: currentId(9999) }))).rejects.toMatchObject({
+    code: "SKILL_NOT_FOUND",
+  })
+  expect(f.calls).toEqual([])
+  expect(f.semanticWrites()).toEqual([])
+})
 
 test("a fixed reference rejects a foreign Library with the same stable Skill ID before source work", async () => {
   const f = currentSnapshotFixture({ fileCount: 0 })

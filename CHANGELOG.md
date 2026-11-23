@@ -16,6 +16,11 @@ Changes since the published [0.3.0 release](https://github.com/yoyooyooo/notion-
 - Add explicit `ctl library import-batch` with exact admitted root/file mappings,
   derived link rewriting, frozen same-operation recovery and a separate relation
   phase. Cross-Library rewriting requires `--rebind-from` and an exact batch-owned target.
+- Preserve a portable document's original Library when binding short references
+  during cross-Library import. Unmapped external refs and fixed selections keep
+  their original owner; plain local inputs use the destination Library.
+- Report `LIBRARY_SCOPE_MISMATCH` consistently for logical references paired
+  with an incompatible database, including cached, fixed and resource reads.
 - Document conservative first-create Members inference, explicit Requires,
   cross-Skill relative path limits and the breaking reference cutover.
 - Preserve native Skill hyperlinks that Notion's Markdown endpoint drops by

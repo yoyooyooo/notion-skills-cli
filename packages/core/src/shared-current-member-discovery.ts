@@ -144,6 +144,84 @@ export function currentImportMarkdownLinks(path: string, original: string) {
   return { links, protectedDestinations }
 }
 
+export type CurrentImportReferenceRewrite = {
+  readonly skill_id: string
+  readonly from: string
+  readonly before: string
+  readonly after: string
+}
+
+/** A portable document's declared origin owns its contextual links. Qualify
+ * those links before moving the document; only an exact caller-supplied current
+ * mapping may then change their owner. This never looks up either Library. */
+export function bindCurrentImportOrigin<File extends ImportFile>(
+  libraryId: string,
+  input: {
+    readonly skill_id: string
+    readonly files: readonly File[]
+    readonly relations?: PortableRelations
+  },
+  rebind?: (reference: BoundSkillRef) => BoundSkillRef | undefined,
+) {
+  const origin =
+    input.relations === undefined
+      ? undefined
+      : validatePortableRelations(input.relations).library_id
+  const rewrites: CurrentImportReferenceRewrite[] = []
+  const files = input.files.map((file) => {
+    if ((origin === undefined || origin === libraryId) && rebind === undefined) return file
+    if (!/\.(md|markdown)$/iu.test(file.path)) return file
+    const original = decoder.decode(file.bytes)
+    const inspected = currentImportMarkdownLinks(file.path, original)
+    const replacements = new Map<number, string>()
+    for (const link of inspected.links) {
+      if (link.kind !== "link" || !link.destination.startsWith("skill://")) continue
+      const parsed = parseSkillRef(link.destination)
+      const contextualOrigin =
+        parsed.scope.kind === "context" && origin !== undefined && origin !== libraryId
+      const start = link.destination_start
+      if (!link.rewritable || start === undefined || inspected.protectedDestinations.has(start)) {
+        if (contextualOrigin)
+          throw fail(
+            "PORTABLE_REFERENCE_CONTEXT",
+            "This active short reference cannot safely retain its original Library. Write an explicit library in the source link before copying.",
+            {
+              path: file.path,
+              line: link.line,
+              ref: link.href,
+              library_id: origin,
+            },
+          )
+        continue
+      }
+      const bound = bindSkillRef(parsed, contextualOrigin ? origin : libraryId)
+      const mapped = bound.selection.kind === "current" ? rebind?.(bound) : undefined
+      if (!contextualOrigin && mapped === undefined) continue
+      const after = formatSkillRef(mapped ?? bound)
+      if (after === link.href || replacements.has(start)) continue
+      replacements.set(start, after)
+      rewrites.push({
+        skill_id: input.skill_id,
+        from: file.path + ":" + link.line,
+        before: link.href,
+        after,
+      })
+    }
+    if (replacements.size === 0) return file
+    return {
+      ...file,
+      bytes: encoder.encode(
+        mapSharedMarkdownLinks(file.path, original, (link) =>
+          link.kind === "link" && link.destination_start !== undefined
+            ? (replacements.get(link.destination_start) ?? link.href)
+            : link.href,
+        ),
+      ),
+    }
+  })
+  return { files, rewrites }
+}
+
 function inspectLinks(input: CurrentMemberInput, bindings?: CurrentMemberBindings) {
   const candidates: Candidate[] = []
   const unresolved: UnresolvedCurrentMember[] = []

@@ -10,7 +10,6 @@ import {
   validatePortableRelations,
   type PortableRelations,
 } from "../../core/src/portable.ts"
-import { mapSharedMarkdownLinks } from "../../core/src/shared-file-references.ts"
 import { normalizePath } from "../../core/src/ref.ts"
 import {
   bindSkillRef,
@@ -29,7 +28,7 @@ import {
 } from "../../core/src/shared-current-import-plan.ts"
 import { withCurrentInvocationBudget } from "../../core/src/shared-current-invocation.ts"
 import {
-  currentImportMarkdownLinks,
+  bindCurrentImportOrigin,
   planCurrentMembers,
   type CurrentMemberInput,
 } from "../../core/src/shared-current-member-discovery.ts"
@@ -75,7 +74,6 @@ const checked = <A>(action: () => A) =>
       error instanceof SkillsError ? error : invalid("Invalid explicit import batch."),
   })
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
-const encoder = new TextEncoder()
 
 /** Admit only roots the manifest names. A neighbouring directory is never
  * inspected to guess a Skill identity or expand the batch. */
@@ -240,11 +238,6 @@ function rebindRelations(
   if (input === undefined) return undefined
   const validated = validatePortableRelations(input)
   const original = property(input)
-  if (validated.library_id !== library.library_id && validated.library_id !== rebindFrom)
-    throw fail(
-      "PORTABLE_RELATION_SCOPE",
-      "Copying relations between Libraries requires an exact --rebind-from declaration.",
-    )
   const fields: { members?: string[]; requires?: string[] } = {}
   for (const field of ["members", "requires"] as const) {
     const source = original[field]
@@ -340,41 +333,15 @@ export function compileCurrentImportBatch(library: SharedLibrary, loaded: Loaded
           item.admitted.skill_id,
           rewrites,
         )
-        const files = item.admitted.files.map((file) => {
-          if (rebound.size === 0 || !/\.(md|markdown)$/iu.test(file.path)) return file
-          const original = decoder.decode(file.bytes)
-          const inspected = currentImportMarkdownLinks(file.path, original)
-          const destinations = new Set(
-            inspected.links.flatMap((link) =>
-              link.kind === "link" &&
-              link.rewritable &&
-              link.destination_start !== undefined &&
-              !inspected.protectedDestinations.has(link.destination_start)
-                ? [link.destination_start]
-                : [],
-            ),
-          )
-          return {
-            ...file,
-            bytes: encoder.encode(
-              mapSharedMarkdownLinks(file.path, original, (link) => {
-                if (
-                  !link.rewritable ||
-                  link.kind !== "link" ||
-                  !link.destination.startsWith("skill://")
-                )
-                  return link.href
-                if (
-                  link.destination_start === undefined ||
-                  !destinations.has(link.destination_start)
-                )
-                  return link.href
-                const parsed = parseSkillRef(link.destination)
-                if (parsed.scope.kind !== "library" || parsed.selection.kind !== "current")
-                  return link.href
-                const owner = bindSkillRef(parsed)
-                const mapped = rebound.get(formatSkillIdentity(owner.owner))
-                if (mapped === undefined) return link.href
+        const bound = bindCurrentImportOrigin(
+          library.library_id,
+          item.admitted,
+          rebound.size === 0
+            ? undefined
+            : (owner) => {
+                const identity = formatSkillIdentity(owner.owner)
+                const mapped = rebound.get(identity)
+                if (mapped === undefined || mapped === identity) return undefined
                 const target = loaded.items.find(
                   (item) => item.admitted.skill_id === owner.owner.skillId,
                 )
@@ -383,23 +350,12 @@ export function compileCurrentImportBatch(library: SharedLibrary, loaded: Loaded
                   (owner.path !== "" &&
                     !target.admitted.files.some((file) => file.path === owner.path))
                 )
-                  return link.href
-                const after = formatSkillRef({
-                  ...bindSkillRef(parseSkillRef(mapped)),
-                  path: owner.path,
-                })
-                if (after !== link.href)
-                  rewrites.push({
-                    skill_id: item.admitted.skill_id,
-                    from: file.path + ":" + link.line,
-                    before: link.href,
-                    after,
-                  })
-                return after
-              }),
-            ),
-          }
-        })
+                  return undefined
+                return { ...bindSkillRef(parseSkillRef(mapped)), path: owner.path }
+              },
+        )
+        rewrites.push(...bound.rewrites)
+        const files = bound.files
         return { ...item.admitted, files, ...(relations === undefined ? {} : { relations }) }
       })
       const discovered = yield* planCurrentMembers(library, admitted, {
@@ -646,6 +602,6 @@ export const currentImportBatchCommand = defineCommand(
 ).pipe(
   withConstraints([exclusiveFlags(["resume", "dryRun"])]),
   Command.withDescription(
-    "Import an explicit version 1 JSON batch: { root, skills: [{ root, skill_id, native? }] }. Roots are disjoint directories relative to the manifest's root; no neighbours are scanned. Exact admitted file mappings compile cross-root Markdown links into contextual skill:// references in a frozen derived copy. Original files stay unchanged. All bodies become ready before relation patches, so Members may be cyclic. Requires is explicit and must form an acyclic final graph. Omitted Members is inferred only for first creation; [] and existing omissions retain their meaning. --rebind-from explicitly authorizes rewriting current full references and relations for batch-owned identities only; unmatched external and fixed-snapshot body refs retain their original identity. Foreign relations are rejected before any write. --dry-run reports mapping and every rewrite. Resume uses the same manifest, files, options and --operation ID --resume; changed inputs fail before writing and unknown CREATE is never replayed.",
+    "Import an explicit version 1 JSON batch: { root, skills: [{ root, skill_id, native? }] }. Roots are disjoint directories relative to the manifest's root; no neighbours are scanned. Exact admitted file mappings compile cross-root Markdown links into contextual skill:// references in a frozen derived copy. Original files stay unchanged. All bodies become ready before relation patches, so Members may be cyclic. Requires is explicit and must form an acyclic final graph. Omitted Members is inferred only for first creation; [] and existing omissions retain their meaning. A portable origin first qualifies active short body refs with its original Library, including external and fixed refs; plain local input without an origin uses the destination. This binding runs even without --rebind-from and never queries the external Library for Members. --rebind-from explicitly authorizes rewriting current full references and relations for batch-owned identities only; unmatched external and fixed-snapshot body refs retain their original identity. Foreign relations are rejected before any write. --dry-run reports mapping and every rewrite. Resume uses the same manifest, files, options and --operation ID --resume; changed inputs fail before writing and unknown CREATE is never replayed.",
   ),
 )

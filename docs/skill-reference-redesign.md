@@ -51,7 +51,10 @@ encoded slashes cannot create a segment boundary. Unknown, repeated or empty
 parameters and fragments fail. Only `library` and `snapshot` are accepted.
 A short reference at a CLI entry needs `--database ENTRY` or a configured
 `default_database`. A fully scoped reference does not inherit that default.
-An explicitly supplied incompatible database is a scope error.
+An explicitly supplied incompatible database is a `LIBRARY_SCOPE_MISMATCH` for
+logical refs, including cached current reads, fixed selections and resource
+batches. Cache availability does not change that error contract. Physical page
+inputs retain their separate database-containment check.
 
 For authored content, use ordinary relative paths within one Skill and
 `skill://architect` between Skills. A selected Source may retain an existing cross-root
@@ -87,9 +90,13 @@ relationship application. Preserve frozen input and intended relationship
 selection across retries and unknown outcomes. Never replay an unknown CREATE
 merely because a current lookup is empty.
 
-Cross-Library copying is explicit. Contextual same-batch references can bind to
-the destination; explicitly scoped external refs retain their meaning. Existing
-portable Library identities are not silently rewritten to a same-named target.
+Cross-Library copying preserves a portable document's declared origin. When its
+validated `relations.library_id` differs from the destination, single import,
+batch import and `members-plan` first qualify active short Skill refs with that
+original Library. An external current ref and a fixed ref therefore keep their
+original owner even when the destination has the same Skill ID. The importer
+does not access that external Library to infer Members. Plain local input with
+no declared origin keeps destination context for its short refs.
 
 `--rebind-from ORIGIN_LIBRARY_ID` on `import-batch` opts into exact rewriting for
 the batch's declared identities and admitted paths. It rewrites current body
@@ -98,6 +105,15 @@ Unmatched external body refs remain external. Fixed body refs keep both the old
 owner and pin; a destination current tree cannot impersonate that old selection.
 Without this option, explicit external owners are preserved. Foreign relations
 still fail because Members and Requires belong to one Library.
+The same rule applies to short refs qualified from a portable origin: only the
+authorized exact batch mapping can rebind their current owner. Missing target
+paths and fixed selections stay in the origin. Omitted fields and explicit empty
+sets keep their meaning; a Library marker without foreign relation targets does
+not forbid copying. Dry-run and the frozen import plan report the derived body
+rewrites. Original files stay unchanged. If an active short link cannot safely
+be rewritten, such as a reference definition also used by an image, import
+rejects it before writing. Qualify that link explicitly in the source first.
+Code, comments and image-only mentions remain inert.
 
 Batch import is not an atomic transaction across Skills. A ready body can become
 visible before the final relation phase. Only a complete batch result establishes

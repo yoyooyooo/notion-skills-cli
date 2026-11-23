@@ -441,7 +441,7 @@ describe("fixed snapshot selected files", () => {
         ),
         code: "SNAPSHOT_CONFLICT",
       },
-      { target, database: id(999), code: "SKILL_NOT_FOUND" },
+      { target, database: id(999), code: "LIBRARY_SCOPE_MISMATCH" },
       {
         target: parseTarget(fileRef(f.snapshot.record.id, "absent.md", f.snapshot.snapshot_id)),
         code: "FILE_NOT_FOUND",

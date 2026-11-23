@@ -35,12 +35,18 @@ Requires remains explicit and acyclic. Explicit empty sets win and omission on
 update preserves authored relations. The batch is not atomic across Skills;
 ready bodies can appear before final relationships. Wait for batch completion.
 
-Cross-Library copies require `--rebind-from ORIGIN_LIBRARY_ID` to rewrite explicit
-current refs and relations for exact batch-owned targets. Unmapped external
-body refs and all fixed body refs retain their original owner. Foreign relations
-still fail before writing. There is no same-name matching or automatic identity
-migration. For complete examples, read the packaged authoring guide's
-`import-an-explicit-local-batch` section.
+When portable input declares its original Library, single import, batch import
+and Members planning first bind active short Skill refs to that Library. Copying
+into another Library must preserve their meaning even if a same-ID Skill exists
+there. Plain local input without an original Library uses the destination.
+
+Cross-Library copies require `--rebind-from ORIGIN_LIBRARY_ID` to rewrite current
+refs and relations for exact batch-owned targets and admitted paths. Unmapped
+external body refs and all fixed body refs retain their original owner. Relation
+targets outside the destination Library still fail before writing; omitted and
+explicit empty sets keep their separate policies. There is no same-name matching
+or automatic identity migration. For complete examples, read the packaged
+authoring guide's `import-an-explicit-local-batch` section.
 
 Resume the same operation with unchanged input, options and native selection.
 Execution budgets may change. Preserve the frozen local plan and Notion operation

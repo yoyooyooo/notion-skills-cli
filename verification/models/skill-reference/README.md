@@ -97,12 +97,16 @@ blocked 是保留意图的可解释终点，不是导入成功。
 语法错误、模块加载失败、fixture 缺失和 timeout 都不算捕获。
 保留首个失败和其原始输出，下一次使用新目录。
 
-当前实际守卫清单覆盖作用域绑定、重复稳定身份、manifest owner、固定选择和路径、
+当前 16 个实际守卫覆盖作用域绑定、重复稳定身份、manifest owner、固定选择和路径、
 Source 坐标、跨 owner 的 pin、Members 三态、Requires 禁止推断、冻结步骤、
 完成后的只读核对、未知非幂等写与 SQLite 完整身份持久化。
 导入模型中的 CREATE 不重放对应共同 operation kernel 的非幂等动作边界；
 追加动作反例检查该 kernel，公开 batch 用例另行检查真实 CREATE 重试。
 SQLite 地址编码和任意字节不在 TLA 变量中，持久化守卫检查实现对抽象完整身份的保持。
+portable 原库上下文在导入前的正文归一化也属于具体实现边界。第 16 个守卫移除
+原库绑定，用目标库的同 ID 对象重现误推断 Members；它关联 ContextIsAuthoritative
+这一实现义务，不表示有限模型已枚举 portable 转换。single、batch 和 members-plan
+分别检查原库保留、授权的精确改绑、固定引用和省略／空集合关系策略。
 完成这些对应记录不代表已运行：以独立运行的 baseline、变异和恢复回执为准。
 
 内容 writer、请求预算、MCP Auth/Search、会话 pin 与最终投递继续归现有模型和领域所有。

@@ -4,8 +4,10 @@ import { databaseId } from "../../core/src/catalog.ts"
 import { defineCommand } from "../../core/src/command-schema.ts"
 import { exportPortable } from "../../core/src/export.ts"
 import { fail, SkillsError } from "../../core/src/model.ts"
+import { validatePortableRelations } from "../../core/src/portable.ts"
 import { withCurrentInvocationBudget } from "../../core/src/shared-current-invocation.ts"
 import {
+  bindCurrentImportOrigin,
   parseCurrentMemberBindings,
   planCurrentMembers,
 } from "../../core/src/shared-current-member-discovery.ts"
@@ -121,17 +123,41 @@ export const currentMembersPlanCommand = defineCommand(
       const invocation = yield* withCurrentInvocationBudget(
         Effect.gen(function* () {
           const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
+          const bound = yield* Effect.try({
+            try: () => {
+              const bound = bindCurrentImportOrigin(library.library_id, input.admitted)
+              const relations =
+                input.admitted.relations === undefined
+                  ? undefined
+                  : validatePortableRelations({
+                      ...input.admitted.relations,
+                      library_id: library.library_id,
+                    })
+              return {
+                ...bound,
+                admitted: {
+                  ...input.admitted,
+                  files: bound.files,
+                  ...(relations === undefined ? {} : { relations }),
+                },
+              }
+            },
+            catch: (error) =>
+              error instanceof SkillsError
+                ? error
+                : fail("INVALID_ARCHIVE", "Cannot retain the portable reference context."),
+          })
           const owner = yield* queryCurrentSkillIdentity(library, options.skillId)
-          const planned = yield* planCurrentMembers(library, input.admitted, {
+          const planned = yield* planCurrentMembers(library, bound.admitted, {
             existing: owner !== undefined,
             ...(input.bindings === undefined ? {} : { bindings: input.bindings }),
           })
           const { portable, ...report } = planned
-          if (!report.importable) return { ...report, output: null }
+          if (!report.importable) return { ...report, rewrites: bound.rewrites, output: null }
           // The same complete admission and remote authority checks as import decide
           // whether an output may be handed to the existing writer.
           const plan = yield* prepareCurrentSkillWrite({
-            ...input.admitted,
+            ...bound.admitted,
             files: portable.files,
             ...(portable.relations === undefined ? {} : { relations: portable.relations }),
           })
@@ -139,6 +165,7 @@ export const currentMembersPlanCommand = defineCommand(
           const output = Option.getOrUndefined(options.output)
           return {
             ...report,
+            rewrites: bound.rewrites,
             inspection: inspected,
             output: output === undefined ? null : yield* exportPortable(portable, { output }),
           }
@@ -148,6 +175,6 @@ export const currentMembersPlanCommand = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Plan Members for one local directory, ZIP or Markdown import without changing Notion. Only actual links to unique same-library enabled ready Skills and exact files qualify. Plain names, inline/fenced/indented code, comments, images and template paths do not establish Members. Real hyperlinks in example prose remain hyperlinks; this does not infer narrative intent. At most 100 distinct candidate refs are checked, including rejected refs; extra candidates remain unresolved. Explicit Members, including [], win; an existing target preserves omitted Members; Requires is retained and never inferred. --bindings declares exact source-tree paths and current canonical references, without name lookup. Only verified cross-root Markdown destinations are canonicalized in an optional portable copy; the original input remains unchanged. Unresolved cross-root links make importable false and no output is written. Import the reviewed copy with ctl library import. Source acquisition and Source bytes are outside this command.",
+    "Plan Members for one local directory, ZIP or Markdown import without changing Notion. Only actual links to unique same-library enabled ready Skills and exact files qualify. Plain names, inline/fenced/indented code, comments, images and template paths do not establish Members. Real hyperlinks in example prose remain hyperlinks; this does not infer narrative intent. At most 100 distinct candidate refs are checked, including rejected refs; extra candidates remain unresolved. Explicit Members, including [], win; an existing target preserves omitted Members; Requires is retained and never inferred. --bindings declares exact source-tree paths and current canonical references, without name lookup. Portable inputs copied across Libraries first qualify active short body refs with their declared origin; plain local inputs use the destination. Origin rewrites are reported without querying the external Library for Members. Verified cross-root Markdown destinations are canonicalized in an optional portable copy; the original input remains unchanged. Unresolved cross-root links make importable false and no output is written. Import the reviewed copy with ctl library import. Source acquisition and Source bytes are outside this command.",
   ),
 )

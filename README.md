@@ -185,6 +185,9 @@ Skills table's Notion ID. Display names and aliases never select a Skill.
 At a CLI entry, a short ref needs `--database ENTRY` or `default_database`.
 Inside a document, its own Library supplies the context even when the machine's
 default changes. Keep complete refs returned by tools for later reads.
+When copying a portable input to another Library, import qualifies short refs
+with its declared original Library first. Only an explicitly authorized exact
+batch mapping can rebind them; plain local input without an origin uses the destination.
 
 `Members` lists related Skills that an Agent may choose. `Requires` lists mandatory
 dependencies loaded by `use`. Maintain `Requires` explicitly; mentioning a workflow

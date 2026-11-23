@@ -6,14 +6,17 @@ import { createHash } from "node:crypto"
 import { chmod, mkdir, mkdtemp, readFile, realpath, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { prepareCurrentImport } from "../src/commands-current-import.ts"
+import {
+  prepareCurrentImport,
+  prepareCurrentImportMembers,
+} from "../src/commands-current-import.ts"
 import { currentImportCommand } from "../src/commands-current-import.ts"
 import { commandSchema } from "../../core/src/command-schema.ts"
 import { exportSkill } from "../../core/src/export.ts"
 import { property } from "../../core/src/model.ts"
 import { Notion } from "../../core/src/notion.ts"
 import { queryCurrentSkillIndex } from "../../core/src/shared-current-index.ts"
-import { writeCurrentSkill } from "../../core/src/shared-current-write.ts"
+import { prepareCurrentSkillWrite, writeCurrentSkill } from "../../core/src/shared-current-write.ts"
 import { readSkill } from "../../core/src/snapshot.ts"
 import { currentWriteFixture, library } from "../../core/test/shared-current-write-fixture.ts"
 
@@ -629,4 +632,102 @@ test("current import rejects ambiguous supersede identities before input or remo
   ).rejects.toMatchObject({ code: "CURRENT_WRITE_INPUT_INVALID" })
   expect(f.calls).toEqual([])
   expect(f.pages.size).toBe(0)
+})
+
+test("single portable import preserves origin before omitted explicit-empty and existing member policies", async () => {
+  const directory = await root(),
+    f = currentWriteFixture(directory)
+  const pin = "s_" + "a".repeat(64)
+  const document =
+    "---\nname: Origin\ndescription: Context fixture\n---\n[External](skill://outside/SKILL.md)\n[Fixed](skill://outside/SKILL.md?snapshot=" +
+    pin +
+    ")"
+  await writeFile(join(directory, "SKILL.md"), document)
+  const metadata = (fields: Record<string, unknown>) =>
+    JSON.stringify({
+      format: "ntn-skills",
+      version: 2,
+      kind: "skill",
+      name: "Origin",
+      description: "Context fixture",
+      main: "SKILL.md",
+      relations: { version: 1, ownership: "notion", library_id: "production", ...fields },
+    })
+  const seed = async (skill_id: string) => {
+    const plan = await f.run(
+      prepareCurrentSkillWrite({
+        skill_id,
+        kind: "skill",
+        name: skill_id,
+        description: "Destination fixture",
+        files: [
+          {
+            path: "SKILL.md",
+            bytes: encode(
+              "---\nname: " + skill_id + "\ndescription: Destination fixture\n---\n# B",
+            ),
+          },
+        ],
+      }),
+    )
+    await f.run(writeCurrentSkill(library, { plan, operation_id: "seed-" + skill_id }))
+  }
+  await seed("outside")
+  for (const fields of [{}, { members: [] }, { requires: [] }]) {
+    await writeFile(join(directory, ".ntn-skills.json"), metadata(fields))
+    f.clearCalls()
+    const prepared = await f.run(prepareCurrentImport(directory, { skillId: "origin-owner" }))
+    const result = await f.run(
+      prepareCurrentImportMembers(library, prepared.plan).pipe(Effect.result),
+    )
+    expect(result._tag).toBe("Success")
+    if (result._tag !== "Success") continue
+    const selected = result.success
+    const expected = document
+      .replace(
+        "[External](skill://outside/SKILL.md)",
+        "[External](skill://outside/SKILL.md?library=production)",
+      )
+      .replace(
+        "skill://outside/SKILL.md?snapshot=",
+        "skill://outside/SKILL.md?library=production&snapshot=",
+      )
+    expect(new TextDecoder().decode(selected.plan.files[0]!.bytes)).toBe(expected)
+    expect(selected.plan.relations).toEqual({
+      version: 1,
+      ownership: "notion",
+      library_id: library.library_id,
+      ...fields,
+    })
+    expect(selected.rewrites).toHaveLength(2)
+    expect(selected.plan.input_sha256).not.toBe(prepared.plan.input_sha256)
+    expect(f.mutations()).toEqual([])
+    expect(
+      f.calls.filter(
+        (call) => call.path.endsWith("/query") && JSON.stringify(call.body).includes('"outside"'),
+      ),
+    ).toEqual([])
+  }
+  await seed("origin-owner")
+  await writeFile(join(directory, ".ntn-skills.json"), metadata({}))
+  f.clearCalls()
+  const prepared = await f.run(prepareCurrentImport(directory, { skillId: "origin-owner" }))
+  const existing = await f.run(prepareCurrentImportMembers(library, prepared.plan))
+  expect(existing.members_discovery.member_policy).toBe("preserve_existing")
+  expect(existing.plan.relations?.members).toBeUndefined()
+  expect(new TextDecoder().decode(existing.plan.files[0]!.bytes)).toContain(
+    "skill://outside/SKILL.md?library=production",
+  )
+  expect(existing.rewrites).toHaveLength(2)
+  expect(await readFile(join(directory, "SKILL.md"), "utf8")).toBe(document)
+  expect(f.mutations()).toEqual([])
+  for (const field of ["members", "requires"]) {
+    await writeFile(join(directory, ".ntn-skills.json"), metadata({ [field]: ["skill://outside"] }))
+    f.clearCalls()
+    const foreign = await f.run(prepareCurrentImport(directory, { skillId: "foreign-owner" }))
+    await expect(f.run(prepareCurrentImportMembers(library, foreign.plan))).rejects.toMatchObject({
+      code: "PORTABLE_RELATION_SCOPE",
+    })
+    expect(f.calls).toEqual([])
+  }
 })

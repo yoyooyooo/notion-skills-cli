@@ -57,6 +57,11 @@ entrypoint；改变实时 entrypoint 后仍须如此。缺 manifest、缺 path �
 
 至少包含 A 引用 B、B 引用 A 的循环 Members。观察全部对象完成后才应用最终关系。
 显式外库关系写前拒绝；明确外库文档 ref 保留原作用域，不能偷偷改到目标库同名 Skill。
+portable 的原库标记同样约束短 ref：single、batch 和 members-plan 都先保留原库，
+再做 Members 推断。放置目标库同 ID 对象，检查派生正文、关系、目标查询和原件。
+只在 --rebind-from 授权且目标身份／路径都属于本次批次时改绑 current；fixed、
+外部目标和缺路径仍留原库。没有原库标记的普通本地输入继续使用目标库上下文。
+这由第 16 个实际守卫与 CLI 回归覆盖；portable 转换不在有限模型的变量中。
 重复运行和接受后丢响应必须恢复原输入、原目标库和原关系计划。
 unknown CREATE 当前未观察到结果时不可重发。
 

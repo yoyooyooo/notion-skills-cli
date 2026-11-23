@@ -131,6 +131,56 @@ test("members-plan writes a verified portable directory which the normal importe
   expect(members(f, "owner")).toHaveLength(1)
 })
 
+test("members-plan preserves portable origin instead of selecting a destination namesake", async () => {
+  const { root, input, f } = await setup()
+  const original = header + "[Origin target](skill://target/SKILL.md)"
+  await writeFile(join(input, "SKILL.md"), original)
+  await writeFile(
+    join(input, ".ntn-skills.json"),
+    JSON.stringify({
+      format: "ntn-skills",
+      version: 2,
+      kind: "skill",
+      name: "Owner",
+      description: "Owner",
+      main: "SKILL.md",
+      relations: { version: 1, ownership: "notion", library_id: "production" },
+    }),
+  )
+  const output = join(root, "origin-preserved")
+  f.clearCalls()
+  await f.run(
+    Command.runWith(currentMembersPlanCommand, { version: "0" })([
+      input,
+      ...base,
+      "--output",
+      output,
+    ]),
+  )
+  expect(f.mutations()).toEqual([])
+  expect(
+    f.calls.filter(
+      (call) => call.path.endsWith("/query") && JSON.stringify(call.body).includes('"target"'),
+    ),
+  ).toEqual([])
+  expect(await readFile(join(output, "SKILL.md"), "utf8")).toBe(
+    original.replace("skill://target/SKILL.md", "skill://target/SKILL.md?library=production"),
+  )
+  const prepared = await f.run(prepareCurrentImport(output, { skillId: "owner" }))
+  expect(prepared.plan.relations?.members).toBeUndefined()
+  expect(prepared.plan.relations?.requires).toBeUndefined()
+  expect(await readFile(join(input, "SKILL.md"), "utf8")).toBe(original)
+  await f.run(
+    Command.runWith(currentImportCommand, { version: "0" })([
+      output,
+      ...base,
+      "--operation",
+      "origin-reviewed-import",
+    ]),
+  )
+  expect(members(f, "owner") ?? []).toEqual([])
+})
+
 test("a ZIP with unresolved cross-root links produces no output and no remote writes", async () => {
   const { root, f } = await setup()
   const input = join(root, "input.zip"),

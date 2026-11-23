@@ -4,10 +4,13 @@ import { databaseId } from "../../core/src/catalog.ts"
 import { defineCommand, exclusiveFlags, withConstraints } from "../../core/src/command-schema.ts"
 import { importDocument, loadImport, type ImportFile } from "../../core/src/import.ts"
 import { entrypointFor, fail, property, SkillsError } from "../../core/src/model.ts"
-import { MANIFEST, readPortable } from "../../core/src/portable.ts"
+import { MANIFEST, readPortable, validatePortableRelations } from "../../core/src/portable.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { withCurrentInvocationBudget } from "../../core/src/shared-current-invocation.ts"
-import { planCurrentMembers } from "../../core/src/shared-current-member-discovery.ts"
+import {
+  bindCurrentImportOrigin,
+  planCurrentMembers,
+} from "../../core/src/shared-current-member-discovery.ts"
 import {
   freezeCurrentImportValue,
   thawCurrentImportSkill,
@@ -210,12 +213,65 @@ export function prepareCurrentImport(input: string, options: ImportOptions) {
 /** This is compilation, not recovery. Recovery only loads the frozen plan. */
 export function prepareCurrentImportMembers(
   library: SharedLibrary,
-  plan: PreparedCurrentSkillWrite,
+  original: PreparedCurrentSkillWrite,
 ) {
   return Effect.gen(function* () {
+    const bound = yield* Effect.try({
+      try: () => {
+        const bound = bindCurrentImportOrigin(library.library_id, original)
+        const relations =
+          original.relations === undefined
+            ? undefined
+            : validatePortableRelations({
+                ...original.relations,
+                library_id: library.library_id,
+              })
+        return { ...bound, relations }
+      },
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("INVALID_ARCHIVE", "Cannot retain the portable reference context."),
+    })
+    const rebuild = (
+      files: PreparedCurrentSkillWrite["files"],
+      relations: PreparedCurrentSkillWrite["relations"],
+    ) =>
+      Effect.gen(function* () {
+        if (files.some((file) => file.kind === "source"))
+          return yield* Effect.fail(
+            fail(
+              "CURRENT_SOURCE_MANAGEMENT_REQUIRED",
+              "Import compilation cannot rewrite Source inputs.",
+            ),
+          )
+        return yield* prepareCurrentSkillWrite({
+          skill_id: original.skill_id,
+          kind: original.kind,
+          name: original.name,
+          description: original.description,
+          ...(original.enabled === undefined ? {} : { enabled: original.enabled }),
+          ...(original.default_context === undefined
+            ? {}
+            : { default_context: original.default_context }),
+          ...(relations === undefined ? {} : { relations }),
+          files: files.map((file) => ({
+            path: file.path,
+            bytes: file.bytes,
+            mode: file.mode,
+            ...(file.file_id === undefined ? {} : { file_id: file.file_id }),
+            authority: { kind: file.kind === "native" ? "native" : "resource" },
+          })),
+        })
+      })
+    const plan =
+      bound.rewrites.length > 0 || original.relations?.library_id !== bound.relations?.library_id
+        ? yield* rebuild(bound.files, bound.relations)
+        : original
     const unchanged = (member_policy: string) => ({
       plan,
       create_only: false,
+      rewrites: bound.rewrites,
       members_discovery: { member_policy, confirmed: [], unresolved: [] },
     })
     if (plan.relations?.members !== undefined) return unchanged("explicit")
@@ -232,30 +288,13 @@ export function prepareCurrentImportMembers(
     } = discovery
     if (relations?.members === undefined)
       return { ...unchanged(report.member_policy), members_discovery: report }
-    if (plan.files.some((file) => file.kind === "source"))
-      return yield* Effect.fail(
-        fail(
-          "CURRENT_SOURCE_MANAGEMENT_REQUIRED",
-          "Automatic import Members cannot rewrite Source inputs.",
-        ),
-      )
-    const selected = yield* prepareCurrentSkillWrite({
-      skill_id: plan.skill_id,
-      kind: plan.kind,
-      name: plan.name,
-      description: plan.description,
-      ...(plan.enabled === undefined ? {} : { enabled: plan.enabled }),
-      ...(plan.default_context === undefined ? {} : { default_context: plan.default_context }),
-      relations,
-      files: plan.files.map((file) => ({
-        path: file.path,
-        bytes: file.bytes,
-        mode: file.mode,
-        ...(file.file_id === undefined ? {} : { file_id: file.file_id }),
-        authority: { kind: file.kind === "native" ? "native" : "resource" },
-      })),
-    })
-    return { plan: selected, create_only: true, members_discovery: report }
+    const selected = yield* rebuild(plan.files, relations)
+    return {
+      plan: selected,
+      create_only: true,
+      members_discovery: report,
+      rewrites: bound.rewrites,
+    }
   })
 }
 
@@ -355,6 +394,7 @@ export const currentImportCommand = defineCommand(
               ...(yield* inspectCurrentSkillWrite(library, selected.plan)),
               input: prepared.input,
               members_discovery: selected.members_discovery,
+              rewrites: selected.rewrites,
               dry_run: true,
             }
           }
@@ -378,7 +418,7 @@ export const currentImportCommand = defineCommand(
                 version: 1,
                 kind: "single",
                 mapping: [],
-                rewrites: [],
+                rewrites: selected.rewrites,
                 items: [
                   {
                     skill_id: selected.plan.skill_id,
@@ -401,6 +441,7 @@ export const currentImportCommand = defineCommand(
                     ...property(previous.result),
                     input: prepared.input,
                     members_discovery: item.members_discovery,
+                    rewrites: session.definition.rewrites,
                   }
                 const plan = yield* thawCurrentImportSkill(item.body)
                 const step = yield* session.start(stepKey, {
@@ -421,6 +462,7 @@ export const currentImportCommand = defineCommand(
                   ...result,
                   input: prepared.input,
                   members_discovery: item.members_discovery,
+                  rewrites: session.definition.rewrites,
                 }
               }),
           )
@@ -432,27 +474,27 @@ export const currentImportCommand = defineCommand(
 ).pipe(
   withConstraints([exclusiveFlags(["resume", "supersede", "dryRun"])]),
   Command.withDescription(
-    "Import one complete current Skill under an exact stable Skill ID. Existing Notion-owned supporting files absent from the input are removed by the current writer. By default files remain exact Notion resources. Generated reading projections are separate and do not block current ready, import completion or ordinary consumption. Repeat --native PATH to select exact final input paths whose UTF-8 Markdown bodies become editable in Notion; frontmatter and mode remain in Content. Native accepts LF, CRLF and terminal blank lines. Complete actual readback allows understood formatting normalization and still rejects changed structure, text, code or links. For Markdown paths, a precisely verified automatic link on original plain text can be corrected within the same intent before final readback. Original input bytes and their fingerprint remain exact. Native selection never converts source bytes or falls back to resource after a failed round-trip. Complete import replaces native bodies too, including later Notion edits; review the current content before importing. If the existing main or any supporting file has Source authority, dry-run and apply reject with CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an unchanged export. Source removal, takeover, renaming or rebinding requires coordinated contribution management. A plain directory or ZIP requires root SKILL.md; a current portable manifest may select Skill, Router or Prompt with its canonical entrypoint. Portable Members/Requires use same-library stable Skill identities: omitted preserves existing sets, [] clears, an array replaces the complete set. On first creation only, omitted Members may be inferred from verified canonical links in Markdown; at most 100 distinct candidate refs are checked. Exact identities, enabled ready targets and actual files are required. Plain names and code are skipped. Requires is never inferred. Use import-batch with an explicit roots manifest to compile cross-root links among the declared local Skills, or members-plan with explicit path bindings for existing targets. A single import never guesses neighbouring directories. Changed sets are limited to 100 targets per field; larger unchanged sets are retained. Changed Requires are checked for dependency cycles before writing. Only an explicitly selected single Markdown file is renamed to SKILL.md; select it with --native SKILL.md. Unknown or duplicate native paths, retained projections, unknown fields, symbolic links and oversized input are rejected locally. --dry-run only inspects. --max-requests, --max-bytes and --timeout (ms) bound all remote work. Resume with the same input, native paths and --operation ID --resume. The local frozen plan retains the exact derived files, resource carriers and inferred Members; resume never rediscovers them. Unknown CREATE is reconciled, never replayed from absence. To replace an unfinished intent, use --supersede OLD --operation NEW with a distinct new identity; the kernel first reconciles the exact predecessor. Supersede does not bypass unresolved writes or authority checks. No name matching or historical recovery.",
+    "Import one complete current Skill under an exact stable Skill ID. Existing Notion-owned supporting files absent from the input are removed by the current writer. By default files remain exact Notion resources. Generated reading projections are separate and do not block current ready, import completion or ordinary consumption. Repeat --native PATH to select exact final input paths whose UTF-8 Markdown bodies become editable in Notion; frontmatter and mode remain in Content. Native accepts LF, CRLF and terminal blank lines. Complete actual readback allows understood formatting normalization and still rejects changed structure, text, code or links. For Markdown paths, a precisely verified automatic link on original plain text can be corrected within the same intent before final readback. Original input bytes and their fingerprint remain exact. Native selection never converts source bytes or falls back to resource after a failed round-trip. Complete import replaces native bodies too, including later Notion edits; review the current content before importing. If the existing main or any supporting file has Source authority, dry-run and apply reject with CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an unchanged export. Source removal, takeover, renaming or rebinding requires coordinated contribution management. A plain directory or ZIP requires root SKILL.md; a current portable manifest may select Skill, Router or Prompt with its canonical entrypoint. When a portable input declares another Library, active short body refs are qualified with that origin before every Members policy; external and fixed refs keep their owner without querying that Library. Plain local input without an origin uses destination context. Dry-run and apply report derived rewrites, and the frozen plan preserves them for resume. An active short link that cannot safely be rewritten must be made explicit before copying. Portable Members/Requires use same-library stable Skill identities: omitted preserves existing sets, [] clears, an array replaces the complete set. On first creation only, omitted Members may be inferred from verified canonical links in Markdown; at most 100 distinct candidate refs are checked. Exact identities, enabled ready targets and actual files are required. Plain names and code are skipped. Requires is never inferred. Use import-batch with an explicit roots manifest to compile cross-root links among the declared local Skills, or members-plan with explicit path bindings for existing targets. A single import never guesses neighbouring directories. Changed sets are limited to 100 targets per field; larger unchanged sets are retained. Changed Requires are checked for dependency cycles before writing. Only an explicitly selected single Markdown file is renamed to SKILL.md; select it with --native SKILL.md. Unknown or duplicate native paths, retained projections, unknown fields, symbolic links and oversized input are rejected locally. --dry-run only inspects. --max-requests, --max-bytes and --timeout (ms) bound all remote work. Resume with the same input, native paths and --operation ID --resume. The local frozen plan retains the exact derived files, resource carriers and inferred Members; resume never rediscovers them. Unknown CREATE is reconciled, never replayed from absence. To replace an unfinished intent, use --supersede OLD --operation NEW with a distinct new identity; the kernel first reconciles the exact predecessor. Supersede does not bypass unresolved writes or authority checks. No name matching or historical recovery.",
   ),
   Command.withExamples([
     {
       command:
-        "ntn-skills ctl library import ./skill --entry LIBRARY_ID --skill-id my-skill --dry-run",
+        "ntn-skills ctl library import ./skill --entry SKILLS_DATABASE_ID --skill-id my-skill --dry-run",
       description: "Review the complete current replacement without writing",
     },
     {
       command:
-        "ntn-skills ctl library import ./skill --entry LIBRARY_ID --skill-id my-skill --operation IMPORT_ID",
+        "ntn-skills ctl library import ./skill --entry SKILLS_DATABASE_ID --skill-id my-skill --operation IMPORT_ID",
       description: "Apply the complete original file tree under one current operation",
     },
     {
       command:
-        "ntn-skills ctl library import ./skill --entry LIBRARY_ID --skill-id my-skill --native SKILL.md --native references/guide.md --dry-run",
+        "ntn-skills ctl library import ./skill --entry SKILLS_DATABASE_ID --skill-id my-skill --native SKILL.md --native references/guide.md --dry-run",
       description: "Review editable native bodies alongside exact resource files",
     },
     {
       command:
-        "ntn-skills ctl library import ./skill --entry LIBRARY_ID --skill-id my-skill --operation IMPORT_ID --resume",
+        "ntn-skills ctl library import ./skill --entry SKILLS_DATABASE_ID --skill-id my-skill --operation IMPORT_ID --resume",
       description: "Reconcile and continue the same current import",
     },
   ]),

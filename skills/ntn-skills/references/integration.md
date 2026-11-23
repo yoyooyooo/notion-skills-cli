@@ -51,7 +51,7 @@ for the user's Notion library. Do not infer host support from CLI URI support.
 
 ## Current selection and cache
 
-The logical key is the Library ID plus stable Skill ID. Short `skill://ID`
+The logical key is the Library ID plus stable Skill ID. Short `skill://architect`
 author refs inherit the containing document's Library. Tool entry context can
 come from an explicit database or default; it cannot override a document's owner.
 Names and aliases are labels. Same IDs in different Libraries remain distinct.

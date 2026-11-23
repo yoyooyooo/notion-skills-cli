@@ -256,7 +256,7 @@ function assertSnapshotTarget(snapshot: Snapshot, target: SkillTarget, database?
       ? snapshot.record.locator.database_id
       : undefined) !== database
   )
-    throw fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database.")
+    throw fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected database.")
   if (
     snapshot.record.locator.type === "shared_skill" &&
     snapshot.record.kind === "router" &&
@@ -376,7 +376,10 @@ function acquireTargetSnapshot(
             : undefined) !== (yield* resolveDatabaseId(options.database))
         )
           return yield* Effect.fail(
-            fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database."),
+            fail(
+              target.kind === "page" ? "SKILL_NOT_FOUND" : "LIBRARY_SCOPE_MISMATCH",
+              "The Skill does not belong to the selected database.",
+            ),
           )
         if (access !== "all" || observed.snapshot.record.locator.type === "shared_skill") {
           const selected = yield* Effect.gen(function* () {

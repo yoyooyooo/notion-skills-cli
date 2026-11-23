@@ -244,7 +244,7 @@ test("physical page reads accept configured aliases and selected database checks
   const read = await f.run(readSkill(snapshot.snapshot_id, { database: "frontend" }))
   expect("content" in read && read.content).toBe(frontmatter + originalMain)
   for (const [selector, code] of [
-    ["ops", "SKILL_NOT_FOUND"],
+    ["ops", "LIBRARY_SCOPE_MISMATCH"],
     ["missing", "DATABASE_NOT_FOUND"],
   ] as const) {
     const result = await f.run(

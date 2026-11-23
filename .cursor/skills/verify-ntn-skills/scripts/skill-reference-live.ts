@@ -940,6 +940,7 @@ export async function runSkillReferenceLive(input: {
       await observe("cycle-two", B, b, [a])
       await execute("manual-remove-member", [
         "ctl",
+        "library",
         "skill",
         "update",
         a.page_id,
@@ -1182,6 +1183,42 @@ export async function runSkillReferenceLive(input: {
     await stage(
       "cross-library-copy-rebinds-only-exact-batch-owned-current-references",
       async () => {
+        const originShortId = id("origin-short")
+        const originPin = parseSkillRef(overlap.a_pin).selection
+        assert.equal(originPin.kind, "fixed")
+        assert.ok(originPin.kind === "fixed")
+        const shortCurrent = "skill://" + overlap.a.skill_id + "/SKILL.md"
+        const shortFixed = shortCurrent + "?snapshot=" + originPin.snapshotId
+        const originBody = main(
+          originShortId,
+          "[External](" + shortCurrent + ")\n[Fixed](" + shortFixed + ")",
+        )
+        const originInput = await tree(join(fixtures, "origin-short"), [
+          textFile("SKILL.md", originBody),
+          portable(A, originShortId, {}),
+        ])
+        const originImported = await imported("origin-short", B, originInput, originShortId)
+        assert.equal(rows(originImported.review.rewrites).length, 2)
+        assert.deepEqual(originImported.output.rewrites, originImported.review.rewrites)
+        await observe("origin-short-no-destination-members", B, originImported.owner)
+        const originExpected = originBody
+          .replace(
+            "[External](" + shortCurrent + ")",
+            "[External](" + fileRef(overlap.a.identity, "SKILL.md") + ")",
+          )
+          .replace("[Fixed](" + shortFixed + ")", "[Fixed](" + overlap.a_pin + ")")
+        assert.equal(
+          (
+            await read(
+              "origin-short-preserves-a",
+              fileRef(originImported.owner.identity, "SKILL.md"),
+              originImported.owner,
+              ["--database", B.skills.database_id, "--refresh"],
+            )
+          ).content,
+          originExpected,
+        )
+        assert.equal(await readFile(join(originInput, "SKILL.md"), "utf8"), originBody)
         const copyId = id("copy-owner")
         const targetA = fileRef(overlap.a.identity, "SKILL.md"),
           targetB = fileRef(overlap.b.identity, "SKILL.md")
@@ -1293,6 +1330,12 @@ export async function runSkillReferenceLive(input: {
           ["PORTABLE_RELATION_SCOPE"],
         )
         return {
+          origin_short: {
+            ...originImported.owner,
+            body_sha256: digest(originExpected),
+            fixed_ref: overlap.a_pin,
+            rewrites: originImported.output.rewrites,
+          },
           page_id: owner.page_id,
           source_page_id: originalOwner.owner.page_id,
           rewrites: rebound.review.rewrites,

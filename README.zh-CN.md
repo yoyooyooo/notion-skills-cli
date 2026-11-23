@@ -177,6 +177,8 @@ ntn-skills read "$skill_ref" --database "$library_entry" --refresh --json
 CLI 入口使用短引用时，需要 `--database ENTRY` 或 `default_database`；
 文档内的短引用始终继承该文档的 Library，不随机器默认库改变。
 后续读取应保留工具返回的完整引用。
+portable 输入复制到另一套 Library 时，导入会先把短引用补全为其声明的原库身份，
+只有明确授权的精确批次映射才能重绑目标。没有来源库声明的普通本地输入使用目的库上下文。
 
 `Members` 列出 Agent 可以按需选择的相关 Skill；`Requires` 列出执行 `use` 时
 必须加载的依赖。`Requires` 由作者明确维护，正文提及某个工作流或写了“必须”

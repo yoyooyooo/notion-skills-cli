@@ -303,8 +303,17 @@ complete batch result as completion, not an individual body's readiness.
 
 ### Copy a batch to another Library
 
-Contextual body refs can bind to the destination. Explicit full refs keep their
-original Library unless you authorize a precise copy mapping:
+Plain local files without a declared origin use the destination Library for
+short body refs. A portable input's validated `relations.library_id` provides
+its original Library instead: when importing into another Library, active short
+refs are first made complete with that origin. This applies to single import,
+batch import and `members-plan`, including omitted or explicitly empty Members.
+An external short ref cannot select a same-ID Skill in the destination by
+accident. Fixed refs keep their original owner and snapshot. Origin binding
+does not query the external Library for automatic Members.
+
+To rebind exact current targets owned by the selected batch, authorize a precise
+copy mapping:
 
 ```sh
 ntn-skills ctl library import-batch ./batch.json --entry TEST_LIBRARY_ENTRY --rebind-from ORIGINAL_LIBRARY_ID --dry-run
@@ -316,7 +325,17 @@ and target path belong to this exact batch. It does not pick a same-named Skill
 from the destination. External body refs without a mapping stay external.
 Fixed body refs keep the original owner and snapshot. Explicit foreign relation
 targets without a destination mapping fail before writing. Without this flag,
-the command preserves full body refs and refuses foreign relation sets.
+the command preserves original body owners and refuses nonempty foreign relation
+targets. Origin-only metadata and explicit empty sets can be copied without
+this flag; omission and `[]` still have different meanings. Single import has
+no rebind option and preserves the portable body's origin.
+
+Review `rewrites` in dry-run output. Derived body bytes and this rewrite list are
+frozen with the operation; original input files do not change. An active short
+link that cannot safely be rewritten, including a definition shared with an
+image, fails with `PORTABLE_REFERENCE_CONTEXT` before any Notion write. Write
+its explicit Library in the input first. Code, comments and image-only mentions
+do not become Skill relationships.
 
 ### Resume the same batch
 
