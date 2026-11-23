@@ -4,7 +4,7 @@ from pathlib import Path
 import argparse, hashlib, json, shutil, subprocess, sys, time
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--suite", choices=["request-engine", "current-lifecycle"], required=True)
+parser.add_argument("--suite", choices=["request-engine", "current-lifecycle", "notion-mcp-auth", "notion-mcp-search"], required=True)
 parser.add_argument("--out", type=Path, required=True)
 args = parser.parse_args()
 repo = Path(__file__).resolve().parents[1]
@@ -159,13 +159,93 @@ lifecycle_cases = [
        'if (false && preserveReadyOwner && state.state !== "ready")')],
      operation_test, "an owner becoming unready during projection", "NonContentCompletionQualified"),
 ]
-cases = request_cases if args.suite == "request-engine" else lifecycle_cases
+auth = "packages/core/src/notion-mcp-auth.ts"
+auth_test = "packages/core/test/notion-mcp-auth.node.test.ts"
+credential_store = "packages/core/src/notion-mcp-credential-store.ts"
+credential_store_test = "packages/core/test/notion-mcp-credential-store.node.test.ts"
+# Recovery is defended at both public resolution and the locked refresh boundary.
+# Removing all three checks is a deliberate compound mutation, not one missing if.
+allow_abandoned_refresh = [
+    ('if (grant.kind !== "ready" || grant.refresh.kind !== "idle")',
+     'if (grant.kind !== "ready")'),
+    ('if (state.oauth.kind !== "ready" || state.oauth.refresh.kind !== "idle") {',
+     'if (state.oauth.kind !== "ready") {'),
+    ('if (state.oauth.kind !== "ready" || state.oauth.refresh.kind !== "idle")\n'
+     '    throw authorizationRequired("MCP_AUTH_REAUTH_REQUIRED", "The Notion MCP grant is unavailable.")\n'
+     '  const forceRefresh',
+     'if (state.oauth.kind !== "ready")\n'
+     '    throw authorizationRequired("MCP_AUTH_REAUTH_REQUIRED", "The Notion MCP grant is unavailable.")\n'
+     '  const forceRefresh'),
+]
+auth_cases = [
+    ("mcp-callback-issuer", auth,
+     [('url.searchParams.get("iss") !== issuer ||', 'false ||')],
+     auth_test, "callback rejects issuer before exchanging", "CallbackMustValidate"),
+    ("mcp-cancel-one-owner", auth,
+     [('if (selected.waiters.size === 0) selected.controller.abort()', 'selected.controller.abort()')],
+     auth_test, "one cancelled waiter leaves the shared authorization", "WaiterCancellationIsLocal"),
+    ("mcp-retired-code-exchange", auth,
+     [('// Code exchange is a side effect; stale callbacks are rejected before dispatch.\n    await fence()',
+       '// Deliberate mutation: omit the outer pre-exchange fence.'),
+      ('if (current.grantEpoch !== expectedEpoch)\n'
+       '        throw fail("MCP_AUTH_STALE", "The connection changed before code exchange.")',
+       'if (false && current.grantEpoch !== expectedEpoch)\n'
+       '        throw fail("MCP_AUTH_STALE", "The connection changed before code exchange.")')],
+     auth_test, "logout in another process fences a still-listening callback", "RetiredCallbackCannotExchange"),
+    ("mcp-retired-grant-commit", auth,
+     [('if (current.grantEpoch !== expectedEpoch)\n'
+       '        throw fail("MCP_AUTH_STALE", "The connection changed before the OAuth grant was saved.")',
+       'if (false && current.grantEpoch !== expectedEpoch)\n'
+       '        throw fail("MCP_AUTH_STALE", "The connection changed before the OAuth grant was saved.")')],
+     auth_test, "logout in another process during identity verification", "LogoutCannotResurrectGrant"),
+    ("mcp-marker-before-dispatch", auth,
+     [('await commit(marked)', 'void marked')],
+     auth_test, "refresh saves a durable marker before dispatch", "NoAbandonedReplay"),
+    ("mcp-refresh-exclusion", credential_store,
+     [('withLocalLocks(\n          this.directory,\n          ["notion-mcp-credentials"],\n          Effect.tryPromise({',
+       'Effect.tryPromise({'),
+      ('          }),\n        ),\n      )', '          }),\n      )')],
+     auth_test, "two actual processes serialize refresh", "ExclusiveRefresh"),
+    ("mcp-crashed-refresh-replay", auth, allow_abandoned_refresh,
+     auth_test, "a process killed after provider rotation", "NoAbandonedReplay"),
+    ("mcp-timeout-refresh-replay", auth, allow_abandoned_refresh,
+     auth_test, "a timed-out refresh leaves its marker", "NoAbandonedReplay"),
+    ("mcp-expired-store-publication", credential_store,
+     [('private async publish(state: McpStoredState): Promise<void> {\n'
+       '    mcpGuard(this.options.signal, this.options.deadline)',
+       'private async publish(state: McpStoredState): Promise<void> {'),
+      ('mcpGuard(this.options.signal, this.options.deadline)\n'
+       '    this.options.beforePublish?.()\n    await rename(staged, this.file)',
+       'this.options.beforePublish?.()\n    await rename(staged, this.file)')],
+     credential_store_test, "deadline reached inside a transaction", "CurrentGrantCommit"),
+    ("mcp-expired-waiter-exchange", auth,
+     [('if (!waiter.signal?.aborted && waiter.deadline > Date.now()) return true',
+       'if (!waiter.signal?.aborted) return true')],
+     auth_test, "an expired waiter cannot exchange a callback", "RetiredCallbackCannotExchange"),
+    ("mcp-expired-waiter-commit", auth,
+     [('if (!waiter.signal?.aborted && waiter.deadline > Date.now()) return true',
+       'if (!waiter.signal?.aborted) return true')],
+     auth_test, "an expired waiter cannot commit returned tokens", "ExpiredFlightCannotCommitGrant"),
+    ("mcp-publication-owner", credential_store,
+     [('this.options.beforePublish?.()', 'void 0')],
+     credential_store_test, "a retired publication owner cannot replace durable state", "ExpiredFlightCannotCommitGrant"),
+]
+search_cases = []
+if args.suite == "notion-mcp-search":
+    inventory = repo / "verification/models/notion-mcp-search/mutations.json"
+    shutil.copy2(inventory, out / "mutations.json")
+    for row in json.loads(inventory.read_text()):
+        search_cases.append((row["name"], row["file"], row["replacements"],
+                             row["test"], row["pattern"], row["rule"]))
+    assert search_cases, "Missing reviewed search guard mutations"
+cases = {"request-engine": request_cases, "current-lifecycle": lifecycle_cases,
+         "notion-mcp-auth": auth_cases, "notion-mcp-search": search_cases}[args.suite]
 originals = out / "originals"
 originals.mkdir()
 results = []
 summary = {
     "complete": False, "passed": False, "suite": args.suite,
-    "fixture": str(fixture), "source_commit": coverage["synchronized_commit"],
+    "fixture": str(fixture), "source_commit": coverage.get("synchronized_commit", coverage.get("source_base")),
     "checkout_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
     "verifier_sha256": sha(Path(__file__).read_bytes()),
     "coverage_sha256": sha(coverage_path.read_bytes()),
@@ -177,7 +257,11 @@ summary = {
                    if args.suite == "request-engine" else None),
     "scope": ("Controlled public Notion service/coalescer/scheduler and SDK code. The immutable runtime case uses an owned local HTTP server, independent public SDK runtimes and a frozen fixture; no real credentials or remote Notion mutations."
               if args.suite == "request-engine" else
-              "Production current reader and finite operation kernel with controlled Notion service responses. Each guard is removed in an isolated source copy and checked by its existing behavioral assertion. No live Notion, Pi or provider claim."),
+              "Production current reader and finite operation kernel with controlled Notion service responses. Each guard is removed in an isolated source copy and checked by its existing behavioral assertion. No live Notion, Pi or provider claim."
+              if args.suite == "current-lifecycle" else
+              "Production MCP authorization and credential store with real loopback OAuth HTTP, fake credentials, independent Node processes and an owned SIGKILL crash. Every mutation must fail an existing behavior assertion, then restore and pass. The pre-exchange, abandoned-refresh and expired-publication cases remove multiple defensive checks. No real OAuth, remote Notion, browser, cross-machine or power-loss guarantee."
+              if args.suite == "notion-mcp-auth" else
+              "Production Hosted MCP content-search qualification and SDK source/auth fences with controlled transport and metadata fixtures. Each reviewed guard mutation must cause a behavior assertion failure and pass after exact restoration. No live Notion or Pi acceptance claim."),
     "results": results,
 }
 def save():

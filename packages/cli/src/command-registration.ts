@@ -28,6 +28,7 @@ import {
   resolveCommand,
 } from "./commands-content.ts"
 import { configCommand } from "./commands-configuration.ts"
+import { authCommand } from "./commands-mcp-auth.ts"
 import { libraryCommand } from "./commands-library.ts"
 import { cacheCommand } from "./commands-cache.ts"
 import { builtinCommand } from "./commands-builtin.ts"
@@ -83,6 +84,7 @@ const rootDefinition = () =>
         live,
       ),
       ctlCommand,
+      authCommand,
       withRuntime(readCommand.pipe(withConstraints(readConstraints)), live),
       withRuntime(useCommand, live),
       withRuntime(filesCommand.pipe(withConstraints(filesConstraints)), live),

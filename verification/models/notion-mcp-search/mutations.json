@@ -1,0 +1,110 @@
+[
+  {
+    "name": "retained-disabled-claim",
+    "file": "packages/core/src/notion-mcp-search.ts",
+    "replacements": [
+      [
+        "claims.get(candidate.owner)?.record.enabled !== true",
+        "false"
+      ]
+    ],
+    "test": "packages/core/test/notion-mcp-search.test.ts",
+    "pattern": "an accepted disabled claim",
+    "rule": "AuthorizedBeforeDisclosure"
+  },
+  {
+    "name": "final-enabled-observation",
+    "file": "packages/core/src/notion-mcp-search.ts",
+    "replacements": [
+      [
+        "latest.enabled !== true ||",
+        "false ||"
+      ]
+    ],
+    "test": "packages/core/test/notion-mcp-search.test.ts",
+    "pattern": "the final owner read",
+    "rule": "AuthorizedBeforeDisclosure"
+  },
+  {
+    "name": "main-source-for-supporting-match",
+    "file": "packages/core/src/notion-mcp-search.ts",
+    "replacements": [
+      [
+        "for (const content of [\n        current.main.content,\n        ...(candidate.file === undefined ? [] : [candidate.file.content]),\n      ])",
+        "for (const content of [candidate.file?.content ?? current.main.content])"
+      ]
+    ],
+    "test": "packages/core/test/notion-mcp-search.test.ts",
+    "pattern": "a native supporting File",
+    "rule": "AuthorizedBeforeDisclosure"
+  },
+  {
+    "name": "supporting-file-publication-binding",
+    "file": "packages/core/src/notion-mcp-search.ts",
+    "replacements": [
+      [
+        "canonicalSharedJson(latest.success) !== canonicalSharedJson(binding.file)",
+        "false"
+      ]
+    ],
+    "test": "packages/core/test/notion-mcp-search.test.ts",
+    "pattern": "supporting File rebinding",
+    "rule": "AuthorizedBeforeDisclosure"
+  },
+  {
+    "name": "ready-at-both-admission-boundaries",
+    "file": "packages/core/src/notion-mcp-search.ts",
+    "replacements": [
+      [
+        "if (current.state.state !== \"ready\")",
+        "if (false)"
+      ],
+      [
+        "current.state.state !== \"ready\" ||",
+        "false ||"
+      ]
+    ],
+    "test": "packages/core/test/notion-mcp-search.test.ts",
+    "pattern": "pending current work",
+    "rule": "AuthorizedBeforeDisclosure"
+  },
+  {
+    "name": "exact-stable-claim",
+    "file": "packages/core/src/shared-skill-targets.ts",
+    "replacements": [
+      [
+        "if (pages?.size !== 1 || !pages.has(target.record.locator.page_id))",
+        "if (false && (pages?.size !== 1 || !pages.has(target.record.locator.page_id)))"
+      ]
+    ],
+    "test": "packages/core/test/notion-mcp-search.test.ts",
+    "pattern": "same name and stable identity",
+    "rule": "AuthorizedBeforeDisclosure"
+  },
+  {
+    "name": "rest-credential-fence",
+    "file": "packages/core/src/notion-mcp-search.ts",
+    "replacements": [
+      [
+        "before.scope !== after.scope ||",
+        "false ||"
+      ]
+    ],
+    "test": "packages/core/test/notion-mcp-search.test.ts",
+    "pattern": "query bounds and fresh source identity",
+    "rule": "BindingResolvedBeforeSearch"
+  },
+  {
+    "name": "rest-workspace-fence",
+    "file": "packages/core/src/notion-mcp-search.ts",
+    "replacements": [
+      [
+        "before.workspaceId !== after.workspaceId ||",
+        "false ||"
+      ]
+    ],
+    "test": "packages/core/test/notion-mcp-search.test.ts",
+    "pattern": "query bounds and fresh source identity",
+    "rule": "BindingResolvedBeforeSearch"
+  }
+]

@@ -36,6 +36,8 @@ The root schema is shallow; query an exact command path for its full definition.
 | Command | Current responsibility |
 | --- | --- |
 | `list` | Paginated discovery metadata with explicit coverage |
+| `list --search-in content` | Bounded remote Notion search with fresh REST admission and non-exhaustive coverage |
+| `auth mcp login/status/logout/set-token/clear-token` | Independent MCP token selection and OAuth connection |
 | `read` | One selected file or text range |
 | `use` | Instructions and Requires expansion |
 | `files` | Complete selected file directory and returned refs |
@@ -51,6 +53,9 @@ The root schema is shallow; query an exact command path for its full definition.
 | `ctl api` | A scoped read-only Notion API request |
 
 ## Identity and selected reads
+
+The [remote search contract](notion-mcp.md) defines `contentSearch`, its SDK
+capability version, credential priority, result fields and publication fences.
 
 Current shared identity is `shared_skill:<library_id>:<skill_id>`.
 Names are discovery labels. The stable Skill ID identifies a Skill within its library.

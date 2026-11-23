@@ -288,6 +288,8 @@ export function currentSnapshotFixture(
             }
           else if (call.method === "GET" && path === `v1/pages/${main.id}`)
             result = structuredClone(main)
+          else if (call.method === "GET" && files.some((file) => path === `v1/pages/${file.id}`))
+            result = structuredClone(files.find((file) => path === `v1/pages/${file.id}`))
           else if (call.method === "GET" && /\/markdown(?:\?|$)/u.test(path)) {
             const page = path.split("/")[2]
             const markdown = page === undefined ? undefined : bodies.get(page)

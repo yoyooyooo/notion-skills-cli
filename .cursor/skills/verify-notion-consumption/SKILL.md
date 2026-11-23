@@ -1,6 +1,6 @@
 ---
 name: verify-notion-consumption
-description: "验证 ntn-skills 当前完整目录、有界元数据、正文与子文件、任务内选择、缓存、导出及普通消费远端零写。修改 list/read/use/files/export、权限、精确获取或 freshness 时使用，不保留历史内容恢复合同。"
+description: "验证 ntn-skills 当前完整目录、有界元数据、正文与子文件、任务内选择、缓存、导出及普通消费远端零写。修改 list/read/use/files/export、Hosted MCP 内容搜索与独立 Token/OAuth、权限、精确获取或 freshness 时使用，不保留历史内容恢复合同。"
 ---
 
 # 当前消费验证
@@ -48,6 +48,24 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 安装层复用 [portable-export-package-consumption](../verify-ntn-skills/features/portable-export-package-consumption.md) 的实际包入口。旧远端恢复或已退出命令的步骤不可继承；包未切换记缺口。Pi 由 Broker integration 沿 AH-1197/AH-637/AH-1198 验；AH-1063 仅为历史基线，不扩 OMP/Tern。
 
 ## Evidence
+
+### Hosted MCP 内容搜索与认证
+
+复用 [notion-mcp-auth](../../../verification/models/notion-mcp-auth/README.md) 和现有形式验证 runner，不建立第二份 REST 认证或通用验证入口。MCP 凭据只使用本次隔离 config home；测试用假令牌和真实 loopback HTTP，不读取个人凭据。
+
+~~~sh
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/notion-mcp-auth.node.test.ts packages/core/test/notion-mcp-credential-store.node.test.ts
+node scripts/verify-formal.mjs --suite notion-mcp-auth --out /absolute/new-mcp-model-run
+python3 scripts/check-formal-mutations.py --suite notion-mcp-auth --out /absolute/new-mcp-mutation-run
+~~~
+
+认证或存储守卫变化时保留两个模型的 31 个正例、负例和可达性见证；准确的独立规则清单、TLC/statechart 字节、模型范围和实际 source hash 均由现有 runner 核对。先审阅实现差异与模型抽象，再更新对应 hash。实际 guard mutation 必须原件通过、删除守卫后行为断言失败、恢复原字节后通过；导入或语法错误不算捕获。
+
+分别核显式环境 token → 存储 token → OAuth 的优先级，错误显式 token 不切身份，headless 不开浏览器，独立 waiter 取消，callback state/iss/PKCE/resource/redirect/expiry，跨进程 logout 对 exchange/commit 的 fence。绝对时间已过但定时器尚未执行时，也须在兑换、提交和原子发布前重新确认至少一个未取消且未过期的 owner；过期 waiter 不可恢复，另一有效 waiter 仍可完成。刷新必须在同 config home 的锁内重读、先 fsync 在途标记、原子提交新 AT/RT 并清标记；不同调用的 deadline、SIGKILL 后接管、未知结果和 403/429 不重放分别留原始记录。只承诺同机协作进程，不把有限模型的原子存储步骤写成断电证明。
+
+内容命中资格、独立 Source 选择和 cursor 绑定沿公开 SDK/CLI 与 [notion-mcp-search](../../../verification/models/notion-mcp-search/README.md) 的 SearchAdmission 模型验：复用 `verify-formal.mjs --suite notion-mcp-search` 和 `check-formal-mutations.py --suite notion-mcp-search`，各用新的外部绝对输出目录。Broker 的 Enabled/前台/会话 ticket 与 Pi 授权 UI 由其既有 integration owner 验。模型中的 Enabled/sessionEpoch 是宿主输入，核心认证 suite 通过不代替这些接线或真实用户授权证据。
+
+### 回执范围
 
 按 [当前合同与回执](../../../docs/verification-contracts.md) 标 C01/C06/C07a/C09、具体时间线及实际层级；相同原件跨票引用不重复计数。
 

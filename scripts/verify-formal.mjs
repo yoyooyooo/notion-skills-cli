@@ -18,7 +18,7 @@ const configExtension = ""
 const args = process.argv.slice(2)
 if (args.includes("--help")) {
   console.log(
-    "Usage: node scripts/verify-formal.mjs --suite request-engine|current-lifecycle --out /absolute/new/output " +
+    "Usage: node scripts/verify-formal.mjs --suite request-engine|current-lifecycle|notion-mcp-auth|notion-mcp-search --out /absolute/new/output " +
       "[--model Model] [--statechart PINNED_SKILL] [--jar TLC_JAR]",
   )
   process.exit(0)
@@ -36,7 +36,10 @@ for (let i = 0; i < args.length; i += 2) {
 if (options.has("--out")) assert.ok(path.isAbsolute(options.get("--out")), "--out must be absolute")
 const selectedModel = options.get("--model")
 const suite = options.get("--suite")
-assert.ok(["request-engine", "current-lifecycle"].includes(suite), "Select one current --suite")
+assert.ok(
+  ["request-engine", "current-lifecycle", "notion-mcp-auth", "notion-mcp-search"].includes(suite),
+  "Select one current --suite",
+)
 const lockFile = `verification/models/${suite}/tool-lock.json`
 const root = path.join(repository, "verification/models", suite)
 const out = options.has("--out")
@@ -148,7 +151,13 @@ try {
       sha256: hash(fs.readFileSync(file)),
     }))
     const result = await check(spec, config)
-    const view = checkView(await import(pathToFileURL(viewFile)), inspect)
+    const viewModule = await import(pathToFileURL(viewFile))
+    const view = checkView(
+      typeof viewModule.forConfig === "function"
+        ? viewModule.forConfig(fs.readFileSync(config, "utf8"))
+        : viewModule,
+      inspect,
+    )
     const rendered = compile(result, view)
     for (const [file, parts] of rendered.files) {
       const fd = fs.openSync(path.join(destination, file), "wx")
