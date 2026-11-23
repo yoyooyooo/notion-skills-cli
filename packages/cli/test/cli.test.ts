@@ -505,6 +505,7 @@ test("current help and schema expose the same small command tree", async () => {
   expect(root.onlineCalled).toBe(false)
   const tree = JSON.parse(root.stdout).schema
   expect(tree.commands.map((command: { name: string }) => command.name).sort()).toEqual([
+    "auth",
     "ctl",
     "export",
     "files",
