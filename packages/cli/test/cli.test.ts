@@ -159,7 +159,9 @@ test("library initialization exposes explicit continuation and rejects incomplet
   expect(help.stdout).toContain("structure is ready")
   expect(help.stdout).toContain("library.skills.database_id")
   expect(help.stdout.replace(/\s+/g, " ")).toContain("next.argv is a read-only list")
-  expect(help.stdout.replace(/\s+/g, " ")).toContain("does not create Skill content or copy builtins")
+  expect(help.stdout.replace(/\s+/g, " ")).toContain(
+    "does not create Skill content or copy builtins",
+  )
   expect(help.stdout).toContain("read-only reconciliation")
   expect(help.stdout).toContain("--resume")
   const parent = "11111111-1111-4111-8111-111111111111"
