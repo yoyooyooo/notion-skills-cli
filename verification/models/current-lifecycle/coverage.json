@@ -9,7 +9,7 @@
     "packages/core/src/shared-current-operation.ts": "2f5fc39f9e315caf24d51142098cfd98a5da5b04558824cb04620c6566703e5e",
     "packages/core/test/shared-current-snapshot.test.ts": "9e0a675adb2a572046ea127f1e0a4fb189daf9bc3f0fb1517884562671d050ab",
     "packages/core/test/shared-current-operation.test.ts": "984eeceae0caf58adb3f86962c8cf326156b2d5b3cfa69640cf766075ffcab10",
-    "packages/core/test/shared-current-projection-write.test.ts": "e041b9f1073b129b264be25fab0f9340ec5918c814a856a1d0a242dfd5e1ce41",
+    "packages/core/test/shared-current-projection-write.test.ts": "b40b0c63572689a8f32bd350b603e98865b6aa6d40e81b92bba6910504e0090a",
     "packages/core/src/cache.ts": "e97c16e8be6a0ec41f21a8ef6c1c965a32f2fd96889f311d8b6843d3e5641b21",
     "packages/core/src/fixed-snapshot-files.ts": "3f06a96da80d6d0d63515560465cdf0df4bb5f644a384fe1cd8017e535ef86e5",
     "packages/core/src/snapshot.ts": "a16373dce904ffcc9458edb32277042a39b78526b7a2d4dd9f0cccdb3375e603",

@@ -900,7 +900,7 @@ test.each(["resource", "source"] as const)(
     const guide = testBytes(
       "---\nname: supporting-document\ndescription: Reference metadata stays visible.\n---\n\n# Evidence\n\nKeep the complete reference.\n",
     )
-    const seeded =
+    const sourceFixture =
       authority === "source"
         ? await seedSourceReading({
             rows: false,
@@ -908,21 +908,23 @@ test.each(["resource", "source"] as const)(
             mainBytes: original,
             guideBytes: guide,
           })
-        : await seed({
-            ...defaults,
-            files: [
-              { path: "SKILL.md", bytes: original, mode: "100755" },
-              { path: "references/render.md", bytes: guide },
-              {
-                path: "notes/author.md",
-                bytes: testBytes(
-                  "---\nname: author\ndescription: Author-owned metadata.\n---\n\n" + native,
-                ),
-                authority: { kind: "native" },
-              },
-            ],
-          })
-    const { f, written } = seeded
+        : undefined
+    const { f, written } =
+      sourceFixture ??
+      (await seed({
+        ...defaults,
+        files: [
+          { path: "SKILL.md", bytes: original, mode: "100755" },
+          { path: "references/render.md", bytes: guide },
+          {
+            path: "notes/author.md",
+            bytes: testBytes(
+              "---\nname: author\ndescription: Author-owned metadata.\n---\n\n" + native,
+            ),
+            authority: { kind: "native" },
+          },
+        ],
+      }))
     const oldPlan = renderCurrentProjection({
       role: "supporting",
       path: "old-reading.md",
@@ -948,7 +950,9 @@ test.each(["resource", "source"] as const)(
     expect(before.main.content.kind).toBe(authority)
     const ownerBefore = structuredClone(f.pages.get(written.page_id)!.properties)
     const sourceBefore =
-      "sourcePage" in seeded ? structuredClone(f.pages.get(seeded.sourcePage)) : undefined
+      sourceFixture === undefined
+        ? undefined
+        : structuredClone(f.pages.get(sourceFixture.sourcePage))
     const authored = await Promise.all(
       before.files
         .filter((file) => file.content.kind === "native")
@@ -1001,7 +1005,8 @@ test.each(["resource", "source"] as const)(
     )
     expect(f.pages.get(written.page_id)!.properties).toEqual(ownerBefore)
     expect(after.main.content).toEqual(before.main.content)
-    if ("sourcePage" in seeded) expect(f.pages.get(seeded.sourcePage)).toEqual(sourceBefore)
+    if (sourceFixture !== undefined)
+      expect(f.pages.get(sourceFixture.sourcePage)).toEqual(sourceBefore)
     for (const file of authored) {
       expect(after.files.find((current) => current.page_id === file.page_id)?.content).toEqual(
         file.content,
