@@ -37,10 +37,10 @@ Inspect the edited target without activating it. Same-name Notion content has
 its own identity; it cannot claim the package default or replace an active
 task's selected identity and content.
 
-With an enabled Notion source, Context Broker exposes `$ntn-skills@builtin`,
+In Pi, with an enabled Notion source, Context Broker exposes `$ntn-skills@builtin`,
 `$ntn-skills-maintain@builtin` and `$ntn-skills-sync@builtin` from its paired SDK.
 Without an enabled source, it does not inject that catalog, Notion tools or
-system guidance; explicit setup can still read the shell CLI's builtin guide.
+system guidance into Pi; explicit setup can still read the shell CLI's builtin guide.
 Builtin reads need no Notion copy. Keep references with the selected owner:
 ordinary `read --from` for Notion, `ctl builtin read --path` for package content.
 A native `Read skill://...` route exists only when the host registers it.
