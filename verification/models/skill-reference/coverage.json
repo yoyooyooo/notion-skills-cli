@@ -1,0 +1,613 @@
+{
+  "version": 1,
+  "source_base": "ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1",
+  "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+  "kind": "Bounded reference and import models with separately reviewed concrete guard mappings.",
+  "correspondence": "Two Libraries with overlapping Skill IDs and paths; immutable manifest selection separated from current lookup; two imported objects and one bounded create outcome per object. Resource identity is an authority union, not a required Notion File row.",
+  "review_basis": "Reviewed the approved single-track contract and the named source guards, their behavior assertions, and relevant callers on the task overlay based on ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. Fixed selection is checked against exact owner, manifest and path; Source resolution keeps original repository authority. Import guard correspondence includes creation-only inferred Members, explicit empty values, frozen operation progress and read-only completion recovery. Shared never-replay operation evidence uses an unknown append; public batch tests separately cover unknown CREATE. SQLite codec and cross-process persistence are concrete preservation obligations outside the TLA state variables. The initial 23-case design-model run and the 4 new selected-reference regression cases were observed separately; this source mapping is not a declaration that actual mutations, final model bytes, packed artifacts or live Notion passed. The official format pass changed layout only; named mutation anchors were rechecked against the formatted source. Final review removes the unreachable name/catalog fallback after exact entry binding and retains the same denial invalidation. The contract now uses the actual positional ctl library inspect ENTRY syntax; database aliases remain entry conveniences, not portable Library IDs.",
+  "files": {
+    "docs/skill-reference-redesign.md": "370a0371773e525947b4631edafee305c1875e10b89433b2c144d9d34b3226a6",
+    "packages/cli/test/current-members.test.ts": "8fe54003a97a71e4aac0947afdd75424e54bf9214dcf93484478bd4d672a314f",
+    "packages/core/src/cache-address.ts": "55cdc63aea7fbd2751e3a550d2b2e086c1f0f6b753c9ae136a4632dbf46cfaea",
+    "packages/core/src/shared-current-import-plan-model.ts": "e5eee33d6f24552bbd871f5288023ba0e695b1d4312acfbbcb08a0cd4e9bc073",
+    "packages/core/src/shared-current-member-discovery.ts": "5dfe87e06abecf409a41a48bb099c3df486a50f797b944b53211506fb5bccdda",
+    "packages/core/src/shared-current-operation.ts": "2f5fc39f9e315caf24d51142098cfd98a5da5b04558824cb04620c6566703e5e",
+    "packages/core/src/shared-current-skill-target.ts": "ec60a8976411bd19adb1d8c879cef0274f46d7b149b9641f748afaa69460d114",
+    "packages/core/src/shared-current-write.ts": "3b9984c7b39ae3fa21dc3228c58c3db7861013a078bff84c512a540fedb5f4e8",
+    "packages/core/src/shared-source-references.ts": "d326dc74a1b97dd5c97e8164201dc3bfb2dad5bcf78e5c9ada9621c8f9e40399",
+    "packages/core/src/skill-ref.ts": "1243329639e1aa9b746e248cd61aa39372c7ad9734ced47c0ce9e80d80b80e57",
+    "packages/core/src/snapshot.ts": "3d4449b6d5c5909c39ff3b21a93b5a65cc5f6d03d93b1e23de381e7924b11599",
+    "packages/core/test/shared-current-import-plan.test.ts": "7c0765157d9e3ac582787ddf532e1393bddd2f5edd8ac7cf3ed4d85dac7030c1",
+    "packages/core/test/shared-current-member-discovery.test.ts": "a4df3d947a6b6f7162dade4c2f5242be3f9c0400e72d5d64c820d190c686c41f",
+    "packages/core/test/shared-current-operation.test.ts": "984eeceae0caf58adb3f86962c8cf326156b2d5b3cfa69640cf766075ffcab10",
+    "packages/core/test/shared-current-relative.test.ts": "aad0036fcedddd6becdd573de0a1edc47344b42fcf137039b88d6f3df5d20fc9",
+    "packages/core/test/shared-source-references.test.ts": "bfa32574f86f5a7a1063169ec3d1d70d3d225a16edd96b462d9538bbc2f527cf",
+    "packages/core/test/skill-ref.test.ts": "5a8cf3316142238501a5f37a08d1054e76be5d340e7d0ae2146bdfd0ef173fc5",
+    "packages/core/test/skill-reference-guards.test.ts": "01ed9d1bf5d2c4efff4c4c9fee87f1da01fd2a733342b9637286fb09df43f620",
+    "packages/core/test/sqlite-state.node.test.ts": "ab1768f21dbf4cb01416457a9406eb3a10423c51889f75a5754272cd2259dec2",
+    "verification/models/skill-reference/mutations.json": "528aab5557aaad1d47afe2017fae986274d7e48fca01fa705f96a8e090ff2984"
+  },
+  "models": {
+    "ReferenceSelection": {
+      "bounds": "Two Libraries, two existing stable Skill IDs plus a missing-ID distractor, six fixed selections, three paths, fourteen input scenarios, at most one ambient-default and one live-entrypoint change.",
+      "assumptions": "Local binding and selection actions eventually return. The immutable manifest and exact Source evidence are boundary facts; the model does not prove parsing, access, acquisition or byte integrity.",
+      "scope": "A short reference binds from its containing Library or explicit tool-entry context. Fixed selection cannot change owner, manifest or selected path. Source-relative lookup requires reliable provenance; ordinary resolution does not write."
+    },
+    "ImportRelations": {
+      "bounds": "One explicitly selected Library, a production distractor, two batch objects, nine input scenarios, one original create per object and a deliberate-replay counterexample, one manual Members edit and one repeat.",
+      "assumptions": "Each create outcome is known success, accepted-with-response-lost, or unobserved. Explicit resume eventually observes or blocks; absence never authorizes replay. Initial exact candidate admission is a boundary fact, not natural-language intent.",
+      "scope": "Frozen mappings and tri-state relationship inputs; two-phase object/relationship application; preserved Requires and authored Members; unknown outcome recovery. It does not prove whole-tree writes or Notion transactions."
+    }
+  },
+  "implementation_bindings": [
+    {
+      "name": "authoritative_context",
+      "files": ["packages/core/src/skill-ref.ts", "packages/core/test/skill-ref.test.ts"],
+      "scope": "Explicit Library wins over an ambient context; a short reference without context fails. The shared parser and complete key prevent a title/alias string from becoming a second identity namespace. The finite model abstracts parser bytes."
+    },
+    {
+      "name": "exact_stable_claim",
+      "files": [
+        "packages/core/src/shared-current-skill-target.ts",
+        "packages/core/test/shared-current-member-discovery.test.ts"
+      ],
+      "scope": "Current exact Skill ID lookup rejects multiple physical claims rather than choosing the first. Source membership and complete pagination remain separate reader obligations."
+    },
+    {
+      "name": "immutable_selected_reference",
+      "files": [
+        "packages/core/src/snapshot.ts",
+        "packages/core/test/skill-reference-guards.test.ts",
+        "packages/core/test/shared-current-relative.test.ts"
+      ],
+      "scope": "The selected manifest must own the complete Library/Skill key. Missing pin cannot be discarded for current. A pathless pin uses its manifest entrypoint despite a changed current kind; a missing path cannot be repaired. Cross-owner references do not inherit the containing snapshot."
+    },
+    {
+      "name": "source_coordinate_authority",
+      "files": [
+        "packages/core/src/shared-source-references.ts",
+        "packages/core/test/shared-source-references.test.ts"
+      ],
+      "scope": "Original Source revision/path wins over a coincidentally mounted local path. Frozen Source route plus bytes is sufficient without a Notion File row; repository provenance and complete inventory are assumed by the finite model."
+    },
+    {
+      "name": "member_input_tristate",
+      "files": [
+        "packages/core/src/shared-current-member-discovery.ts",
+        "packages/core/test/shared-current-member-discovery.test.ts",
+        "packages/cli/test/current-members.test.ts"
+      ],
+      "scope": "Existing omitted Members are preserved, explicit empty wins, and first-creation inference cannot populate Requires. Exact links prove identity, not natural-language intent."
+    },
+    {
+      "name": "frozen_import_recovery",
+      "files": [
+        "packages/core/src/shared-current-import-plan-model.ts",
+        "packages/core/src/shared-current-write.ts",
+        "packages/core/test/shared-current-import-plan.test.ts"
+      ],
+      "scope": "Completed steps cannot regress or change request identity. A completed frozen import resumes by exact readback without recompiling or replaying its body phase. Arbitrary batches and durable crash boundaries remain concrete tests."
+    },
+    {
+      "name": "unobserved_nonidempotent_action",
+      "files": [
+        "packages/core/src/shared-current-operation.ts",
+        "packages/core/test/shared-current-operation.test.ts"
+      ],
+      "scope": "A previously dispatched never-replay action cannot be resent because fresh observation is empty. The common kernel assertion is exercised with an unknown append; CREATE-specific behavior is separately covered by public import-batch regressions."
+    },
+    {
+      "name": "persisted_complete_identity",
+      "files": [
+        "packages/core/src/cache-address.ts",
+        "packages/core/test/sqlite-state.node.test.ts"
+      ],
+      "scope": "Storage segments decode to the full logical identity. Separate real Node processes persist two Libraries with the same scope, stable ID and version, then retire one while preserving the other and its publication fence. Physical storage and SQL are not modeled TLA variables."
+    }
+  ],
+  "unmodeled_bindings": [
+    {
+      "kind": "concrete_regressions",
+      "scope": "URI parser bytes/encoding/case, exact physical Notion membership, permissions and denied scopes, complete pagination, native/resource/Source bytes and modes, current acquisition fences, arbitrary batches, external Notion concurrency, CLI crash/SQLite durability, packaged SDK/Broker and live-model delivery require concrete evidence."
+    },
+    {
+      "kind": "relationship_semantics",
+      "scope": "Members means optional discoverable members. Exact active links establish target identity, not arbitrary author intent. Requires is explicit. Cross-Library relationship federation is not supported."
+    },
+    {
+      "kind": "stable_identity_lifetime",
+      "scope": "Authors must not reuse a deleted stable ID for a different Skill. The current implementation has no permanent global tombstone registry; the finite model does not prove identity ownership across deletion and reuse."
+    }
+  ],
+  "maintenance": {
+    "owner_skill": ".cursor/skills/verify-notion-resource-lifecycle/SKILL.md",
+    "runner": "scripts/verify-formal.mjs --suite skill-reference",
+    "mutation_runner": "scripts/check-formal-mutations.py --suite skill-reference",
+    "lock": "verification/models/skill-reference/tool-lock.json",
+    "routing": "Review exact identity/scope, manifest-only selection, Source authority, frozen batch intent and relation tri-state changes. Run every candidate and deliberate defect, then replay applicable actual guards.",
+    "model_semantics": "Preserve the independently stored full rule inventories, exact expected counterexamples, NoDeadlock, finite bounds and conditional liveness. Missing tools, cut runs and syntax/import failures are not proof."
+  },
+  "cases": [
+    {
+      "model": "ReferenceSelection",
+      "config": "candidate.cfg",
+      "kind": "candidate",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": []
+    },
+    {
+      "model": "ReferenceSelection",
+      "config": "negative-ambient-library.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["ContextIsAuthoritative"]
+    },
+    {
+      "model": "ReferenceSelection",
+      "config": "negative-missing-context.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["ContextIsAuthoritative"]
+    },
+    {
+      "model": "ReferenceSelection",
+      "config": "negative-name-fallback.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["StableIdentityIsExact"]
+    },
+    {
+      "model": "ReferenceSelection",
+      "config": "negative-duplicate-claim.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["DuplicateClaimRejected"]
+    },
+    {
+      "model": "ReferenceSelection",
+      "config": "negative-foreign-manifest.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["StableIdentityIsExact"]
+    },
+    {
+      "model": "ReferenceSelection",
+      "config": "negative-missing-manifest.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["MissingManifestRejected", "FixedSelectionUsesManifest"]
+    },
+    {
+      "model": "ReferenceSelection",
+      "config": "negative-live-entrypoint.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["FixedSelectionUsesManifest"]
+    },
+    {
+      "model": "ReferenceSelection",
+      "config": "negative-missing-path.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["FixedSelectionUsesManifest"]
+    },
+    {
+      "model": "ReferenceSelection",
+      "config": "negative-source-fallback.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["SourceAuthorityRequired"]
+    },
+    {
+      "model": "ReferenceSelection",
+      "config": "negative-source-pin.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["StableIdentityIsExact", "CrossSkillSelectionIsTargetOwned"]
+    },
+    {
+      "model": "ReferenceSelection",
+      "config": "negative-resolution-write.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["ResolutionDoesNotWrite"]
+    },
+    {
+      "model": "ImportRelations",
+      "config": "candidate.cfg",
+      "kind": "candidate",
+      "expected_rules": [
+        "TypeOK",
+        "ImportScopeRemainsBound",
+        "ForeignRelationsBeforeWrites",
+        "FrozenMembersIntent",
+        "ExplicitEmptyMembers",
+        "ExistingMembersOnOmission",
+        "RequiresOnlyExplicit",
+        "RelationsAfterObjectCreation",
+        "UnknownCreateNotReplayed",
+        "ManualMembersPreserved",
+        "RepeatHasNoWrites",
+        "CompleteWasVerified",
+        "ImportEventuallyExplained",
+        "RepeatEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": []
+    },
+    {
+      "model": "ImportRelations",
+      "config": "negative-ambient-write.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ImportScopeRemainsBound",
+        "ForeignRelationsBeforeWrites",
+        "FrozenMembersIntent",
+        "ExplicitEmptyMembers",
+        "ExistingMembersOnOmission",
+        "RequiresOnlyExplicit",
+        "RelationsAfterObjectCreation",
+        "UnknownCreateNotReplayed",
+        "ManualMembersPreserved",
+        "RepeatHasNoWrites",
+        "CompleteWasVerified",
+        "ImportEventuallyExplained",
+        "RepeatEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["ImportScopeRemainsBound"]
+    },
+    {
+      "model": "ImportRelations",
+      "config": "negative-foreign-relation.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ImportScopeRemainsBound",
+        "ForeignRelationsBeforeWrites",
+        "FrozenMembersIntent",
+        "ExplicitEmptyMembers",
+        "ExistingMembersOnOmission",
+        "RequiresOnlyExplicit",
+        "RelationsAfterObjectCreation",
+        "UnknownCreateNotReplayed",
+        "ManualMembersPreserved",
+        "RepeatHasNoWrites",
+        "CompleteWasVerified",
+        "ImportEventuallyExplained",
+        "RepeatEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["ForeignRelationsBeforeWrites"]
+    },
+    {
+      "model": "ImportRelations",
+      "config": "negative-empty-inference.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ImportScopeRemainsBound",
+        "ForeignRelationsBeforeWrites",
+        "FrozenMembersIntent",
+        "ExplicitEmptyMembers",
+        "ExistingMembersOnOmission",
+        "RequiresOnlyExplicit",
+        "RelationsAfterObjectCreation",
+        "UnknownCreateNotReplayed",
+        "ManualMembersPreserved",
+        "RepeatHasNoWrites",
+        "CompleteWasVerified",
+        "ImportEventuallyExplained",
+        "RepeatEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["FrozenMembersIntent", "ExplicitEmptyMembers"]
+    },
+    {
+      "model": "ImportRelations",
+      "config": "negative-update-inference.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ImportScopeRemainsBound",
+        "ForeignRelationsBeforeWrites",
+        "FrozenMembersIntent",
+        "ExplicitEmptyMembers",
+        "ExistingMembersOnOmission",
+        "RequiresOnlyExplicit",
+        "RelationsAfterObjectCreation",
+        "UnknownCreateNotReplayed",
+        "ManualMembersPreserved",
+        "RepeatHasNoWrites",
+        "CompleteWasVerified",
+        "ImportEventuallyExplained",
+        "RepeatEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["FrozenMembersIntent", "ExistingMembersOnOmission"]
+    },
+    {
+      "model": "ImportRelations",
+      "config": "negative-retry-replan.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ImportScopeRemainsBound",
+        "ForeignRelationsBeforeWrites",
+        "FrozenMembersIntent",
+        "ExplicitEmptyMembers",
+        "ExistingMembersOnOmission",
+        "RequiresOnlyExplicit",
+        "RelationsAfterObjectCreation",
+        "UnknownCreateNotReplayed",
+        "ManualMembersPreserved",
+        "RepeatHasNoWrites",
+        "CompleteWasVerified",
+        "ImportEventuallyExplained",
+        "RepeatEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["FrozenMembersIntent"]
+    },
+    {
+      "model": "ImportRelations",
+      "config": "negative-requires-inference.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ImportScopeRemainsBound",
+        "ForeignRelationsBeforeWrites",
+        "FrozenMembersIntent",
+        "ExplicitEmptyMembers",
+        "ExistingMembersOnOmission",
+        "RequiresOnlyExplicit",
+        "RelationsAfterObjectCreation",
+        "UnknownCreateNotReplayed",
+        "ManualMembersPreserved",
+        "RepeatHasNoWrites",
+        "CompleteWasVerified",
+        "ImportEventuallyExplained",
+        "RepeatEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["RequiresOnlyExplicit"]
+    },
+    {
+      "model": "ImportRelations",
+      "config": "negative-early-relations.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ImportScopeRemainsBound",
+        "ForeignRelationsBeforeWrites",
+        "FrozenMembersIntent",
+        "ExplicitEmptyMembers",
+        "ExistingMembersOnOmission",
+        "RequiresOnlyExplicit",
+        "RelationsAfterObjectCreation",
+        "UnknownCreateNotReplayed",
+        "ManualMembersPreserved",
+        "RepeatHasNoWrites",
+        "CompleteWasVerified",
+        "ImportEventuallyExplained",
+        "RepeatEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["RelationsAfterObjectCreation"]
+    },
+    {
+      "model": "ImportRelations",
+      "config": "negative-unknown-replay.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ImportScopeRemainsBound",
+        "ForeignRelationsBeforeWrites",
+        "FrozenMembersIntent",
+        "ExplicitEmptyMembers",
+        "ExistingMembersOnOmission",
+        "RequiresOnlyExplicit",
+        "RelationsAfterObjectCreation",
+        "UnknownCreateNotReplayed",
+        "ManualMembersPreserved",
+        "RepeatHasNoWrites",
+        "CompleteWasVerified",
+        "ImportEventuallyExplained",
+        "RepeatEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["UnknownCreateNotReplayed"]
+    },
+    {
+      "model": "ImportRelations",
+      "config": "negative-repeat-inference.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ImportScopeRemainsBound",
+        "ForeignRelationsBeforeWrites",
+        "FrozenMembersIntent",
+        "ExplicitEmptyMembers",
+        "ExistingMembersOnOmission",
+        "RequiresOnlyExplicit",
+        "RelationsAfterObjectCreation",
+        "UnknownCreateNotReplayed",
+        "ManualMembersPreserved",
+        "RepeatHasNoWrites",
+        "CompleteWasVerified",
+        "ImportEventuallyExplained",
+        "RepeatEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["ManualMembersPreserved", "RepeatHasNoWrites"]
+    },
+    {
+      "model": "ImportRelations",
+      "config": "negative-unverified-completion.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "ImportScopeRemainsBound",
+        "ForeignRelationsBeforeWrites",
+        "FrozenMembersIntent",
+        "ExplicitEmptyMembers",
+        "ExistingMembersOnOmission",
+        "RequiresOnlyExplicit",
+        "RelationsAfterObjectCreation",
+        "UnknownCreateNotReplayed",
+        "ManualMembersPreserved",
+        "RepeatHasNoWrites",
+        "CompleteWasVerified",
+        "ImportEventuallyExplained",
+        "RepeatEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["CompleteWasVerified"]
+    }
+  ]
+}

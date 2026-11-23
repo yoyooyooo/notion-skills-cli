@@ -8,6 +8,7 @@ import { emit, requiredSingleton, singleton, switchFlag } from "./command-option
 import { libraryProfilesCommand } from "./commands-library-profiles.ts"
 import { currentSkillCommand } from "./commands-current-skill.ts"
 import { currentImportCommand } from "./commands-current-import.ts"
+import { currentImportBatchCommand } from "./commands-current-import-batch.ts"
 import { currentMembersPlanCommand } from "./commands-current-members.ts"
 import { currentSourceCommand } from "./commands-current-source.ts"
 import { currentOperationCommand } from "./commands-current-operation.ts"
@@ -98,6 +99,7 @@ export const libraryCommand = defineCommand("library").pipe(
     currentOperationCommand,
     currentSkillCommand,
     currentImportCommand,
+    currentImportBatchCommand,
     currentMembersPlanCommand,
     currentSourceCommand,
     currentProjectionCommand,

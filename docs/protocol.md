@@ -44,6 +44,7 @@ The root schema is shallow; query an exact command path for its full definition.
 | `export` | Complete selected bytes in a local ZIP or directory |
 | `ctl library init/inspect/files` | Current descriptor, initialization, or selected-owner directory |
 | `ctl library import` | Complete current Skill replacement, dry run, or same-operation resume |
+| `ctl library import-batch` | Explicit local root/file mapping, frozen batch import and relation application |
 | `ctl library members-plan` | Conservative relationship discovery and an optional portable copy with confirmed links |
 | `ctl library source apply/refresh` | Explicit Git contribution changes and same-parent finite recovery |
 | `ctl library projection` | Complete Notion text for one current Skill or the daily set, with read-only preview and single-Skill resume |
@@ -57,22 +58,33 @@ The root schema is shallow; query an exact command path for its full definition.
 The [remote search contract](notion-mcp.md) defines `contentSearch`, its SDK
 capability version, credential priority, result fields and publication fences.
 
-Current shared identity is `shared_skill:<library_id>:<skill_id>`.
-Names are discovery labels. The stable Skill ID identifies a Skill within its library.
-The main file has a stable File ID on the Skills page. Every supporting path has a Files row.
+The complete identity is `{ libraryId, skillId }`. Its public record ID is a
+canonical current root URI, such as `skill://architect?library=library-team`.
+`skill://architect` is contextual: a containing document supplies its Library;
+at a tool entry, explicit `--database` or `default_database` binds it once.
+No containing context means no resolution. Names and aliases are discovery labels.
+The logical Library ID comes from the four-table descriptor, not its database ID.
+A physical page UUID or Notion URL remains a separate adapter input; a UUID in a
+`skill://` authority is still a stable Skill ID.
 
-A returned `skill://` ref can contain the selected file identity and local snapshot.
+Tools emit full owner refs with a `snapshot` parameter for fixed content.
+The selected manifest maps an exact path to its native File binding or frozen
+Source route and byte identity. Source files need not have a Notion Files row.
+There is no public `file_id` query parameter or File-ID repair for an old path.
 Preserve returned refs rather than constructing them from a title.
 `read RELATIVE --from CONTAINING_REF` resolves from the actual containing file.
 Within one Skill it retains that selection. Crossing a Skill root requires the
-containing file's current Source route and a unique contribution mapping; otherwise
+containing file's selected Source route and a unique contribution mapping; otherwise
 use an explicit stable reference. Nested files use their own path and Source route.
 Cache directory adjacency and display names do not establish cross-Skill identity.
 
-For owner-local paths, `ctl resolve` with a fixed name or alias ref and no File
-ID remains a syntactic path calculation and makes no Notion request. A fixed canonical
-`shared_skill` ref or a File ID ref uses containing-file identity resolution.
-The SDK `resolveReference` still requires a fixed canonical containing File ref.
+For current owner-local paths, `ctl resolve` can perform a syntactic calculation
+after binding the Library. Fixed resolution validates the actual containing path
+in the selected manifest. A pathless fixed ref selects that manifest's entrypoint;
+current metadata never changes it. A same-owner current link from a fixed document
+retains its pin; a cross-owner link selects the target's own current or fixed tree.
+The SDK `resolveReference` requires a full fixed containing-file ref.
+The [reference contract](skill-reference-redesign.md) defines the grammar and cutover.
 
 A local snapshot fixes the manifest for one selection.
 Its opaque ID includes the observed record metadata. A metadata-only refresh can
@@ -121,7 +133,8 @@ renaming and rebinding need coordinated contribution management; use Source
 apply/refresh for its supported mapping and exclusion changes. Takeover and
 Source removal remain separate work. Reading or exporting the target remains available.
 Portable version 2 supports the canonical main path for its content kind.
-Portable relations carry same-library unpinned `shared_skill` refs. Omitted Members
+Portable relations carry same-library current root refs such as
+`skill://architect?library=library-team`. They have no path or snapshot. Omitted Members
 or Requires preserves an existing field, `[]` clears it, and an array replaces the full set.
 Prompt inputs reject relations. Both fields require registered single-property
 relations to the same Skills data source. Names, page URLs, foreign libraries,
@@ -146,6 +159,19 @@ Bindings declare an original root plus exact repository
 paths and same-library stable refs. When the plan is importable, optional output
 creates a portable copy and rewrites only confirmed local links to canonical refs.
 Original input is unchanged. See [binding format and examples](shared-authoring.md#discover-members-before-a-local-import).
+
+`ctl library import-batch MANIFEST --entry ENTRY` freezes an explicitly selected
+set of local roots, their admitted files, body replacements and final relations
+before writing. It creates/updates bodies first and applies relations second;
+Members cycles are supported, Requires cycles are rejected. This is not an atomic
+multi-Skill publication: a partial batch can expose ready bodies before the final
+relation phase completes. Use its complete result as the batch completion boundary.
+`--rebind-from LIBRARY_ID` permits exact old-to-new owner mappings only for
+batch-owned current refs and relations. Fixed body refs and unrelated external
+refs retain their original owner. No automatic same-name match is permitted.
+Resume keeps the same manifest, input bytes, options and operation ID; it uses the
+persisted plan instead of rescanning or reinterpreting omitted relations.
+Unknown creation outcomes remain blocked until verified. See [batch import](shared-authoring.md#import-an-explicit-local-batch).
 
 `--dry-run` reads current metadata without remote mutation or operation allocation.
 It reports the input hash, desired files, removals, and the body checks still required during apply.

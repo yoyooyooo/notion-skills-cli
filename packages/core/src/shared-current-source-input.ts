@@ -6,7 +6,7 @@ import {
   prepareCurrentSharedSourceContent,
   validateCurrentSourceId,
 } from "./shared-current-source.ts"
-import { currentWriteIdentity } from "./shared-current-write-input.ts"
+import { currentWriteSkillId } from "./shared-current-write-input.ts"
 import { assertSupportedGitBlob, gitBlobOid, type FixedGithubFile } from "./shared-github-source.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sourceDiscoveryInput } from "./shared-source-adapters.ts"
@@ -88,7 +88,7 @@ export function validateCurrentSourceContributions(input: unknown) {
   const identities = new Set<string>()
   const contributions = decoded.map((entry) => {
     if (entry.member_key !== ".") exactPath(entry.member_key, "Member key")
-    currentWriteIdentity(entry.skill_id, "Target Skill ID")
+    currentWriteSkillId(entry.skill_id)
     if (entry.mount_path !== "") exactPath(entry.mount_path, "Mount path")
     const identity = canonicalSharedJson([entry.member_key, entry.skill_id])
     if (identities.has(identity))

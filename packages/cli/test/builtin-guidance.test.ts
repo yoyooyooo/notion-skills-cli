@@ -57,6 +57,7 @@ test("executable builtin examples stay within the public current command surface
     "operation",
     "skill",
     "import",
+    "import-batch",
     "members-plan",
     "source",
     "projection",
@@ -263,6 +264,7 @@ test("the published documentation allowlist contains only current guides", () =>
     "docs/source-sync.md",
     "docs/shared-authoring.md",
     "docs/protocol.md",
+    "docs/skill-reference-redesign.md",
     "docs/maintenance-verification-review.md",
   ])
 })

@@ -75,6 +75,14 @@ if (
   !entries.includes("package/dist/management.js")
 )
   throw new Error("Packed management export or generated declarations are missing.")
+if (
+  manifest.exports?.["./ref"]?.import !== "./dist/ref.js" ||
+  manifest.exports?.["./ref"]?.require !== "./dist/ref.cjs" ||
+  manifest.exports?.["./ref"]?.types !== "./dist/types/core/src/skill-ref.d.ts" ||
+  !entries.includes("package/dist/ref.js") ||
+  !entries.includes("package/dist/ref.cjs")
+)
+  throw new Error("Packed pure Skill reference protocol is missing.")
 if (manifest.engines?.node !== "^22.23.5 || ^24.22.3 || ^26.13.1" || manifest.engines?.bun)
   throw new Error("Packed consumer runtime must be Node.js ^22.23.5, ^24.22.3, or ^26.13.1.")
 for (const section of ["dependencies", "optionalDependencies", "peerDependencies"])
@@ -98,6 +106,7 @@ const publicFiles = [
   "docs/source-sync.md",
   "docs/shared-authoring.md",
   "docs/protocol.md",
+  "docs/skill-reference-redesign.md",
   "docs/maintenance-verification-review.md",
   "skills/ntn-skills/SKILL.md",
   "skills/ntn-skills/references/commands.md",
@@ -128,6 +137,8 @@ const expected = new Set([
   "package/dist/ntn-skills.js",
   "package/dist/sdk.js",
   "package/dist/management.js",
+  "package/dist/ref.js",
+  "package/dist/ref.cjs",
   ...declarations.map((file) => `package/${file}`),
   ...publicFiles.map((file) => `package/${file}`),
 ])

@@ -1,3 +1,4 @@
+import { resolveCatalogReference } from "../src/catalog-reference.ts"
 import { describe, expect, test } from "bun:test"
 import { Crypto, Effect, Layer } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
@@ -7,11 +8,10 @@ import {
   decode,
   fail,
   property,
-  resolveRecord,
   SkillsError,
   type Source,
 } from "../src/model.ts"
-import { sharedRecordFromPage, sharedSkillId, sharedSkillProperty } from "../src/shared-content.ts"
+import { sharedRecordFromPage, skillIdentity, sharedSkillProperty } from "../src/shared-content.ts"
 import { LIBRARY_MARKER, type SharedLibrary } from "../src/shared-library-model.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
@@ -215,7 +215,7 @@ describe("shared content metadata", () => {
       source,
       library.skills.data_source_id,
     )
-    expect(first.id).toBe(sharedSkillId(library.library_id, "skill-1"))
+    expect(first.id).toBe(skillIdentity(library.library_id, "skill-1"))
     expect(first.id).toBe(moved.id)
     expect(first.ref).toBe(moved.ref)
     expect(first.locator.page_id).not.toBe(moved.locator.page_id)
@@ -277,9 +277,9 @@ describe("shared content metadata", () => {
   }
 
   test("safe identity diagnostics preserve valid boundary IDs", () => {
-    for (const skillId of ["A", "A9_alpha.beta:gamma-delta", "x".repeat(200)]) {
+    for (const skillId of ["a", "a9_alpha.beta-gamma-delta", "x".repeat(200)]) {
       const actual = sharedRecordFromPage(row({ skillId }), source, library.skills.data_source_id)
-      expect(actual.id).toBe(sharedSkillId(library.library_id, skillId))
+      expect(actual.id).toBe(skillIdentity(library.library_id, skillId))
       expect(actual.locator.skill_id).toBe(skillId)
       expect(decode(ContentRecordSchema, actual)).toEqual(actual)
       expect(actual).not.toHaveProperty("details")
@@ -432,8 +432,8 @@ describe("shared catalog routing", () => {
     const record = result.records[0]
     if (record === undefined || record.locator.type !== "shared_skill")
       throw new Error("Missing shared Skill")
-    expect(resolveRecord(record.id, result)).toEqual(record)
-    expect(resolveRecord(record.locator.page_id, result)).toEqual(record)
+    expect(resolveCatalogReference(record.id, result).record).toEqual(record)
+    expect(resolveCatalogReference(record.locator.page_id, result).record).toEqual(record)
   })
 
   test("101 Skills use two metadata query pages and no per-Skill GET", async () => {
@@ -484,7 +484,7 @@ describe("shared catalog routing", () => {
     const f = fixture({ rows: [row(), row({ n: 2, enabled: false })] })
     const result = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
     expect(result.records.map((record) => record.id)).toEqual([
-      sharedSkillId(library.library_id, "skill-1"),
+      skillIdentity(library.library_id, "skill-1"),
     ])
     expect(result.coverage.exhaustive).toBe(true)
   })
@@ -505,7 +505,7 @@ describe("shared catalog routing", () => {
     const f = fixture({ rows: [row(), row({ n: 2, enabled: false, skillId: "" })] })
     const result = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
     expect(result.records.map((record) => record.id)).toEqual([
-      sharedSkillId(library.library_id, "skill-1"),
+      skillIdentity(library.library_id, "skill-1"),
     ])
     expect(result.coverage.exhaustive).toBe(true)
     expect(f.calls).toHaveLength(3)
@@ -562,7 +562,7 @@ describe("shared catalog routing", () => {
     const f = fixture({ configuration: { sources: [source] } })
     const result = await f.run(catalog({ database: "shared", refresh: true }))
     expect(result.databases[0]?.alias).toBe("shared")
-    expect(result.records[0]?.id).toBe(sharedSkillId(library.library_id, "skill-1"))
+    expect(result.records[0]?.id).toBe(skillIdentity(library.library_id, "skill-1"))
   })
 
   test("incomplete pagination never reports an exhaustive empty directory", async () => {

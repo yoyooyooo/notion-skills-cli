@@ -1,5 +1,7 @@
 import { Clock, Crypto, Effect, FileSystem, Path, Schema } from "effect"
-import { catalog } from "./catalog.ts"
+import { bindEntryTarget, catalog } from "./catalog.ts"
+import { identitySegment, identityFromSegment } from "./cache-address.ts"
+import { resolveCatalogReference } from "./catalog-reference.ts"
 import { trashPath } from "./local-locks.ts"
 import { CURRENT_MATERIALIZATION_VERSION } from "./materialization.ts"
 import {
@@ -8,12 +10,11 @@ import {
   SnapshotSchema,
   aliasFor,
   fail,
-  resolveRecord,
   type Snapshot,
 } from "./model.ts"
 import { notionApiOrigin } from "./notion-http.ts"
 import { Notion } from "./notion.ts"
-import { normalizePath, pageId, parseTarget } from "./ref.ts"
+import { normalizePath, pageId, parseTarget, parseSkillIdentity } from "./ref.ts"
 import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
 import {
   assertSelectedSharedFileReferences,
@@ -442,22 +443,25 @@ export function publishSnapshotObservation(
     const id = yield* (yield* Crypto.Crypto).randomUUIDv4()
     // The store reuses a current cache slot by causal generation, preserving its
     // address for running readers. An older request cannot overwrite a newer decision.
-    yield* store.writeJson(`cache/latest/${snapshot.scope}/${snapshot.record.id}/${id}.json`, {
-      record_identity: snapshot.record.id,
-      scope: snapshot.scope,
-      started_at: startedAt,
-      generation,
-      materialization_version: CURRENT_MATERIALIZATION_VERSION,
-      validated_at: validatedAt,
-      snapshot_id: snapshot.snapshot_id,
-      default_context: snapshot.record.default_context,
-      ...(snapshot.record.locator.type === "shared_skill" ? { current_snapshot: snapshot } : {}),
-      invalidated: false,
-      ...(options.metadataOnly ? { metadata_only: true } : {}),
-      ...(options.sharedBodyValidUntil === undefined
-        ? {}
-        : { shared_body_valid_until: options.sharedBodyValidUntil }),
-    })
+    yield* store.writeJson(
+      `cache/latest/${snapshot.scope}/${identitySegment(snapshot.record.id)}/${id}.json`,
+      {
+        record_identity: snapshot.record.id,
+        scope: snapshot.scope,
+        started_at: startedAt,
+        generation,
+        materialization_version: CURRENT_MATERIALIZATION_VERSION,
+        validated_at: validatedAt,
+        snapshot_id: snapshot.snapshot_id,
+        default_context: snapshot.record.default_context,
+        ...(snapshot.record.locator.type === "shared_skill" ? { current_snapshot: snapshot } : {}),
+        invalidated: false,
+        ...(options.metadataOnly ? { metadata_only: true } : {}),
+        ...(options.sharedBodyValidUntil === undefined
+          ? {}
+          : { shared_body_valid_until: options.sharedBodyValidUntil }),
+      },
+    )
     yield* recordScope(snapshot.scope)
     return {
       ...snapshot,
@@ -509,11 +513,17 @@ function cachedRecordIdentity(selector: string, scope: string) {
       saved &&
       (saved.scope !== scope ||
         saved.page_id !== id ||
-        !saved.record_identity.startsWith("shared_skill:"))
+        !saved.record_identity.startsWith("skill://"))
     )
       return yield* Effect.fail(
         fail("STATE_CORRUPT", "Cached page alias differs from the selected scope or page."),
       )
+    if (saved)
+      yield* Effect.try({
+        try: () => parseSkillIdentity(saved.record_identity),
+        catch: () =>
+          fail("STATE_CORRUPT", "Cached page alias does not contain a canonical Skill identity."),
+      })
     return { identity: saved?.record_identity ?? id, page: id }
   })
 }
@@ -521,7 +531,7 @@ function latestObservation(page: string, scope: string) {
   return Effect.gen(function* () {
     const store = yield* Store
     for (let attempt = 0; attempt < 3; attempt++) {
-      const keys = yield* store.listKeys(`cache/latest/${scope}/${page}`)
+      const keys = yield* store.listKeys(`cache/latest/${scope}/${identitySegment(page)}`)
       const entries: Array<typeof ObservationSchema.Type> = []
       let changed = false
       for (const key of keys) {
@@ -570,15 +580,18 @@ function recordAccessObservation(
     if (denied === undefined && previous?.access_denied === undefined) return
     const now = yield* Clock.currentTimeMillis
     const id = yield* (yield* Crypto.Crypto).randomUUIDv4()
-    yield* (yield* Store).writeJson(`cache/latest/${scope}/${identity}/${id}.json`, {
-      record_identity: identity,
-      scope,
-      started_at: now,
-      validated_at: now,
-      generation,
-      invalidated: true,
-      ...(denied === undefined ? {} : { access_denied: denied }),
-    })
+    yield* (yield* Store).writeJson(
+      `cache/latest/${scope}/${identitySegment(identity)}/${id}.json`,
+      {
+        record_identity: identity,
+        scope,
+        started_at: now,
+        validated_at: now,
+        generation,
+        invalidated: true,
+        ...(denied === undefined ? {} : { access_denied: denied }),
+      },
+    )
   }).pipe(
     Effect.mapError((error) =>
       error instanceof SkillsError
@@ -744,7 +757,7 @@ export function invalidateCurrentLibraryCatalog(scope: string, targetDatabase: s
     const store = yield* Store
     const keys = new Set(yield* store.listKeys(`cache/catalogs/${scope}`))
     for (const key of yield* store.listKeys(`cache-generations/${scope}`)) {
-      const identity = key.split("/")[2]!.replace(/\.json$/, "")
+      const identity = identityFromSegment(key.split("/")[2]!.replace(/\.json$/, ""))
       if (identity.startsWith("views-")) keys.add(`cache/views/${scope}/${identity.slice(6)}.json`)
       else if (identity.startsWith("catalog-"))
         keys.add(`cache/catalogs/${scope}/${identity.slice(8)}.json`)
@@ -786,20 +799,23 @@ export function invalidateSnapshotCache(
           const last = yield* latestObservation(identity, selected)
           const previous = options.retainForOffline ? last : undefined
           const id = yield* (yield* Crypto.Crypto).randomUUIDv4()
-          yield* store.writeJson(`cache/latest/${selected}/${identity}/${id}.json`, {
-            ...previous,
-            record_identity: identity,
-            scope: selected,
-            started_at: now,
-            // A rejected refresh retires current eligibility, not the last successful
-            // observation or its immutable pin. Offline reads retain its actual age.
-            validated_at: previous?.validated_at ?? now,
-            generation,
-            invalidated: true,
-            ...((options.accessDenied ?? last?.access_denied)
-              ? { access_denied: options.accessDenied ?? last?.access_denied }
-              : {}),
-          })
+          yield* store.writeJson(
+            `cache/latest/${selected}/${identitySegment(identity)}/${id}.json`,
+            {
+              ...previous,
+              record_identity: identity,
+              scope: selected,
+              started_at: now,
+              // A rejected refresh retires current eligibility, not the last successful
+              // observation or its immutable pin. Offline reads retain its actual age.
+              validated_at: previous?.validated_at ?? now,
+              generation,
+              invalidated: true,
+              ...((options.accessDenied ?? last?.access_denied)
+                ? { access_denied: options.accessDenied ?? last?.access_denied }
+                : {}),
+            },
+          )
         })
       // An exact page rejection covers every retained stable identity for that page.
       // Save it before disposable views, alias lookup, or a second write can fail.
@@ -807,7 +823,7 @@ export function invalidateSnapshotCache(
       if (physical !== undefined) yield* invalidate(physical)
       const viewKeys = new Set(yield* store.listKeys(`cache/views/${selected}`))
       for (const key of yield* store.listKeys(`cache-generations/${selected}`)) {
-        const identity = key.split("/")[2]!.replace(/\.json$/, "")
+        const identity = identityFromSegment(key.split("/")[2]!.replace(/\.json$/, ""))
         if (identity.startsWith("views-"))
           viewKeys.add(`cache/views/${selected}/${identity.slice(6)}.json`)
       }
@@ -834,13 +850,15 @@ export function invalidateScopeCache(
     const store = yield* Store
     yield* recordScopeAccess(scope, generation ?? (yield* reserveScopeAccess(scope)), denied)
     const records = new Set(
-      (yield* store.listKeys(`cache/latest/${scope}`)).map((key) => key.split("/")[3]!),
+      (yield* store.listKeys(`cache/latest/${scope}`)).map((key) =>
+        identityFromSegment(key.split("/")[3]!),
+      ),
     )
     const catalogs = new Set(yield* store.listKeys(`cache/catalogs/${scope}`))
     const views = new Set(yield* store.listKeys(`cache/views/${scope}`))
     // Include work that reserved a generation but has not published a result.
     for (const key of yield* store.listKeys(`cache-generations/${scope}`)) {
-      const identity = key.split("/")[2]!.replace(/\.json$/, "")
+      const identity = identityFromSegment(key.split("/")[2]!.replace(/\.json$/, ""))
       if (identity.startsWith("catalog-"))
         catalogs.add(`cache/catalogs/${scope}/${identity.slice(8)}.json`)
       else if (identity.startsWith("views-"))
@@ -873,10 +891,13 @@ export function invalidateScopeCache(
 
 function cachedTarget(target: string, database?: string) {
   return Effect.gen(function* () {
-    const parsed = yield* Effect.try({
-      try: () => parseTarget(target),
-      catch: (error) => error as SkillsError,
-    })
+    const parsed = yield* bindEntryTarget(
+      yield* Effect.try({
+        try: () => parseTarget(target),
+        catch: (error) => error as SkillsError,
+      }),
+      { database, offline: true },
+    )
     if (parsed.snapshot)
       return yield* Effect.fail(
         fail("INVALID_ARGUMENT", "Cache operations require a current target."),
@@ -920,7 +941,7 @@ function cachedTarget(target: string, database?: string) {
         fail("CACHE_MISSING", "A complete catalog for this scope is required."),
       )
     const skill = yield* Effect.try({
-      try: () => resolveRecord(parsed.selector, directory, selectedDatabase),
+      try: () => resolveCatalogReference(parsed.selector, directory).record,
       catch: (error) => error as SkillsError,
     })
     return { page: skill.id, scope: scope! }
@@ -937,9 +958,13 @@ export function cacheStatus(target?: string, options: { database?: string } = {}
       const parts = key.split("/")
       if (
         parts[1] === "latest" &&
-        (!selected || (parts[2] === selected.scope && parts[3] === selected.page))
+        (!selected ||
+          (parts[2] === selected.scope && identityFromSegment(parts[3]!) === selected.page))
       )
-        pairs.set(`${parts[2]}/${parts[3]}`, { scope: parts[2]!, page: parts[3]! })
+        pairs.set(`${parts[2]}/${parts[3]}`, {
+          scope: parts[2]!,
+          page: identityFromSegment(parts[3]!),
+        })
     }
     const now = yield* Clock.currentTimeMillis
     const policy = yield* effectiveCachePolicy
@@ -1029,7 +1054,8 @@ export function clearCache(
         keys.push(key)
         continue
       }
-      if (key.startsWith(`cache/latest/${selected.scope}/${selected.page}/`)) keys.push(key)
+      if (key.startsWith(`cache/latest/${selected.scope}/${identitySegment(selected.page)}/`))
+        keys.push(key)
       else if (derivedPrefix !== undefined && key.startsWith(derivedPrefix)) keys.push(key)
       else if (key.startsWith(`cache/views/${selected.scope}/`)) keys.push(key)
       else if (key.startsWith(`cache/catalogs/${selected.scope}/`) && key.endsWith(".json")) {
@@ -1047,7 +1073,7 @@ export function clearCache(
     for (const key of yield* store.listKeys("cache-generations")) {
       const parts = key.split("/")
       const scope = parts[1]!
-      const identity = parts[2]!.replace(/\.json$/, "")
+      const identity = identityFromSegment(parts[2]!.replace(/\.json$/, ""))
       if (selected && scope !== selected.scope) continue
       if (identity.startsWith("views-")) {
         keys.push(`cache/views/${scope}/${identity.slice(6)}.json`)
@@ -1062,7 +1088,7 @@ export function clearCache(
         )
           keys.push(`cache/catalogs/${scope}/${identity.slice(8)}.json`)
       } else if (!selected || identity === selected.page)
-        keys.push(`cache/latest/${scope}/${identity}/.fence`)
+        keys.push(`cache/latest/${scope}/${identitySegment(identity)}/.fence`)
     }
     const entries = [...new Set(keys)]
     const retired = options.dryRun ? [] : yield* store.retireKeys(entries)

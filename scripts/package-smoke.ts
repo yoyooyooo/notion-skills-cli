@@ -108,6 +108,7 @@ const library = await cli(["schema", "ctl", "library"])
 assert.deepEqual(library.schema.commands.map((command: { name: string }) => command.name).sort(), [
   "files",
   "import",
+  "import-batch",
   "init",
   "inspect",
   "members-plan",

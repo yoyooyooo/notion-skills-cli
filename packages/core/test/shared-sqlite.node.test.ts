@@ -112,7 +112,7 @@ test("the current native slot fences rejected cold reads and pre-clear completio
   const domain = "current-native-bodies"
   await isolated(async (root) => {
     const key = `cache/${domain}/${"7".repeat(64)}/latest.json`
-    const identity = "shared_skill:slot-library:slot-skill"
+    const identity = "skill://slot-skill?library=slot-library"
     const payload = {
       version: 1,
       scope,
@@ -189,7 +189,7 @@ test("the current native slot fences rejected cold reads and pre-clear completio
 test("a newer native observation can follow a rebuilt page without changing logical owner or accepting late old-page publication", async () => {
   await isolated(async (root) => {
     const key = `cache/current-native-bodies/${"8".repeat(64)}/latest.json`
-    const identity = "shared_skill:rebuilt-library:rebuilt-skill"
+    const identity = "skill://rebuilt-skill?library=rebuilt-library"
     const old = {
       version: 1,
       scope,
@@ -237,7 +237,7 @@ import {Notion} from ${JSON.stringify(core + "notion.ts")};
 import {SnapshotSchema,decode} from ${JSON.stringify(core + "model.ts")};
 import {openSharedSnapshot} from ${JSON.stringify(core + "shared-snapshot.ts")};
 import {readSkill,targetSnapshot} from ${JSON.stringify(core + "snapshot.ts")};
-import {fileRef} from ${JSON.stringify(core + "ref.ts")};
+import {fileRef,parseTarget} from ${JSON.stringify(core + "ref.ts")};
 import {clearCache} from ${JSON.stringify(core + "cache.ts")};
 import {currentSnapshotFixture,currentLibrary,currentScope,currentSkillPage} from ${JSON.stringify(new URL("./shared-current-fixture.ts", import.meta.url).pathname)};
 process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};
@@ -270,8 +270,8 @@ Effect.runPromise(Effect.gen(function*(){
  fixture.clearCalls();yield* open();const coldBodies=fixture.bodyCalls().length;
  fixture.clearCalls();yield* open();const warmBodies=fixture.bodyCalls().length;
  fixture.clearCalls();
- const fixed=yield* Effect.forEach([seed,alternate],value=>targetSnapshot({selector:currentSkillPage,snapshot:value.snapshot_id},{offline:true}));
- const fixedBodies=yield* Effect.forEach(fixed,value=>Effect.forEach(value.files,file=>readSkill(fileRef(value.record.id,file.path,value.snapshot_id,value.file_bindings.find(binding=>binding.path===file.path).file_id),{offline:true})));
+ const fixed=yield* Effect.forEach([seed,alternate],value=>targetSnapshot(parseTarget(fileRef(value.record.id,'',value.snapshot_id)),{offline:true}));
+ const fixedBodies=yield* Effect.forEach(fixed,value=>Effect.forEach(value.files,file=>readSkill(fileRef(value.record.id,file.path,value.snapshot_id),{offline:true})));
  const fixedRecords=fixed.map((value,index)=>JSON.stringify(value.record)===JSON.stringify([seed,alternate][index].record));
  const completeReads=fixedBodies.every((files,index)=>files.every((file,n)=>file.has_more===false&&file.range.start===1&&file.range.end===file.range.total_lines&&file.content===new TextDecoder().decode(fixture.objects.get('objects/'+fixed[index].files[n].sha256))));
  const fixedRequests=fixture.calls.length;
@@ -294,7 +294,7 @@ Effect.runPromise(Effect.gen(function*(){
 }).pipe(Effect.provide(services),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
 }
 
-test("real Store current v5 publication tolerates concurrent display observations and preserves content, authority and cache fences", async () => {
+test("real Store publication tolerates concurrent display observations and preserves content, authority and cache fences", async () => {
   await isolated(async (root) => {
     const result = await runProgram(currentPublicationProgram(root))
     expect(result.exit, result.stderr).toBe(0)
@@ -347,7 +347,7 @@ const services=Layer.mergeAll(NodeServices.layer,Layer.succeed(Notion,remote),La
 Effect.runPromise(Effect.gen(function*(){
  const store=yield* Store;
  const access=${JSON.stringify(action === "directory" ? "manifest" : action === "selected" ? "target" : "all")};
- const snapshot=yield* targetSnapshot({selector:skillPage,...(access==='target'?{path:'assets/large.bin'}:{})},{database:library.skills.database_id,refresh:access==='manifest'},access);
+ const snapshot=yield* targetSnapshot({kind:'page',selector:skillPage,...(access==='target'?{path:'assets/large.bin'}:{})},{database:library.skills.database_id,refresh:access==='manifest'},access);
  const object=yield* store.readBytes('objects/'+hash).pipe(Effect.result);
  const stats=yield* Effect.scoped(Effect.gen(function*(){const state=yield* sqliteState(store.root,yield* FileSystem.FileSystem);return yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;return {native_bodies:yield* sql\`SELECT count(*) AS count FROM shared_local_records WHERE key LIKE 'cache/current-native-bodies/%'\`,snapshots:yield* sql\`SELECT count(*) AS count FROM snapshots\`}}))}));
  console.log(JSON.stringify({snapshot_id:snapshot.snapshot_id,files:snapshot.files,materialization:snapshot.materialization,requests,raw_present:object._tag==='Success',raw_exact:object._tag==='Success'&&digest(object.success)===hash,writes:fixture.semanticWrites().length,stats}));

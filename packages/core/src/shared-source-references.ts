@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { fail, SkillsError, type Snapshot } from "./model.ts"
 import { fileRef, normalizePath, parseRef, resolveRef } from "./ref.ts"
-import { sharedSkillId } from "./shared-content.ts"
+import { skillIdentity } from "./shared-content.ts"
 import { resolveCurrentSharedSources } from "./shared-current-source.ts"
 import { queryCurrentSourceManagement } from "./shared-current-source-management.ts"
 import { isGithubGitUrl } from "./shared-git-origin.ts"
@@ -55,7 +55,7 @@ export function resolveCurrentSourceReference(
               (file) => file.path === path && file.kind === "source",
             )
           )
-            return fileRef(snapshot.record.id, path, snapshot.snapshot_id, binding.file_id)
+            return fileRef(snapshot.record.id, path, snapshot.snapshot_id)
         }
       }
       return yield* Effect.fail(sourceSelection.failure)
@@ -84,8 +84,7 @@ export function resolveCurrentSourceReference(
       )
     if (sameOwner.length === 1) {
       const target = sameOwner[0]!
-      const binding = snapshot.file_bindings?.find((file) => file.path === target.path)
-      return fileRef(snapshot.record.id, target.path, snapshot.snapshot_id, binding?.file_id)
+      return fileRef(snapshot.record.id, target.path, snapshot.snapshot_id)
     }
     if (options.offline)
       return yield* Effect.fail(
@@ -139,7 +138,7 @@ export function resolveCurrentSourceReference(
     })
     if (candidates.length === 1) {
       const target = candidates[0]!
-      return fileRef(sharedSkillId(library.library_id, target.skill_id), target.path)
+      return fileRef(skillIdentity(library.library_id, target.skill_id), target.path)
     }
     if (candidates.length > 1)
       return yield* Effect.fail(

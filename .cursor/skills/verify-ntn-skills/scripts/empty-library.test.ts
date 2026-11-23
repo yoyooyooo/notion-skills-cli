@@ -122,8 +122,7 @@ test("test entry does not retarget a foreign pinned ref", () => {
       property_ids: {},
     },
   }
-  const own =
-    "skill://shared_skill%3Alibrary-owned%3Askill-owned/SKILL.md?snapshot=s_" + "a".repeat(64)
+  const own = "skill://skill-owned/SKILL.md?library=library-owned&snapshot=s_" + "a".repeat(64)
   expect(() =>
     requireTestCommand(["read", own, "--database", library.skills.database_id], library),
   ).not.toThrow()

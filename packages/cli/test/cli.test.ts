@@ -42,7 +42,7 @@ const node = (() => {
   return resolved.stdout.toString().trim()
 })()
 const snapshot = `s_${"0".repeat(64)}`
-const pinned = `skill://sample/SKILL.md?snapshot=${snapshot}`
+const pinned = `skill://sample/SKILL.md?library=test&snapshot=${snapshot}`
 interface InvocationResult {
   stdout: string
   stderr: string
@@ -230,6 +230,7 @@ test("current management and export schemas contain no historical compatibility 
       [
         "files",
         "import",
+        "import-batch",
         "init",
         "inspect",
         "members-plan",
@@ -402,12 +403,12 @@ test("unknown flags, obsolete selectors and conflicting paths fail before online
     await invalid(args)
 }, 60000)
 
-test("name reads, refresh policies and valid duration overrides reach online validation", async () => {
+test("explicit identity reads and valid freshness policies reach online validation", async () => {
   for (const command of [
     ["list"],
-    ["read", "Sample Skill"],
-    ["files", "Sample Skill"],
-    ["export", "Sample Skill", "--output", "output.zip"],
+    ["read", "skill://sample?library=test"],
+    ["files", "skill://sample?library=test"],
+    ["export", "skill://sample?library=test", "--output", "output.zip"],
   ]) {
     for (const flags of [
       [],
@@ -423,9 +424,9 @@ test("name reads, refresh policies and valid duration overrides reach online val
 test("offline policy fails explicitly without a safe cached identity", async () => {
   for (const command of [
     ["list"],
-    ["read", "sample"],
-    ["files", "sample"],
-    ["export", "sample", "--output", "output.zip"],
+    ["read", "skill://sample?library=test"],
+    ["files", "skill://sample?library=test"],
+    ["export", "skill://sample?library=test", "--output", "output.zip"],
   ]) {
     const result = await invoke([...command, "--offline"], {
       traceOnline: true,
@@ -692,23 +693,35 @@ test("consumer catalog identity follows remote scope without local configuration
   expect((await identity(database)).identity).not.toBe(first.identity)
 }, 30000)
 
-test("relative resolution preserves snapshot without consulting Notion", async () => {
+test("current relative resolution preserves owner without consulting Notion", async () => {
   const result = await invoke(
     [
       "ctl",
       "resolve",
       "../assets/guide.md",
       "--from",
-      `skill://sample/references/page.md?snapshot=${snapshot}`,
+      "skill://sample/references/page.md?library=test",
     ],
     { traceOnline: true },
   )
   expect(result.exit).toBe(0)
   expect(JSON.parse(result.stdout)).toEqual({
     ok: true,
-    ref: `skill://sample/assets/guide.md?snapshot=${snapshot}`,
+    ref: "skill://sample/assets/guide.md?library=test",
   })
   expect(result.onlineCalled).toBe(false)
+  const fixed = await invoke(
+    [
+      "ctl",
+      "resolve",
+      "../assets/guide.md",
+      "--from",
+      `skill://sample/references/page.md?library=test&snapshot=${snapshot}`,
+    ],
+    { traceOnline: true },
+  )
+  jsonFailure(fixed, "SNAPSHOT_MISSING", 1)
+  expect(fixed.onlineCalled).toBe(false)
 })
 test("explicit help takes precedence over repeated singleton values", async () => {
   const result = await invoke(["list", "--database", "frontend", "--database", "ops", "--help"], {
@@ -740,7 +753,7 @@ test("built-ins are explicit offline package identities and cannot capture remot
       "INVALID_PATH",
       1,
     )
-    jsonFailure(await invoke(["read", name]), "AUTH_REQUIRED", 1)
+    jsonFailure(await invoke(["read", name]), "LIBRARY_CONTEXT_REQUIRED", 1)
   }
   await invalid(["ctl", "builtin", "publish", ids[1]!, "--target", "Ntn Skills Maintain"])
   await invalid(["ctl", "builtin", "publish", ids[1]!, "--database", "a", "--database", "b"])

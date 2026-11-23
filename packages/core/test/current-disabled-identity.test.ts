@@ -3,7 +3,7 @@ import { Effect } from "effect"
 import { catalog } from "../src/catalog.ts"
 import { consume } from "../src/consumer.ts"
 import { SkillsError } from "../src/model.ts"
-import { parseTarget } from "../src/ref.ts"
+import { fileRef, parseTarget } from "../src/ref.ts"
 import { targetSnapshot } from "../src/snapshot.ts"
 import { currentSnapshotFixture, currentLibrary as library } from "./shared-current-fixture.ts"
 
@@ -12,8 +12,8 @@ function disabledFixture() {
   f.main.properties.Enabled.checkbox = false
   return f
 }
-const id = `shared_skill:${library.library_id}:demo`
-const ref = "skill://" + encodeURIComponent(id) + "/SKILL.md"
+const id = `skill://demo?library=${encodeURIComponent(library.library_id)}`
+const ref = fileRef(id, "SKILL.md")
 
 test("a cold exact shared identity reports disabled instead of confusing directory omission with absence", async () => {
   const f = disabledFixture()
@@ -38,7 +38,7 @@ test("a cold exact shared identity reports disabled instead of confusing directo
   ).toHaveLength(1)
 })
 
-test("scalar current read uses the same exact identity while ordinary name discovery stays hidden", async () => {
+test("scalar current read reports disabled by exact identity and never selects a display name", async () => {
   const f = disabledFixture()
   const exact = await f.run(
     targetSnapshot(parseTarget(ref), { database: library.skills.database_id, refresh: true }).pipe(
@@ -52,10 +52,10 @@ test("scalar current read uses the same exact identity while ordinary name disco
   expect(f.bodyCalls().length).toBe(0)
   expect(f.semanticWrites().length).toBe(0)
   const name = await f.run(
-    targetSnapshot(
-      { selector: "Current demo" },
-      { database: library.skills.database_id, refresh: true },
-    ).pipe(Effect.result),
+    targetSnapshot(parseTarget("other-display-name"), {
+      database: library.skills.database_id,
+      refresh: true,
+    }).pipe(Effect.result),
   )
   expect(name._tag).toBe("Failure")
   if (name._tag === "Failure") expect(name.failure.code).toBe("SKILL_NOT_FOUND")

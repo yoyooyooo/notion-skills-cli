@@ -965,8 +965,9 @@ test("fixed nested File resolution uses the Source path and target mount without
   const beforeDownloads = http.requests.length
   f.clearCalls()
   const resolved = await f.run(http.use(resolveReference("../beta/guide.md", { from })))
-  expect(parseRef(resolved.ref)).toEqual({
-    selector: `shared_skill:${library.library_id}:skill-beta`,
+  expect(parseRef(resolved.ref)).toMatchObject({
+    skillId: "skill-beta",
+    scope: { kind: "library", libraryId: library.library_id },
     path: "vendor/guide.md",
   })
   expect(resolved).toMatchObject({

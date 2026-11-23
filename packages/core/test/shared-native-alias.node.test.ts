@@ -20,7 +20,7 @@ import {
   currentSkillPage as skillPage,
 } from "./shared-current-fixture.ts"
 
-const owner = "shared_skill:library-current:demo"
+const owner = "skill://demo?library=library-current"
 const roots: string[] = []
 afterAll(async () => {
   if (process.platform === "darwin")

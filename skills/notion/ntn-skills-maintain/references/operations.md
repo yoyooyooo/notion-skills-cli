@@ -5,6 +5,7 @@
 - [Register a Notion page](#register-an-authored-notion-page)
 - [Remove a Skill](#remove-a-skill)
 - [Complete import](#import-a-complete-current-tree)
+- [Explicit batch import](#import-an-explicit-local-batch)
 - [Notion text](#generate-notion-text)
 - [Trash recovery](#restore-a-trashed-skill)
 - [Unfinished work](#incomplete-current-work)
@@ -13,6 +14,38 @@
 Use `ntn-skills schema ctl library skill` for daily authoring, or the exact
 subcommand's help. Current content consumption is read-only. Complete import is
 a separate full-tree replacement with explicit library and stable Skill identity.
+
+## Import an explicit local batch
+
+For related local roots, prepare a version 1 JSON manifest with an optional
+`root` and `skills: [{ root, skill_id, native?, name?, description? }]`.
+Every root is an explicit disjoint directory relative to the manifest root.
+Unknown neighbors and filename similarity do not establish a target.
+
+```sh
+ntn-skills ctl library import-batch MANIFEST --entry ENTRY --dry-run
+ntn-skills ctl library import-batch MANIFEST --entry ENTRY --operation OPERATION_ID
+ntn-skills ctl library import-batch MANIFEST --entry ENTRY --operation OPERATION_ID --resume
+```
+
+Read the mapping, rewrites and member discovery before applying. The importer
+freezes admitted bytes and exact paths, rewrites proven cross-root links in a
+derived copy, writes bodies, then applies relations. Members cycles are allowed;
+Requires remains explicit and acyclic. Explicit empty sets win and omission on
+update preserves authored relations. The batch is not atomic across Skills;
+ready bodies can appear before final relationships. Wait for batch completion.
+
+Cross-Library copies require `--rebind-from ORIGIN_LIBRARY_ID` to rewrite explicit
+current refs and relations for exact batch-owned targets. Unmapped external
+body refs and all fixed body refs retain their original owner. Foreign relations
+still fail before writing. There is no same-name matching or automatic identity
+migration. For complete examples, read the packaged authoring guide's
+`import-an-explicit-local-batch` section.
+
+Resume the same operation with unchanged input, options and native selection.
+Execution budgets may change. Preserve the frozen local plan and Notion operation
+evidence. `CURRENT_IMPORT_PHASE_UNRESOLVED` requires inspection/reconciliation;
+do not start a new operation to evade an unknown creation result.
 
 ## Inspect the complete tree
 

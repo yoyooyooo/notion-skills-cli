@@ -70,13 +70,7 @@ async function fixture(
         )
       }),
     )
-  const ref = (path: string) =>
-    fileRef(
-      snapshot.record.id,
-      path,
-      snapshot.snapshot_id,
-      snapshot.file_bindings?.find((binding) => binding.path === path)?.file_id,
-    )
+  const ref = (path: string) => fileRef(snapshot.record.id, path, snapshot.snapshot_id)
   const selected = ["references/bom.txt", "references/a.txt", "empty.txt", "assets/raw.bin"]
   const input = (paths = selected, budget?: ResourceReadInput["budget"]): ResourceReadInput => ({
     version: 1,
@@ -278,25 +272,22 @@ describe("fixed resource batch", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("stable File identity corrects an old path hint and duplicate aliases fail before any bytes", async () => {
+  test("a stale fixed path fails before bytes and exact paths use the selected manifest", async () => {
     const f = await fixture()
-    const target = fileRef(
-      f.snapshot.record.id,
-      "former/path.txt",
-      f.snapshot.snapshot_id,
-      "support-0",
-    )
-    const result = ready(await f.run(readResources({ version: 1, refs: [target] })))
+    const target = fileRef(f.snapshot.record.id, "former/path.txt", f.snapshot.snapshot_id)
+    f.objectReads.clear()
+    expect(await f.run(readResources({ version: 1, refs: [target] }))).toMatchObject({
+      status: "failed",
+      error: { code: "FILE_NOT_FOUND" },
+    })
+    expect(f.objectReads.size).toBe(0)
+    const exact = f.ref("references/a.txt")
+    const result = ready(await f.run(readResources({ version: 1, refs: [exact] })))
     expect(result.files[0]).toMatchObject({
-      requested_ref: target,
-      ref: f.ref("references/a.txt"),
+      requested_ref: exact,
+      ref: exact,
       path: "references/a.txt",
     })
-    f.objectReads.clear()
-    expect(
-      await f.run(readResources({ version: 1, refs: [target, f.ref("references/a.txt")] })),
-    ).toMatchObject({ status: "failed", error: { code: "RESOURCE_SELECTION_CONFLICT" } })
-    expect(f.objectReads.size).toBe(0)
   })
 
   test("main, file/byte limits, mixed pins/owners and invalid budgets never read selected objects", async () => {
@@ -330,7 +321,7 @@ describe("fixed resource batch", () => {
       [
         {
           version: 1,
-          refs: [a, fileRef("shared_skill:another:owner", "empty.txt", f.snapshot.snapshot_id)],
+          refs: [a, fileRef("skill://owner?library=another", "empty.txt", f.snapshot.snapshot_id)],
         },
         "RESOURCE_SELECTION_CONFLICT",
       ],

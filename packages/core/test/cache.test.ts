@@ -1,3 +1,4 @@
+import { fileRef } from "../src/ref.ts"
 import { expect, test } from "bun:test"
 import { Clock, Crypto, Effect, Fiber, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
@@ -32,7 +33,7 @@ const page = currentSkillPage
 const database = currentLibrary.skills.database_id
 const guide = currentId(100)
 const other = currentId(90)
-const logicalId = "shared_skill:" + currentLibrary.library_id + ":demo"
+const logicalId = `skill://demo?library=${currentLibrary.library_id}`
 type FixtureServices =
   | Store
   | Notion
@@ -433,7 +434,7 @@ test("T05 fixed inventories and exports require the selected credential scope af
   await refused("CACHE_SCOPE_UNAVAILABLE")
 })
 
-for (const target of [page, "sample-skill"])
+for (const target of [page, logicalId])
   for (const code of ["ACCESS_DENIED", "AUTH_REQUIRED", "NOT_FOUND"] as const)
     test(`SC12 ${code} during refresh fences current ${target} without changing old pins`, async () => {
       const f = fixture()
@@ -562,7 +563,11 @@ test("SC12 scope rejection reaches an old pin with no current observation", asyn
   await f.run(readSkill(page, { database }))
   const old = await f.run(readSkill(other, { database }))
   for (const key of f.json.keys())
-    if (key.includes("/shared_skill:" + currentLibrary.library_id + ":other-skill/"))
+    if (
+      key.includes(
+        "/" + encodeURIComponent(`skill://other-skill?library=${currentLibrary.library_id}`) + "/",
+      )
+    )
       f.json.delete(key)
   f.deny("AUTH_REQUIRED", "v1/users/me")
   await f.run(readSkill(page, { database, refresh: true }).pipe(Effect.result))
@@ -615,19 +620,17 @@ test("SC12 cancelling an in-flight refresh neither publishes nor marks the old o
   expect(f.requests.length).toBe(requests)
 })
 
-test("C9 current name selection uses complete scoped catalogs and refresh exposes ambiguity", async () => {
+test("C9 a duplicate display name cannot redirect a selected stable owner", async () => {
   const f = fixture()
-  await f.run(readSkill("sample-skill", { database }))
+  await f.run(readSkill(logicalId, { database }))
   const before = f.requests.length
-  expect((await f.run(readSkill("sample-skill", { database, offline: true }))).source).toBe(
+  expect((await f.run(readSkill(logicalId, { database, offline: true }))).source).toBe(
     "local_cache",
   )
   expect(f.requests.length).toBe(before)
   f.duplicate()
-  const result = await f.run(
-    readSkill("sample-skill", { database, refresh: true }).pipe(Effect.result),
-  )
-  expect(result._tag === "Failure" && result.failure.code).toBe("SKILL_AMBIGUOUS")
+  const result = await f.run(readSkill(logicalId, { database, refresh: true }).pipe(Effect.result))
+  expect(result._tag === "Success" && result.success.record.id).toBe(logicalId)
   expect((await f.run(readSkill(page, { refresh: true }))).record.id).toBe(logicalId)
 })
 
@@ -765,7 +768,7 @@ test("C15/P1 every read entry carries policy and pinned relative flags fail befo
   expect(exported.snapshot_id).toBe(first.snapshot_id)
   const relative = await f.run(
     readSkill("references/guide.md", {
-      from: `skill://${encodeURIComponent(first.record.id)}/${first.entrypoint}?snapshot=${first.snapshot_id}`,
+      from: fileRef(first.record.id, first.entrypoint, first.snapshot_id),
       offline: true,
     }),
   )
@@ -781,16 +784,19 @@ test("C15/P1 every read entry carries policy and pinned relative flags fail befo
 
 test("C17/C18/P6 cache status and targeted retirement are offline and retain all persistent content", async () => {
   const f = fixture()
-  await f.run(readSkill("sample-skill", { database }))
+  await f.run(readSkill(logicalId, { database }))
   const current = await f.run(openSkill(page))
-  f.json.set("cache/latest/other-scope/shared_skill:other-library:other-page/entry.json", {
-    record_identity: "shared_skill:other-library:other-page",
-    scope: "other-scope",
-    generation: 1,
-    started_at: 0,
-    validated_at: 0,
-    invalidated: true,
-  })
+  f.json.set(
+    "cache/latest/other-scope/skill%3A%2F%2Fother-page%3Flibrary%3Dother-library/entry.json",
+    {
+      record_identity: "skill://other-page?library=other-library",
+      scope: "other-scope",
+      generation: 1,
+      started_at: 0,
+      validated_at: 0,
+      invalidated: true,
+    },
+  )
   f.json.set("config.json", { sources: [] })
   const persistent = [...f.json.keys()].filter((key) => !key.startsWith("cache/"))
   const before = f.requests.length
@@ -801,7 +807,9 @@ test("C17/C18/P6 cache status and targeted retirement are offline and retain all
   await f.run(clearCache(page))
   expect(await f.run(cachedRemoteObservation(page, current.scope))).toBeUndefined()
   expect(
-    f.json.has("cache/latest/other-scope/shared_skill:other-library:other-page/entry.json"),
+    f.json.has(
+      "cache/latest/other-scope/skill%3A%2F%2Fother-page%3Flibrary%3Dother-library/entry.json",
+    ),
   ).toBe(true)
   expect(persistent.every((key) => f.json.has(key))).toBe(true)
   expect(f.objects.size).toBeGreaterThan(0)

@@ -177,6 +177,15 @@ See [the library contract](docs/current-contract.md) for fields and ownership.
 
 ## Relationships and relative links
 
+Use `skill://architect` to refer to a stable Skill ID in the containing document's
+Library. Use `skill://architect/references/design.md` for one file, or add
+`?library=LIBRARY_ID` to name another Library. The Library ID comes from the
+library descriptor returned by `ctl library init` or `inspect`; it is not the
+Skills table's Notion ID. Display names and aliases never select a Skill.
+At a CLI entry, a short ref needs `--database ENTRY` or `default_database`.
+Inside a document, its own Library supplies the context even when the machine's
+default changes. Keep complete refs returned by tools for later reads.
+
 `Members` lists related Skills that an Agent may choose. `Requires` lists mandatory
 dependencies loaded by `use`. Maintain `Requires` explicitly; mentioning a workflow
 or saying "must" in prose does not establish that dependency.
@@ -186,14 +195,18 @@ references. It preserves existing relationships and explicit sets, including `[]
 Discovery prefers missing a relation to creating the wrong one: names, similar
 filenames, code examples and template placeholders do not establish identity. For local sibling
 links, use [`members-plan`](docs/shared-authoring.md#discover-members-before-a-local-import)
-with explicit path-to-Skill bindings to prepare a portable copy. Review any
+with explicit path-to-Skill bindings to prepare a portable copy, or select all
+local roots in an [`import-batch` manifest](docs/shared-authoring.md#import-an-explicit-local-batch).
+The batch builds exact mappings from those admitted roots and rewrites verified
+links in a derived copy. It does not scan neighboring directories. Review any
 unresolved references and maintain intended relationships that discovery misses.
 Import and its dry run report the discovery decision in `members_discovery`.
 
 Relative links inside a Skill use the containing file as their base. A cross-Skill
-relative link needs that file's reliable current Source contribution map or an
+relative link needs that file's reliable selected Source contribution map or an
 explicit stable reference. Cache layout does not supply identity or preserve a
-local repository's sibling directories.
+local repository's sibling directories. See the [reference contract](docs/skill-reference-redesign.md)
+for scope, fixed selections and cross-Library copying.
 
 ## Continue using the library
 

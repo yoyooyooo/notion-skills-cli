@@ -1,0 +1,64 @@
+import { expect, test } from "bun:test"
+import { fileRef } from "../src/ref.ts"
+import { readSkill } from "../src/snapshot.ts"
+import { currentSnapshotFixture } from "./shared-current-fixture.ts"
+
+test("a fixed reference rejects a foreign Library with the same stable Skill ID before source work", async () => {
+  const f = currentSnapshotFixture({ fileCount: 0 })
+  const selected = await f.open()
+  f.clearCalls()
+  for (const path of ["", "SKILL.md"]) {
+    await expect(
+      f.run(readSkill(fileRef("skill://demo?library=testing", path, selected.snapshot_id))),
+    ).rejects.toMatchObject({ code: "SNAPSHOT_CONFLICT" })
+  }
+  expect(f.calls).toEqual([])
+  expect(f.semanticWrites()).toEqual([])
+})
+
+test("a missing selected manifest never falls back to an available current snapshot", async () => {
+  const f = currentSnapshotFixture({ fileCount: 0 })
+  const selected = await f.open()
+  const missing = `s_${"0".repeat(64)}`
+  expect(f.json.has(`snapshots/${selected.snapshot_id}.json`)).toBe(true)
+  expect(f.json.has(`snapshots/${missing}.json`)).toBe(false)
+  f.clearCalls()
+  for (const offline of [false, true]) {
+    await expect(
+      f.run(readSkill(fileRef(selected.record.id, "SKILL.md", missing), { offline })),
+    ).rejects.toMatchObject({ code: "SNAPSHOT_MISSING" })
+  }
+  expect(f.calls).toEqual([])
+  expect(f.semanticWrites()).toEqual([])
+})
+
+test("a pathless fixed reference keeps the manifest entrypoint after the live kind and main change", async () => {
+  const f = currentSnapshotFixture({ fileCount: 0 })
+  const selected = await f.open()
+  f.main.properties.Kind.select.name = "router"
+  f.bodies.set(f.main.id, "# New current router\n\nChanged live instructions.\n")
+  const current = await f.open({ forceFull: true })
+  expect(current.entrypoint).toBe("ROUTER.md")
+  expect(current.snapshot_id).not.toBe(selected.snapshot_id)
+  f.clearCalls()
+  const result = await f.run(readSkill(fileRef(selected.record.id, "", selected.snapshot_id)))
+  expect(result.path).toBe("SKILL.md")
+  expect(result.snapshot_id).toBe(selected.snapshot_id)
+  if (!("content" in result) || typeof result.content !== "string")
+    throw new Error("The selected text entrypoint must return its instruction content.")
+  expect(result.content).toContain("Keep the author's content.")
+  expect(result.content).not.toContain("Changed live instructions.")
+  expect(f.calls).toEqual([])
+  expect(f.semanticWrites()).toEqual([])
+})
+
+test("a fixed missing path cannot be repaired by selecting another manifest file", async () => {
+  const f = currentSnapshotFixture({ fileCount: 1 })
+  const selected = await f.open()
+  f.clearCalls()
+  await expect(
+    f.run(readSkill(fileRef(selected.record.id, "former-name.md", selected.snapshot_id))),
+  ).rejects.toMatchObject({ code: "FILE_NOT_FOUND" })
+  expect(f.calls).toEqual([])
+  expect(f.semanticWrites()).toEqual([])
+})

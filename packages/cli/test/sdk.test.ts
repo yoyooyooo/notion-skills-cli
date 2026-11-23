@@ -31,9 +31,7 @@ import { nodeRuntime } from "../src/runtime.ts"
 
 const input = { version: 1, targets: ["00000000-0000-4000-8000-000000000001"], purpose: "use" }
 const resourceRef =
-  "skill://shared_skill%3Alibrary%3Askill/references/a.txt?snapshot=s_" +
-  "a".repeat(64) +
-  "&file_id=file-a"
+  "skill://skill/references/a.txt?library=library&snapshot=s_" + "a".repeat(64) + ""
 
 function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
   expect(reports).toHaveLength(count)
@@ -68,9 +66,9 @@ describe("Promise SDK boundary", () => {
     })
     expectUnstartedMetrics(reports, 1)
   })
-  test("name resolution is pure and manifest listing preserves the SDK cancellation boundary", async () => {
+  test("exact identity resolution is pure and manifest listing preserves the SDK cancellation boundary", async () => {
     expect(() =>
-      resolveCatalogReference("skill://missing/SKILL.md", {
+      resolveCatalogReference("skill://missing/SKILL.md?library=test", {
         scope: "a".repeat(64),
         fetched_at: 1000,
         databases: [],

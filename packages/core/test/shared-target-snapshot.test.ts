@@ -3,7 +3,7 @@ import { Effect } from "effect"
 import { decode, property, SnapshotSchema } from "../src/model.ts"
 import { readSkill, targetSnapshot } from "../src/snapshot.ts"
 import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
-import { parseTarget } from "../src/ref.ts"
+import { fileRef, parseTarget } from "../src/ref.ts"
 import { SHARED_FULL_BODY_MAX_AGE_MS } from "../src/shared-snapshot.ts"
 import {
   currentSnapshotFixture,
@@ -15,8 +15,8 @@ import {
 } from "./shared-current-fixture.ts"
 
 const options = { database: library.skills.database_id }
-const stableId = "shared_skill:library-current:demo"
-const stableRef = `skill://${encodeURIComponent(stableId)}/SKILL.md`
+const stableId = "skill://demo?library=library-current"
+const stableRef = fileRef(stableId, "SKILL.md")
 
 function latestEntries(fixture: ReturnType<typeof currentSnapshotFixture>) {
   return [...fixture.json.entries()]
@@ -113,9 +113,9 @@ describe("standard targetSnapshot shared-library integration", () => {
     expect(latestEntries(f)).toEqual(observations)
     expect(f.json.get(`snapshots/${snapshotId}.json`)).toEqual(retained)
     const pinned = await f.run(
-      targetSnapshot({ ...parseTarget(stableRef), snapshot: snapshotId }, { offline: true }).pipe(
-        Effect.result,
-      ),
+      targetSnapshot(parseTarget(fileRef(stableId, "SKILL.md", snapshotId)), {
+        offline: true,
+      }).pipe(Effect.result),
     )
     expect(pinned._tag === "Failure" && pinned.failure.code).toBe("STATE_CORRUPT")
     expect(f.objects.get(`objects/${hash}`)).toEqual(bytes)
@@ -236,10 +236,9 @@ describe("standard targetSnapshot shared-library integration", () => {
     f.bodies.set(skillPage, "New current body\n")
     property(f.main.properties)["Enabled"] = { id: "enabled", type: "checkbox", checkbox: false }
     f.clearCalls()
-    const pinned = await f.target(
-      { ...parseTarget(stableRef), snapshot: first.snapshot_id },
-      { offline: true },
-    )
+    const pinned = await f.target(parseTarget(fileRef(stableId, "SKILL.md", first.snapshot_id)), {
+      offline: true,
+    })
     expect(pinned.snapshot_id).toBe(first.snapshot_id)
     expect(pinned.files).toEqual(first.files)
     expect(pinned.source).toBe("local_snapshot")
@@ -267,10 +266,9 @@ describe("standard targetSnapshot shared-library integration", () => {
     expect([...f.json.keys()].filter((key) => key.startsWith("operations/"))).toEqual([])
     expect(f.json.get(`snapshots/${first.snapshot_id}.json`)).toEqual(original)
     f.clearCalls()
-    const selected = await f.target(
-      { ...parseTarget(stableRef), snapshot: first.snapshot_id },
-      { offline: true },
-    )
+    const selected = await f.target(parseTarget(fileRef(stableId, "SKILL.md", first.snapshot_id)), {
+      offline: true,
+    })
     expect(selected.snapshot_id).toBe(first.snapshot_id)
     expect(f.calls).toHaveLength(0)
     f.main.properties["Current State"] = { id: "state", type: "select", select: { name: "ready" } }
@@ -331,7 +329,7 @@ describe("standard targetSnapshot shared-library integration", () => {
     f.clearCalls()
     for (const selected of [first, current]) {
       const fixed = await f.target(
-        { ...parseTarget(stableRef), snapshot: selected.snapshot_id },
+        parseTarget(fileRef(stableId, "SKILL.md", selected.snapshot_id)),
         { ...options, offline: true },
       )
       expect(fixed.record).toEqual(selected.record)

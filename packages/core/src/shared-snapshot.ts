@@ -88,7 +88,6 @@ export type OpenSharedSnapshotInput = {
   readonly forceFull?: boolean
   readonly maxAge?: number
   readonly requestedPaths?: readonly string[]
-  readonly requestedFileIds?: readonly string[]
   readonly sourceOptions?: SharedSourcePlanOptions
   readonly routerMembers?: readonly SharedRouterMember[]
   readonly relations?: {
@@ -214,8 +213,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const byPath = new Map(currentFiles.map((file) => [file.path, file]))
     const paths = currentFiles.map((file) => file.path)
     const requested = yield* checked(() => {
-      if (input.requestedPaths === undefined && input.requestedFileIds === undefined)
-        return new Set(paths)
+      if (input.requestedPaths === undefined) return new Set(paths)
       const selectedPaths = new Set([record.entrypoint])
       for (const path of input.requestedPaths ?? []) {
         if (normalizePath(path) !== path || !byPath.has(path))
@@ -225,16 +223,6 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             { path },
           )
         selectedPaths.add(path)
-      }
-      for (const id of input.requestedFileIds ?? []) {
-        const binding = bindings.find((file) => file.file_id === id)
-        if (
-          binding === undefined ||
-          canonicalSharedJson(byPath.get(binding.path)?.content) !==
-            canonicalSharedJson(binding.content)
-        )
-          throw fail("FILE_NOT_FOUND", "The selected File ID is not current.", { file_id: id })
-        selectedPaths.add(binding.path)
       }
       return selectedPaths
     })

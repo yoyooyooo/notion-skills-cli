@@ -222,7 +222,9 @@ A multi-file input must already use the canonical entrypoint.
 
 Current portable manifest version 2 can select a Skill, Router, or Prompt.
 The canonical entrypoints are `SKILL.md`, `ROUTER.md`, and `PROMPT.md`.
-Portable Members/Requires accept unpinned `shared_skill` refs from the same library.
+Portable Members/Requires accept current root refs such as
+`skill://review?library=my-library` from the same Library. Contextual root refs
+bind to the relation manifest's declared Library before duplicate checks.
 For an existing Skill, an omitted field preserves its current set, `[]` clears it,
 and a list replaces it. A first import can discover omitted Members as described below.
 Export includes both complete sets, so editing and reimporting that manifest keeps
@@ -242,7 +244,93 @@ Use the resolved physical path when a platform directory is itself a symbolic li
 All local Markdown links must resolve inside the complete input. Update inbound links when
 deleting or moving their targets; an unresolved target is rejected before Notion access.
 
+## Import an explicit local batch
+
+Use a batch when several local Skills refer to one another. The manifest selects
+every input root and its stable Skill ID. For this directory layout, store
+`batch.json` alongside the `skills` directory:
+
+```json
+{
+  "version": 1,
+  "root": "skills",
+  "skills": [
+    { "root": "poteto-mode", "skill_id": "poteto-mode" },
+    { "root": "architect", "skill_id": "architect" },
+    { "root": "unslop", "skill_id": "unslop" }
+  ]
+}
+```
+
+Each selected directory must contain a complete Skill tree. Optional per-item
+`native`, `name` and `description` use the single-import meanings. The manifest
+accepts 1–100 distinct, non-overlapping roots; the entire admitted batch is
+bounded by 10,000 files and 128 MiB. Symlinks, physical aliases and overlapping
+roots fail before writes. The command does not scan directories omitted from
+the manifest. `--entry` selects the destination Library explicitly.
+
+```sh
+ntn-skills ctl library import-batch ./batch.json --entry LIBRARY_ENTRY --dry-run
+ntn-skills ctl library import-batch ./batch.json --entry LIBRARY_ENTRY --operation review-batch-01
+```
+
+A link from `poteto-mode/SKILL.md` to `../architect/SKILL.md` can identify
+`architect` because the manifest and admitted file set prove both owners and
+the exact target path. The derived import copy rewrites it to
+`skill://architect/SKILL.md`. Links from nested documents use their actual
+containing directory. A matching basename elsewhere is insufficient. Missing
+or ambiguous mappings are reported; a required unresolved local link blocks
+the batch before mutation. Original files remain unchanged.
+
+Review the dry-run mapping, rewrites and each item's `members_discovery`.
+Only exact active Markdown links can infer omitted Members on first creation.
+Explicit `members: []` prevents inference, explicit sets win, and omission for
+an existing Skill preserves its current set, including manual removals.
+Requires is always author-supplied. Members may form cycles. The final Requires
+graph must be acyclic, and every selected relation must belong to this Library.
+
+The batch freezes all inputs and relations, writes bodies, then applies final
+relation sets. It is not an atomic publication of every Skill. During an
+interruption, some bodies can be ready before their final relations. Treat the
+complete batch result as completion, not an individual body's readiness.
+
+### Copy a batch to another Library
+
+Contextual body refs can bind to the destination. Explicit full refs keep their
+original Library unless you authorize a precise copy mapping:
+
+```sh
+ntn-skills ctl library import-batch ./batch.json --entry TEST_LIBRARY_ENTRY --rebind-from ORIGINAL_LIBRARY_ID --dry-run
+ntn-skills ctl library import-batch ./batch.json --entry TEST_LIBRARY_ENTRY --rebind-from ORIGINAL_LIBRARY_ID --operation test-copy-01
+```
+
+`--rebind-from` rewrites only current refs and relations whose origin identity
+and target path belong to this exact batch. It does not pick a same-named Skill
+from the destination. External body refs without a mapping stay external.
+Fixed body refs keep the original owner and snapshot. Explicit foreign relation
+targets without a destination mapping fail before writing. Without this flag,
+the command preserves full body refs and refuses foreign relation sets.
+
+### Resume the same batch
+
+```sh
+ntn-skills ctl library import-batch ./batch.json --entry LIBRARY_ENTRY --operation review-batch-01 --resume
+```
+
+Keep the manifest, input files, native selections, metadata and copy option
+unchanged. Resume uses the same frozen plan and operation; it does not rescan
+links or reinterpret omitted relationships after partial progress.
+`--max-requests`, `--max-bytes` and `--timeout` may change the execution budget.
+Completion verification after a lost response is read-only. An unknown CREATE
+is never sent again merely because a lookup is empty. If the command reports
+`CURRENT_IMPORT_PHASE_UNRESOLVED`, retain its state and inspect/reconcile that
+operation. Starting a new operation is not a safe recovery for unknown creation.
+
 ## Discover Members before a local import
+
+For several local roots with cross-Skill links, the [batch procedure](#import-an-explicit-local-batch)
+can derive exact bindings from all declared input files. Single-input `members-plan`
+uses an explicit binding file because it has no authority to discover siblings.
 
 Members are optional related Skills available for selection. Requires are mandatory
 workflow dependencies. The importer never infers Requires from links, names or
@@ -268,7 +356,7 @@ For a known repository layout, declare exact path-to-Skill bindings in a JSON fi
   "targets": [
     {
       "path": "skills/review/SKILL.md",
-      "ref": "skill://shared_skill%3Amy-library%3Areview/SKILL.md"
+      "ref": "skill://review/SKILL.md?library=my-library"
     }
   ]
 }

@@ -15,7 +15,7 @@ import {Store,StoreLive,sha256} from ${JSON.stringify(core + "store.ts")};
 import {SnapshotSchema} from ${JSON.stringify(core + "model.ts")};
 import {loadSnapshot} from ${JSON.stringify(core + "snapshot.ts")};
 import {fileRef} from ${JSON.stringify(core + "ref.ts")};
-import {sharedSkillId} from ${JSON.stringify(core + "shared-content.ts")};
+import {skillIdentity} from ${JSON.stringify(core + "shared-content.ts")};
 const root=${JSON.stringify(root)};
 const boundary=Layer.effect(FileSystem.FileSystem,Effect.map(FileSystem.FileSystem,fs=>({...fs,${boundary}}))).pipe(Layer.provide(NodeServices.layer));
 const services=Layer.merge(NodeServices.layer,boundary);
@@ -23,7 +23,7 @@ Effect.runPromise(Effect.gen(function*(){
 const store=yield* Store;
 const bytes=new TextEncoder().encode('durable content');
 const hash=yield* sha256(bytes);
-const recordId=sharedSkillId('durable-library','fixture');
+const recordId=skillIdentity('durable-library','fixture');
 const id='s_'+(yield* sha256(JSON.stringify(['scope',recordId,hash])));
 const key='snapshots/'+id+'.json';
 const snapshot={snapshot_id:id,scope:'scope',version_id:hash,entrypoint:'SKILL.md',created_at:123,

@@ -82,7 +82,7 @@
     {
       "id": "verify-notion-resource-lifecycle",
       "skill": ".cursor/skills/verify-notion-resource-lifecycle/SKILL.md",
-      "features": [],
+      "features": ["skill-reference.md"],
       "regressions": [
         "packages/core/test/shared-current-index.test.ts",
         "packages/core/test/shared-current-snapshot.test.ts",

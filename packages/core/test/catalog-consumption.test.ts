@@ -6,20 +6,41 @@ import { pageCatalog, type ListCatalogResult } from "../src/catalog-consumption.
 import { resolveCatalogReference } from "../src/catalog-reference.ts"
 import { fileRef } from "../src/ref.ts"
 
+import { currentLibrary } from "./shared-current-fixture.ts"
+
+const library = {
+  ...currentLibrary,
+  library_id: "library",
+  skills: {
+    ...currentLibrary.skills,
+    database_id: "00000000-0000-4000-8000-000000000010",
+    data_source_id: "00000000-0000-4000-8000-000000000011",
+  },
+}
 const at = 1000
 const catalog: ListCatalogResult = {
   scope: "a".repeat(64),
   fetched_at: at,
-  databases: [],
+  databases: [
+    {
+      alias: "library",
+      title: "Library",
+      role: "content",
+      database_id: library.skills.database_id,
+      data_source_ids: [library.skills.data_source_id],
+      shared_library: library,
+    },
+  ],
   records: ["first", "second", "third"].map((name, index) => ({
-    id: `shared_skill:library:${name}`,
+    id: `skill://${name}?library=library`,
     kind: "skill",
     name,
     alias: name,
     description: "Controlled catalog metadata",
     default_context: false,
+    enabled: true,
     entrypoint: "SKILL.md",
-    ref: fileRef(`shared_skill:library:${name}`, "SKILL.md"),
+    ref: fileRef(`skill://${name}?library=library`, "SKILL.md"),
     locator: {
       type: "shared_skill",
       library_id: "library",
@@ -91,58 +112,102 @@ function ordinaryCatalog() {
   }
 }
 
-test("current name selection preserves exact name, alias, resource path, and canonical File ID", () => {
+test("exact stable identity selection preserves root and resource paths without name fallback", () => {
   const ordinary = ordinaryCatalog()
-  const first = ordinary.records[0]
-  if (first === undefined) throw new Error("Expected catalog fixture record")
+  const first = ordinary.records[0]!
   const record = { ...first, name: "First Skill", alias: "first-skill" }
   const selected = { ...ordinary, records: [record], count: 1 }
-  for (const target of ["First Skill", "first-skill", "skill://First%20Skill/SKILL.md"])
-    expect(resolveCatalogReference(target, { ok: true, ...selected })).toEqual({
-      record,
-      scope: selected.scope,
-      ref: fileRef(record.id, record.entrypoint),
-    })
-  expect(resolveCatalogReference("skill://first-skill/references/a%20b.md", selected).ref).toBe(
-    fileRef(record.id, "references/a b.md"),
+  expect(resolveCatalogReference(record.id, selected)).toEqual({
+    record,
+    scope: selected.scope,
+    ref: fileRef(record.id, record.entrypoint),
+  })
+  expect(
+    resolveCatalogReference("skill://first/references/a%20b.md", selected, "library").ref,
+  ).toBe(fileRef(record.id, "references/a b.md"))
+  for (const target of [
+    "First Skill",
+    "first-skill",
+    "skill://First%20Skill/SKILL.md",
+    "skill://first-skill?library=library",
+  ])
+    expect(() => resolveCatalogReference(target, selected, "library")).toThrow()
+  expect(() => resolveCatalogReference("skill://first", selected)).toThrow(
+    expect.objectContaining({ code: "LIBRARY_CONTEXT_REQUIRED" }),
   )
-  const exactFile = fileRef(record.id, "references/a.md", undefined, "selected-file")
-  expect(resolveCatalogReference(exactFile, selected).ref).toBe(exactFile)
-  for (const query of ["first", "First", record.description])
-    expect(() => resolveCatalogReference(query, selected)).toThrow(
-      expect.objectContaining({ code: "SKILL_NOT_FOUND" }),
-    )
 })
 
-test("ordinary enabled names stay distinct from disabled display names and stable identity conflicts", () => {
-  const ordinary = ordinaryCatalog()
-  const [first, second] = ordinary.records
-  if (first === undefined || second === undefined) throw new Error("Expected catalog records")
+test("same display names stay independent and duplicate stable identities are rejected", () => {
+  const ordinary = ordinaryCatalog(),
+    first = ordinary.records[0]!,
+    second = ordinary.records[1]!
   const duplicateName = { ...second, name: first.name, alias: first.alias }
-  expect(() =>
-    resolveCatalogReference(first.name, { ...ordinary, records: [first, duplicateName], count: 2 }),
-  ).toThrow(expect.objectContaining({ code: "SKILL_AMBIGUOUS" }))
   expect(
-    resolveCatalogReference(first.name, {
-      ...ordinary,
-      records: [first, { ...duplicateName, enabled: false }],
-      count: 2,
-    }).record.id,
+    resolveCatalogReference(first.id, { ...ordinary, records: [first, duplicateName], count: 2 })
+      .record.id,
   ).toBe(first.id)
+  expect(
+    resolveCatalogReference(second.id, { ...ordinary, records: [first, duplicateName], count: 2 })
+      .record.id,
+  ).toBe(second.id)
   expect(() =>
-    resolveCatalogReference(second.name, {
+    resolveCatalogReference(second.id, {
       ...ordinary,
       records: [{ ...second, enabled: false }],
       count: 1,
     }),
-  ).toThrow(expect.objectContaining({ code: "SKILL_NOT_FOUND" }))
+  ).toThrow(expect.objectContaining({ code: "CONTENT_DISABLED" }))
   expect(() =>
-    resolveCatalogReference(first.name, {
-      ...ordinary,
-      records: [first, { ...first, locator: second.locator }],
-      count: 2,
+    resolveCatalogReference(first.id, { ...ordinary, records: [first, first], count: 2 }),
+  ).toThrow(expect.objectContaining({ code: "SKILL_ID_CONFLICT" }))
+  const foreignLibrary = {
+    ...library,
+    library_id: "test",
+    skills: {
+      ...library.skills,
+      database_id: "00000000-0000-4000-8000-000000000020",
+      data_source_id: "00000000-0000-4000-8000-000000000021",
+    },
+  }
+  const foreign = {
+    ...first,
+    id: "skill://first?library=test",
+    ref: "skill://first/SKILL.md?library=test",
+    locator: {
+      ...first.locator,
+      library_id: "test",
+      database_id: foreignLibrary.skills.database_id,
+      data_source_id: foreignLibrary.skills.data_source_id,
+    },
+  }
+  const two = {
+    ...ordinary,
+    records: [first, foreign],
+    count: 2,
+    databases: [
+      ...ordinary.databases,
+      {
+        alias: "test",
+        title: "Testing",
+        role: "content",
+        database_id: foreignLibrary.skills.database_id,
+        data_source_ids: [foreignLibrary.skills.data_source_id],
+        shared_library: foreignLibrary,
+      },
+    ],
+  }
+  expect(resolveCatalogReference("skill://first", two, "library").record.id).toBe(first.id)
+  expect(resolveCatalogReference("skill://first", two, "test").record.id).toBe(foreign.id)
+  expect(() => resolveCatalogReference("skill://first", two)).toThrow()
+  expect(() =>
+    resolveCatalogReference(first.id, {
+      ...two,
+      databases: two.databases.map((source) => ({
+        ...source,
+        shared_library: { ...source.shared_library, library_id: "library" },
+      })),
     }),
-  ).toThrow(expect.objectContaining({ code: "CATALOG_INCOMPLETE" }))
+  ).toThrow(expect.objectContaining({ code: "LIBRARY_ID_CONFLICT" }))
 })
 
 test("zero and one match require complete source coverage before selection", () => {
@@ -165,11 +230,16 @@ test("zero and one match require complete source coverage before selection", () 
       },
     ])
       expect(() =>
-        resolveCatalogReference("first", { ...ordinary, records, count: records.length, coverage }),
+        resolveCatalogReference("skill://first?library=library", {
+          ...ordinary,
+          records,
+          count: records.length,
+          coverage,
+        }),
       ).toThrow(expect.objectContaining({ code: "CATALOG_INCOMPLETE" }))
 })
 
-test("Views, Profiles, queried or paged lists cannot prove ordinary name uniqueness", async () => {
+test("Views, Profiles, queried or paged lists cannot prove ordinary identity coverage", async () => {
   const ordinary = ordinaryCatalog()
   const queriedPage = await run(ordinary, { query: "first", limit: 50 })
   expect(queriedPage.has_more).toBe(false)
@@ -181,7 +251,7 @@ test("Views, Profiles, queried or paged lists cannot prove ordinary name uniquen
     { ...ordinary, query: "first" },
     { ...ordinary, count: 1 },
   ])
-    expect(() => resolveCatalogReference("first", projected)).toThrow(
+    expect(() => resolveCatalogReference("skill://first?library=library", projected)).toThrow(
       expect.objectContaining({ code: "CATALOG_INCOMPLETE" }),
     )
 })
@@ -189,10 +259,13 @@ test("Views, Profiles, queried or paged lists cannot prove ordinary name uniquen
 test("fixed references use their manifest and malformed or failed catalogs remain errors", () => {
   const ordinary = ordinaryCatalog()
   expect(() =>
-    resolveCatalogReference(fileRef("first", "SKILL.md", `s_${"a".repeat(64)}`), ordinary),
+    resolveCatalogReference(
+      fileRef("skill://first?library=library", "SKILL.md", `s_${"a".repeat(64)}`),
+      ordinary,
+    ),
   ).toThrow(expect.objectContaining({ code: "INVALID_ARGUMENT" }))
   for (const invalid of [null, {}, { ...ordinary, ok: false }, { ...ordinary, records: null }])
-    expect(() => resolveCatalogReference("first", invalid)).toThrow(
+    expect(() => resolveCatalogReference("skill://first?library=library", invalid)).toThrow(
       expect.objectContaining({ code: "INVALID_RESPONSE" }),
     )
 })

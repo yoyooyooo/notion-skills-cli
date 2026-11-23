@@ -4,6 +4,21 @@
 
 Changes since the published [0.3.0 release](https://github.com/yoyooyooo/notion-skills-cli/releases/tag/v0.3.0).
 
+### Skill references and explicit batch import
+
+- Use one `skill://ID[/path]?library=LIBRARY_ID` protocol across Core, CLI, SDK
+  and the paired Broker. Contextual refs bind to the containing Library; names,
+  legacy identity prefixes and public `file_id` parameters no longer select content.
+- Keep fixed reads on the exact selected manifest and path, including Source
+  files without projected File rows. A missing pin or path never falls back to current.
+- Publish the pure `ntn-skills/ref` module with `SKILL_REF_VERSION = 2` and verify
+  the selected Broker artifact's version and hash.
+- Add explicit `ctl library import-batch` with exact admitted root/file mappings,
+  derived link rewriting, frozen same-operation recovery and a separate relation
+  phase. Cross-Library rewriting requires `--rebind-from` and an exact batch-owned target.
+- Document conservative first-create Members inference, explicit Requires,
+  cross-Skill relative path limits and the breaking reference cutover.
+
 ### Current-only convergence on `next`
 
 - Define the four-table destination, explicit file authority, complete human

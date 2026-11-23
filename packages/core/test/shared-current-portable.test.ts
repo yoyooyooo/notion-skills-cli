@@ -8,8 +8,8 @@ import { authScope } from "../src/catalog.ts"
 import { exportSkill, snapshotPortable } from "../src/export.ts"
 import { trashPath } from "../src/local-locks.ts"
 import { property, text } from "../src/model.ts"
-import { MANIFEST } from "../src/portable.ts"
-import { sharedSkillId } from "../src/shared-content.ts"
+import { MANIFEST, portableRelationSelection, validatePortableRelations } from "../src/portable.ts"
+import { skillIdentity } from "../src/shared-content.ts"
 import { prepareCurrentSkillWrite, writeCurrentSkill } from "../src/shared-current-write.ts"
 import { openSharedSnapshot } from "../src/shared-snapshot.ts"
 import { currentWriteFixture, library, testBytes } from "./shared-current-write-fixture.ts"
@@ -17,6 +17,29 @@ import { currentWriteFixture, library, testBytes } from "./shared-current-write-
 const parent = realpathSync(mkdtempSync(join(tmpdir(), "ntn-current-portable-")))
 afterAll(async () => {
   if (process.platform === "darwin") await Effect.runPromise(trashPath(parent))
+})
+
+test("portable relationship context binds once, preserves omission and rejects duplicate or foreign complete identities", () => {
+  const base = { version: 1 as const, ownership: "notion" as const, library_id: "test" }
+  expect(validatePortableRelations({ ...base, members: ["skill://architect"] })).toEqual({
+    ...base,
+    members: ["skill://architect?library=test"],
+  })
+  expect(validatePortableRelations(base)).not.toHaveProperty("members")
+  expect(validatePortableRelations({ ...base, members: [] }).members).toEqual([])
+  expect(
+    portableRelationSelection({ ...base, members: ["skill://architect"] }, "test", {
+      members: ["skill://architect?library=test"],
+    }),
+  ).toEqual({ members: ["skill://architect?library=test"] })
+  for (const members of [
+    ["skill://architect", "skill://architect?library=test"],
+    ["skill://architect?library=production"],
+    ["shared_skill:test:architect"],
+    ["skill://architect/SKILL.md"],
+    ["skill://architect?snapshot=s_" + "a".repeat(64)],
+  ])
+    expect(() => validatePortableRelations({ ...base, members })).toThrow()
 })
 
 test("public current export, local edit and import preserve complete files, execution mode and explicit native relations", async () => {
@@ -42,8 +65,8 @@ test("public current export, local edit and import preserve complete files, exec
     version: 1 as const,
     ownership: "notion" as const,
     library_id: library.library_id,
-    members: [sharedSkillId(library.library_id, "target")],
-    requires: [sharedSkillId(library.library_id, "target")],
+    members: [skillIdentity(library.library_id, "target")],
+    requires: [skillIdentity(library.library_id, "target")],
   }
   const main = testBytes(
     "\uFEFF---\r\nname: Original\r\ndescription: Source bytes\r\n---\r\n# Authored\r\n[Guide](references/guide.md)\r\n",

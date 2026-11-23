@@ -3,7 +3,7 @@ import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
 import { decode, property, SnapshotSchema, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
-import { parseTarget } from "../src/ref.ts"
+import { fileRef, parseTarget } from "../src/ref.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { targetSnapshot } from "../src/snapshot.ts"
 import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
@@ -128,7 +128,7 @@ describe("shared Router snapshot integration", () => {
     const snapshot = await f.target()
     expect(snapshot.entrypoint).toBe("ROUTER.md")
     expect(snapshot.router_members).toHaveLength(1)
-    expect(snapshot.router_members?.[0]?.id).toBe("shared_skill:library-current:router-member")
+    expect(snapshot.router_members?.[0]?.id).toBe("skill://router-member?library=library-current")
     expect(snapshot.router_members?.[0]?.metadata).toMatchObject({
       name: "Lazy member",
       description: "First member description",
@@ -168,7 +168,7 @@ describe("shared Router snapshot integration", () => {
     expect(f.json.get(`snapshots/${first.snapshot_id}.json`)).toEqual(original)
     f.clearCalls()
     const pinned = await f.run(
-      targetSnapshot({ selector: skillPage, path: "ROUTER.md", snapshot: first.snapshot_id }),
+      targetSnapshot(parseTarget(fileRef(first.record.id, "ROUTER.md", first.snapshot_id))),
     )
     expect(pinned.router_members?.[0]?.metadata).toMatchObject({
       description: "First member description",
@@ -212,7 +212,7 @@ describe("shared Router snapshot integration", () => {
     f.clearCalls()
     await expect(f.target({ offline: true })).rejects.toThrow("no frozen Members index")
     await expect(
-      f.run(targetSnapshot({ selector: skillPage, path: "ROUTER.md", snapshot: damagedId })),
+      f.run(targetSnapshot(parseTarget(fileRef(first.record.id, "ROUTER.md", damagedId)))),
     ).rejects.toThrow("no frozen Members index")
     expect(f.calls).toHaveLength(0)
     const refreshed = await f.target()

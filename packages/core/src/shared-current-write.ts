@@ -16,7 +16,11 @@ import {
 import { Notion } from "./notion.ts"
 import { normalizePath, pageId } from "./ref.ts"
 import { withCurrentInvocationBudget } from "./shared-current-invocation.ts"
-import { sharedRecordFromPage, sharedSkillId, sharedSkillTextProperty } from "./shared-content.ts"
+import { sharedRecordFromPage, skillIdentity, sharedSkillTextProperty } from "./shared-content.ts"
+import {
+  assertFrozenCurrentImportProof,
+  type FrozenCurrentImportProof,
+} from "./shared-current-import-plan.ts"
 import {
   currentFileRecord,
   queryCurrentSkillIndex,
@@ -1719,6 +1723,7 @@ type CurrentWriteRequest = {
   readonly operation_id: string
   readonly mode?: CurrentWriteMode
   readonly create_only?: true
+  readonly frozen_import?: FrozenCurrentImportProof
 }
 type InternalWriteRequest = Omit<CurrentWriteRequest, "plan"> & {
   readonly plan: CurrentWritePlan
@@ -1851,6 +1856,16 @@ export function writeCoordinatedSkill(
 function executeCurrentSkillWrite(library: SharedLibrary, input: InternalWriteRequest) {
   return Effect.gen(function* () {
     const plan = input.plan
+    if (input.frozen_import !== undefined) {
+      const proof = input.frozen_import
+      yield* checked(() =>
+        assertFrozenCurrentImportProof(proof, library, {
+          skill_id: plan.skill_id,
+          operation_id: input.operation_id,
+          input_sha256: plan.input_sha256,
+        }),
+      )
+    }
     yield* checked(() => {
       if (isCoordinated(plan) !== (input.authorization !== undefined))
         throw invalid("A coordinated Source tree requires its exact live parent authorization.")
@@ -1932,11 +1947,17 @@ function applyPreparedCurrentSkillWrite(
         pending.in_flight?.key === "skill:create" &&
         current.index.state.state === "applying" &&
         current.index.state.operation_id === input.operation_id
+      const completedFrozenImport =
+        input.frozen_import !== undefined &&
+        input.mode === "resume" &&
+        pending === undefined &&
+        current.index.state.state === "ready"
       if (
-        pending === undefined ||
-        pending.intent.operation_id !== input.operation_id ||
-        pending.intent.input_sha256 !== plan.input_sha256 ||
-        (pending.owner_page_id !== current.index.page_id && !unboundCreation)
+        !completedFrozenImport &&
+        (pending === undefined ||
+          pending.intent.operation_id !== input.operation_id ||
+          pending.intent.input_sha256 !== plan.input_sha256 ||
+          (pending.owner_page_id !== current.index.page_id && !unboundCreation))
       )
         return yield* Effect.fail(
           fail(
@@ -2054,7 +2075,7 @@ function applyPreparedCurrentSkillWrite(
       if (cacheInvalidated) return
       const scope = yield* authScope
       yield* invalidateCurrentLibraryCatalog(scope, library.skills.database_id)
-      yield* invalidateSnapshotCache(sharedSkillId(library.library_id, plan.skill_id), scope)
+      yield* invalidateSnapshotCache(skillIdentity(library.library_id, plan.skill_id), scope)
       cacheInvalidated = true
     })
     const api = yield* Notion
@@ -3138,7 +3159,7 @@ function applyPreparedCurrentSkillWrite(
     }
     const result = yield* withCurrentOperation(library, {
       ...operation,
-      ...(input.authorization === undefined
+      ...(input.authorization === undefined && input.frozen_import === undefined
         ? {}
         : {
             verifyCompletedResume: (session: CurrentOperationSession) =>

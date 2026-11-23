@@ -365,14 +365,14 @@ test("evidence excludes credentials and signed attachment queries while retainin
     token: "sensitive",
     url: "https://example.invalid/asset.png?X-Amz-Credential=value&X-Amz-Signature=secret",
     nested: ["secret_abcdefghijklmnop", "ntn_abcdefghijklmnop", "Bearer abc123"],
-    ref: "skill://shared_skill%3Alibrary-current%3Aowner/SKILL.md?file_id=main-id",
+    ref: "skill://owner/SKILL.md?library=library-current",
   })
   expect(cleaned).toEqual({
     authorization: "[redacted]",
     token: "[redacted]",
     url: "https://example.invalid/asset.png?[redacted-query]",
     nested: ["[redacted-token]", "[redacted-token]", "Bearer [redacted]"],
-    ref: "skill://shared_skill%3Alibrary-current%3Aowner/SKILL.md?file_id=main-id",
+    ref: "skill://owner/SKILL.md?library=library-current",
   })
   expect(
     sanitizeEvidence(

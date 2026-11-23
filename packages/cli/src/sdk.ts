@@ -75,6 +75,7 @@ import {
 } from "../../core/src/notion-mcp-search.ts"
 
 export const SDK_VERSION = 2
+export { SKILL_REF_VERSION } from "../../core/src/skill-ref.ts"
 /** Selected CLI can expose the complete HTTP ledger independently of compact
  * stdout, with an exact closed-output SHA-256 proof. Not remote authority. */
 export const COMMAND_OUTPUT_PROOF_VERSION = 1

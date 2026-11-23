@@ -12,7 +12,7 @@ const files = [
   { page_id: main, path: "SKILL.md" },
   { page_id: support, path: "references/guide.md" },
 ]
-const ref = fileRef("shared_skill:library-demo:other", "SKILL.md")
+const ref = fileRef("skill://other?library=library-demo", "SKILL.md")
 
 test("ordinary native bytes including trailing whitespace are not normalized", () => {
   for (const input of ["body\n", "\nbody\n\n", "body  \n\n"])

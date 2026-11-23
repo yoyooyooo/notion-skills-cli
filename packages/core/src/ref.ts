@@ -1,103 +1,61 @@
 import { fail } from "./model.ts"
+import {
+  bindSkillRef,
+  formatSkillIdentity,
+  formatSkillRef,
+  normalizeSkillPath,
+  parseSkillIdentity,
+  parseSkillRef,
+  referenceSelection,
+  SkillReferenceError,
+  skillRefSnapshot,
+  type ParsedSkillRef,
+} from "./skill-ref.ts"
 
-export interface SkillRef {
-  readonly selector: string
-  readonly path: string
-  readonly snapshot?: string
-  readonly file_id?: string
+export * from "./skill-ref.ts"
+export type SkillRef = ParsedSkillRef
+
+/** Translate errors at the Core boundary; the protocol has one implementation. */
+function protocol<A>(read: () => A): A {
+  try {
+    return read()
+  } catch (error) {
+    if (error instanceof SkillReferenceError) throw fail(error.code, error.message)
+    throw error
+  }
 }
 
 export function normalizePath(input: string, base = ""): string {
-  if (
-    input.includes("\\") ||
-    input.includes("\0") ||
-    input.startsWith("/") ||
-    /^[a-zA-Z]:/.test(input)
-  ) {
-    throw fail("INVALID_PATH", "A skill file must use a relative POSIX path.")
-  }
-  const parts = base ? base.split("/").slice(0, -1) : []
-  for (const part of input.split("/")) {
-    if (!part || part === ".") continue
-    if (part === "..") {
-      if (!parts.length) throw fail("INVALID_PATH", "The path escapes the skill root.")
-      parts.pop()
-    } else parts.push(part)
-  }
-  return parts.join("/")
+  return protocol(() => normalizeSkillPath(input, base))
 }
 
 export function parseRef(input: string): SkillRef {
-  // Parse before URL normalization so traversal cannot disappear during URL parsing.
-  const match = /^skill:\/\/([^/?#]+)(\/[^?#]*)?(?:\?([^#]*))?$/.exec(input)
-  if (!match) throw fail("INVALID_REF", "Expected skill://<name-or-page-id>/<path>?snapshot=<id>.")
-  try {
-    const selector = decodeURIComponent(match[1]!)
-    const path = normalizePath(decodeURIComponent((match[2] ?? "/").slice(1)))
-    const params = new URLSearchParams(match[3] ?? "")
-    for (const key of params.keys())
-      if (key !== "snapshot" && key !== "file_id")
-        throw fail("INVALID_REF", `Unknown ref query parameter: ${key}.`)
-    if (params.getAll("snapshot").length > 1)
-      throw fail("INVALID_REF", "A ref may contain one snapshot parameter.")
-    if (params.getAll("file_id").length > 1)
-      throw fail("INVALID_REF", "A ref may contain one stable File ID.")
-    if (!selector.trim() || selector.includes("/") || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(selector))
-      throw fail("INVALID_REF", "Invalid skill selector.")
-    const snapshot = params.get("snapshot") ?? undefined
-    if (snapshot !== undefined && !/^s_[a-f0-9]{64}$/.test(snapshot))
-      throw fail("INVALID_REF", "Invalid snapshot ID.")
-    const fileId = params.get("file_id") ?? undefined
-    if (
-      fileId !== undefined &&
-      (!selector.startsWith("shared_skill:") ||
-        !path ||
-        !fileId ||
-        fileId.length > 256 ||
-        fileId.trim() !== fileId ||
-        /[\p{Cc}\p{Cf}\p{Cs}]/u.test(fileId))
-    )
-      throw fail(
-        "INVALID_REF",
-        "A stable File ID requires an exact shared Skill owner and file path.",
-      )
-    return {
-      selector,
-      path,
-      ...(snapshot ? { snapshot } : {}),
-      ...(fileId === undefined ? {} : { file_id: fileId }),
-    }
-  } catch (error) {
-    if (error && typeof error === "object" && "code" in error) throw error
-    throw fail("INVALID_REF", "The ref contains invalid percent encoding.")
-  }
+  return protocol(() => parseSkillRef(input))
 }
 
-export function fileRef(
-  selector: string,
-  path: string,
-  snapshot?: string,
-  fileId?: string,
-): string {
-  const query = [
-    snapshot === undefined ? "" : `snapshot=${snapshot}`,
-    fileId === undefined ? "" : `file_id=${encodeURIComponent(fileId)}`,
-  ]
-    .filter(Boolean)
-    .join("&")
-  return `skill://${encodeURIComponent(selector)}/${path.split("/").map(encodeURIComponent).join("/")}${query ? `?${query}` : ""}`
+/** Only a complete canonical Skill identity can produce a machine file ref. */
+export function fileRef(identity: string, path: string, snapshot?: string): string {
+  return protocol(() => {
+    const owner = parseSkillIdentity(identity)
+    return formatSkillRef({
+      owner,
+      path,
+      selection: referenceSelection(snapshot),
+    })
+  })
 }
 
 export function resolveRef(base: string, relative: string): string {
-  const parsed = parseRef(base)
-  if (relative.startsWith("skill://")) {
-    parseRef(relative)
-    return relative
-  }
-  if (relative.includes("?") || relative.includes("#") || /^[a-z]+:/i.test(relative)) {
-    throw fail("INVALID_PATH", "Only relative file paths can be resolved within a skill.")
-  }
-  return fileRef(parsed.selector, normalizePath(relative, parsed.path), parsed.snapshot)
+  return protocol(() => {
+    const parsed = bindSkillRef(parseSkillRef(base))
+    if (relative.startsWith("skill://")) {
+      return formatSkillRef(bindSkillRef(parseSkillRef(relative), parsed.owner.libraryId))
+    }
+    if (relative.includes("?") || relative.includes("#") || /^[a-z]+:/i.test(relative)) {
+      throw fail("INVALID_PATH", "Only relative file paths can be resolved within a skill.")
+    }
+    return formatSkillRef({ ...parsed, path: normalizeSkillPath(relative, parsed.path) })
+  })
 }
 
 export function pageId(input: string): string | undefined {
@@ -108,6 +66,7 @@ export function pageId(input: string): string | undefined {
           const url = new URL(input)
           if (url.protocol !== "https:" && url.protocol !== "http:") return undefined
           if (!/(^|\.)notion\.(com|site|so)$/.test(url.hostname)) return undefined
+          if (url.username || url.password || url.port) return undefined
           return /([a-f\d]{32})\/?$/i.exec(url.pathname)?.[1]
         } catch {
           return undefined
@@ -117,35 +76,72 @@ export function pageId(input: string): string | undefined {
   return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20)}`.toLowerCase()
 }
 
-export interface SkillTarget {
-  readonly selector: string
-  readonly path?: string
-  readonly snapshot?: string
-  readonly file_id?: string
-}
+type TargetPath = { readonly path?: string }
+export type SkillTarget = TargetPath &
+  (
+    | {
+        readonly kind: "skill"
+        readonly reference: ParsedSkillRef
+        /** A canonical root URI, contextual until the entry scope is bound. */
+        readonly selector: string
+        readonly snapshot?: string
+      }
+    | { readonly kind: "page"; readonly selector: string; readonly snapshot?: never }
+    | { readonly kind: "snapshot"; readonly selector: ""; readonly snapshot: string }
+  )
 
 export function parseTarget(input: string, path?: string): SkillTarget {
   if (!input.trim() || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(input))
     throw fail("INVALID_ARGUMENT", "Provide a nonempty Skill target without control characters.")
-  if (/^(?:notion_page|notion_subscription|upstream):/u.test(input))
+  if (/^(?:shared_skill|notion_page|notion_subscription|upstream):/u.test(input))
     throw fail(
       "CURRENT_TARGET_REQUIRED",
-      "Select a current Skill identity, page ID, URL or current file reference.",
+      "Use a current skill:// reference or a physical Notion page address.",
     )
-  let target: SkillTarget
-  if (input.startsWith("skill://")) {
-    const ref = parseRef(input)
-    target = {
-      selector: ref.selector,
-      snapshot: ref.snapshot,
-      ...(ref.file_id === undefined ? {} : { file_id: ref.file_id }),
-      path: /^skill:\/\/[^/?#]+\/[^?#]+/.test(input) ? ref.path : undefined,
-    }
-  } else if (input.startsWith("s_")) {
+  if (input.startsWith("s_")) {
     if (!/^s_[a-f0-9]{64}$/.test(input)) throw fail("INVALID_SNAPSHOT", "Invalid snapshot ID.")
-    target = { selector: "", snapshot: input }
-  } else target = { selector: input }
-  if (path !== undefined && target.path !== undefined)
+    return {
+      kind: "snapshot",
+      selector: "",
+      snapshot: input,
+      ...(path === undefined ? {} : { path: normalizePath(path) }),
+    }
+  }
+  const physical = input.startsWith("skill://") ? undefined : pageId(input)
+  if (physical !== undefined) {
+    return {
+      kind: "page",
+      selector: physical,
+      ...(path === undefined ? {} : { path: normalizePath(path) }),
+    }
+  }
+  const reference = parseRef(input.startsWith("skill://") ? input : `skill://${input}`)
+  if (path !== undefined && reference.path !== "")
     throw fail("INVALID_ARGUMENT", "The target already contains a file path; omit --path.")
-  return { ...target, path: path === undefined ? target.path : normalizePath(path) }
+  const selectedPath = path === undefined ? reference.path : normalizePath(path)
+  const snapshot = skillRefSnapshot(reference)
+  return {
+    kind: "skill",
+    reference: { ...reference, path: selectedPath },
+    selector: protocol(() =>
+      formatSkillRef({ ...reference, path: "", selection: { kind: "current" } }),
+    ),
+    ...(selectedPath === "" ? {} : { path: selectedPath }),
+    ...(snapshot === undefined ? {} : { snapshot }),
+  }
+}
+
+export function bindTarget(target: SkillTarget, contextLibraryId?: string): SkillTarget {
+  if (target.kind !== "skill") return target
+  return protocol(() => {
+    const bound = bindSkillRef(target.reference, contextLibraryId)
+    return {
+      ...target,
+      selector: formatSkillIdentity(bound.owner),
+      reference: {
+        ...target.reference,
+        scope: { kind: "library", libraryId: bound.owner.libraryId },
+      },
+    }
+  })
 }

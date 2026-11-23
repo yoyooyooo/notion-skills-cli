@@ -170,6 +170,14 @@ ntn-skills read "$skill_ref" --database "$library_entry" --refresh --json
 
 ## 关系与相对引用
 
+用 `skill://architect` 引用当前文档所属 Library 中稳定 ID 为 `architect` 的 Skill。
+引用具体文件时写 `skill://architect/references/design.md`；跨 Library 时加上
+`?library=LIBRARY_ID`。Library ID 来自 `ctl library init` 或 `inspect` 返回的描述符，
+不是 Skills 表的 Notion ID。显示名称和 alias 不参与身份解析。
+CLI 入口使用短引用时，需要 `--database ENTRY` 或 `default_database`；
+文档内的短引用始终继承该文档的 Library，不随机器默认库改变。
+后续读取应保留工具返回的完整引用。
+
 `Members` 列出 Agent 可以按需选择的相关 Skill；`Requires` 列出执行 `use` 时
 必须加载的依赖。`Requires` 由作者明确维护，正文提及某个工作流或写了“必须”
 都不会自动变成依赖。
@@ -178,13 +186,17 @@ ntn-skills read "$skill_ref" --database "$library_entry" --refresh --json
 已有关系和显式填写的集合都会保留，包括 `[]`。自动发现宁可漏掉，也不根据名称、
 相似文件名、代码示例或模板占位符猜身份。本地跨 Skill 相对链接可通过
 [`members-plan`](docs/shared-authoring.md#discover-members-before-a-local-import)
-加上明确的路径到 Skill 身份绑定，生成可导入的 portable 副本。
+加上明确的路径到 Skill 身份绑定，生成可导入的 portable 副本；也可以在
+[`import-batch` 清单](docs/shared-authoring.md#import-an-explicit-local-batch)中明确列出所有本地 Skill 根目录。
+批量导入会对已接纳的目录和文件建立精确映射，只在派生副本中改写已验证的链接，
+不会扫描未声明的相邻目录。
 检查未解析引用，并补齐自动发现遗漏的预期关系。
 导入及其 dry run 都会在 `members_discovery` 中报告自动发现的决策和结果。
 
 Skill 内的相对引用以实际包含链接的文件为基准。跨 Skill 相对引用需要该文件可靠的
-当前 Source 贡献映射，或改成明确的稳定引用。缓存目录的位置不能提供身份依据，
+已选择 Source 的贡献映射，或改成明确的稳定引用。缓存目录的位置不能提供身份依据，
 导入也不会自动保留本地仓库的相邻目录结构。
+作用域、固定选择和跨库复制规则见[引用协议](docs/skill-reference-redesign.md)。
 
 ## 继续使用
 

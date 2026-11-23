@@ -40,7 +40,8 @@ type Definition = {
   readonly enabled?: boolean
   readonly content?: string
 }
-const identity = (name: string) => `shared_skill:${library.library_id}:${name}`
+const identity = (name: string) =>
+  `skill://${name}?library=${encodeURIComponent(library.library_id)}`
 async function fixture(definitions: Readonly<Record<string, Definition>>) {
   const f = currentSnapshotFixture({ fileCount: 0 })
   const snapshots = new Map<string, Snapshot>()
@@ -379,10 +380,13 @@ describe("graph prepare", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("a pinned historical alias reuses its verified identity without accepting another owner's alias", async () => {
+  test("equivalent fixed owner references reuse one verified selection", async () => {
     const f = await fixture({ z: {} })
     const snapshot = f.snapshots.get("z")!
-    const result = await f.prepare([f.ref("z"), fileRef("z", "SKILL.md", snapshot.snapshot_id)])
+    const result = await f.prepare([
+      f.ref("z"),
+      fileRef(identity("z"), "SKILL.md", snapshot.snapshot_id),
+    ])
     expect(result.usage.prepared_nodes).toBe(1)
     expect([...f.opened.values()]).toEqual([1])
   })
@@ -532,7 +536,8 @@ describe("graph prepare", () => {
   })
 })
 
-const graphIdentity = (name: string) => `shared_skill:${graphLibrary.library_id}:${name}`
+const graphIdentity = (name: string) =>
+  `skill://${name}?library=${encodeURIComponent(graphLibrary.library_id)}`
 
 describe("prepare through current shared snapshot transport", () => {
   test("warm logical IDs with shared prefixes retain their own complete observation", async () => {

@@ -8,11 +8,10 @@ metadata:
 
 # Maintain the current library
 
-Use the task's executable, exact library and page/Skill ID. Reads need Read;
-writes need Insert/Update.
+Use the task's executable and exact Library/Skill ID. Reads need Read; writes need Insert/Update.
 
-Default to this executable's bundled guidance, even with a connected library.
-It neither selects nor authorizes writes. For an explicitly selected Notion
+Default to this executable's bundled guidance; it does not authorize writes.
+For an explicitly selected Notion
 workflow, read inspects; apply its exact source/ref via `notion_use(ref)` or CLI
 `use REF` with Requires. Never substitute after failure; report unavailable
 adoption. Keep active selections; inspect edited targets.
@@ -23,7 +22,6 @@ For a basic how-to, explain create/register below from this main.
 The CLI handles Notion REST; load an API Skill only for direct API work.
 Open [setup](references/setup.md) only to create/connect a library or resolve a
 reported connection/schema problem. Adding a Skill is not library setup.
-Report write and verification progress.
 
 ## Prepare local input
 
@@ -36,6 +34,8 @@ printf '%s\n' "$skill_dir"
 ```
 
 Reject input and parent symlinks.
+
+For related local roots, read [batch import](references/operations.md#import-an-explicit-local-batch).
 
 ## Create or edit a native Skill
 

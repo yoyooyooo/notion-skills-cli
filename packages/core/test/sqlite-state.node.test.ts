@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { ConfigProvider, Effect, FileSystem, Layer, Schema } from "effect"
 import { SqlClient } from "effect/sql"
 import { spawn } from "node:child_process"
+import { createHash } from "node:crypto"
 import { once } from "node:events"
 import { mkdtemp, mkdir, readFile, realpath, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -13,7 +14,8 @@ import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
 import { assertKnownSnapshotAccess, ObservationSchema, recordScope } from "../src/cache.ts"
 import { nodeRuntime } from "../../cli/src/runtime.ts"
 import { SnapshotSchema, decode } from "../src/model.ts"
-import { sharedSkillId } from "../src/shared-content.ts"
+import { skillIdentity } from "../src/shared-content.ts"
+import { fileRef } from "../src/ref.ts"
 import { aliasFor, type SharedSkillRecord } from "../src/model.ts"
 import { trashPath } from "../src/local-locks.ts"
 
@@ -33,8 +35,16 @@ const pending = {
     input_sha256: "b".repeat(64),
   },
 }
-function currentRecord({ skillId, name }: { skillId: string; name: string }): SharedSkillRecord {
-  const id = sharedSkillId("library-current", skillId)
+function currentRecord({
+  skillId,
+  name,
+  libraryId = "library-current",
+}: {
+  skillId: string
+  name: string
+  libraryId?: string
+}): SharedSkillRecord {
+  const id = skillIdentity(libraryId, skillId)
   return {
     id,
     kind: "skill",
@@ -43,7 +53,7 @@ function currentRecord({ skillId, name }: { skillId: string; name: string }): Sh
       page_id: "00000000-0000-4000-8000-000000000001",
       database_id: "00000000-0000-4000-8000-000000000003",
       data_source_id: "00000000-0000-4000-8000-000000000004",
-      library_id: "library-current",
+      library_id: libraryId,
       skill_id: skillId,
     },
     name,
@@ -52,7 +62,7 @@ function currentRecord({ skillId, name }: { skillId: string; name: string }): Sh
     enabled: true,
     default_context: false,
     entrypoint: "SKILL.md",
-    ref: `skill://${encodeURIComponent(id)}/SKILL.md`,
+    ref: fileRef(id, "SKILL.md"),
   }
 }
 function processProgram(root: string, body: string) {
@@ -75,6 +85,136 @@ async function child(root: string, body: string) {
   const [exit] = (await once(worker, "close")) as [number | null]
   return { stdout, stderr, exit }
 }
+
+test("canonical Skill identities survive SQLite restart and retiring one Library preserves the same Skill ID in another", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ntn-sqlite-library-identity-"))
+  const root = join(directory, "state")
+  const scope = "same-connection-scope"
+  const snapshots = ["library-test", "library-production"].map((libraryId, index) => {
+    const current = currentRecord({ libraryId, skillId: "architect", name: "Architect" })
+    const record = {
+      ...current,
+      locator: {
+        ...current.locator,
+        page_id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      },
+    }
+    const version_id = "same-content-version"
+    const snapshot_id =
+      "s_" +
+      createHash("sha256")
+        .update(selectionSnapshotIdentityInput({ scope, record, version_id }))
+        .digest("hex")
+    return {
+      snapshot_id,
+      scope,
+      record,
+      entrypoint: "SKILL.md",
+      version_id,
+      created_at: 1,
+      files: [],
+    }
+  })
+  const [testSnapshot, productionSnapshot] = snapshots
+  if (!testSnapshot || !productionSnapshot) throw new Error("Both test Libraries are required")
+  const key = (identity: string) =>
+    `cache/latest/${scope}/${encodeURIComponent(identity)}/observed.json`
+  const observation = (snapshot: typeof testSnapshot, generation: number) => ({
+    record_identity: snapshot.record.id,
+    scope,
+    snapshot_id: snapshot.snapshot_id,
+    generation,
+    started_at: generation,
+    validated_at: generation,
+    default_context: false,
+    invalidated: false,
+  })
+  const inspect = `yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify({
+    snapshots:yield* sql\`SELECT record_identity,manifest FROM snapshots ORDER BY record_identity\`,
+    observations:yield* sql\`SELECT record_identity,snapshot_id FROM observations ORDER BY record_identity\`,
+    fences:yield* sql\`SELECT identity,generation,retired_through FROM cache_fences ORDER BY identity\`
+  }))}))`
+  try {
+    const seeded = await child(
+      root,
+      snapshots
+        .map(
+          (snapshot) => `
+      yield* state.write(${JSON.stringify(`snapshots/${snapshot.snapshot_id}.json`)},${JSON.stringify(snapshot)});
+      const generation${snapshot === testSnapshot ? "Test" : "Production"}=yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(snapshot.record.id)});
+      yield* state.write(${JSON.stringify(key(snapshot.record.id))},${JSON.stringify(observation(snapshot, 1))});
+    `,
+        )
+        .join("\n") + inspect,
+    )
+    expect(seeded.exit, seeded.stderr).toBe(0)
+    const persisted = JSON.parse(seeded.stdout)
+    expect(persisted.observations).toEqual(
+      snapshots
+        .map((snapshot) => ({
+          record_identity: snapshot.record.id,
+          snapshot_id: snapshot.snapshot_id,
+        }))
+        .sort((a, b) => a.record_identity.localeCompare(b.record_identity)),
+    )
+    for (const row of persisted.snapshots) {
+      const manifest = decode(SnapshotSchema, JSON.parse(row.manifest))
+      expect(row.record_identity).toBe(manifest.record.id)
+      expect(manifest.record.locator.type).toBe("shared_skill")
+    }
+    const reopened = await child(
+      root,
+      `console.log(JSON.stringify({
+      test:yield* state.read(${JSON.stringify(key(testSnapshot.record.id))}),
+      production:yield* state.read(${JSON.stringify(key(productionSnapshot.record.id))}),
+      keys:yield* state.list(${JSON.stringify(`cache/latest/${scope}`)})
+    }))`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(JSON.parse(reopened.stdout)).toEqual({
+      test: observation(testSnapshot, 1),
+      production: observation(productionSnapshot, 1),
+      keys: snapshots.map((snapshot) => key(snapshot.record.id)).sort(),
+    })
+    const retired = await child(
+      root,
+      `
+      yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(testSnapshot.record.id)});
+      yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(productionSnapshot.record.id)});
+      yield* state.retire([${JSON.stringify(`cache/latest/${scope}/${encodeURIComponent(testSnapshot.record.id)}/.fence`)}]);
+      const late=yield* state.write(${JSON.stringify(key(testSnapshot.record.id))},${JSON.stringify(observation(testSnapshot, 2))}).pipe(Effect.result);
+      yield* state.write(${JSON.stringify(key(productionSnapshot.record.id))},${JSON.stringify(observation(productionSnapshot, 2))});
+      console.log(JSON.stringify({late:late._tag==='Failure'?late.failure.code:null,
+        test:(yield* state.read(${JSON.stringify(key(testSnapshot.record.id))}))??null,
+        production:yield* state.read(${JSON.stringify(key(productionSnapshot.record.id))}),
+        active:yield* state.list(${JSON.stringify(`cache/latest/${scope}`)})}));
+    `,
+    )
+    expect(retired.exit, retired.stderr).toBe(0)
+    expect(JSON.parse(retired.stdout)).toEqual({
+      late: "CACHE_INVALIDATED",
+      test: null,
+      production: observation(productionSnapshot, 2),
+      active: [key(productionSnapshot.record.id)],
+    })
+    const final = await child(root, inspect)
+    expect(final.exit, final.stderr).toBe(0)
+    const rows = JSON.parse(final.stdout)
+    expect(rows.observations).toEqual([
+      {
+        record_identity: productionSnapshot.record.id,
+        snapshot_id: productionSnapshot.snapshot_id,
+      },
+    ])
+    expect(rows.fences).toEqual([
+      { identity: productionSnapshot.record.id, generation: 2, retired_through: 0 },
+      { identity: testSnapshot.record.id, generation: 2, retired_through: 2 },
+    ])
+    expect(rows.snapshots).toEqual(persisted.snapshots)
+  } finally {
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+  }
+}, 30_000)
 
 test("View observations remain outside full catalogs and obey publication and retirement fences", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ntn-view-observation-"))
@@ -220,7 +360,7 @@ it.live("explicit retirement during observation reads never returns a partial ol
           files: [],
         })
         yield* store.writeJson(`snapshots/${snapshot.snapshot_id}.json`, snapshot)
-        const prefix = `cache/latest/scope/${snapshot.record.id}`
+        const prefix = `cache/latest/scope/${encodeURIComponent(snapshot.record.id)}`
         const grantKey = `${prefix}/0-grant.json`
         const grantGeneration = yield* store.reserveCacheGeneration("scope", snapshot.record.id)
         const grant = {
@@ -326,7 +466,7 @@ test("a separate clearing process fences an observation still held by its origin
     for (const [identity, key, payload] of [
       ["page", "cache/latest/scope/page/late.json", { validated_at: 1 }],
       [
-        "shared_skill:library-current:current-skill",
+        "skill://current-skill?library=library-current",
         `cache/current-native-bodies/${"a".repeat(64)}/latest.json`,
         {
           version: 1,
@@ -348,7 +488,7 @@ test("a separate clearing process fences an observation still held by its origin
         (
           await child(
             root,
-            `yield* state.retire([${JSON.stringify(`cache/latest/scope/${identity}/.fence`)}])`,
+            `yield* state.retire([${JSON.stringify(`cache/latest/scope/${encodeURIComponent(identity)}/.fence`)}])`,
           )
         ).exit,
       ).toBe(0)
@@ -424,7 +564,9 @@ test("cache retirement retains only the latest explicit access denial and fences
       ["page", "ACCESS_DENIED"],
       ["access:scope", "AUTH_REQUIRED"],
     ]) {
-      const key = `cache/latest/scope/${identity}/denied.json`
+      if (typeof identity !== "string" || typeof code !== "string")
+        throw new Error("Each access-denial fixture requires an identity and error code.")
+      const key = `cache/latest/scope/${encodeURIComponent(identity)}/denied.json`
       const seeded = await child(
         root,
         `
@@ -454,7 +596,7 @@ test("cache retirement retains only the latest explicit access denial and fences
       )
       const late = await child(
         root,
-        `yield* state.write('cache/latest/scope/${identity}/late.json',{generation:${generations.older},validated_at:2,invalidated:false})`,
+        `yield* state.write('cache/latest/scope/${encodeURIComponent(identity)}/late.json',{generation:${generations.older},validated_at:2,invalidated:false})`,
       )
       expect(late.exit).not.toBe(0)
       expect(late.stderr).toContain("retired before publication")
@@ -462,10 +604,10 @@ test("cache retirement retains only the latest explicit access denial and fences
         root,
         `
         const generation=yield* state.reserve('scope',${JSON.stringify(identity)});
-        yield* state.write('cache/latest/scope/${identity}/allowed.json',{record_identity:${JSON.stringify(identity)},scope:'scope',generation,started_at:20,validated_at:20,invalidated:false});
-        yield* state.retire(['cache/latest/scope/${identity}/.fence']);
+        yield* state.write('cache/latest/scope/${encodeURIComponent(identity)}/allowed.json',{record_identity:${JSON.stringify(identity)},scope:'scope',generation,started_at:20,validated_at:20,invalidated:false});
+        yield* state.retire(['cache/latest/scope/${encodeURIComponent(identity)}/.fence']);
         yield* state.retire(['cache/identities/credential.json']);
-        console.log(JSON.stringify(yield* state.list('cache/latest/scope/${identity}')));
+        console.log(JSON.stringify(yield* state.list('cache/latest/scope/${encodeURIComponent(identity)}')));
         console.log(JSON.stringify((yield* state.read('cache/identities/credential.json'))??null));
       `,
       )
@@ -606,7 +748,7 @@ it.live(
         created_at: 42,
         files: [],
       }
-      const observationKey = `cache/latest/scope/${identity}/1.json`
+      const observationKey = `cache/latest/scope/${encodeURIComponent(identity)}/1.json`
       yield* Effect.scoped(
         Effect.gen(function* () {
           const publisher = yield* sqliteState(join(directory, "state"), fs)

@@ -31,6 +31,12 @@
     "ntn-skills": "dist/ntn-skills.js"
   },
   "exports": {
+    "./ref": {
+      "types": "./dist/types/core/src/skill-ref.d.ts",
+      "import": "./dist/ref.js",
+      "require": "./dist/ref.cjs",
+      "default": "./dist/ref.js"
+    },
     "./sdk": {
       "types": "./dist/types/cli/src/sdk.d.ts",
       "import": "./dist/sdk.js",
@@ -48,6 +54,8 @@
     "dist/ntn-skills.js",
     "dist/sdk.js",
     "dist/management.js",
+    "dist/ref.js",
+    "dist/ref.cjs",
     "dist/types",
     "skills",
     "docs/README.md",
@@ -57,6 +65,7 @@
     "docs/source-sync.md",
     "docs/shared-authoring.md",
     "docs/protocol.md",
+    "docs/skill-reference-redesign.md",
     "docs/maintenance-verification-review.md",
     "README.md",
     "README.zh-CN.md",

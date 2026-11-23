@@ -30,7 +30,7 @@ import {
   type SourceFailure,
 } from "./model.ts"
 import { Notion } from "./notion.ts"
-import { pageId } from "./ref.ts"
+import { bindTarget, pageId, type SkillTarget } from "./ref.ts"
 import { sharedMetadataEntryFromPage, validateSharedRecordIdentity } from "./shared-content.ts"
 import { sharedGraphInventory } from "./shared-graph-read-context.ts"
 import { libraryFromDatabase } from "./shared-library.ts"
@@ -235,6 +235,40 @@ export function setDefaultDatabase(database?: string) {
 
 export interface CatalogOptions extends ReadPolicyOptions {
   readonly database?: string
+}
+
+/** Bind an authored short ref once, at a tool entry with an explicitly selected Library. */
+export function bindEntryTarget(target: SkillTarget, options: CatalogOptions = {}) {
+  return Effect.gen(function* () {
+    if (target.kind !== "skill" || target.reference.scope.kind === "library") return target
+    const config = yield* configuration
+    const selected = options.database ?? config.default_database
+    if (selected === undefined)
+      return yield* Effect.fail(
+        fail(
+          "LIBRARY_CONTEXT_REQUIRED",
+          "A short Skill reference requires --database, a configured default, or a containing document.",
+        ),
+      )
+    const id = yield* databaseId(selected, config.sources ?? [])
+    const registered = (config.sources ?? []).find((source) => source.database_id === id)
+    const source =
+      registered ??
+      (options.offline
+        ? (yield* catalog({ ...options, database: id })).databases.find(
+            (source) => source.database_id === id,
+          )
+        : yield* explicitSource(id, config.sources ?? []))
+    if (source?.shared_library === undefined)
+      return yield* Effect.fail(
+        fail("LIBRARY_CONTEXT_REQUIRED", "The selected Library has no available identity binding."),
+      )
+    const contextLibraryId = source.shared_library.library_id
+    return yield* Effect.try({
+      try: () => bindTarget(target, contextLibraryId),
+      catch: (error) => error as SkillsError,
+    })
+  })
 }
 export function catalog(options: CatalogOptions = {}) {
   return readCatalog(options)

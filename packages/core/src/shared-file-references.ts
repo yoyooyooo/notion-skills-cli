@@ -1,6 +1,7 @@
 import { fail } from "./model.ts"
 import { splitNativeInlineCode } from "./shared-native-inline-code.ts"
 import { normalizePath } from "./ref.ts"
+import { decodeSkillPath } from "./skill-ref.ts"
 import type { CompositionFile } from "./shared-composition.ts"
 
 export type SharedFileReference = {
@@ -180,7 +181,7 @@ function localTarget(from: string, raw: string): string | undefined {
   if (withoutFragment === "") return from
   let decoded: string
   try {
-    decoded = decodeURIComponent(withoutFragment)
+    decoded = decodeSkillPath(withoutFragment)
   } catch {
     throw fail(
       "SHARED_REFERENCE_INVALID",

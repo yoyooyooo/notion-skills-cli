@@ -351,6 +351,15 @@ coordinator or promise atomic publication of an entire multi-Skill Source batch.
 
 ## Consumer and reading projection
 
+One reference protocol identifies a Skill by its logical Library ID and stable
+Skill ID. `ContentRecord.id` is a full current root URI; `locator.type:
+"shared_skill"` only identifies the Notion adapter. Short author refs inherit the
+containing Library. Tool entry defaults do not change document-relative scope.
+Fixed refs carry the owner and snapshot, and resolve an exact path in the selected
+manifest. A source file may have a frozen acquisition route without a Files row.
+See [the reference contract](skill-reference-redesign.md). Old identity strings,
+name fallbacks and public `file_id` parameters are not alternate reader paths.
+
 List, read, use, resource read and export perform zero semantic remote writes.
 They do not repair pages, retain history, update a selected Source or clear residue.
 Management owns those actions. A current reader only needs current identities,

@@ -1,3 +1,4 @@
+import { resolveCatalogReference } from "../src/catalog-reference.ts"
 import { expect, test } from "bun:test"
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
@@ -11,7 +12,6 @@ import {
   decode,
   fail,
   property,
-  resolveRecord,
   SkillsError,
   type Source,
 } from "../src/model.ts"
@@ -73,7 +73,7 @@ function page(library: SharedLibrary, n: number, name = "Sample Skill") {
   }
 }
 const recordId = (library: SharedLibrary, n: number) =>
-  "shared_skill:" + library.library_id + ":skill-" + n
+  `skill://skill-${n}?library=${encodeURIComponent(library.library_id)}`
 function anotherLibrary(): SharedLibrary {
   return {
     ...currentLibrary,
@@ -410,7 +410,7 @@ for (const defect of ["title", "logical-id", "locator", "legacy-locator"] as con
         const cached = JSON.parse(JSON.stringify(value)),
           record = cached.records[0]
         if (defect === "title") record.name = "资源\u0000治理"
-        if (defect === "logical-id") record.id = "shared_skill:library-current:other"
+        if (defect === "logical-id") record.id = "skill://other?library=library-current"
         if (defect === "locator") record.locator.data_source_id = currentId(999)
         if (defect === "legacy-locator")
           record.locator = {
@@ -462,10 +462,10 @@ test("same names in independent current libraries require an exact source alias 
   expect(merged.records.map((record) => record.id).sort()).toEqual(
     [recordId(currentLibrary, 1), recordId(other, 2)].sort(),
   )
-  expect(() => resolveRecord("sample-skill", merged)).toThrow()
+  expect(() => resolveCatalogReference("skill://sample-skill", merged)).toThrow()
   const scoped = await f.run(catalog({ database: "ops", refresh: true }))
   expect(scoped.databases).toEqual([sourceFor(other, "ops")])
-  expect(resolveRecord("sample-skill", scoped).id).toBe(recordId(other, 2))
+  expect(resolveCatalogReference(recordId(other, 2), scoped).record.id).toBe(recordId(other, 2))
   f.fault((call) =>
     call.path.startsWith(`v1/data_sources/${other.skills.data_source_id}/query`)
       ? fail("ACCESS_DENIED", "denied")

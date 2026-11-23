@@ -119,7 +119,7 @@ function target(
         : fileId === undefined
           ? fileRef(owner.id, path)
           : `shared_file:${encodeURIComponent(owner.locator.library_id)}:${encodeURIComponent(owner.locator.skill_id)}:${encodeURIComponent(fileId)}`,
-    ref: fileRef(owner.id, path, undefined, fileId),
+    ref: fileRef(owner.id, path),
     kind: file === undefined ? "skill" : "file",
     name: file === undefined ? owner.name : file.path,
     description: owner.description,

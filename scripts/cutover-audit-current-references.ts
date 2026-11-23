@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url"
 import { Schema } from "effect"
 import { fileRef } from "../packages/core/src/ref.ts"
 import { property, SkillsError, text } from "../packages/core/src/model.ts"
-import { sharedSkillId } from "../packages/core/src/shared-content.ts"
+import { skillIdentity } from "../packages/core/src/shared-content.ts"
 import {
   assertSelectedSharedFileReferences,
   sharedMarkdownReferences,
@@ -158,12 +158,7 @@ const directorySet = (paths: readonly string[]) => {
   return result
 }
 const targetReference = (target: Target) =>
-  fileRef(
-    sharedSkillId(tree.library_id, target.owner.skill_id),
-    target.file.path,
-    undefined,
-    target.file.main ? undefined : target.file.binding.file_id,
-  )
+  fileRef(skillIdentity(tree.library_id, target.owner.skill_id), target.file.path, undefined)
 
 // Diagnostic parsing uses a virtual enclosing directory so the actual core parser
 // can reveal later destinations after an owner escape. Strict owner admission above

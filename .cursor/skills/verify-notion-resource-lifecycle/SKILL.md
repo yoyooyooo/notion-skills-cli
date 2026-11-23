@@ -14,6 +14,10 @@ description: "验证当前 Skill/File 身份、Content 权威、有限 readiness
 
 当前生命周期沿 [CurrentLifecycle](../../../verification/models/current-lifecycle/README.md) 的完整规则清单验证；实际 writer/HTTP/SQLite 结果仍由 operation-recovery 维护。请求模型只拥有请求领域，不因每个 bug 复制模型。
 
+引用作用域、固定 manifest 与导入关系沿 [skill-reference](../verify-ntn-skills/features/skill-reference.md)。
+该切片复用同一 runner，分别建模引用选择与冻结导入计划；消费和管理负责实际行为回放。
+先读 coverage 中的基线与源码差异，再更新对应，用 pstack /statechart 阅读每条反例。
+
 ## Doctor
 
 | 当前边界 | 必须保持 |
@@ -34,6 +38,10 @@ description: "验证当前 Skill/File 身份、Content 权威、有限 readiness
 node scripts/verify-formal.mjs --suite current-lifecycle --out /absolute/new-lifecycle-model-run
 python3 scripts/check-formal-mutations.py --suite current-lifecycle --out /absolute/new-lifecycle-guard-run
 ~~~
+
+改变 skill ref 或导入关系时另运行 skill-reference suite 的全部正负配置及其实际 guard。
+缺 Library、跨库重叠、失效 Source、缺 manifest、显式空 Members、人工修改与未知 CREATE
+不能通过名称、缓存路径、current fallback 或重新推断修复。
 
 检查全部正例/预期反例与条件进展；明确外部返回、显式 resume 及公平性假设。NoDeadlock 不等于最终恢复。实际 guard 原件通过、突变行为失败、恢复通过；导入/语法错误不算检出。
 

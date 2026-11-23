@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { Effect } from "effect"
 import { trashPath } from "../src/local-locks.ts"
 import { property, text, type ContentKind } from "../src/model.ts"
-import { sharedSkillId } from "../src/shared-content.ts"
+import { skillIdentity } from "../src/shared-content.ts"
 import { prepareCurrentRelations } from "../src/shared-current-relations.ts"
 import { prepareCurrentSkillWrite, writeCurrentSkill } from "../src/shared-current-write.ts"
 import { currentWriteFixture, id, library, testBytes } from "./shared-current-write-fixture.ts"
@@ -15,7 +15,7 @@ afterAll(async () => {
   if (process.platform === "darwin") await Effect.runPromise(trashPath(parent))
 })
 type Fixture = ReturnType<typeof currentWriteFixture>
-const ref = (skill: string) => sharedSkillId(library.library_id, skill)
+const ref = (skill: string) => skillIdentity(library.library_id, skill)
 const selection = (members?: readonly string[], requires?: readonly string[]) => ({
   version: 1 as const,
   ownership: "notion" as const,

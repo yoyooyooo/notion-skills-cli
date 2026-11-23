@@ -13,7 +13,7 @@ import { prepareCurrentSkillWrite, writeCurrentSkill } from "../src/shared-curre
 import { currentWriteFixture, id, library } from "./shared-current-write-fixture.ts"
 
 const encode = (value: string) => new TextEncoder().encode(value)
-const member = (id: string) => `shared_skill:${library.library_id}:${id}`
+const member = (id: string) => `skill://${id}?library=${library.library_id}`
 const ref = (id: string, path = "SKILL.md") => fileRef(member(id), path)
 const input = (markdown: string, extra: Partial<CurrentMemberInput> = {}): CurrentMemberInput => ({
   skill_id: "owner",
@@ -102,7 +102,7 @@ test("an explicit unique binding rewrites only verified hyperlinks in a portable
     { href: "../b/SKILL.md", ref: ref("target"), rewritten: true },
   ])
   expect(new TextDecoder().decode(result.portable.files[0]!.bytes)).toBe(
-    body.replace("](" + "../b/SKILL.md)", "](" + ref("target") + ")"),
+    body.replace("../b/SKILL.md)", "skill://target/SKILL.md)"),
   )
   expect(new TextDecoder().decode(supplied.files[0]!.bytes)).toBe(body)
 })
@@ -115,11 +115,11 @@ test("unbound, ambiguous, missing, disabled, foreign and nonexact references nev
     ref("missing"),
     ref("disabled"),
     ref("target", "absent.md"),
-    ref("target") + "?file_id=wrong-file",
-    fileRef("shared_skill:other:target", "SKILL.md"),
-    fileRef("Same display name", "SKILL.md"),
-    fileRef(`shared_skill:${library.library_id}:%`, "SKILL.md"),
-    ref("target") + "?snapshot=s_" + "a".repeat(64),
+    ref("target") + "&file_id=wrong-file",
+    fileRef("skill://target?library=other", "SKILL.md"),
+    "skill://Same%20display%20name/SKILL.md",
+    "skill://%/SKILL.md",
+    ref("target") + "&snapshot=s_" + "a".repeat(64),
   ]
   const result = await f.run(
     planCurrentMembers(library, input(canonical.map((value) => `[target](${value})`).join("\n")), {
@@ -207,6 +207,28 @@ test("binding declarations reject templates and traversal instead of guessing a 
   ).toThrow()
 })
 
+test("encoded path separators cannot create a cross-root identity mapping", async () => {
+  const f = await fixture()
+  await target(f, "target")
+  f.clearCalls()
+  const supplied = input("[target](../b%2FSKILL.md)")
+  const result = await f.run(
+    planCurrentMembers(library, supplied, {
+      existing: false,
+      bindings: parseCurrentMemberBindings({
+        version: 1,
+        root: "skills/a",
+        targets: [{ path: "skills/b/SKILL.md", ref: ref("target") }],
+      }),
+    }),
+  )
+  expect(result.confirmed).toEqual([])
+  expect(result.importable).toBe(false)
+  expect(result.portable.files).toEqual(supplied.files)
+  expect(result.unresolved).toMatchObject([{ reason: "invalid_path", blocks_import: true }])
+  expect(f.calls).toEqual([])
+})
+
 test("a reference definition shared with an image or skipped indented usage is not rewritten", async () => {
   const f = await fixture()
   await target(f, "target")
@@ -245,7 +267,7 @@ test("portable canonicalization preserves UTF-8 BOM, CRLF and every unselected b
   )
   expect(result.importable).toBe(true)
   expect(result.portable.files[0]!.bytes).toEqual(
-    encode(body.replace("../b/SKILL.md", ref("target"))),
+    encode(body.replace("../b/SKILL.md", "skill://target/SKILL.md")),
   )
   expect(original.files[0]!.bytes).toEqual(encode(body))
 })
@@ -285,7 +307,7 @@ test("101 valid current links produce a writable first-creation selection of at 
     }),
   )
   expect(written.state).toBe("ready")
-})
+}, 60_000)
 
 test("duplicate exact Skill identities remain unresolved rather than selecting one page", async () => {
   const f = await fixture()

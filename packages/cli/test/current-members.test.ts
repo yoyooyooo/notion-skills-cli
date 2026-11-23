@@ -16,7 +16,7 @@ import {
 import { currentMembersPlanCommand } from "../src/commands-current-members.ts"
 
 const encode = (text: string) => new TextEncoder().encode(text)
-const member = `shared_skill:${library.library_id}:target`
+const member = `skill://target?library=${library.library_id}`
 const canonical = fileRef(member, "SKILL.md")
 const header = "---\nname: Owner\ndescription: Imported owner\n---\n"
 const base = ["--entry", library.skills.database_id, "--skill-id", "owner"]
@@ -117,7 +117,9 @@ test("members-plan writes a verified portable directory which the normal importe
   expect(await readFile(join(input, "SKILL.md"), "utf8")).toBe(original)
   const selected = await f.run(prepareCurrentImport(output, { skillId: "owner" }))
   expect(selected.plan.relations?.members).toEqual([member])
-  expect(new TextDecoder().decode(selected.plan.files[0]!.bytes)).toContain(canonical)
+  expect(new TextDecoder().decode(selected.plan.files[0]!.bytes)).toContain(
+    "skill://target/SKILL.md",
+  )
   await f.run(
     Command.runWith(currentImportCommand, { version: "0" })([
       output,
@@ -198,42 +200,34 @@ test("explicit empty Members and explicit Requires survive automatic import admi
   expect(members(f, "owner")).toEqual([])
 })
 
-test("automatic Members resume the same frozen writer intent after an accepted relation write", async () => {
+test("automatic Members resume the frozen input without rediscovering target links", async () => {
   const { input, f } = await setup()
   await writeFile(join(input, "SKILL.md"), header + `[target](${canonical})`)
-  const prepared = await f.run(prepareCurrentImport(input, { skillId: "owner" }))
-  const first = await f.run(
-    prepareCurrentImportMembers(library, prepared.plan, "apply", "resume-auto"),
-  )
-  expect(first.create_only).toBe(true)
+  const command = Command.runWith(currentImportCommand, { version: "0" })
   f.failNext({ kind: "relations", outcome: "accepted" })
   await expect(
-    f.run(
-      writeCurrentSkill(library, {
-        plan: first.plan,
-        operation_id: "resume-auto",
-        mode: "apply",
-        create_only: true,
-      }),
-    ),
+    f.run(command([input, ...base, "--operation", "resume-auto"])),
   ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
-  const resumed = await f.run(
-    prepareCurrentImportMembers(library, prepared.plan, "resume", "resume-auto"),
-  )
-  expect(resumed.plan.input_sha256).toBe(first.plan.input_sha256)
-  expect(resumed.create_only).toBe(true)
-  await f.run(
-    writeCurrentSkill(library, {
-      plan: resumed.plan,
-      operation_id: "resume-auto",
-      mode: "resume",
-      create_only: true,
-    }),
-  )
+  const frozen = [...f.json].find(([key]) => key.startsWith("operations/import-plan/"))
+  expect(frozen).toBeDefined()
+  expect(JSON.stringify(frozen?.[1])).toContain(member)
+  f.clearCalls()
+  await f.run(command([input, ...base, "--operation", "resume-auto", "--resume"]))
   expect(members(f, "owner")).toHaveLength(1)
   expect(f.table("skills")).toHaveLength(2)
   expect(
-    [...f.json.keys()].filter((key) => key.startsWith("operations/current-write-pending/")),
+    f.calls.filter(
+      (call) =>
+        call.path === `v1/data_sources/${library.skills.data_source_id}/query` &&
+        JSON.stringify(call.body).includes('"target"'),
+    ),
+  ).toEqual([])
+  expect(
+    [...f.json.keys()].filter(
+      (key) =>
+        key.startsWith("operations/import-plan/") ||
+        key.startsWith("operations/current-write-pending/"),
+    ),
   ).toEqual([])
 })
 

@@ -71,12 +71,7 @@ async function fixture(fileCount = 3, selectedBody?: string) {
     return value
   }
   const ref = (path = snapshot.entrypoint) =>
-    fileRef(
-      snapshot.record.id,
-      path,
-      snapshot.snapshot_id,
-      snapshot.file_bindings?.find((binding) => binding.path === path)?.file_id,
-    )
+    fileRef(snapshot.record.id, path, snapshot.snapshot_id)
   f.clearCalls()
   return { ...f, run, snapshot, file, ref, objectReads, jsonReads, outputs }
 }
@@ -391,12 +386,7 @@ describe("fixed snapshot selected files", () => {
     f.objects.set(`objects/${selected.sha256}`, bytes)
     const main = f.file(f.snapshot.entrypoint)
     f.objects.delete(`objects/${main.sha256}`)
-    const ref = fileRef(
-      snapshot.record.id,
-      selected.path,
-      snapshotId,
-      snapshot.file_bindings?.find((binding) => binding.path === selected.path)?.file_id,
-    )
+    const ref = fileRef(snapshot.record.id, selected.path, snapshotId)
     const result = await f.run(readSkill(ref, { offline: true, output: "/memory/large.bin" }))
     expect(result).toMatchObject({
       bytes: selected.bytes,
@@ -441,13 +431,17 @@ describe("fixed snapshot selected files", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("owner, database, stable File and entrypoint admission precede selected bytes", async () => {
+  test("owner, database, exact path and entrypoint admission precede selected bytes", async () => {
     const f = await fixture()
     const target = parseTarget(f.ref())
     const invalid = [
-      { target: { ...target, selector: "shared_skill:another:owner" }, code: "SNAPSHOT_CONFLICT" },
+      {
+        target: parseTarget(
+          fileRef("skill://owner?library=another", "SKILL.md", f.snapshot.snapshot_id),
+        ),
+        code: "SNAPSHOT_CONFLICT",
+      },
       { target, database: id(999), code: "SKILL_NOT_FOUND" },
-      { target: { ...target, file_id: "unknown-file" }, code: "SHARED_FILE_BINDING_UNAVAILABLE" },
       {
         target: parseTarget(fileRef(f.snapshot.record.id, "absent.md", f.snapshot.snapshot_id)),
         code: "FILE_NOT_FOUND",
@@ -475,22 +469,16 @@ describe("fixed snapshot selected files", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("a stable File keeps its frozen selected path despite an obsolete hint", async () => {
+  test("an obsolete fixed path cannot select another manifest path or read its bytes", async () => {
     const f = await fixture()
     const selected = f.file("references/1.md")
     const binding = f.snapshot.file_bindings?.find((file) => file.path === selected.path)
     if (binding === undefined) throw new Error("Expected selected File binding")
-    const ref = fileRef(
-      f.snapshot.record.id,
-      "old/location.md",
-      f.snapshot.snapshot_id,
-      binding.file_id,
-    )
-    const result = await f.run(readSkill(ref, { offline: true }))
-    expect(result.path).toBe(selected.path)
-    expect(result.materialization?.materialized_paths).toEqual([selected.path])
-    expect([...f.objectReads.keys()]).toEqual(["objects/" + selected.sha256])
-    expect(f.objectReads.get("objects/" + selected.sha256)).toBe(1)
+    const ref = fileRef(f.snapshot.record.id, "old/location.md", f.snapshot.snapshot_id)
+    const result = await f.run(Effect.flip(readSkill(ref, { offline: true })))
+    expect(result.code).toBe("FILE_NOT_FOUND")
+    expect(f.objectReads.size).toBe(0)
+    expect(() => parseTarget(ref + "&file_id=" + binding.file_id)).toThrow()
     expect(f.calls).toHaveLength(0)
   })
 

@@ -10,7 +10,8 @@ import {
 import { Notion } from "./notion.ts"
 import { validatePortableRelations, type PortableRelations } from "./portable.ts"
 import { pageId } from "./ref.ts"
-import { sharedRecordFromPage, sharedSkillId } from "./shared-content.ts"
+import { sharedRecordFromPage, skillIdentity } from "./shared-content.ts"
+import { parseSkillIdentity } from "./skill-ref.ts"
 import { queryCurrentSkillIndex } from "./shared-current-index.ts"
 import type { CurrentOperationSession } from "./shared-current-operation.ts"
 import type { SharedLibrary, SharedSkillRelationField } from "./shared-library-model.ts"
@@ -48,7 +49,7 @@ export function validateCurrentWriteRelations(
 ): PortableRelations {
   const value = validatePortableRelations(input)
   if (kind === "prompt") throw invalid("Prompts cannot own Members or Requires relations.")
-  const owner = sharedSkillId(value.library_id, skillId)
+  const owner = skillIdentity(value.library_id, skillId)
   for (const field of fields)
     if (value[keyFor(field)]?.includes(owner))
       throw invalid("A Skill cannot select itself as a relation target.", { field })
@@ -258,6 +259,160 @@ function assertAcyclic(edges: ReadonlyMap<string, readonly string[]>): void {
     }
   }
 }
+
+/** Compile one explicit batch's final graph before its first body write. Future
+ * batch targets are exact declarations; outside targets still require complete
+ * current identity observations. Requires run prerequisites first, so replacing
+ * old edges cannot manufacture a transient cycle in an acyclic final graph. */
+export function prepareCurrentBatchRelations(
+  library: SharedLibrary,
+  inputs: readonly {
+    readonly skill_id: string
+    readonly kind: ContentKind
+    readonly enabled: boolean
+    readonly relations?: PortableRelations
+    readonly owner?: unknown
+  }[],
+) {
+  return Effect.gen(function* () {
+    const planned = new Map(inputs.map((input) => [input.skill_id, input]))
+    if (planned.size !== inputs.length)
+      return yield* Effect.fail(invalid("A batch cannot repeat a stable Skill identity."))
+    const selected = new Set<SharedSkillRelationField>()
+    const externalIds = new Set<string>()
+    const oversized: {
+      readonly input: (typeof inputs)[number]
+      readonly field: SharedSkillRelationField
+      readonly values: readonly string[]
+    }[] = []
+    for (const input of inputs) {
+      if (input.relations === undefined) continue
+      const relations = yield* checked(() =>
+        validateCurrentWriteRelations(input.relations, input.kind, input.skill_id),
+      )
+      if (relations.library_id !== library.library_id)
+        return yield* Effect.fail(
+          fail(
+            "PORTABLE_RELATION_SCOPE",
+            "Batch relations must name the destination Library explicitly.",
+          ),
+        )
+      for (const field of fields) {
+        const values = relations[keyFor(field)]
+        if (values === undefined) continue
+        selected.add(field)
+        if (values.length > 100) oversized.push({ input, field, values })
+        for (const ref of values) {
+          const id = parseSkillIdentity(ref).skillId
+          const target = planned.get(id)
+          if (target === undefined) externalIds.add(id)
+          else if (target.kind !== "skill" || !target.enabled)
+            return yield* Effect.fail(
+              invalid("Every batch relation target must become an enabled Skill.", {
+                skill_id: id,
+              }),
+            )
+        }
+      }
+    }
+    if (selected.size) yield* assertSchema(library, [...selected])
+    const observed = yield* queryTargets(library, [...externalIds])
+    const byPage = new Map(
+      [...observed.values()].map((value) => [value.record.locator.page_id, value]),
+    )
+    const resolvePages = (pages: readonly string[]) =>
+      Effect.gen(function* () {
+        const ids: string[] = []
+        for (const page of pages) {
+          let value = byPage.get(page)
+          if (value === undefined) {
+            value = yield* target(library, yield* (yield* Notion).request(`v1/pages/${page}`))
+            if (value.record.locator.page_id !== page)
+              return yield* Effect.fail(invalid("Requires returned another physical owner."))
+            byPage.set(page, value)
+            observed.set(value.record.locator.skill_id, value)
+          }
+          ids.push(value.record.locator.skill_id)
+        }
+        return ids
+      })
+    for (const { input, field, values } of oversized) {
+      const before =
+        input.owner === undefined
+          ? []
+          : yield* resolvePages(yield* relationIds(library, input.owner, field))
+      const desired = values.map((ref) => parseSkillIdentity(ref).skillId)
+      if (!same(before, desired))
+        return yield* Effect.fail(
+          fail(
+            "CURRENT_RELATION_WRITE_LIMIT",
+            "A changed batch relation must contain at most 100 targets.",
+            { field, skill_id: input.skill_id },
+          ),
+        )
+    }
+    if (!inputs.some((input) => input.relations?.requires !== undefined))
+      return inputs.map((input) => input.skill_id)
+    const edges = new Map<string, readonly string[]>()
+    const pending = inputs
+      .filter((input) => input.relations?.requires !== undefined)
+      .map((input) => input.skill_id)
+    let edgeCount = 0
+    for (let at = 0; at < pending.length; at++) {
+      const id = pending[at]!
+      if (edges.has(id)) continue
+      if (edges.size >= 10000 || edgeCount > 100000)
+        return yield* Effect.fail(
+          fail("CURRENT_RELATION_GRAPH_LIMIT", "The batch Requires closure exceeds its bound."),
+        )
+      const input = planned.get(id)
+      let children: readonly string[]
+      if (input?.relations?.requires !== undefined)
+        children = input.relations.requires.map((ref) => parseSkillIdentity(ref).skillId)
+      else {
+        const raw = input?.owner ?? observed.get(id)?.raw
+        children =
+          raw === undefined ? [] : yield* resolvePages(yield* relationIds(library, raw, "Requires"))
+      }
+      edges.set(id, children)
+      edgeCount += children.length
+      pending.push(...children)
+    }
+    yield* checked(() => assertAcyclic(edges))
+    const unique = yield* queryTargets(library, [...observed.keys()])
+    for (const [id, value] of observed) {
+      const fresh = unique.get(id)
+      if (
+        fresh?.record.locator.page_id !== value.record.locator.page_id ||
+        (!planned.has(id) &&
+          !same(
+            yield* relationIds(library, value.raw, "Requires"),
+            yield* relationIds(library, fresh.raw, "Requires"),
+          ))
+      )
+        return yield* Effect.fail(
+          invalid("A batch dependency changed its unique physical identity."),
+        )
+    }
+    const ordered: string[] = [],
+      done = new Set<string>()
+    for (const input of inputs) {
+      const stack = [{ id: input.skill_id, after: false }]
+      while (stack.length) {
+        const current = stack.pop()!
+        if (current.after) {
+          if (planned.has(current.id)) ordered.push(current.id)
+        } else if (!done.has(current.id)) {
+          done.add(current.id)
+          stack.push({ ...current, after: true })
+          for (const child of [...(edges.get(current.id) ?? [])].reverse())
+            stack.push({ id: child, after: false })
+        }
+      }
+    }
+    return ordered
+  })
+}
 /** Complete write preflight: only explicit fields are observed, and only changed Requires traverses dependencies. */
 export function prepareCurrentRelations(
   library: SharedLibrary,
@@ -294,9 +449,8 @@ export function prepareCurrentRelations(
     const selected = fields.filter((field) => retained[keyFor(field)] !== undefined)
     if (!selected.length) return empty
     yield* assertSchema(library, selected)
-    const prefix = `shared_skill:${encodeURIComponent(library.library_id)}:`
     const logical = selected.flatMap((field) =>
-      retained[keyFor(field)]!.map((ref) => decodeURIComponent(ref.slice(prefix.length))),
+      retained[keyFor(field)]!.map((ref) => parseSkillIdentity(ref).skillId),
     )
     const queried = yield* queryTargets(library, logical)
     const targets = new Map(
@@ -305,7 +459,7 @@ export function prepareCurrentRelations(
     const selections: Selection[] = []
     for (const field of selected) {
       const desired = retained[keyFor(field)]!.map(
-        (ref) => queried.get(decodeURIComponent(ref.slice(prefix.length)))!.record.locator.page_id,
+        (ref) => queried.get(parseSkillIdentity(ref).skillId)!.record.locator.page_id,
       ).sort()
       const before =
         input.owner === undefined ? [] : yield* relationIds(library, input.owner.raw, field)

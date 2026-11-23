@@ -14,7 +14,7 @@ import { withConsumptionEffects, type ConsumptionEffects } from "./consumption-e
 import { type PreparedNode } from "./graph-prepare-model.ts"
 import { prepareGraphWithSnapshots } from "./graph-prepare.ts"
 import { aliasFor, entrypointFor, fail, property, SkillsError } from "./model.ts"
-import { fileRef, normalizePath, pageId, parseRef, parseTarget } from "./ref.ts"
+import { fileRef, normalizePath, pageId, parseTarget } from "./ref.ts"
 import { validateSharedRecordIdentity } from "./shared-content.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
@@ -49,12 +49,11 @@ function validateSelection(targetText: string, node: PreparedNode) {
   const selected =
     target.selector === record.id ||
     (physical !== undefined && locator.type === "shared_skill" && locator.page_id === physical) ||
-    (target.snapshot !== undefined && ["", record.name, record.alias].includes(target.selector))
+    target.kind === "snapshot"
   if (
     !selected ||
     (target.snapshot !== undefined && target.snapshot !== node.binding.snapshot_id) ||
-    (target.file_id === undefined && target.path && target.path !== node.path) ||
-    (target.file_id !== undefined && target.file_id !== parseRef(node.ref).file_id)
+    (target.path && target.path !== node.path)
   )
     throw invalid()
 }
@@ -124,18 +123,10 @@ function validateManifest(entry: ConsumeEntry, node: PreparedNode, scope: string
       (mainBinding !== undefined && mainBinding.page_id !== locator.page_id))
   )
     throw invalid()
-  if (
-    node.ref !== fileRef(record.id, manifest.entrypoint, manifest.snapshot_id, mainBinding?.file_id)
-  )
-    throw invalid()
+  if (node.ref !== fileRef(record.id, manifest.entrypoint, manifest.snapshot_id)) throw invalid()
   const files = manifest.files.map((file) => ({
     ...file,
-    ref: fileRef(
-      record.id,
-      file.path,
-      manifest.snapshot_id,
-      bindings.find((binding) => binding.path === file.path)?.file_id,
-    ),
+    ref: fileRef(record.id, file.path, manifest.snapshot_id),
   }))
   if (!same(files, node.files)) throw invalid()
   const main = manifest.files.find((file) => file.path === manifest.entrypoint)

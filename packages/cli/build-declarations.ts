@@ -2,7 +2,7 @@ import { mkdir, readdir, writeFile } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
 import ts from "typescript"
 
-/** Emit declarations from the actual schemas, then retain both public SDK closures. */
+/** Emit declarations from the actual schemas, then retain the public SDK, management and reference closures. */
 export async function buildDeclarations(root: string, target: string) {
   const outDir = join(target, "dist/types")
   const entries = ["sdk", "management"]
@@ -36,7 +36,7 @@ export async function buildDeclarations(root: string, target: string) {
         getNewLine: () => "\n",
       }),
     )
-  const pending = entries.map((name) => join(outDir, `cli/src/${name}.d.ts`))
+  const pending = [...entries.map((name) => join(outDir, `cli/src/${name}.d.ts`)), join(outDir, "core/src/skill-ref.d.ts")]
   const declarations = new Map<string, string>()
   while (pending.length) {
     const path = pending.pop()!

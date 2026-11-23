@@ -3,32 +3,35 @@ import { Schema } from "effect"
 import {
   aliasFor,
   DisplayNameSchema,
-  resolveRecord,
   validateDisplayName,
   type Catalog,
   type ContentRecord,
 } from "../src/model.ts"
 import { fileRef, parseRef, parseTarget } from "../src/ref.ts"
 
+import { resolveCatalogReference } from "../src/catalog-reference.ts"
+import { currentLibrary } from "./shared-current-fixture.ts"
+
 const page = "12345678-1234-4234-8234-123456789abc"
 const other = "22345678-1234-4234-8234-123456789abc"
 function record(name: string, id = page): ContentRecord {
   return {
-    id: `shared_skill:library:${id}`,
+    id: `skill://${id}?library=library-current`,
     kind: "skill",
     name,
     alias: aliasFor(name),
     description: "Use this skill",
     default_context: false,
+    enabled: true,
     entrypoint: "SKILL.md",
-    ref: fileRef(`shared_skill:library:${id}`, "SKILL.md"),
+    ref: fileRef(`skill://${id}?library=library-current`, "SKILL.md"),
     locator: {
       type: "shared_skill",
-      library_id: "library",
+      library_id: "library-current",
       skill_id: id,
       page_id: id,
-      database_id: "db",
-      data_source_id: "ds",
+      database_id: currentLibrary.skills.database_id,
+      data_source_id: currentLibrary.skills.data_source_id,
     },
   }
 }
@@ -36,7 +39,16 @@ function catalog(records: readonly ContentRecord[]): Catalog {
   return {
     scope: "test",
     fetched_at: 0,
-    databases: [],
+    databases: [
+      {
+        alias: "current",
+        title: "Current",
+        role: "content",
+        database_id: currentLibrary.skills.database_id,
+        data_source_ids: [currentLibrary.skills.data_source_id],
+        shared_library: currentLibrary,
+      },
+    ],
     records,
     coverage: {
       method: "search",
@@ -65,7 +77,7 @@ describe("human names and callable aliases", () => {
       expect(validateDisplayName(name)).toBe(name)
       expect(Schema.decodeUnknownSync(DisplayNameSchema)(name)).toBe(name)
       expect(aliasFor(name)).toBe(alias)
-      expect(parseRef(fileRef(alias, "SKILL.md")).selector).toBe(alias)
+      expect(String(parseRef(fileRef(record(name).id, "SKILL.md")).skillId)).toBe(page)
     }
   })
 
@@ -76,40 +88,32 @@ describe("human names and callable aliases", () => {
     }
   })
 
-  test("reports alias collisions and selects stable identity without name shadowing", () => {
+  test("display names and aliases cannot shadow a stable identity", () => {
     const first = record("Agent Skill"),
       second = record("Agent  Skill", other)
     const directory = catalog([first, second])
-    expect(() => resolveRecord("agent-skill", directory)).toThrow()
-    try {
-      resolveRecord("agent-skill", directory)
-    } catch (error) {
-      expect(error).toMatchObject({
-        code: "SKILL_AMBIGUOUS",
-        details: {
-          exact_selectors: [
-            { id: first.id, ref: first.ref },
-            { id: second.id, ref: second.ref },
-          ],
-        },
-      })
-    }
+    expect(() => resolveCatalogReference("agent-skill", directory)).toThrow()
+    expect(() =>
+      resolveCatalogReference("skill://agent-skill?library=library-current", directory),
+    ).toThrow()
+    expect(resolveCatalogReference(first.id, directory).record.id).toBe(first.id)
     const identityShadow = record(first.id, other)
-    expect(resolveRecord(first.id, catalog([first, identityShadow])).id).toBe(first.id)
-    expect(resolveRecord(parseRef(first.ref).selector, directory).id).toBe(first.id)
+    expect(resolveCatalogReference(first.id, catalog([first, identityShadow])).record.id).toBe(
+      first.id,
+    )
     expect(first.locator).toEqual(record("renamed", page).locator)
   })
 
-  test("encoded alias and reference delimiters retain exact selection", () => {
+  test("reference paths preserve delimiters without encoding a display name as identity", () => {
     const value = record("name@scope/ref")
-    const ref = fileRef(value.alias, "references/中文.md")
-    expect(ref).toContain("name%2540scope%252Fref")
-    expect(parseTarget(ref)).toEqual({
-      selector: value.alias,
+    const ref = fileRef(value.id, "references/中文.md")
+    expect(parseTarget(ref)).toMatchObject({
+      kind: "skill",
+      selector: value.id,
       path: "references/中文.md",
-      snapshot: undefined,
     })
-    expect(resolveRecord(parseRef(ref).selector, catalog([value])).id).toBe(value.id)
+    expect(resolveCatalogReference(ref, catalog([value])).record.id).toBe(value.id)
+    expect(() => fileRef(value.alias, "SKILL.md")).toThrow()
     for (const invalid of [
       "skill://name%00/SKILL.md",
       "skill://name%0A/SKILL.md",

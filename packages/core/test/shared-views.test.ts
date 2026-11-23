@@ -4,7 +4,7 @@ import { fail, property, type SkillsError, type Source } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
-import { sharedSkillId } from "../src/shared-content.ts"
+import { skillIdentity } from "../src/shared-content.ts"
 import { readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
 import { listCatalog } from "../src/catalog-consumption.ts"
@@ -567,8 +567,8 @@ describe("shared library Views metadata", () => {
     const result = await f.run(viewCatalog({ database: db, view: viewA }))
     expect(result.records.map((record) => record.name)).toEqual(["Gamma", "Alpha"])
     expect(result.records.map((record) => record.id)).toEqual([
-      sharedSkillId(library.library_id, "gamma"),
-      sharedSkillId(library.library_id, "alpha"),
+      skillIdentity(library.library_id, "gamma"),
+      skillIdentity(library.library_id, "alpha"),
     ])
     expect(
       result.records.every(
@@ -760,7 +760,7 @@ describe("shared library Views metadata", () => {
 
     const refreshed = await f.run(viewCatalog({ database: db, view: viewA, refresh: true }))
     expect(refreshed.records.map((record) => record.id)).toEqual([
-      sharedSkillId(library.library_id, "gamma"),
+      skillIdentity(library.library_id, "gamma"),
     ])
     expect(refreshed.coverage.exhaustive).toBe(true)
     expect(f.requests.some((call) => call.path.endsWith(`/views/${viewA}/queries`))).toBe(true)
@@ -772,7 +772,7 @@ describe("shared library Views metadata", () => {
     const expired = await f.run(viewCatalog({ database: db, view: viewA, maxAge: 0 }))
     expect(expired.records.map((record) => record.id)).toEqual([
       snapshot.record.id,
-      sharedSkillId(library.library_id, "gamma"),
+      skillIdentity(library.library_id, "gamma"),
     ])
     expect(expired.source).toBe("notion")
     expect(expired.coverage.exhaustive).toBe(true)

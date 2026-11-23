@@ -40,7 +40,7 @@ const objects = (value: unknown): Record<string, unknown>[] => {
   return value.map(property)
 }
 const identity = (library: SharedLibrary, skillId: string) =>
-  `shared_skill:${encodeURIComponent(library.library_id)}:${encodeURIComponent(skillId)}`
+  `skill://${skillId}?library=${encodeURIComponent(library.library_id)}`
 const noRelations: Relations = { members: [], requires: [] }
 
 /** Observe the actual page, not the import acknowledgement or a prepared fixture. */
@@ -695,10 +695,10 @@ export async function runMembersLive(input: {
       "canonical-first-creation-and-rejections",
       "synthetic",
       async () => {
-        const foreign = fileRef(`shared_skill:foreign-${input.prefix}:absent`, "SKILL.md")
+        const foreign = fileRef(`skill://absent?library=foreign-${input.prefix}`, "SKILL.md")
         const missing = fileRef(identity(library, skillId("missing")), "SKILL.md")
         const missingFile = fileRef(a.selector, "references/not-present.md")
-        const wrongFile = fileRef(a.selector, "SKILL.md", undefined, "not-the-main-file-id")
+        const wrongFile = fileRef(a.selector, "SKILL.md", undefined)
         const nameOnly = "skill://Same-display-name/SKILL.md"
         const body = `[Exact target](${a.ref})\n\nSame display name is plain prose.\n\n[Foreign](${foreign})\n[Missing](${missing})\n[Missing file](${missingFile})\n[Wrong file identity](${wrongFile})\n[Disabled](${disabled.ref})\n[Name only](${nameOnly})\n\n\`[inline](${b.ref})\`\n\n\`\`\`md\n[fenced](${b.ref})\n\`\`\`\n\n<!-- [comment](${b.ref}) -->\n\n![image](${b.ref})\n\n\`../<name>/SKILL.md\``
         const path = await writeTree(join(fixtures, "canonical-owner"), [
@@ -1152,7 +1152,7 @@ export function sanitizeEvidence(
   return value
 }
 
-async function installedDriver(cli: string, runtime: string, root: string) {
+export async function installedDriver(cli: string, runtime: string, root: string) {
   assert.ok(isAbsolute(cli) && isAbsolute(runtime), "Select absolute installed CLI and Node paths")
   const selected = await realpath(cli),
     node = await realpath(runtime)

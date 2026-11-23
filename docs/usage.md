@@ -153,6 +153,27 @@ For current content, choose at most one of `--refresh`, `--offline`, or `--max-a
 A returned fixed ref identifies a local selection. It does not accept refresh or max-age.
 If the selected bytes are no longer available, read the current Skill again.
 
+## Write and retain references
+
+| Reference | Meaning |
+| --- | --- |
+| `skill://architect` | The stable ID `architect` in the containing Library; select its declared entrypoint |
+| `skill://architect/references/design.md` | That owner's exact file path |
+| `skill://architect?library=library-team` | The explicitly selected logical Library and stable Skill ID |
+| `skill://architect/SKILL.md?library=library-team&snapshot=s_<64-hex-digits>` | A tool-returned fixed manifest and exact path |
+
+The snapshot row illustrates the format; keep the real value returned by a tool.
+Percent-encode each path segment and each query value separately. Do not encode
+a slash inside a segment to change directory boundaries. Display titles, aliases,
+page IDs and table IDs do not replace stable Skill or Library IDs.
+
+At a CLI entry, bind short refs with `--database ENTRY`, or configure
+`ntn-skills ctl config set default_database ENTRY`. Management always requires
+its explicit `--entry`. In a document, `skill://architect` inherits that document's
+Library, not the current default. Use a `library` parameter for an external owner.
+Read the descriptor's `library_id` from `ctl library inspect ENTRY`.
+See [the reference contract](skill-reference-redesign.md) for fixed and relative behavior.
+
 ## Create, edit, register or remove a native Skill
 
 Use the current library entry and an exact page ID/URL or stable Skill ID:

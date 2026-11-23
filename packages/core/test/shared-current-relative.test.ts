@@ -21,15 +21,17 @@ test("current relative files stay in their exact Skill and selected directory wi
   const fromNested = await f.run(
     resolveSelectedRelative(selected, "references/nested/guide.md", "../1.md"),
   )
-  expect(parseRef(fromMain)).toEqual({
-    selector: selected.record.id,
+  expect(parseRef(fromMain)).toMatchObject({
+    skillId: "demo",
+    scope: { kind: "library", libraryId: "library-current" },
     path: "references/nested/guide.md",
-    snapshot: selected.snapshot_id,
+    selection: { kind: "fixed", snapshotId: selected.snapshot_id },
   })
-  expect(parseRef(fromNested)).toEqual({
-    selector: selected.record.id,
+  expect(parseRef(fromNested)).toMatchObject({
+    skillId: "demo",
+    scope: { kind: "library", libraryId: "library-current" },
     path: "references/1.md",
-    snapshot: selected.snapshot_id,
+    selection: { kind: "fixed", snapshotId: selected.snapshot_id },
   })
   expect(f.calls).toHaveLength(0)
 })
@@ -53,10 +55,11 @@ test("current resource relative paths retain their owner and mode without fetchi
   const resolved = await f.run(
     resolveSelectedRelative(selected, "references/guide.md", "../scripts/task.sh"),
   )
-  expect(parseRef(resolved)).toEqual({
-    selector: selected.record.id,
+  expect(parseRef(resolved)).toMatchObject({
+    skillId: "demo",
+    scope: { kind: "library", libraryId: "library-current" },
     path: "scripts/task.sh",
-    snapshot: selected.snapshot_id,
+    selection: { kind: "fixed", snapshotId: selected.snapshot_id },
   })
   expect(f.calls).toHaveLength(0)
 })
@@ -93,24 +96,19 @@ test("invalid file syntax remains invalid and an explicitly named Skill ref rema
   const f = currentSnapshotFixture({ fileCount: 0 })
   const selected = await f.open()
   f.clearCalls()
-  for (const relative of [
-    "/absolute/file.md",
-    "..\\foreign.md",
-    "https://example.com/file",
-    "../other/SKILL.md?revision=old",
-  ])
+  for (const relative of ["/absolute/file.md", "..\\foreign.md", "../other/SKILL.md?revision=old"])
     await expect(
       f.run(resolveSelectedRelative(selected, "SKILL.md", relative)),
     ).rejects.toMatchObject({ code: "INVALID_PATH" })
-  const explicit = fileRef("shared_skill:library-current:another-skill", "SKILL.md")
+  const explicit = fileRef("skill://another-skill?library=library-current", "SKILL.md")
   expect(await f.run(resolveSelectedRelative(selected, "SKILL.md", explicit))).toBe(explicit)
   expect(f.calls).toHaveLength(0)
 })
 
-test("identity resolution and reads use the actual containing File binding without acquiring bodies", async () => {
+test("identity resolution and reads require the exact containing manifest path without acquiring bodies", async () => {
   const f = currentSnapshotFixture()
   const selected = await f.open()
-  const from = fileRef(selected.record.id, "old/nested/hint.md", selected.snapshot_id, "support-0")
+  const from = fileRef(selected.record.id, "references/0.md", selected.snapshot_id)
   f.clearCalls()
   const resolved = await f.run(resolveReference("../SKILL.md", { from, offline: true }))
   expect(resolved).toMatchObject({
@@ -119,12 +117,13 @@ test("identity resolution and reads use the actual containing File binding witho
     effects: { version: 1, remote_writes: "none", author_content: "unchanged" },
   })
   expect(parseRef(resolved.ref)).toMatchObject({
-    selector: selected.record.id,
-    snapshot: selected.snapshot_id,
+    skillId: "demo",
+    scope: { kind: "library", libraryId: "library-current" },
+    selection: { kind: "fixed", snapshotId: selected.snapshot_id },
     path: "SKILL.md",
   })
   const read = await f.run(readSkill("../SKILL.md", { from, offline: true }))
-  expect(read.ref).toBe(fileRef(selected.record.id, "SKILL.md", selected.snapshot_id, "main-demo"))
+  expect(read.ref).toBe(fileRef(selected.record.id, "SKILL.md", selected.snapshot_id))
   expect(f.calls).toEqual([])
 })
 
@@ -134,7 +133,7 @@ test("identity resolution rejects unfixed, noncanonical and nonexistent containi
   f.clearCalls()
   for (const from of [
     fileRef(selected.record.id, "SKILL.md"),
-    fileRef(selected.record.name, "SKILL.md", selected.snapshot_id),
+    `skill://demo/SKILL.md?snapshot=${selected.snapshot_id}`,
     fileRef(selected.record.id, "", selected.snapshot_id),
   ])
     await expect(
@@ -148,6 +147,23 @@ test("identity resolution rejects unfixed, noncanonical and nonexistent containi
       }),
     ),
   ).rejects.toMatchObject({ code: "FILE_NOT_FOUND" })
+  expect(f.calls).toEqual([])
+  expect(f.semanticWrites()).toEqual([])
+})
+
+test("containing Library binds short references independently of ambient defaults and cross owners do not share pins", async () => {
+  const f = currentSnapshotFixture(),
+    selected = await f.open()
+  const from = fileRef(selected.record.id, "SKILL.md", selected.snapshot_id)
+  f.clearCalls()
+  const same = await f.run(resolveReference("skill://demo", { from, offline: true }))
+  expect(same.ref).toBe(fileRef(selected.record.id, "", selected.snapshot_id))
+  const other = await f.run(resolveReference("skill://other", { from, offline: true }))
+  expect(other.ref).toBe("skill://other?library=library-current")
+  const foreign = await f.run(
+    resolveReference("skill://demo?library=testing", { from, offline: true }),
+  )
+  expect(foreign.ref).toBe("skill://demo?library=testing")
   expect(f.calls).toEqual([])
   expect(f.semanticWrites()).toEqual([])
 })

@@ -6,7 +6,7 @@ from formal_mutation_result import failed_assertion
 from formal_source_identity import source_identity
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--suite", choices=["request-engine", "current-lifecycle", "notion-mcp-auth", "notion-mcp-search"], required=True)
+parser.add_argument("--suite", choices=["request-engine", "current-lifecycle", "notion-mcp-auth", "notion-mcp-search", "skill-reference"], required=True)
 parser.add_argument("--out", type=Path, required=True)
 args = parser.parse_args()
 repo = Path(__file__).resolve().parents[1]
@@ -271,16 +271,18 @@ auth_cases = [
      [('this.options.beforePublish?.()', 'void 0')],
      credential_store_test, "a retired publication owner cannot replace durable state", "ExpiredFlightCannotCommitGrant"),
 ]
-search_cases = []
-if args.suite == "notion-mcp-search":
-    inventory = repo / "verification/models/notion-mcp-search/mutations.json"
+inventory_cases = {}
+if args.suite in ("notion-mcp-search", "skill-reference"):
+    inventory = repo / "verification/models" / args.suite / "mutations.json"
     shutil.copy2(inventory, out / "mutations.json")
+    reviewed_cases = []
     for row in json.loads(inventory.read_text()):
-        search_cases.append((row["name"], row["file"], row["replacements"],
-                             row["test"], row["pattern"], row["rule"]))
-    assert search_cases, "Missing reviewed search guard mutations"
+        reviewed_cases.append((row["name"], row["file"], row["replacements"],
+                               row["test"], row["pattern"], row["rule"]))
+    assert reviewed_cases, "Missing reviewed domain guard mutations"
+    inventory_cases[args.suite] = reviewed_cases
 cases = {"request-engine": request_cases, "current-lifecycle": lifecycle_cases,
-         "notion-mcp-auth": auth_cases, "notion-mcp-search": search_cases}[args.suite]
+         "notion-mcp-auth": auth_cases, **inventory_cases}[args.suite]
 originals = out / "originals"
 originals.mkdir()
 results = []
@@ -304,7 +306,9 @@ summary = {
               if args.suite == "current-lifecycle" else
               "Production MCP authorization and credential store with real loopback OAuth HTTP, fake credentials, independent Node processes and an owned SIGKILL crash. Every mutation must fail an existing behavior assertion, then restore and pass. The pre-exchange, abandoned-refresh and expired-publication cases remove multiple defensive checks. No real OAuth, remote Notion, browser, cross-machine or power-loss guarantee."
               if args.suite == "notion-mcp-auth" else
-              "Production Hosted MCP content-search qualification and SDK source/auth fences with controlled transport and metadata fixtures. Each reviewed guard mutation must cause a behavior assertion failure and pass after exact restoration. No live Notion or Pi acceptance claim."),
+              "Production Hosted MCP content-search qualification and SDK source/auth fences with controlled transport and metadata fixtures. Each reviewed guard mutation must cause a behavior assertion failure and pass after exact restoration. No live Notion or Pi acceptance claim."
+              if args.suite == "notion-mcp-search" else
+              "Production Skill reference binding, selected manifest and frozen import relation guards. Each mutation runs in a private source copy and must fail its actual behavior assertion, then pass after exact restoration. No live Notion, historical-byte recovery, arbitrary author-intent or installed Broker claim."),
     "results": results,
 }
 def save():

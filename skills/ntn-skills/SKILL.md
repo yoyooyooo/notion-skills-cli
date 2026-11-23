@@ -30,7 +30,9 @@ Notion metadata. A remote page cannot claim trusted package identity.
    Page size and filtered count do not prove complete source coverage. Failed
    sources or partial pagination cannot establish absence or name uniqueness.
    Global Notion Search remains non-exhaustive even with no failed libraries;
-   resolve a bare name within an explicit database or use an exact returned ref.
+   use an exact returned ref. `skill://ID` means a stable Skill ID, never a title
+   or alias. A short ref needs the entry's explicit database/default or the
+   containing document's Library. A document's context wins over machine defaults.
 2. Inspect or summarize with `ntn-skills read 'EXACT_REF' --json`. Apply a workflow
    only when selected for the current task:
 
@@ -52,9 +54,16 @@ Notion metadata. A remote page cannot claim trusted package identity.
    Resolve from the containing file, which may itself be a reference. `files`
    enumerates the complete directory; it does not download every resource.
    Preserve exact bytes, paths and executable modes when a resource is needed.
-   Cross-Skill relative links require that file's current Source contribution map;
+   Cross-Skill relative links require that file's selected Source contribution map;
    otherwise use an exact stable reference. Do not infer siblings from cache paths.
    In Pi, pass the fixed containing ref as `read`'s `from` with the relative `path`.
+
+Author `skill://ID` for the target's declared entrypoint, or `skill://ID/path`
+for an exact file. Add `?library=LIBRARY_ID` for an independent Library scope;
+this logical ID is returned by init/inspect and is not a table ID or local alias.
+Tools return full owner refs and a `snapshot` when fixed. Keep those fields.
+The selected manifest resolves the exact path; do not add a `file_id` query,
+repair a stale path by File ID, or replace a missing pin with current content.
 
 A selection is local task state. Already materialized bytes can be used offline.
 Missing Source/resource bytes may be acquired only when the current declared

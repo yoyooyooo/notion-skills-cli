@@ -27,7 +27,7 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 4. 同任务内保持一份完整选定目录。缺 Source/resource bytes 只可使用仍相符的当前 owner/descriptor；缺 native 旧选择字节或当前声明变化要求重选，不恢复远端历史。
 5. 每文件 acquisition v5 支持多 Source、native 和 resource。Source/resource 核 exact hash/bytes/mode；native 核实际当前正文加显式 frontmatter/mode，不承诺写入前 Markdown 字节。检查按需获取、offline 不发请求及权限拒绝；generated body 编辑不自动接管。 已观察到的 target `ACCESS_DENIED` 或 scope `AUTH_REQUIRED` 对 offline 正文同样生效；历史目录不授予正文权限。保留未知网络失败下的离线正例，以及业务 Enabled 关闭后的完整旧字节正例。T05 必须从公开 SDK 实际观察 401/403 后检查 scalar、batch、use/inspect 与 clear 后行为，不以直接构造失败对象代替这条边界。
    精确 child403 只归因已观察的 physical path；库级 claim 拒绝、未知或不匹配 path 不得误伤 root/其他 scope。physical 拒绝先于 alias 读取及 stable 写入持久化；分别注入后两步故障。用实际 SQLite 验 alias 退休、clear、迟到 grant，以及同 stable 两个正文版本的 fresh 恢复；逐个 pin 核原 hash。physical 授权槽不成为第二份正文 cache status。
-6. 相对文件留在选定 owner；跨 Skill 路径要求显式当前引用。整包 export 与单文件 read --output 分别核 bytes/path/mode；任意多路径 export 尚未公开，不发明选项。
+6. 相对文件留在选定 owner；跨 Skill 路径需要可靠 containing-file Source 证据或完整身份引用，不能按缓存布局补全。沿 [引用验证](../verify-ntn-skills/features/skill-reference.md) 检查两库重叠、正文 Library 上下文、固定 manifest 的 owner/path/entrypoint 与缺失拒绝。Source 文件不必有 Notion File 投影行。整包 export 与单文件 read --output 分别核 bytes/path/mode；任意多路径 export 尚未公开，不发明选项。
 7. 真实公开 list/read/use/files/export 的语义写计数均为 0。Notion query POST 是读；Record 创建、投影、adoption 和清理都是写。
 8. SDK 的完整 `options.env` 同时约束配置和实际 Git 子进程；并发 operation 不共享可变环境。公共 consume 的接线必须有受控 Source/实际 shim 证据，单独测试 runtime 不能代替。
 9. 取消不只检查 SDK 返回。POSIX Git 主进程及其自有进程组须收束，包括主进程先退、孙进程忽略 SIGTERM 的情况；保留原取消原因、2 秒强杀边界和 stderr 保密。不改认证或延长预算制造通过。

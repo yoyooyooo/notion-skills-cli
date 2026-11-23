@@ -1,9 +1,10 @@
+import { currentWriteSkillId } from "./shared-current-write-input.ts"
 import { Crypto, Effect, Schema } from "effect"
 import { entrypointFor, fail, property, validateDescription, validateDisplayName } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { planSharedFiles } from "./shared-composition.ts"
-import { sharedRecordFromPage } from "./shared-content.ts"
+import { sharedRecordFromPage, skillIdentity } from "./shared-content.ts"
 import { parseCurrentFileContent } from "./shared-current-file.ts"
 import {
   currentFileRecord,
@@ -269,12 +270,7 @@ function verifyBodiesAndRelations(library: SharedLibrary, input: CurrentSkillReg
       const refs: string[] = []
       for (const target of ids) {
         const metadata = yield* readCurrentSkillMetadata(library, target)
-        refs.push(
-          "shared_skill:" +
-            encodeURIComponent(library.library_id) +
-            ":" +
-            encodeURIComponent(metadata.skill_id),
-        )
+        refs.push(skillIdentity(library.library_id, metadata.skill_id))
       }
       if (field === "Members") relations.members = refs
       else relations.requires = refs
@@ -348,7 +344,7 @@ export function registerCurrentNotionSkill(library: SharedLibrary, options: Opti
       const id = pageId(options.target)
       if (id === undefined)
         throw fail("INVALID_ARGUMENT", "Register one exact existing Notion Skill page ID or URL.")
-      if (options.skill_id !== undefined) currentWriteIdentity(options.skill_id, "Skill ID")
+      if (options.skill_id !== undefined) currentWriteSkillId(options.skill_id)
       if (options.operation_id !== undefined)
         currentWriteIdentity(options.operation_id, "Operation ID")
       if (options.mode !== undefined && !["auto", "apply", "resume"].includes(options.mode))
@@ -365,9 +361,8 @@ export function registerCurrentNotionSkill(library: SharedLibrary, options: Opti
     const skillId = yield* checked(() => {
       if (before.skill_id && options.skill_id !== undefined && options.skill_id !== before.skill_id)
         throw invalid("Registration preserves an existing stable Skill ID.")
-      return currentWriteIdentity(
+      return currentWriteSkillId(
         before.skill_id || options.skill_id || "skill-" + selected.replace(/-/gu, ""),
-        "Skill ID",
       )
     })
     const requestHash = yield* hash({

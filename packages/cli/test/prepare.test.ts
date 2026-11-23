@@ -73,7 +73,7 @@ async function fixture(options: { main?: string } = {}) {
       ? options.main
       : `# ${name}\nExact prepared instruction ${name}.\n`
   const snapshots: Snapshot[] = ["a", "b", "optional", "broken"].map((name, index) => {
-    const id = `shared_skill:prepare-library:${name}`
+    const id = `skill://${name}?library=prepare-library`
     const body = instruction(name)
     const version = hash(body)
     return {
@@ -120,8 +120,8 @@ async function fixture(options: { main?: string } = {}) {
     ...snapshots[3]!,
     required: [
       {
-        id: "shared_skill:prepare-library:missing",
-        ref: fileRef("shared_skill:prepare-library:missing", "SKILL.md", `s_${"f".repeat(64)}`),
+        id: "skill://missing?library=prepare-library",
+        ref: fileRef("skill://missing?library=prepare-library", "SKILL.md", `s_${"f".repeat(64)}`),
         metadata: { name: "missing", kind: "skill", description: "Missing controlled dependency" },
       },
     ],

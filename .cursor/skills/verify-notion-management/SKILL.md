@@ -38,6 +38,12 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 
 实际命令与限制见 [导入旅程](../verify-ntn-skills/features/import-create-recovery-dry-run.md)、[安装验证](../verify-ntn-skills/features/skill-maintenance.md) 和 [当前合同](../../../docs/current-contract.md)。
 
+批次映射、循环 Members、跨库重叠、关系三态与原输入恢复沿
+[引用与导入关系](../verify-ntn-skills/features/skill-reference.md)。
+模型由 resource-lifecycle 维护；此入口回放公开 CLI、实际 writer 与关系读回，
+确认先冻结映射、全部对象就绪后应用关系，重试不重算意图、不重发未知 CREATE。
+首次 omitted 可推断已确认 active links，更新 omitted 和人工删除必须保留，Requires 只显式维护。
+
 ## Evidence
 
 按 [当前合同与回执](../../../docs/verification-contracts.md) 记录所属场景、准确候选、真实运行层和原件 hash；历史 Done 不填作当前通过。

@@ -1,3 +1,4 @@
+import { validateSkillId, SkillReferenceError } from "./skill-ref.ts"
 import { Crypto, Effect } from "effect"
 import {
   ContentKindSchema,
@@ -95,6 +96,14 @@ const checked = <A>(read: () => A) =>
     catch: (error) =>
       error instanceof SkillsError ? error : invalid("Invalid complete current Skill input."),
   })
+export function currentWriteSkillId(input: string): string {
+  try {
+    return validateSkillId(input)
+  } catch (error) {
+    if (error instanceof SkillReferenceError) throw invalid(error.message)
+    throw error
+  }
+}
 export function currentWriteIdentity(input: string, label: string): string {
   if (typeof input !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(input))
     throw invalid(`${label} must be a stable bounded identity.`)
@@ -223,7 +232,7 @@ export function currentWriteFileFingerprint(file: PreparedCurrentWriteFile) {
 export function prepareCurrentSkillWrite(input: CurrentSkillWriteInput) {
   return Effect.gen(function* () {
     const metadata = yield* checked(() => {
-      const skill_id = currentWriteIdentity(input.skill_id, "Skill ID")
+      const skill_id = currentWriteSkillId(input.skill_id)
       const kind = decode(ContentKindSchema, input.kind),
         main = entrypointFor(kind)
       if (
@@ -387,7 +396,7 @@ export function copyValidatedCurrentSkillWrite(input: PreparedCurrentSkillWrite)
   return Effect.gen(function* () {
     const plan = yield* checked(() => {
       const value = structuredClone(input)
-      currentWriteIdentity(value.skill_id, "Skill ID")
+      currentWriteSkillId(value.skill_id)
       decode(ContentKindSchema, value.kind)
       validateDisplayName(value.name)
       validateDescription(value.description)

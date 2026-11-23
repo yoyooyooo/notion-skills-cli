@@ -18,7 +18,7 @@ const configExtension = ""
 const args = process.argv.slice(2)
 if (args.includes("--help")) {
   console.log(
-    "Usage: node scripts/verify-formal.mjs --suite request-engine|current-lifecycle|notion-mcp-auth|notion-mcp-search --out /absolute/new/output " +
+    "Usage: node scripts/verify-formal.mjs --suite request-engine|current-lifecycle|notion-mcp-auth|notion-mcp-search|skill-reference --out /absolute/new/output " +
       "[--model Model] [--statechart PINNED_SKILL] [--jar TLC_JAR]",
   )
   process.exit(0)
@@ -37,7 +37,13 @@ if (options.has("--out")) assert.ok(path.isAbsolute(options.get("--out")), "--ou
 const selectedModel = options.get("--model")
 const suite = options.get("--suite")
 assert.ok(
-  ["request-engine", "current-lifecycle", "notion-mcp-auth", "notion-mcp-search"].includes(suite),
+  [
+    "request-engine",
+    "current-lifecycle",
+    "notion-mcp-auth",
+    "notion-mcp-search",
+    "skill-reference",
+  ].includes(suite),
   "Select one current --suite",
 )
 const lockFile = `verification/models/${suite}/tool-lock.json`

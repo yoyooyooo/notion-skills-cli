@@ -57,6 +57,16 @@ for (const [entry, name] of [
   if (!result.success) throw new AggregateError(result.logs, `Build failed: ${entry}`)
 }
 const declarations = await buildDeclarations(root, target)
+for (const format of ["esm", "cjs"] as const) {
+  const result = await Bun.build({
+    entrypoints: [new URL("../core/src/skill-ref.ts", import.meta.url).pathname],
+    outdir: join(target, "dist"),
+    naming: format === "cjs" ? "ref.cjs" : "ref.js",
+    target: "node",
+    format,
+  })
+  if (!result.success) throw new AggregateError(result.logs, `Build failed: Skill ref ${format}`)
+}
 await chmod(join(target, "dist/ntn-skills.js"), 0o755)
 await mkdir(join(target, "skills"), { recursive: true })
 await cp(join(root, "skills/ntn-skills"), join(target, "skills/ntn-skills"), { recursive: true })
@@ -93,6 +103,8 @@ await writeFile(
         "dist/ntn-skills.js",
         "dist/sdk.js",
         "dist/management.js",
+        "dist/ref.js",
+        "dist/ref.cjs",
         "dist/types",
         "skills",
       ]),

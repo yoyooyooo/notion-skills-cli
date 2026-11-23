@@ -6,7 +6,15 @@ import {
   type PortableRelations,
   type PortableSkill,
 } from "./portable.ts"
-import { fileRef, normalizePath, parseRef, type SkillRef } from "./ref.ts"
+import { fileRef, normalizePath } from "./ref.ts"
+import {
+  bindSkillRef,
+  decodeSkillPath,
+  formatSkillIdentity,
+  formatSkillRef,
+  parseSkillRef,
+  type BoundSkillRef,
+} from "./skill-ref.ts"
 import { queryCurrentSkillIndex, readCurrentSkillMetadata } from "./shared-current-index.ts"
 import { queryCurrentSkillIdentity } from "./shared-current-skill-target.ts"
 import {
@@ -96,18 +104,44 @@ export function parseCurrentMemberBindings(input: unknown): CurrentMemberBinding
   }
 }
 
-function exactCurrentRef(libraryId: string, ref: string): SkillRef {
-  const parsed = parseRef(ref)
-  if (parsed.snapshot !== undefined) throw fail("MEMBERS_REF_UNCONFIRMED", "historical_reference")
+function exactCurrentRef(libraryId: string, ref: string): BoundSkillRef {
+  const parsed = bindSkillRef(parseSkillRef(ref), libraryId)
+  if (parsed.selection.kind !== "current")
+    throw fail("MEMBERS_REF_UNCONFIRMED", "historical_reference")
   validatePortableRelations({
     version: 1,
     ownership: "notion",
     library_id: libraryId,
-    members: [parsed.selector],
+    members: [formatSkillIdentity(parsed.owner)],
   })
-  if (fileRef(parsed.selector, parsed.path, undefined, parsed.file_id) !== ref)
-    throw fail("MEMBERS_REF_UNCONFIRMED", "noncanonical_reference")
   return parsed
+}
+
+/** Keep source offsets and refuse destinations also used by images or code.
+ * Both relative compilation and explicit Library rebinding use this boundary. */
+export function currentImportMarkdownLinks(path: string, original: string) {
+  const visible = original.replace(/^(?: {4}|\t)[^\n]*/gmu, (line) => " ".repeat(line.length))
+  const originalLinks = sharedMarkdownLinks(path, original)
+  const links = sharedMarkdownLinks(path, visible)
+  const originalUses = new Map<number, { count: number; image: boolean }>()
+  const selectedUses = new Map<number, number>()
+  for (const link of originalLinks) {
+    if (link.destination_start === undefined) continue
+    const previous = originalUses.get(link.destination_start)
+    originalUses.set(link.destination_start, {
+      count: (previous?.count ?? 0) + 1,
+      image: previous?.image === true || link.kind !== "link",
+    })
+  }
+  for (const link of links)
+    if (link.destination_start !== undefined)
+      selectedUses.set(link.destination_start, (selectedUses.get(link.destination_start) ?? 0) + 1)
+  const protectedDestinations = new Set<number>()
+  for (const [start, count] of selectedUses) {
+    const originalUse = originalUses.get(start)
+    if (originalUse?.image || originalUse?.count !== count) protectedDestinations.add(start)
+  }
+  return { links, protectedDestinations }
 }
 
 function inspectLinks(input: CurrentMemberInput, bindings?: CurrentMemberBindings) {
@@ -121,12 +155,8 @@ function inspectLinks(input: CurrentMemberInput, bindings?: CurrentMemberBinding
     unresolved.push({ from: link.from, line: link.line, href: link.href, reason, blocks_import })
   for (const file of input.files) {
     if (!/\.(md|markdown)$/iu.test(file.path)) continue
-    // Indented prose can be a code block or a nested list. Omitting both is
-    // safer than promoting a code example to a relationship.
     const original = decoder.decode(file.bytes)
-    const markdown = original.replace(/^(?: {4}|\t)[^\n]*/gmu, (line) => " ".repeat(line.length))
-    const originalLinks = sharedMarkdownLinks(file.path, original)
-    const links = sharedMarkdownLinks(file.path, markdown)
+    const { links, protectedDestinations } = currentImportMarkdownLinks(file.path, original)
     for (const link of links) {
       if (link.kind !== "link") continue
       const href = link.destination
@@ -144,7 +174,7 @@ function inspectLinks(input: CurrentMemberInput, bindings?: CurrentMemberBinding
       const rawPath = href.split(/[?#]/u)[0]!
       let local: string
       try {
-        local = decodeURIComponent(rawPath)
+        local = decodeSkillPath(rawPath)
       } catch {
         reject(link, "invalid_path")
         continue
@@ -193,11 +223,9 @@ function inspectLinks(input: CurrentMemberInput, bindings?: CurrentMemberBinding
         reject(link, "link_form_cannot_be_rewritten")
         continue
       }
-      const usages = originalLinks.filter((use) => use.destination_start === link.destination_start)
       if (
-        usages.some((use) => use.kind !== "link") ||
-        usages.length !==
-          links.filter((use) => use.destination_start === link.destination_start).length
+        link.destination_start !== undefined &&
+        protectedDestinations.has(link.destination_start)
       ) {
         reject(link, "shared_destination_has_unselected_uses")
         continue
@@ -208,11 +236,30 @@ function inspectLinks(input: CurrentMemberInput, bindings?: CurrentMemberBinding
   return { candidates, unresolved }
 }
 
-function confirmTarget(library: SharedLibrary, ref: string) {
+function confirmTarget(
+  library: SharedLibrary,
+  ref: string,
+  planned: readonly CurrentMemberInput[] = [],
+) {
   return Effect.gen(function* () {
     const parsed = yield* checked(() => exactCurrentRef(library.library_id, ref))
-    const prefix = `shared_skill:${encodeURIComponent(library.library_id)}:`
-    const skillId = decodeURIComponent(parsed.selector.slice(prefix.length))
+    const skillId = parsed.owner.skillId
+    const future = planned.filter((target) => target.skill_id === skillId)
+    if (future.length > 1)
+      return yield* Effect.fail(fail("MEMBERS_REF_UNCONFIRMED", "ambiguous_batch_identity"))
+    const proposed = future[0]
+    if (proposed !== undefined) {
+      const path = parsed.path || entrypointFor(proposed.kind)
+      if (
+        proposed.kind !== "skill" ||
+        proposed.files.filter((file) => file.path === path).length !== 1
+      )
+        return yield* Effect.fail(fail("MEMBERS_REF_UNCONFIRMED", "batch_target_file_unconfirmed"))
+      return {
+        member: formatSkillIdentity(parsed.owner),
+        ref: fileRef(formatSkillIdentity(parsed.owner), path),
+      }
+    }
     const raw = yield* queryCurrentSkillIdentity(library, skillId)
     if (raw === undefined)
       return yield* Effect.fail(fail("MEMBERS_REF_UNCONFIRMED", "target_missing"))
@@ -227,15 +274,12 @@ function confirmTarget(library: SharedLibrary, ref: string) {
       path === metadata.main.path
         ? [metadata.main]
         : (yield* queryCurrentSkillIndex(library, page, raw)).files
-    const found = files.find(
-      (file) =>
-        file.path === path && (parsed.file_id === undefined || file.file_id === parsed.file_id),
-    )
+    const found = files.find((file) => file.path === path)
     if (found === undefined)
       return yield* Effect.fail(fail("MEMBERS_REF_UNCONFIRMED", "target_file_unconfirmed"))
     return {
-      member: parsed.selector,
-      ref: fileRef(parsed.selector, path, undefined, parsed.file_id),
+      member: formatSkillIdentity(parsed.owner),
+      ref: fileRef(formatSkillIdentity(parsed.owner), path),
     }
   })
 }
@@ -260,7 +304,13 @@ const unconfirmedCodes = new Set([
 export function planCurrentMembers(
   library: SharedLibrary,
   input: CurrentMemberInput,
-  options: { readonly existing: boolean; readonly bindings?: CurrentMemberBindings },
+  options: {
+    readonly existing: boolean
+    readonly bindings?: CurrentMemberBindings
+    /** Exact, admitted creations in this explicit batch. The writer must still
+     * observe all of them ready before applying any planned relationship. */
+    readonly plannedTargets?: readonly CurrentMemberInput[]
+  },
 ) {
   return Effect.gen(function* () {
     const scanned = yield* checked(() => inspectLinks(input, options.bindings))
@@ -271,7 +321,7 @@ export function planCurrentMembers(
       { readonly member: string; readonly ref: string } | { readonly reason: string }
     >()
     const changes = new Map<string, Map<string, string>>()
-    const self = `shared_skill:${encodeURIComponent(library.library_id)}:${encodeURIComponent(input.skill_id)}`
+    const self = formatSkillIdentity({ libraryId: library.library_id, skillId: input.skill_id })
     for (const candidate of scanned.candidates) {
       let outcome = outcomes.get(candidate.ref)
       if (outcome === undefined) {
@@ -285,7 +335,9 @@ export function planCurrentMembers(
           })
           continue
         }
-        const result = yield* confirmTarget(library, candidate.ref).pipe(Effect.result)
+        const result = yield* confirmTarget(library, candidate.ref, options.plannedTargets).pipe(
+          Effect.result,
+        )
         if (result._tag === "Failure") {
           if (!unconfirmedCodes.has(result.failure.code)) return yield* Effect.fail(result.failure)
           outcome = {
@@ -313,7 +365,14 @@ export function planCurrentMembers(
       confirmed.push({ ...evidence, ...outcome, rewritten: candidate.rewrite })
       if (candidate.rewrite) {
         const byHref = changes.get(candidate.link.from) ?? new Map<string, string>()
-        byHref.set(`${candidate.link.line}:${candidate.link.href}`, outcome.ref)
+        const target = parseSkillRef(outcome.ref)
+        byHref.set(
+          `${candidate.link.line}:${candidate.link.href}`,
+          formatSkillRef({
+            ...target,
+            scope: { kind: "context" },
+          }),
+        )
         changes.set(candidate.link.from, byHref)
       }
     }

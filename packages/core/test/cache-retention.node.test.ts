@@ -126,7 +126,7 @@ test.skipIf(process.platform !== "darwin")(
           entrypoint: "SKILL.md",
           created_at: 1,
           record: {
-            id: `shared_skill:library-current:${id}`,
+            id: `skill://${id}?library=library-current`,
             kind: "skill",
             entrypoint: "SKILL.md",
             locator: {
@@ -140,7 +140,7 @@ test.skipIf(process.platform !== "darwin")(
             name: id,
             alias: id,
             description: id,
-            ref: `skill://${encodeURIComponent(`shared_skill:library-current:${id}`)}/SKILL.md`,
+            ref: `skill://${id}/SKILL.md?library=library-current`,
             default_context: false,
           },
           files: [{ path: "SKILL.md", bytes: 8, sha256: payload.sha256 }],
@@ -171,7 +171,7 @@ test.skipIf(process.platform !== "darwin")(
       expect(preview.objects[0]).toMatchObject({
         bytes: 8,
         snapshots: snapshots.map((snapshot) => snapshot.snapshot_id).sort(),
-        owners: ["shared_skill:library-current:one", "shared_skill:library-current:two"],
+        owners: ["skill://one?library=library-current", "skill://two?library=library-current"],
       })
       expect(preview.objects[0]?.protected_by).toContain("shared_object")
       expect(preview.database.length).toBeGreaterThan(0)

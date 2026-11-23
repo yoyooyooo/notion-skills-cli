@@ -5,7 +5,7 @@ import { prepareGraph } from "../src/graph-prepare.ts"
 import { fail, property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
-import { sharedSkillId } from "../src/shared-content.ts"
+import { skillIdentity } from "../src/shared-content.ts"
 import { sharedGraphInventory, withSharedGraphReads } from "../src/shared-graph-read-context.ts"
 import { readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
@@ -118,7 +118,7 @@ describe("selected graph metadata stays bounded by requested identities", () => 
     async (mode) => {
       const f = selectedFixture({ width: 0 }),
         path = `v1/pages/${f.pageIds[0]}`
-      const root = fileRef(sharedSkillId(f.descriptor.library_id, "a"), "SKILL.md")
+      const root = fileRef(skillIdentity(f.descriptor.library_id, "a"), "SKILL.md")
       let updated = false
       const result = await f.run(
         Effect.gen(function* () {
@@ -182,7 +182,7 @@ describe("selected graph metadata stays bounded by requested identities", () => 
       relation: [],
       has_more: false,
     }
-    const root = fileRef(sharedSkillId(f.descriptor.library_id, "a"), "SKILL.md")
+    const root = fileRef(skillIdentity(f.descriptor.library_id, "a"), "SKILL.md")
     const result = await f.run(
       prepareGraph(
         { roots: [root], purpose: "use" },
@@ -297,7 +297,7 @@ describe("physical authorization across stable identity changes", () => {
     const changedContent = "# Changed stable child B\n"
     f.bodies.set(f.pageIds[1]!, changedContent)
     const changed = await f.run(
-      readSkill(fileRef(sharedSkillId(f.descriptor.library_id, "changed-child"), "SKILL.md"), {
+      readSkill(fileRef(skillIdentity(f.descriptor.library_id, "changed-child"), "SKILL.md"), {
         database,
         refresh: true,
       }),
@@ -451,7 +451,8 @@ describe("bounded target observations preserve identity and failure boundaries",
       )
       expect(denied).toHaveLength(1)
       expect(denied[0]!.id).toBe(f.pageIds[1])
-      expect(denied[0]!.ref).toBe(fileRef(f.pageIds[1]!, ""))
+      expect(denied[0]!.ref).toBe(`https://www.notion.so/${f.pageIds[1]!.replaceAll("-", "")}`)
+      expect(property(property(denied[0]!.error).details).page_id).toBe(f.pageIds[1])
       expect(denied[0]!.roles).toEqual(["required"])
       expect(
         "content" in
@@ -517,7 +518,7 @@ describe("bounded target observations preserve identity and failure boundaries",
           (value) => property(value).access_denied !== undefined,
         )
         expect(new Set(denied.map((value) => property(value).record_identity))).toEqual(
-          new Set([sharedSkillId(f.descriptor.library_id, "leaf-0"), f.pageIds[1]]),
+          new Set([skillIdentity(f.descriptor.library_id, "leaf-0"), f.pageIds[1]]),
         )
         expect(denied.every((value) => property(value).scope === before.scope)).toBe(true)
       } else noGuessedDenial(f)
@@ -688,13 +689,18 @@ describe("bounded target observations preserve identity and failure boundaries",
       const f = selectedFixture({ width: 201 })
       const identity =
         issue === "wrong-library"
-          ? sharedSkillId("another-library", "a")
+          ? skillIdentity("another-library", "a")
           : issue === "missing-id"
-            ? sharedSkillId(f.descriptor.library_id, "absent")
+            ? skillIdentity(f.descriptor.library_id, "absent")
             : `shared_skill:${f.descriptor.library_id}:a:invalid`
-      const result = await selectedFailure(f, (api) => api.request, fileRef(identity, "SKILL.md"))
+      const target = issue === "noncanonical-id" ? identity : fileRef(identity, "SKILL.md")
+      const result = await selectedFailure(f, (api) => api.request, target)
       expect(result._tag === "Failure" && result.failure.code).toBe(
-        issue === "noncanonical-id" ? "INVALID_REF" : "SKILL_NOT_FOUND",
+        issue === "noncanonical-id"
+          ? "CURRENT_TARGET_REQUIRED"
+          : issue === "wrong-library"
+            ? "LIBRARY_SCOPE_MISMATCH"
+            : "SKILL_NOT_FOUND",
       )
       expect(f.responses.some((row) => !row.filtered)).toBe(false)
       expect(f.readBodyCount()).toBe(0)

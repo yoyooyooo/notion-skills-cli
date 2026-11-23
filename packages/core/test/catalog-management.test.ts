@@ -131,7 +131,7 @@ test.each([true, false])(
     const f = fixture({ managementFirst, registeredManagement: true })
     const result = await f.run(catalog({ refresh: true }))
     expect(result.records.map((record) => record.id)).toEqual([
-      `shared_skill:${library.library_id}:a`,
+      `skill://a?library=${encodeURIComponent(library.library_id)}`,
     ])
     expect(result.databases.map((source) => source.database_id)).toEqual([
       library.skills.database_id,
@@ -179,7 +179,7 @@ test("an explicit obsolete entry fails current admission without reading its row
 
 test("cold logical ref refresh without database resolves the shared Skill without broad management queries", async () => {
   const f = fixture()
-  const target = `shared_skill:${library.library_id}:a`
+  const target = `skill://a?library=${encodeURIComponent(library.library_id)}`
   const result = await f.run(readSkill(fileRef(target, "SKILL.md"), { refresh: true }))
   expect(result.record.id).toBe(target)
   expect("content" in result && result.content).toContain("# a instruction")

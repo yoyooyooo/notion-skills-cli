@@ -60,7 +60,8 @@ export function requireTestCommand(
     if (!value.startsWith("skill://")) continue
     const selector = parseTarget(value).selector
     assert.ok(
-      selector.startsWith(`shared_skill:${library.library_id}:`),
+      selector.startsWith("skill://") &&
+        selector.endsWith(`?library=${encodeURIComponent(library.library_id)}`),
       "A fixed ref belongs to its original library; a test --database cannot retarget a production pin",
     )
   }

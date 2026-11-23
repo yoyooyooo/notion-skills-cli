@@ -9,7 +9,13 @@ import { fileURLToPath } from "node:url"
 import { assertFormalCase } from "./formal-result-contract.mjs"
 
 const root = fileURLToPath(new URL("../", import.meta.url))
-const suites = ["request-engine", "current-lifecycle", "notion-mcp-auth", "notion-mcp-search"]
+const suites = [
+  "request-engine",
+  "current-lifecycle",
+  "notion-mcp-auth",
+  "notion-mcp-search",
+  "skill-reference",
+]
 test("gitless formal mutations require the selected paired build and original protected bytes", (t) => {
   const scratch = mkdtempSync(join(tmpdir(), "notion-formal-source-identity-"))
   const runRoot = join(scratch, "runs", "fixture-run")

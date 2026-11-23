@@ -51,6 +51,16 @@ for the user's Notion library. Do not infer host support from CLI URI support.
 
 ## Current selection and cache
 
+The logical key is the Library ID plus stable Skill ID. Short `skill://ID`
+author refs inherit the containing document's Library. Tool entry context can
+come from an explicit database or default; it cannot override a document's owner.
+Names and aliases are labels. Same IDs in different Libraries remain distinct.
+Public record IDs are full current root refs. Fixed file refs add an exact path
+and snapshot. Resolve their path in that manifest; do not supply `file_id`, use
+an old path as a hint, or substitute a current file when selected bytes are absent.
+The CLI, SDK and Broker use the same `ntn-skills/ref` parser at
+`SKILL_REF_VERSION = 2`. Broker checks the selected module's version and hash.
+
 Discovery metadata and adopted instructions have separate freshness. In Pi, a
 requested verification after authoring can call
 `notion_list({query: SKILL_ID, source: SOURCE_ID, refresh: true})` and inspect the
@@ -111,7 +121,7 @@ metadata.
 | --- | --- |
 | Expected workflow absent | Inspect coverage and failed sources; broaden query or select the exact known database. Search absence is not workspace absence. |
 | Just-authored Skill absent from Pi discovery | Refresh the configured source with notion_list refresh:true, then inspect its exact returned ref. Keep existing task pins. Repeating a cached empty query or refreshing only the CLI does not prove host discovery. |
-| Bare-name read reports CATALOG_INCOMPLETE with no failed sources | Global Notion Search is still non-exhaustive. Use an explicit database or exact returned ref; a machine binding does not make global name lookup unique. |
+| Short ref reports LIBRARY_CONTEXT_REQUIRED | Supply the entry database/default or the exact containing-file ref. Never infer a Library from one search result. |
 | Same name matches several pages | Select the intended database or exact returned ref; preserve each identity. |
 | Current schema required | Keep the precise error and affected entry. Current descriptor conversion is a management task; another reader must not mask it. |
 | Current operation pending | Inspect its current state and operation ID with library files; do not mark ready by hand. |

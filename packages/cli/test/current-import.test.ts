@@ -546,7 +546,7 @@ test("current portable relations survive local admission and invalid selections 
     ownership: "notion" as const,
     library_id: "library",
     members: [],
-    requires: ["shared_skill:library:target"],
+    requires: ["skill://target?library=library"],
   }
   await writeFile(join(directory, ".ntn-skills.json"), JSON.stringify({ ...base, relations }))
   const admitted = await run(prepareCurrentImport(directory, { skillId: "portable" }))
@@ -554,9 +554,9 @@ test("current portable relations survive local admission and invalid selections 
   expect(admitted.plan.files[0]!.bytes).toEqual(original)
   for (const extra of [
     { requires: ["Display name"] },
-    { requires: ["shared_skill:other:target"] },
-    { requires: ["shared_skill:library:portable"] },
-    { requires: ["shared_skill:library:target", "shared_skill:library:target"] },
+    { requires: ["skill://target?library=other"] },
+    { requires: ["skill://portable?library=library"] },
+    { requires: ["skill://target?library=library", "skill://target?library=library"] },
     { future_relation: [] },
   ]) {
     await writeFile(

@@ -8,7 +8,7 @@ import { trashPath } from "../src/local-locks.ts"
 import type { Snapshot } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef, parseRef } from "../src/ref.ts"
-import { sharedSkillId } from "../src/shared-content.ts"
+import { skillIdentity } from "../src/shared-content.ts"
 import { prepareCurrentSharedSourceContent } from "../src/shared-current-source.ts"
 import { currentSourceWriteProperties } from "../src/shared-current-source-management.ts"
 import { resolveCurrentSourceReference } from "../src/shared-source-references.ts"
@@ -88,7 +88,7 @@ async function setup(enabled = true) {
       )
     }),
   )
-  const skill = sharedSkillId(library.library_id, "alpha")
+  const skill = skillIdentity(library.library_id, "alpha")
   const snapshot: Snapshot = {
     snapshot_id: "s_" + "c".repeat(64),
     scope: "d".repeat(64),
@@ -142,7 +142,8 @@ test("repository-relative sibling links resolve through one current Source contr
     resolveCurrentSourceReference(snapshot, "SKILL.md", "../beta/SKILL.md"),
   )
   expect(parseRef(result)).toMatchObject({
-    selector: sharedSkillId(library.library_id, "beta"),
+    skillId: "beta",
+    scope: { kind: "library", libraryId: library.library_id },
     path: "SKILL.md",
   })
   expect(f.mutations()).toEqual([])
@@ -190,7 +191,12 @@ test("a mounted path collision cannot override the original Source-relative targ
   }
   expect(
     parseRef(await f.run(resolveCurrentSourceReference(mounted, from, "../beta/SKILL.md"))),
-  ).toEqual({ selector: sharedSkillId(library.library_id, "beta"), path: "SKILL.md" })
+  ).toMatchObject({
+    skillId: "beta",
+    scope: { kind: "library", libraryId: library.library_id },
+    path: "SKILL.md",
+    selection: { kind: "current" },
+  })
   expect(f.mutations()).toEqual([])
   expect(f.downloads).toEqual([])
 })
@@ -222,7 +228,10 @@ test("fixed local links need no remote query while cross-member offline and disa
   const local = await f.run(
     resolveCurrentSourceReference(snapshot, "SKILL.md", "./SKILL.md", { offline: true }),
   )
-  expect(parseRef(local)).toMatchObject({ snapshot: snapshot.snapshot_id, file_id: "main-alpha" })
+  expect(parseRef(local)).toMatchObject({
+    selection: { kind: "fixed", snapshotId: snapshot.snapshot_id },
+    path: "SKILL.md",
+  })
   await expect(
     f.run(
       resolveCurrentSourceReference(snapshot, "SKILL.md", "../beta/SKILL.md", { offline: true }),

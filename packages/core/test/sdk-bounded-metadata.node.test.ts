@@ -9,7 +9,7 @@ import { nodeRuntime } from "../../cli/src/runtime.ts"
 import { cacheStatus, clearCache } from "../src/cache.ts"
 import { property } from "../src/model.ts"
 import { fileRef } from "../src/ref.ts"
-import { sharedSkillId } from "../src/shared-content.ts"
+import { skillIdentity } from "../src/shared-content.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { Store } from "../src/store.ts"
 import { nativeGraphFixture } from "./graph-prepare-live-fixture.ts"
@@ -57,7 +57,7 @@ async function controlled(width: number) {
     },
     database: library.skills.database_id,
   }
-  const stable = (id: string) => fileRef(sharedSkillId(library.library_id, id), "SKILL.md")
+  const stable = (id: string) => fileRef(skillIdentity(library.library_id, id), "SKILL.md")
   return { f, library, source, options, stable, root }
 }
 
