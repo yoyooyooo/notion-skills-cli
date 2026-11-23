@@ -187,14 +187,18 @@ from GitHub and credential-free private HTTP(S) Git origins, with manual or pinn
 policy. GitHub SSH repository spellings normalize to the same shared identity.
 Authentication stays on the machine. Unknown providers, options, transformations
 and symlinks fail. Source `options.storage` are rejected, as are auto policy and
-check_interval_ms. The only current option is accepted_ref for an explicitly fixed discovery
-commit. Do not retain that option for a declaration intended to follow a branch.
+check_interval_ms. Use accepted_ref only for an explicitly fixed discovery commit;
+omit it when the declaration should follow a branch. Set the boolean option
+require_all_included to true when every literal path in Selection.include must
+still contain SKILL.md. A missing required member fails before publication instead
+of removing its targets. This guard does not require wildcard patterns to match.
 Selection.mapping supplies new Skill names; it is not a file mapping.
 
 Discovery reconciles all selected members. Existing contributions retain stable
 target assignments; unassigned members receive identities derived from Source ID
-and member key. Missing members leave the effective declaration. An empty selected
-set is valid only after complete successful discovery. Selection include/exclude
+and member key. Unless protected by require_all_included, missing members leave
+the effective declaration. An empty selected set is valid only after complete
+successful discovery and any required-member checks. Selection include/exclude
 selects member roots. Contribution mapping/exclude uses exact member-relative file
 paths; the effective path is mount_path plus the mapped path. Keep file exclusions
 to prevent a deliberately taken-over file from returning when upstream reintroduces it.
