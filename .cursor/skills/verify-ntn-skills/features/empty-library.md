@@ -8,10 +8,17 @@
 
 ## Drive
 
-1. 用当前安装包执行 `ctl library init`，读取结果中的精确 library entry。
-2. 用 `ctl library inspect ENTRY` 核对当前 Skills、Files、Records、Sources 的绑定、字段和关系目标。空业务表应明确为空；缺表或初始化中断不得标为 ready。
+1. 用当前安装包执行 `ctl library init --parent PAGE_ID`，保存 `library.skills.database_id` 为唯一 ENTRY；结果字段和只读 list 的 `next.argv` 保持。
+2. 用 `ctl library init --entry ENTRY` 验证四表结构，再用 `ctl library inspect ENTRY` 核对 Skills、Files、Records、Sources 的绑定。空业务表应明确为空；缺表或初始化中断不得标为 ready。
 3. 对同一对象重复初始化/检查，确认不会另建一组表。
 4. 在明确的独立 client config/state/cache 中执行当前 `list`，确认完整分页、空结果和远端零语义写。
+5. 核未复制 Builtin、未创建业务 Skill／Source、未改 default_database／host 配置或本地安装。
+   未配置消费默认库也能通过显式 ENTRY 完成后续流程；已有 default_database 不提供管理写目标。
+
+结构就绪仅证明上述初始化。首次业务使用另沿
+[原生管理与实际 Pi](skill-maintenance.md#原生日常管理与实际-pi)：Agent 默认读取执行包的
+Builtin 指引，创建一个真实业务 Skill，发现并完整读取、按其方法完成任务，再以保存的
+ENTRY 在新会话重连。无需先把产品指引复制到 Notion；各阶段分别记录结果。
 
 ## 有限初始化续建
 

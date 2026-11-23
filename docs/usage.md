@@ -1,8 +1,8 @@
 # Use the current Skill library
 
 This guide covers the CLI in the `next` checkout. Use the matching built package.
-The live Notion tables and Pro Pi installation still require their own cutover.
-The [current library contract](current-contract.md) defines the data model and remaining work.
+Verify access to the intended library and any host connection separately.
+The [current library contract](current-contract.md) defines the data model and boundaries.
 
 ## Install the package
 
@@ -55,6 +55,55 @@ ntn-skills ctl config clear-token
 
 Share the library's Skills, Files, Sources, and Records with the selected Notion integration.
 Reading requires content access. Import and Profile changes also require the relevant write access.
+
+## Initialize or reconnect a library
+
+For guided setup, read from the same executable you will use for management:
+
+```bash
+ntn-skills ctl builtin read notion/ntn-skills-maintain --path references/setup.md
+ntn-skills ctl library init --parent AUTHORIZED_PARENT_PAGE
+```
+
+Use an authorized empty parent page. Save `library.skills.database_id` from the
+result as `LIBRARY_ENTRY`; it contains the bindings for all four tables. Future
+sessions need this one entry and their credential environment:
+
+```bash
+ntn-skills ctl library init --entry LIBRARY_ENTRY
+```
+
+Successful init means the structure is ready. Its `next.argv` is a read-only
+`list`; an empty result before your first Skill is normal. Init does not copy
+Builtins, create business content, save defaults, install Skills, register a
+Source, or configure Pi. Create or import your first business Skill, read its
+full body, and apply its method to a real task to verify first use. Interrupted
+initialization uses the original operation and retained state; follow the setup
+guide's reconciliation and explicit `--resume` steps.
+
+If requested, `ctl config set default_database LIBRARY_ENTRY` saves a consumption
+default. It does not supply a management write target; keep explicit `--entry`.
+
+## Product guidance and team workflows
+
+Routine maintenance and Source sync default to the task executable's Builtins,
+including with a connected library:
+
+```bash
+ntn-skills ctl builtin read notion/ntn-skills-maintain
+ntn-skills ctl builtin read notion/ntn-skills-sync
+```
+
+These reads need no Notion copy or remote workflow search and do not authorize
+writes or select their target. Ordinary business discovery uses your library.
+An explicitly selected Notion/team workflow keeps its exact source/ref: inspect
+with `read`, apply with `use` and complete Requires. Failed or incomplete
+discovery, pending content and denied access remain errors; do not substitute
+the package. Keep an active task's selected identity and content.
+
+The setup guide also covers optional export/create into Notion for team
+customization. These are user-owned native Skills with independent identities,
+not automatically updated package copies or Source reading projections.
 
 ## Find and read a Skill
 

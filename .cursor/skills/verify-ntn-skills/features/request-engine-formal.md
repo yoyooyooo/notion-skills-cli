@@ -25,7 +25,7 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 | SharedProducer | 取消单一 waiter 不影响其余 owner；最后 owner 离开中断请求；service、credential、queue 与 invocation budget 隔离；完整当前字节身份允许独立 SDK runtime 共用 pending 只读请求；creator Scope 关闭不取消 survivor；settled result 不缓存；旧清理不删除替代 producer；慢 finalizer 保留容量 |
 | RequestAdmission | 一个逻辑请求的冷却、排队、有限次数重试与 attempt deadline；等待不占网络 permit；取消释放队列；未知 mutation 没有第二次 attempt |
 
-两个正配置必须完整通过，19 个负配置必须精确打破声明的规则。真实代码回放也有 19 个 guard，每个都检查原件通过、突变行为断言失败、恢复通过和产品 checkout 未变。当前 immutable case 修改 current resource reader，并通过公开 SDK 观察取消。
+两个正配置必须完整通过，19 个负配置必须精确打破声明的规则。真实代码回放也有 19 个 guard，每个都检查原件通过、突变行为断言失败、恢复通过和产品 checkout 未变。统计行、超时、模块或语法失败不是行为断言；释放异步用例自有 latch 后再判断真实失败，保留验证器及 classifier 的原件和 hash。当前 immutable case 修改 current resource reader，并通过公开 SDK 观察取消。
 
 ## 未建模范围
 

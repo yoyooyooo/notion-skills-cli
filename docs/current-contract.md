@@ -14,21 +14,29 @@ particular Notion library has been converted or its reading pages projected.
 
 ## One current owner for each fact
 
-The CLI's bundled guidance may also be projected into a connected Notion library.
-Those projected Skills use ordinary scoped discovery, exact-ref reads and
-same-selection reference reads. Package IDs and Notion page identities remain
-distinct. Reading inspects the workflow. Applying it uses the same source's exact
-ref through Pi `notion_use` or CLI `use` to load its complete Requires, unless
-already prepared for this task. Inspecting the edited target does not activate it.
-Use only available tools; report when adoption has no supported route.
-Use package guidance when no library is connected or when offline/package
-inspection is explicit; failed or partial discovery does not select that fallback.
-Updating the npm package does not advance the Notion Source or its reading pages.
-Source refresh preserves human Name/Description choices. Compare consumed file
-bytes and discovery descriptions after updating distributed guidance. This byte
-comparison does not prove generated reading pages, Source ownership, installed
-CLI/Broker pairing or model delivery; those retain their own verification paths.
-An existing task keeps its loaded selection until explicitly changed.
+Product maintenance and Source sync default to the Builtin guidance of the
+executable or paired SDK actually used for the task. A connected library does
+not change that default or require a remote workflow search. Ordinary business
+Skill discovery stays in the selected Notion library. Package guidance neither
+chooses the target library nor grants write permission.
+
+An explicitly selected Notion/team workflow retains its source and exact ref.
+Read inspects; Pi `notion_use` or CLI `use` loads its complete Requires before
+application, unless already prepared. Report unsupported adoption and preserve
+failed/incomplete discovery, pending content and access errors; do not substitute
+package guidance. Inspecting the edited target does not activate it. Same-name
+Notion content cannot claim package identity or override the default. An existing
+task keeps its selected identity and content until explicitly changed.
+
+Copying bundled guidance into Notion is optional. Native copies are user-owned,
+editable Skills with independent identities; they are not Source reading
+projections and do not follow package upgrades. Updating the package does not
+advance a Notion Source, regenerate reading pages or overwrite native copies.
+An explicitly requested Source refresh preserves human Name/Description choices.
+When distributing selected package bytes, compare their full consumed files and
+discovery descriptions. That comparison does not prove reading-page generation,
+Source ownership, installed CLI/Broker pairing or model delivery; each needs its
+own evidence.
 
 | Table | Current responsibility | Authoritative writer | Rebuildable display |
 | --- | --- | --- | --- |
@@ -42,6 +50,16 @@ Skills and Records Origin relations, and the Files Origin rollup. A purely
 Notion-authored library leaves Sources empty. Normal discovery, consumption,
 management and initialization reject an incomplete older layout; the independent
 read-only extractor does not admit it into the current runtime.
+
+Successful `ctl library init` establishes or validates this structure. Its
+`library.skills.database_id` is the one entry clients retain; the descriptor
+contains the other table bindings. The returned `next.argv` is a read-only list;
+an empty result is valid before the first Skill is created or imported. Init
+does not seed Builtins or user content, save local defaults, register a Source,
+install Skills or configure a host. First business use additionally requires
+selecting and delivering the user's Skill and applying it to the intended task.
+An optional `default_database` config value affects consumption only; management
+commands still require an explicit `--entry`.
 
 The main document lives on the Skills page. Its stable `Main File ID` participates
 in the same file namespace, but Files does not contain another editable main

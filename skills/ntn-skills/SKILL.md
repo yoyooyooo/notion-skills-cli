@@ -111,22 +111,34 @@ do not grant access or activate workflows.
 | Package-supplied Skills | `ctl builtin list/read/status/install/update`; see [commands](references/commands.md#local-builtins) |
 | Discovery, authentication or resource failure | [Integration and diagnosis](references/integration.md#diagnose-discovery-and-loading) |
 
-In a connected library, discover these workflow names through the host's Notion
-directory or `list --database ENTRY --query ntn-skills-maintain`. Read the returned
-exact ref with ordinary `read`, then its references with `read --from` as above.
-Reading only inspects the workflow. To apply the maintenance workflow, use the
-same source's exact ref with Pi `notion_use(ref)` or CLI
-`ntn-skills use 'EXACT_WORKFLOW_REF' --database ENTRY --json` to load its Requires,
-unless that closure is already prepared for this task. Use an available route; otherwise
-report that adoption is unavailable. Inspect the edited target; do not activate it.
-The default View may omit a workflow; broaden discovery within the same library.
-Failed or partial discovery does not authorize switching to a same-name package.
+For product maintenance and Source sync, use the task's executable and its
+bundled guidance by default, including with a connected library:
 
-Without a connected library, or for explicit offline/package inspection, select
-the host's exact `$ntn-skills-maintain@builtin` or use `ctl builtin read
-notion/ntn-skills-maintain`. Package references use `--path RELATIVE_PATH`.
-Package and Notion identities remain distinct; never switch an active selection
-silently. An npm update does not refresh a Notion Source or its projection.
+```sh
+ntn-skills ctl builtin read notion/ntn-skills-maintain
+ntn-skills ctl builtin read notion/ntn-skills-sync
+```
+
+A supporting host can select the corresponding exact `@builtin` identity.
+Read package references with `ctl builtin read ID --path RELATIVE_PATH`.
+This route needs no Notion copy or remote workflow search. It does not choose
+the target library or authorize writes. Ordinary business Skill discovery stays
+in the selected Notion library.
+
+If the user explicitly selects a Notion/team workflow, retain that source and
+exact ref. Inspect it with ordinary `read`, then use
+`ntn-skills use 'EXACT_WORKFLOW_REF' --database ENTRY --json` or Pi `notion_use(ref)`
+to load its Requires before applying it, unless already prepared for this task.
+Read its references with `read --from`. Broaden incomplete discovery within the
+same library; failed or partial discovery, pending content and denied access
+remain visible errors, never a reason to substitute a package workflow.
+Report when adoption has no available route. Inspect the edited target; do not
+activate it.
+
+Same-name Notion content has its own identity and cannot replace the package
+default. Keep an already selected task's identity and content until explicitly
+changed. An npm update does not refresh a Notion Source or its projection, or
+overwrite a user-owned native copy.
 
 Use the existing connection. Saved token configuration takes precedence over
 `NOTION_API_TOKEN`; `ctl config show` reports presence without exposing secrets.

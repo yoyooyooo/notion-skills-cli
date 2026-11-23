@@ -83,8 +83,13 @@ ntn-skills ctl library init --entry "$library_entry"
 都传这一个 Skills 入口；不需要另外配置其他三张表的 ID。
 已有当前库可以直接从 `init --entry` 开始，跳过创建。
 
-`init --entry` 不会保存本地默认库。下一次终端或 Agent 会话中，把
-`library_entry` 设为这次保存的同一个 ID，再传给下面的命令。
+初始化成功表示库结构就绪。返回的 `next.argv` 是只读 `list`；
+还没有添加第一个 Skill 时，空结果是正常状态。Init 不会复制包内工作流、
+创建业务内容、保存本地默认库或配置 Pi。
+
+下一次终端或 Agent 会话中，把 `library_entry` 设为这次保存的同一个 ID，
+再传给下面的命令。可选的 `default_database` 配置只提供消费默认库，
+管理命令仍要求显式传入 `--entry`。
 
 导入测试使用单独通过 `init` 创建的专用库，每条测试命令都明确传入该库的
 Skills 入口。目前没有自动选择导入目标库的环境变量。
@@ -148,6 +153,9 @@ ntn-skills read "$skill_ref" --database "$library_entry" --refresh --json
 同时加载它依赖的工作流。普通发现、读取、use 和 export 都不会对 Notion
 产生语义写入。
 
+验证首次业务使用时，再给 Agent 一个真实决策，确认它按所选 Skill 的方法完成评审。
+建好表、发现记录、读到正文，分别只能证明这条链路中的一部分。
+
 ## 四张表各管什么
 
 | 表 | 内容 |
@@ -208,13 +216,22 @@ ntn-skills ctl builtin read notion/ntn-skills-maintain --path references/setup.m
 ```
 
 把目标父页面或库入口交给 Agent，并让它继承同一凭据环境。
-指引覆盖初始化、原生创建，以及[可选的三份包内工作流入库](skills/notion/ntn-skills-maintain/references/setup.md#copy-packaged-workflows-into-notion)。
-入库后得到可编辑的原生副本，不会随包升级自动更新。
+日常管理和 Source 同步默认使用同一执行包的指引，连接库后也一样：
 
-日常管理已连接库时，在该库发现 `ntn-skills-maintain`，
-读取它实际返回的精确 ref。执行工作流时使用 `use` 加载其 Requires。
-被编辑目标只做检查，不激活其工作流。搜索失败或结果不完整不能证明指引不存在。
-明确的初始化或离线任务仍可使用包内目录。
+```sh
+ntn-skills ctl builtin read notion/ntn-skills-maintain
+ntn-skills ctl builtin read notion/ntn-skills-sync
+```
+
+读取这些指引无需 Notion 副本或远端工作流搜索，也不会决定写入目标或授予写权限。
+普通业务 Skill 仍在你的库里发现。明确选择 Notion／团队工作流时，Agent 保留其
+精确 source/ref，应用前通过 `use` 加载 Requires。搜索不完整、内容 pending 或
+访问错误都不能让它自动改选包内指引。被编辑目标只做检查，不激活；
+当前任务已选内容保留到明确重新选择为止。
+
+[把包内工作流复制到 Notion](skills/notion/ntn-skills-maintain/references/setup.md#copy-packaged-workflows-into-notion)
+是团队定制的可选操作。副本是用户拥有、可编辑的原生 Skill，有独立身份，
+不会随包升级自动更新。
 
 Pi 接入见 [Broker 指南](https://github.com/yoyooyooo/pi-context-broker/blob/next/README.zh-CN.md)。
 Broker 通过配对 SDK 消费同一个库，并负责 Pi 连接配置。

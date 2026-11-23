@@ -42,8 +42,13 @@ identities and relationships. All four bindings live in the Skills entry.
 You do not need to register the other three IDs with each client.
 
 Use `--entry ENTRY` for management and `--database ENTRY` for consumption.
-Initialization does not set a local default library, import content, or connect
-Pi. Display titles may change; the descriptor maintains the table mappings.
+Successful initialization establishes the structure, not first business use.
+Its `next.argv` is a read-only `list`; an empty library is a valid result before
+you create or import the first Skill. Initialization does not copy Builtins,
+import content, save a local default, install Skills, register a Source, or
+connect Pi. Use the same executable's Builtin maintenance/sync guidance without
+putting it in Notion. Display titles may change; the descriptor maintains the
+table mappings.
 
 For an existing current library, validate its registered tables:
 
@@ -55,6 +60,11 @@ ntn-skills ctl library init --entry ENTRY
 local configuration. `inspect ENTRY` reads the descriptor without inspecting
 all table schemas. Neither command fills missing Content descriptors or
 converts an older library schema.
+
+In a new Agent session, supply the saved ENTRY and the same credential environment.
+If the user requests a consumption default, `ctl config set default_database ENTRY`
+saves one locally. It does not connect a host or supply a management write target;
+management commands still need explicit `--entry`.
 
 ## Interrupted initialization
 
@@ -156,12 +166,19 @@ The management file index is metadata-only. Use `export` for the complete select
 tree. Read inspects a workflow; apply it with the same source's `use` route to
 load Requires. Inspect an edited target without activating it.
 
+For first business use, apply the user's selected Skill to a real task and check
+the result against its method. Table readiness, discovery, body delivery and
+business use are separate observations. In a fresh session, reconnect with the
+saved ENTRY and repeat the read; copying product guidance is not a prerequisite.
+
 ## Copy packaged workflows into Notion
 
-This optional route creates editable native copies of the three packaged
-workflows. It does not establish a Git Source or follow future package updates.
-The copies have their own Notion identities. Use a new library or choose stable
-IDs that are not already owned by different content.
+Use this optional route only for requested team customization or a Notion-owned
+workflow. Product management already uses the execution package's Builtins.
+The exported workflows become user-owned editable native Skills with their own
+Notion identities; they do not establish a Git Source, become reading projections,
+or follow future package updates. Copy only the workflows needed. Use a new
+library or choose stable IDs not already owned by different content.
 
 Set `library_entry` to the actual Skills entry. Create only the parent export
 directory; each export creates its own new child directory:

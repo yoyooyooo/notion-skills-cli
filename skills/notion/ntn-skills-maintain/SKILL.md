@@ -8,22 +8,22 @@ metadata:
 
 # Maintain the current library
 
-Use the task's executable and library. Reads need Read; writes need Insert/Update.
-Select an exact page ID/URL or stable Skill ID, never a fuzzy title.
+Use the task's executable, exact library and page/Skill ID. Reads need Read;
+writes need Insert/Update.
 
-Read inspects. To apply, use this source's exact ref via `notion_use(ref)`
-or CLI `use REF` with Requires unless already prepared. Report unavailable adoption.
-Inspect edited targets; local/package workflows stay native.
+Default to this executable's bundled guidance, even with a connected library.
+It neither selects nor authorizes writes. For an explicitly selected Notion
+workflow, read inspects; apply its exact source/ref via `notion_use(ref)` or CLI
+`use REF` with Requires. Never substitute after failure; report unavailable
+adoption. Keep active selections; inspect edited targets.
 
 ## Choose the route
 
-A supplied Notion library or successful discovery selects an existing library.
-For a basic how-to, explain create/register below from this main; no reference
-read is needed.
+For a basic how-to, explain create/register below from this main.
 The CLI handles Notion REST; load an API Skill only for direct API work.
 Open [setup](references/setup.md) only to create/connect a library or resolve a
 reported connection/schema problem. Adding a Skill is not library setup.
-Report progress before writes and during verification.
+Report write and verification progress.
 
 ## Prepare local input
 
@@ -122,7 +122,7 @@ ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
 First import infers Members only from exact refs; existing sets and `[]` win.
 Requires stays explicit. Follow [import and Members planning](references/operations.md#import-a-complete-current-tree)
 or [projection/recovery](references/operations.md#generate-notion-text).
-Source operations and Profile/View rules use ntn-skills-sync.
-Read references with `ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF`.
+Source/Profile management defaults to `ctl builtin read notion/ntn-skills-sync`.
 For package-selected instructions, use `ctl builtin read notion/ntn-skills-maintain
---path RELATIVE_PATH`.
+--path RELATIVE_PATH`; for Notion use
+`ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF`.
