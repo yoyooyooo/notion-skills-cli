@@ -78,7 +78,7 @@ Retain the local state directory if an operation needs reconciliation or resume.
 For Members acceptance, import the original upstream files before supplying any
 explicit relations. Read back the actual Members and Requires before editing
 them. Keep the exact database IDs, fixture prefixes, and results in the private
-run evidence. The [live import verification journey](../.cursor/skills/verify-ntn-skills/features/import-create-recovery-dry-run.md#members-的真实库验收)
+run evidence. The [live import verification journey](https://github.com/yoyooyooo/notion-skills-cli/blob/next/.cursor/skills/verify-ntn-skills/features/import-create-recovery-dry-run.md#members-的真实库验收)
 provides the fixed poteto-mode corpus and synthetic cases.
 
 ## Manage native Skills
