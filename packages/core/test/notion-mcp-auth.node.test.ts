@@ -544,21 +544,70 @@ test("logout in another process during identity verification prevents the late g
 
 test("authorization deadlines retire presentation and do not publish a late zero-waiter grant", async () => {
   await withFixture(async (f) => {
-    const visible = latch<string>()
-    const pending = loginMcp({
-      ...f.options,
-      deadline: Date.now() + 500,
-      onAuthorize: presentUntilClosed(visible),
-    }).then(
-      () => "success",
-      (error: unknown) => error,
-    )
-    const url = await visible.promise
-    expect(await pending).toMatchObject({ code: "MCP_AUTH_TIMEOUT" })
-    await f
-      .authorize({ url, signal: new AbortController().signal, deadline: Date.now() + 5000 })
-      .catch(() => undefined)
-    expect(f.exchanges).toBe(0)
+    const visible = latch<McpAuthorizationRequest>()
+    const currentTime = Date.now
+    const currentTimer = globalThis.setTimeout
+    const owner = new AbortController()
+    let now = currentTime()
+    let expireWaiter: (() => void) | undefined
+    let pending: Promise<unknown> | undefined
+    function observedTimer<Args extends unknown[]>(
+      callback: (...args: Args) => void,
+      delay?: number,
+      ...args: Args
+    ): ReturnType<typeof setTimeout> {
+      const timer = currentTimer(callback, delay, ...args)
+      if (delay === 500 && expireWaiter === undefined) {
+        clearTimeout(timer)
+        expireWaiter = () => callback(...args)
+      }
+      return timer
+    }
+    // Setup includes real fsync, discovery and registration. Hold only this
+    // caller's deadline until its actual presentation has been observed.
+    Date.now = () => now
+    globalThis.setTimeout = Object.assign(observedTimer, currentTimer)
+    try {
+      pending = loginMcp({
+        ...f.options,
+        signal: owner.signal,
+        deadline: now + 500,
+        onAuthorize: (request) => {
+          visible.resolve(request)
+          return new Promise<void>((resolve) => {
+            request.signal.addEventListener("abort", () => resolve(), { once: true })
+            if (request.signal.aborted) resolve()
+          })
+        },
+      }).then(
+        (value) => value,
+        (error: unknown) => error,
+      )
+      const request = await Promise.race([
+        visible.promise,
+        pending.then((outcome) => {
+          throw new Error("Authorization ended before its presentation was observed.", {
+            cause: outcome,
+          })
+        }),
+      ])
+      expect(expireWaiter).toBeDefined()
+      if (!expireWaiter) throw new Error("The fixture did not observe the caller deadline timer.")
+      now = request.deadline + 1
+      expireWaiter()
+      expect(await pending).toMatchObject({ code: "MCP_AUTH_TIMEOUT" })
+      expect(request.signal.aborted).toBe(true)
+      await f.authorize(request).catch(() => undefined)
+      expect(f.exchanges).toBe(0)
+      const status = await getMcpAuthStatus(f.options)
+      expect(status.oauth).toBe("absent")
+      expect(status.identity).toBeNull()
+    } finally {
+      owner.abort()
+      Date.now = currentTime
+      globalThis.setTimeout = currentTimer
+      await pending
+    }
   })
 })
 
