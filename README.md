@@ -85,8 +85,14 @@ entry with `--entry` for management and `--database` for reading. You do not nee
 to configure the other three table IDs. An existing library can start with
 `init --entry` and skip creation.
 
-`init --entry` does not save a local default. In a new terminal or Agent session,
-set `library_entry` to this same saved ID and pass it to the commands below.
+Successful initialization means the library structure is ready. Its `next.argv`
+is a read-only `list`; an empty result is expected before you add your first
+Skill. Init does not copy packaged workflows, create business content, save a
+local default, or configure Pi.
+
+In a new terminal or Agent session, set `library_entry` to this same saved ID
+and pass it to the commands below. An optional `default_database` configuration
+only supplies a consumption default; management still needs explicit `--entry`.
 
 If initialization stops, keep its parent, error, operation ID, and local state.
 First reconcile without remote writes; add `--resume` only to continue that
@@ -146,6 +152,10 @@ Native edits need no projection step.
 `ntn-skills use "$skill_ref" --database "$library_entry" --json` to load its
 required workflows too. Ordinary discovery, reading, use, and export make no
 semantic writes to Notion.
+
+To verify first business use, give the Agent a real decision to review and check
+that it applies the selected Skill's method. Creating the tables, listing a row,
+and reading its body establish different parts of that path.
 
 ## The four tables
 
@@ -213,16 +223,25 @@ ntn-skills ctl builtin read notion/ntn-skills-maintain --path references/setup.m
 ```
 
 Give the Agent the intended parent page or library entry and the same credential
-environment. The guide covers initialization, native creation, and
-[optional copies of the three packaged workflows](skills/notion/ntn-skills-maintain/references/setup.md#copy-packaged-workflows-into-notion).
-Those copies are editable native Skills and do not update automatically with
-the package.
+environment. For routine maintenance and Source sync, use the same executable's
+packaged guidance, including after connecting a library:
 
-For routine work in a connected library, discover `ntn-skills-maintain` in that
-library and read its exact returned ref. Use `use` when applying the workflow
-and its Requires. Inspect the edited target without activating it.
-A failed or partial search does not prove that a workflow is absent.
-The packaged catalog remains available for explicit bootstrap or offline use.
+```sh
+ntn-skills ctl builtin read notion/ntn-skills-maintain
+ntn-skills ctl builtin read notion/ntn-skills-sync
+```
+
+These reads need no Notion copy or remote workflow search and do not choose a
+write target or authorize writes. Ordinary business Skills stay in your library.
+If you explicitly select a Notion/team workflow, the Agent keeps its exact
+source/ref and uses `use` to load Requires before applying it. An incomplete
+search, pending content or access error does not switch that selection to the
+package. Inspect edited targets without activating them; keep an active task's
+selected content until explicitly changed.
+
+[Copying packaged workflows into Notion](skills/notion/ntn-skills-maintain/references/setup.md#copy-packaged-workflows-into-notion)
+is optional for team customization. The copies are editable, user-owned native
+Skills with their own identities, and do not update automatically with the package.
 
 For Pi, follow [the Broker setup](https://github.com/yoyooyooo/pi-context-broker/blob/next/README.md).
 The Broker consumes the same library through its paired SDK and owns Pi

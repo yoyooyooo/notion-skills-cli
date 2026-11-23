@@ -14,18 +14,22 @@ Use the task's executable, exact library and stable identities. Ordinary
 consumption never updates Source content. Reading a script does not authorize
 executing it. Complete local imports belong to ntn-skills-maintain.
 
-In a connected library, discover that workflow within the same library and read
-its exact returned ref for inspection. To apply a Notion-selected workflow, use
-that source's exact ref via Pi `notion_use(ref)` or CLI `ntn-skills use REF
---database ENTRY --json` to load its Requires, unless already prepared for this
-task. Use only an available route; otherwise report unavailable adoption. Inspect
-the edited target without activating it. Local and package workflows keep their
-host's native route. Read this Skill's references with `ntn-skills read
-RELATIVE_PATH --from CONTAINING_FILE_REF`. Keep package-selected references in the
-same package with `ctl builtin read notion/ntn-skills-sync --path RELATIVE_PATH`.
-An npm update does not refresh a Notion Source. Refresh its selected Git ref and
-generate reading pages explicitly when that update is requested; preserve active
-task selections and human discovery metadata.
+Use the executable's bundled sync guidance by default, even with a connected
+library. Complete local imports default to `ctl builtin read
+notion/ntn-skills-maintain` from the same executable. Package guidance neither
+chooses the write target nor authorizes writes.
+
+If the user explicitly selected a Notion workflow, retain its exact source/ref.
+Read inspects; apply it via Pi `notion_use(ref)` or CLI `ntn-skills use REF
+--database ENTRY --json` with Requires unless already prepared for this task.
+Report unavailable adoption or failed/incomplete discovery; never substitute a
+package workflow. Inspect the edited target without activating it. Read its
+references with `ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF`.
+Package references stay with `ctl builtin read notion/ntn-skills-sync --path
+RELATIVE_PATH`. Keep an active task's selected identity and content.
+An npm update does not refresh a Notion Source or overwrite user-owned native
+copies. Refresh a selected Git ref and generate reading pages only when
+requested; preserve human discovery metadata.
 
 ## Source declarations
 

@@ -66,11 +66,11 @@ ntn-skills list --default-view
 ```
 
 Views retain native API ordering and filters. Explicit View selection wins over
-Profile rules. Profiles and Views do not grant access. Discover `ntn-skills-sync`
-in the connected library and read its exact returned ref for inspection. To apply
-that workflow, use the same source's ref with `use REF --database ENTRY --json`
-or Pi `notion_use(ref)` to load its Requires, unless already prepared for this task.
-Inspect the edited target without activating it.
+Profile rules. Profiles and Views do not grant access. For their management,
+default to the same executable's `ctl builtin read notion/ntn-skills-sync`.
+If the user explicitly selected a Notion workflow, inspect its exact source/ref
+and apply it with `use REF --database ENTRY --json` or Pi `notion_use(ref)` to load
+Requires unless already prepared. Inspect the edited target without activating it.
 
 ## Library inspection
 
@@ -107,18 +107,28 @@ mappings/exclusions and exact file takeover/restore-follow. Use
 ntn-skills ctl builtin list
 ntn-skills ctl builtin read notion/ntn-skills
 ntn-skills ctl builtin read notion/ntn-skills --path references/integration.md
+ntn-skills ctl builtin read notion/ntn-skills-maintain
+ntn-skills ctl builtin read notion/ntn-skills-sync
 ntn-skills ctl builtin status
 ```
 
-Use these commands without a connected library or for explicit offline/package
-inspection. A connected library's projected copies use the ordinary scoped
-`list/read` commands above, including `read --from` for references. Keep failed or
-partial discovery visible; it does not prove that a projected workflow is absent.
+Use the task's executable and its bundled maintenance/sync guidance by default,
+including with a connected library. These reads need no Notion request or copy.
+Package guidance does not select a write target or authorize a write. Ordinary
+business discovery still uses the selected Notion library.
+
+An explicitly chosen Notion/team workflow keeps its exact source/ref and uses
+the ordinary `read/use` routes, including `read --from` for its references.
+Failed or partial discovery, pending content and denied access remain errors;
+never silently substitute the package. Same names do not establish identity.
+Optional native copies are user-owned editable Skills, not automatically
+upgraded package installations or Source reading projections.
 
 In a supporting Broker, an exact `@builtin` identity selects package content.
 Local install/update is a separate requested action. Read its current help and
 preserve unrelated host roots. Installing or upgrading a package does not refresh
-its Notion Source, project reading pages or replace an active selection.
+its Notion Source, project reading pages, overwrite native copies or replace an
+active task's selected content.
 
 ## Errors
 
