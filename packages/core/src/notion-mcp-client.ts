@@ -385,10 +385,12 @@ class NotionMcpClient {
   readonly limits: Limits
   readonly url: string
   readonly deadline: number
+  private readonly options: NotionMcpOptions
   private requests = 0
   private bytes = 0
 
-  constructor(private readonly options: NotionMcpOptions) {
+  constructor(options: NotionMcpOptions) {
+    this.options = options
     this.limits = parseLimits(options.budgets)
     this.url = endpoint(options.serverUrl)
     if (
