@@ -88,6 +88,11 @@ to configure the other three table IDs. An existing library can start with
 `init --entry` does not save a local default. In a new terminal or Agent session,
 set `library_entry` to this same saved ID and pass it to the commands below.
 
+For import experiments, keep a separate library created with `init`. Pass its
+Skills entry explicitly on every test command. No environment variable selects
+the import target. See [reuse a dedicated test library](docs/shared-authoring.md#reuse-a-dedicated-test-library)
+for isolated local directories and repeatable fixture imports.
+
 If initialization stops, keep its parent, error, operation ID, and local state.
 First reconcile without remote writes; add `--resume` only to continue that
 original initialization's confirmed unfinished steps. The

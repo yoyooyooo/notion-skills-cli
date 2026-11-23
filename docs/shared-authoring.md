@@ -34,6 +34,53 @@ Keep registered database, data-source, and property identities intact.
 A similar table name does not make another table part of the library.
 Live table cleanup remains a separate cutover task.
 
+### Reuse a dedicated test library
+
+Create one empty Notion parent for integration tests and grant the connection
+access to that parent. Keep the library for later runs. Select private local
+directories before initialization, and pass the existing `NOTION_API_TOKEN`
+through the process environment:
+
+```sh
+test_root='/absolute/path/to/notion-skills-integration'
+export NTN_SKILLS_CONFIG_HOME="$test_root/config"
+export NTN_SKILLS_HOME="$test_root/state"
+export NTN_SKILLS_CACHE_HOME="$test_root/cache"
+export NTN_SKILLS_DATA_HOME="$test_root/data"
+export NTN_SKILLS_SCHEDULER_ROOT="$test_root/scheduler"
+test_parent='PASTE_AUTHORIZED_TEST_PARENT_PAGE_ID'
+ntn-skills ctl library init --parent "$test_parent"
+```
+
+Copy `library.skills.database_id` from the result. Use the same entry on every
+management and consumption command:
+
+```sh
+test_entry='PASTE_TEST_SKILLS_DATABASE_ID'
+ntn-skills ctl library init --entry "$test_entry"
+ntn-skills list --database "$test_entry"
+ntn-skills ctl library import ./fixtures/example --entry "$test_entry" --skill-id test-example-001 --dry-run
+ntn-skills ctl library import ./fixtures/example --entry "$test_entry" --skill-id test-example-001
+```
+
+Check that all four tables are empty before the first fixture import. Repeat
+`init --parent "$test_parent"` and confirm that it returns the same table IDs.
+On later runs, reuse the saved entry and those tables. Give each first-creation
+case a new Skill ID prefix. Within an update or no-op case, keep its original
+Skill ID so the test exercises an existing object.
+
+`test_entry` is a shell variable expanded into an explicit argument. The CLI
+does not read a database-target environment variable. Imports require
+`--entry`; a configured consumer `default_database` does not select a write
+target. `init --entry` validates the library without setting a local default.
+Retain the local state directory if an operation needs reconciliation or resume.
+
+For Members acceptance, import the original upstream files before supplying any
+explicit relations. Read back the actual Members and Requires before editing
+them. Keep the exact database IDs, fixture prefixes, and results in the private
+run evidence. The [live import verification journey](../.cursor/skills/verify-ntn-skills/features/import-create-recovery-dry-run.md#members-的真实库验收)
+provides the fixed poteto-mode corpus and synthetic cases.
+
 ## Manage native Skills
 
 Use `ctl library skill` for daily authorship. Supply content and author decisions;

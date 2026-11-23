@@ -86,6 +86,11 @@ ntn-skills ctl library init --entry "$library_entry"
 `init --entry` 不会保存本地默认库。下一次终端或 Agent 会话中，把
 `library_entry` 设为这次保存的同一个 ID，再传给下面的命令。
 
+导入测试使用单独通过 `init` 创建的专用库，每条测试命令都明确传入该库的
+Skills 入口。目前没有自动选择导入目标库的环境变量。
+[复用专用测试库](docs/shared-authoring.md#reuse-a-dedicated-test-library)
+说明了本地目录隔离和 fixture 导入步骤。
+
 如果初始化中断，保留原父页、错误、operation ID 和本地状态。
 先只读对账；加 `--resume` 才继续原初始化中可确认的未完成步骤。
 [初始化恢复说明](skills/notion/ntn-skills-maintain/references/setup.md#interrupted-initialization)
