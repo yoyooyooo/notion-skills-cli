@@ -42,6 +42,7 @@ import {
   type CurrentSkillWriteInput,
 } from "../src/shared-current-write.ts"
 import { observeSharedBody } from "../src/shared-page-body.ts"
+import { canonicalSharedJson } from "../src/shared-records.ts"
 import { openSharedSnapshot } from "../src/shared-snapshot.ts"
 import { sha256, Store } from "../src/store.ts"
 import { sourceRich } from "../src/shared-source-definitions.ts"
@@ -681,19 +682,25 @@ async function seedSourceReading(
     removed?: boolean
     mixed?: boolean
     treeSize?: number
+    mainBytes?: Uint8Array
+    guideBytes?: Uint8Array
   } = {},
 ) {
   const f = currentWriteFixture(parent)
   const originals = new Map<string, Uint8Array>([
     [
       "SKILL.md",
-      testBytes(
-        "# Main\n\nRead [guide](references/render.md), [script](scripts/run.ts#L1), and [test](scripts/test/README.md).\n",
-      ),
+      options.mainBytes ??
+        testBytes(
+          "# Main\n\nRead [guide](references/render.md), [script](scripts/run.ts#L1), and [test](scripts/test/README.md).\n",
+        ),
     ],
     [
       "references/render.md",
-      testBytes("# Rendering\n\n[Main](../SKILL.md) and [script](../scripts/run.ts?plain=1#L2).\n"),
+      options.guideBytes ??
+        testBytes(
+          "# Rendering\n\n[Main](../SKILL.md) and [script](../scripts/run.ts?plain=1#L2).\n",
+        ),
     ],
     ["scripts/run.ts", testBytes("export const exact = 1;\n")],
     ["scripts/test/README.md", testBytes("# Test corpus documentation\n")],
@@ -883,6 +890,276 @@ async function seedSourceReading(
   f.clearCalls()
   return { f, written, originals, sourcePage, revision, manifest }
 }
+
+test.each(["resource", "source"] as const)(
+  "%s entrypoint replaces old YAML heading projections without changing metadata, originals or native files, then writes nothing",
+  async (authority) => {
+    const original = testBytes(
+      "\uFEFF---\r\nname: why\r\ndescription: Explain decisions from their original evidence.\r\ndisable-model-invocation: true\r\nmetadata:\r\n  owner: human\r\n---\r\n\r\n# Why\r\n\r\nAnswer from the record.\r\n",
+    )
+    const guide = testBytes(
+      "---\nname: supporting-document\ndescription: Reference metadata stays visible.\n---\n\n# Evidence\n\nKeep the complete reference.\n",
+    )
+    const seeded =
+      authority === "source"
+        ? await seedSourceReading({
+            rows: false,
+            mixed: true,
+            mainBytes: original,
+            guideBytes: guide,
+          })
+        : await seed({
+            ...defaults,
+            files: [
+              { path: "SKILL.md", bytes: original, mode: "100755" },
+              { path: "references/render.md", bytes: guide },
+              {
+                path: "notes/author.md",
+                bytes: testBytes(
+                  "---\nname: author\ndescription: Author-owned metadata.\n---\n\n" + native,
+                ),
+                authority: { kind: "native" },
+              },
+            ],
+          })
+    const { f, written } = seeded
+    const oldPlan = renderCurrentProjection({
+      role: "supporting",
+      path: "old-reading.md",
+      bytes: original,
+    })
+    expect(oldPlan.blocks.map((block) => block.type).slice(0, 3)).toEqual([
+      "divider",
+      "heading_2",
+      "heading_1",
+    ])
+    f.blocks.set(
+      written.page_id,
+      oldPlan.blocks.map((block, n) => ({
+        ...block,
+        id: id(9000 + n),
+        parent: { type: "page_id", page_id: written.page_id },
+        has_children: false,
+        archived: false,
+        in_trash: false,
+      })),
+    )
+    const before = await f.run(queryCurrentSkillIndex(library, written.page_id))
+    expect(before.main.content.kind).toBe(authority)
+    const ownerBefore = structuredClone(f.pages.get(written.page_id)!.properties)
+    const sourceBefore =
+      "sourcePage" in seeded ? structuredClone(f.pages.get(seeded.sourcePage)) : undefined
+    const authored = await Promise.all(
+      before.files
+        .filter((file) => file.content.kind === "native")
+        .map(async (file) => ({
+          page_id: file.page_id,
+          content: file.content,
+          body: (await f.run(observeSharedBody(file.page_id))).markdown,
+        })),
+    )
+    const snapshotInput = {
+      library,
+      target: written.page_id,
+      scope: "a".repeat(64),
+      startedAt: Date.now(),
+      forceFull: true,
+    }
+    const snapshotBefore = await f.run(openSharedSnapshot(snapshotInput))
+    f.clearCalls()
+    const dry = await f.run(
+      projectCurrentSkill(library, {
+        target: written.page_id,
+        operation_id: "frontmatter-inspect",
+        dry_run: true,
+      }),
+    )
+    expect(dry.files.find((file) => file.path === "SKILL.md")).toMatchObject({
+      authority,
+      status: "would_write",
+    })
+    expect(f.mutations()).toEqual([])
+    const applied = await f.run(
+      projectCurrentSkill(library, { target: written.page_id, operation_id: "frontmatter-fix" }),
+    )
+    expect(applied.files.find((file) => file.path === "SKILL.md")).toMatchObject({
+      authority,
+      status: "applied",
+    })
+    expect(f.blocks.get(written.page_id)?.map((block) => block.type)).toEqual([
+      "heading_1",
+      "paragraph",
+    ])
+    expect(blockText(f.blocks.get(written.page_id) ?? [])).toBe("WhyAnswer from the record.")
+    expect(
+      f.mutations().filter((call) => call.path === `v1/pages/${written.page_id}/markdown`),
+    ).toHaveLength(1)
+    const after = await f.run(queryCurrentSkillIndex(library, written.page_id))
+    const supporting = after.files.find((file) => file.path === "references/render.md")!
+    expect(blockText(f.blocks.get(supporting.page_id) ?? [])).toContain(
+      "Reference metadata stays visible.",
+    )
+    expect(f.pages.get(written.page_id)!.properties).toEqual(ownerBefore)
+    expect(after.main.content).toEqual(before.main.content)
+    if ("sourcePage" in seeded) expect(f.pages.get(seeded.sourcePage)).toEqual(sourceBefore)
+    for (const file of authored) {
+      expect(after.files.find((current) => current.page_id === file.page_id)?.content).toEqual(
+        file.content,
+      )
+      expect((await f.run(observeSharedBody(file.page_id))).markdown).toBe(file.body)
+    }
+    const snapshotAfter = await f.run(
+      openSharedSnapshot({ ...snapshotInput, startedAt: Date.now() }),
+    )
+    expect(snapshotAfter.snapshot_id).toBe(snapshotBefore.snapshot_id)
+    expect(snapshotAfter.files).toEqual(snapshotBefore.files)
+    const consumedMain = snapshotAfter.files.find((file) => file.path === "SKILL.md")!
+    const consumedGuide = snapshotAfter.files.find((file) => file.path === "references/render.md")!
+    expect(f.objects.get("objects/" + consumedMain.sha256)).toEqual(original)
+    expect(f.objects.get("objects/" + consumedGuide.sha256)).toEqual(guide)
+    f.clearCalls()
+    const repeat = await f.run(
+      projectCurrentSkill(library, { target: written.page_id, operation_id: "frontmatter-repeat" }),
+    )
+    expect(repeat.status).toBe("unchanged")
+    expect(repeat.input_sha256).toBe(applied.input_sha256)
+    expect(f.mutations()).toEqual([])
+  },
+)
+
+test("a Router hides only its main frontmatter and preserves a root SKILL.md supporting file", async () => {
+  const router = testBytes(
+    "---\nname: decision-router\ndescription: Choose a decision workflow.\n---\n\n# Decisions\n\nRead the selected workflow.\n",
+  )
+  const supporting = testBytes(
+    "---\nname: supporting-skill\ndescription: This is reference content, not the Router metadata.\ndisable-model-invocation: true\n---\n\n# Reference Skill\n\nKeep these instructions.\n",
+  )
+  const { f, written } = await seed({
+    ...defaults,
+    kind: "router",
+    files: [
+      { path: "ROUTER.md", bytes: router },
+      { path: "SKILL.md", bytes: supporting },
+    ],
+  })
+  const before = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  expect(before.main.path).toBe("ROUTER.md")
+  const supportingFile = before.files.find((file) => file.path === "SKILL.md")!
+  expect(supportingFile.page_id).not.toBe(written.page_id)
+  await f.run(
+    projectCurrentSkill(library, { target: written.page_id, operation_id: "router-frontmatter" }),
+  )
+  expect(blockText(f.blocks.get(written.page_id) ?? [])).toBe(
+    "DecisionsRead the selected workflow.",
+  )
+  const supportingBody = blockText(f.blocks.get(supportingFile.page_id) ?? [])
+  expect(supportingBody).toContain("name: supporting-skill")
+  expect(supportingBody).toContain("This is reference content, not the Router metadata.")
+  expect(supportingBody).toContain("disable-model-invocation: true")
+  expect(supportingBody).toContain("Keep these instructions.")
+  expect(logical(await f.run(queryCurrentSkillIndex(library, written.page_id)))).toEqual(
+    logical(before),
+  )
+  f.clearCalls()
+  expect(
+    await f.run(
+      projectCurrentSkill(library, { target: written.page_id, operation_id: "router-repeat" }),
+    ),
+  ).toMatchObject({ status: "unchanged" })
+  expect(f.mutations()).toEqual([])
+})
+
+test("an unfinished pre-frontmatter projection keeps its fingerprint and cannot resume or cancel with changed requests", async () => {
+  const original = testBytes("---\nname: why\ndescription: Original description.\n---\n\n# Why\n")
+  const { f, written } = await seed({
+    ...defaults,
+    files: [{ path: "SKILL.md", bytes: original }],
+  })
+  const index = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  const consumption = await f.run(resolveCurrentSkillConsumption(library, index))
+  const policy = currentProjectionPolicy({})
+  const inputHash = await f.run(
+    sha256(
+      canonicalSharedJson({
+        purpose: "current_text_projection",
+        version: 1,
+        owner: {
+          skill_id: index.skill_id,
+          page_id: index.page_id,
+          main_file_id: index.main.file_id,
+          main: index.main.path,
+        },
+        consumption: canonicalSharedJson({
+          files: consumption.files,
+          source_fingerprint: consumption.source_fingerprint,
+        }),
+        policy,
+      }),
+    ),
+  )
+  const current = await f.run(
+    projectCurrentSkill(library, {
+      target: written.page_id,
+      operation_id: "new-renderer-inspect",
+      dry_run: true,
+    }),
+  )
+  expect(current.input_sha256).not.toBe(inputHash)
+  const oldPlan = {
+    ...renderCurrentProjection({ role: "supporting", path: "old-reading.md", bytes: original }),
+    path: "SKILL.md",
+  }
+  f.failNext({ kind: "append", outcome: "accepted" })
+  await expect(
+    f.run(
+      withCurrentOperation(library, {
+        intent: {
+          operation_id: "old-frontmatter-projection",
+          input_sha256: inputHash,
+          owner: { kind: "skill", id: index.skill_id },
+          projection: true,
+          policy,
+        },
+        ownerPageId: index.page_id,
+        run: (session) =>
+          applyCurrentProjection<Notion | Crypto.Crypto | Store>({
+            pageId: index.page_id,
+            content: index.main.content,
+            plan: oldPlan,
+            assertCurrent: Effect.void,
+            dispatch: session.dispatch,
+          }),
+        verify: () => Effect.void,
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  const pending = await f.run(
+    readCurrentOperationIntent(library, { kind: "skill", id: index.skill_id }),
+  )
+  expect(pending?.intent.input_sha256).toBe(inputHash)
+  const bodies = structuredClone([...f.blocks])
+  f.clearCalls()
+  for (const execution of [
+    { operation_id: "old-frontmatter-projection", mode: "resume" } as const,
+    { mode: "auto" } as const,
+  ])
+    await expect(
+      f.run(projectCurrentSkill(library, { target: written.page_id, ...execution })),
+    ).rejects.toMatchObject({ code: "CURRENT_PROJECTION_CONFLICT" })
+  await expect(
+    f.run(
+      cancelCurrentSkillProjection(library, {
+        target: written.page_id,
+        operation_id: "old-frontmatter-projection",
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "CURRENT_OPERATION_CONFLICT" })
+  expect(f.mutations()).toEqual([])
+  expect([...f.blocks]).toEqual(bodies)
+  expect(
+    await f.run(readCurrentOperationIntent(library, { kind: "skill", id: index.skill_id })),
+  ).toEqual(pending)
+})
 
 test("a 410-file source tree plans only its two reading documents and archives excluded rows", async () => {
   const { f, written } = await seedSourceReading({ treeSize: 410 })
@@ -1798,6 +2075,7 @@ async function leaveDenseProjectionPending(outcome: "accepted" | "absent" = "acc
   const index = await f.run(queryCurrentSkillIndex(library, written.page_id))
   const consumption = await f.run(resolveCurrentSkillConsumption(library, index))
   const plan = renderCurrentProjection({
+    role: "main",
     path: index.main.path,
     bytes: originals.get("SKILL.md")!,
     rewriteLink: currentProjectionLinkRewriter(

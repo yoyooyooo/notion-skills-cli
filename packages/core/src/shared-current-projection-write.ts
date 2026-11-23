@@ -409,7 +409,7 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
     const input_sha256 = yield* sha256(
       canonicalSharedJson({
         purpose: "current_text_projection",
-        version: 1,
+        version: 2,
         owner: {
           skill_id: index.skill_id,
           page_id: index.page_id,
@@ -427,7 +427,9 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
     )
       return yield* Effect.fail(
         currentOperationFailure(
-          invalid("The current content or reading policy differs from the unfinished projection."),
+          invalid(
+            "The current content, reading policy or renderer differs from the unfinished projection.",
+          ),
           frozen,
           null,
           index.page_id,
@@ -543,6 +545,7 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
       checked(() => {
         const plan = renderCurrentProjection({
           path: prepared.file.path,
+          role: prepared.file.path === index.main.path ? "main" : "supporting",
           bytes: prepared.bytes,
           rewriteLink: currentProjectionLinkRewriter(
             prepared.file.path,
