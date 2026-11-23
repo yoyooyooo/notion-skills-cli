@@ -257,7 +257,7 @@ for (const difference of ["metadata", "support-body", "file-count"] as const)
     expect(pending(f)).toEqual([])
   })
 
-function automaticLinkWriter(loseCorrection: boolean) {
+function automaticLinkWriter(loseCorrection: boolean, dropSkillLinks = false) {
   const f = currentWriteFixture(parent)
   const blockId = id(9999)
   let owner: string | undefined, block: Record<string, unknown> | undefined
@@ -329,17 +329,19 @@ function automaticLinkWriter(loseCorrection: boolean) {
                 in_trash: false,
                 parent: { type: "page_id", page_id: owner },
                 paragraph: {
-                  rich_text: source
-                    .split(/(SKILL\.md|options\.storage)/gu)
-                    .filter(Boolean)
-                    .map((part) =>
-                      rich(
-                        part,
-                        /^(?:SKILL\.md|options\.storage)$/u.test(part)
-                          ? { url: new URL("http://" + part).href }
-                          : null,
-                      ),
-                    ),
+                  rich_text: dropSkillLinks
+                    ? [rich(source.replace(/\[([^\]]+)\]\(skill:\/\/[^)]+\)/gu, "$1"), null)]
+                    : source
+                        .split(/(SKILL\.md|options\.storage)/gu)
+                        .filter(Boolean)
+                        .map((part) =>
+                          rich(
+                            part,
+                            /^(?:SKILL\.md|options\.storage)$/u.test(part)
+                              ? { url: new URL("http://" + part).href }
+                              : null,
+                          ),
+                        ),
                 },
               }
             }
@@ -427,6 +429,51 @@ test.each([false, true])(
     expect(await body(f, created.page_id)).toBe(updated)
     expect(f.mutations().filter((call) => call.path === `v1/blocks/${f.blockId}`)).toHaveLength(1)
     expect(pending(f)).toEqual([])
+  },
+)
+
+test.each([false, true])(
+  "native authoring restores a dropped Skill URL in the same intent, including response loss: %s",
+  async (loseCorrection) => {
+    const f = automaticLinkWriter(loseCorrection, true)
+    const href = "skill://cycle-two/SKILL.md?library=library-two"
+    const markdown = `[Two](${href})`
+    const plan = await f.run(
+      prepareCurrentSkillWrite(
+        input({
+          files: [{ path: "SKILL.md", bytes: testBytes(markdown), authority: { kind: "native" } }],
+        }),
+      ),
+    )
+    const frozen = structuredClone(plan)
+    let operation: string | undefined
+    if (loseCorrection) {
+      await expect(f.run(createCurrentNotionSkill(library, { plan }))).rejects.toMatchObject({
+        code: "WRITE_OUTCOME_UNKNOWN",
+      })
+      expect(pending(f)).toHaveLength(1)
+      const value = property(property(f.json.get(pending(f)[0]!)).intent).operation_id
+      if (typeof value !== "string") throw new Error("Expected the original pending operation")
+      operation = value
+    }
+    const created = createdResult(await f.run(createCurrentNotionSkill(library, { plan })))
+    expect(created).toMatchObject({ state: "ready", native: { verified: 1 } })
+    if (operation !== undefined) expect(created.operation_id).toBe(operation)
+    expect(pending(f)).toEqual([])
+    expect(await body(f, created.page_id)).toBe(markdown)
+    expect(f.mutations().filter((call) => call.path.includes("/markdown"))).toHaveLength(1)
+    const corrections = f.mutations().filter((call) => call.path === `v1/blocks/${f.blockId}`)
+    expect(corrections).toHaveLength(1)
+    expect(property(property(corrections[0]!.body).paragraph).rich_text).toMatchObject([
+      { text: { content: "Two", link: { url: href } } },
+    ])
+    expect(plan).toEqual(frozen)
+    f.clearCalls()
+    expect(await f.run(createCurrentNotionSkill(library, { plan }))).toMatchObject({
+      status: "unchanged",
+      remote_writes: 0,
+    })
+    expect(f.mutations()).toEqual([])
   },
 )
 

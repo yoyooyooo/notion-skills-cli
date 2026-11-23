@@ -22,10 +22,15 @@ test("gitless formal mutations require the selected paired build and original pr
   const repository = join(runRoot, "source", "cli")
   const buildRoot = join(scratch, "builds", "fixture-build")
   const sourceName = "packages/core/src/guard.ts"
+  const dependencyName = "packages/core/node_modules/@effect/platform-node-shared/src/dependency.ts"
   mkdirSync(join(repository, "packages/core/src"), { recursive: true })
+  mkdirSync(join(repository, "packages/core/node_modules/@effect/platform-node-shared/src"), {
+    recursive: true,
+  })
   mkdirSync(buildRoot, { recursive: true })
   const digest = (value) => createHash("sha256").update(value).digest("hex")
   const original = "export const guarded = true\n"
+  const dependency = "export const installedDependency = true\n"
   const files = [{ path: sourceName, sha256: digest(original) }]
   const source = { commit: "a".repeat(40), files, sha256: digest(JSON.stringify(files)) }
   const build = {
@@ -48,9 +53,13 @@ test("gitless formal mutations require the selected paired build and original pr
     paths: { PAIRED_CLI_SOURCE: repository },
   }
   const environment = { PAIRED_CLI_SOURCE: repository, PAIRED_RUN_ROOT: runRoot }
-  const protectedFiles = { [sourceName]: files[0].sha256 }
+  const protectedFiles = {
+    [sourceName]: files[0].sha256,
+    [dependencyName]: digest(dependency),
+  }
   const save = (runValue = run, buildValue = build) => {
     writeFileSync(join(repository, sourceName), original)
+    writeFileSync(join(repository, dependencyName), dependency)
     writeFileSync(join(runRoot, "run.json"), JSON.stringify(runValue))
     writeFileSync(join(buildRoot, "build.json"), JSON.stringify(buildValue))
   }

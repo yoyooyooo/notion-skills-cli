@@ -4,7 +4,7 @@
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "kind": "Bounded search admission design model with reviewed concrete guards; not a production refinement proof.",
   "correspondence": "One request, nine remote result classes, two fixed selection pins, four independent epoch owners and a two-tick deadline. Source hashes bind reviewed working-tree bytes; source_base is their baseline, not a claim that new bytes were already committed.",
-  "review_basis": "Preserves SearchAdmission v4 transitions, complete independent expected rule inventories and expected counterexamples. Reviews REST preflight before MCP dispatch, verified same-physical-entry access, explicit connection/grant epoch checks before and after refresh, current physical page/owner/stable-claim/source admission, retained disabled observations, supporting File binding rereads, and final source/credential/deadline fences. The hosted wire decoder accepts only observed workspace_search shapes and never upgrades remote matching to exact consumption-byte proof. Broker owns disabled tool registration, host session/metadata qualification and active pins; its separate suite and installed Pi acceptance must establish those obligations. Node source-mode review: the package-version import now uses the existing default JSON import with type=json attribute and reads the same manifest.version. This corrects native Node module loading; operation, admission, deadline, credential and result semantics are unchanged. The existing real source-mode dev-launcher regression and full installed-package check must pass. Native Node type-erasure review: NotionMcpClient stores the identical options through an explicit readonly field and constructor assignment instead of a TypeScript parameter property. Transport, schema, byte/deadline budgets and result guards are unchanged; the real source-mode launcher, transport and SDK regressions verify this boundary. Reviewed the AH-1277 SDK boundary extraction at 90051b844aa15a86975054c81df83981c3c3a028 against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. runOperation now delegates to the shared runRuntimeOperation while retaining the consumption capability check before service acquisition. The complete per-call environment, pre-abort check, nodeRuntime/ConfigProvider, Notion acquisition, Effect.scoped lifetime, AbortSignal, error propagation and final metrics callback retain their reviewed behavior. The helper is independently hash-bound below so moving the implementation does not remove its protection. Resolving cwd now precedes rejection of an invalid readOnly option; this changes no legal invocation or network admission and is outside the finite model. Management chooses its own factory; consumption still uses its existing read-only boundary. No finite model, configuration, independent rule inventory or existing guard mutation target changes. This is a source-correspondence review, not a new verification result. Reviewed the Skill-reference v2 task diff against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. The shared Skill constructor now emits complete canonical root URIs and validates lowercase stable Skill IDs through the shared protocol. Current record refs use the same formatter; cached identity must still match its locator and declared kind entrypoint. Stable-claim lookup uses that constructor without changing complete pagination, disabled-claim participation, physical admission or freshness checks. SDK exports SKILL_REF_VERSION. Both search models, all 23 configurations and the eight search mutation targets are unchanged. This updates only the three reviewed source pins and does not claim a verification run. Integration checkpoint: preserve every upstream SourceSync and SourceSyncProgress model, case, implementation binding and source guard. The final merged source bytes, including SDK changes shared by both branches, still require a fresh diff review before final hash binding and execution.",
+  "review_basis": "Preserves SearchAdmission v4 transitions, complete independent expected rule inventories and expected counterexamples. Reviews REST preflight before MCP dispatch, verified same-physical-entry access, explicit connection/grant epoch checks before and after refresh, current physical page/owner/stable-claim/source admission, retained disabled observations, supporting File binding rereads, and final source/credential/deadline fences. The hosted wire decoder accepts only observed workspace_search shapes and never upgrades remote matching to exact consumption-byte proof. Broker owns disabled tool registration, host session/metadata qualification and active pins; its separate suite and installed Pi acceptance must establish those obligations. Node source-mode review: the package-version import now uses the existing default JSON import with type=json attribute and reads the same manifest.version. This corrects native Node module loading; operation, admission, deadline, credential and result semantics are unchanged. The existing real source-mode dev-launcher regression and full installed-package check must pass. Native Node type-erasure review: NotionMcpClient stores the identical options through an explicit readonly field and constructor assignment instead of a TypeScript parameter property. Transport, schema, byte/deadline budgets and result guards are unchanged; the real source-mode launcher, transport and SDK regressions verify this boundary. Reviewed the AH-1277 SDK boundary extraction at 90051b844aa15a86975054c81df83981c3c3a028 against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. runOperation now delegates to the shared runRuntimeOperation while retaining the consumption capability check before service acquisition. The complete per-call environment, pre-abort check, nodeRuntime/ConfigProvider, Notion acquisition, Effect.scoped lifetime, AbortSignal, error propagation and final metrics callback retain their reviewed behavior. The helper is independently hash-bound below so moving the implementation does not remove its protection. Resolving cwd now precedes rejection of an invalid readOnly option; this changes no legal invocation or network admission and is outside the finite model. Management chooses its own factory; consumption still uses its existing read-only boundary. No finite model, configuration, independent rule inventory or existing guard mutation target changes. This is a source-correspondence review, not a new verification result. Reviewed the Skill-reference v2 task diff against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. The shared Skill constructor now emits complete canonical root URIs and validates lowercase stable Skill IDs through the shared protocol. Current record refs use the same formatter; cached identity must still match its locator and declared kind entrypoint. Stable-claim lookup uses that constructor without changing complete pagination, disabled-claim participation, physical admission or freshness checks. SDK exports SKILL_REF_VERSION. Both search models, all 23 configurations and the eight search mutation targets are unchanged. This updates only the three reviewed source pins and does not claim a verification run. Integration checkpoint: preserve every upstream SourceSync and SourceSyncProgress model, case, implementation binding and source guard. The final merged source bytes, including SDK changes shared by both branches, still require a fresh diff review before final hash binding and execution. Final integration review against upstream next 9d986a83aaae35e3f9f6cd35341add0476f5c887 and task checkpoint ad7d09c9cd21aad6e318eca52bcb167b46e9bf78: the merged SDK differs from upstream only by re-exporting SKILL_REF_VERSION. All search source/auth/epoch guards, 23 complete case inventories, implementation bindings and the reviewed mutation inventory remain unchanged. Upstream gitless paired-build source identity and runner counterexamples are retained. Only the reviewed SDK hash is rebound; a final frozen-source receipt is required separately.",
   "files": {
     "packages/core/src/notion-mcp-search.ts": "c8e97baf785ede69d0da6f8d67c14676ab77e23a85f8fe5d246e5819a8e01632",
     "packages/core/src/shared-current-index.ts": "3f904a6a590fd3e2be765caf7343125c2c474485f38278995df5c2d70848ff62",
@@ -12,7 +12,7 @@
     "packages/core/src/shared-content.ts": "04c158c5b8e915b95cfcd700bc981cb6f8f4e39bc543062702993027b13c6218",
     "packages/core/test/notion-mcp-search.test.ts": "4a264aa1b763bfa9e4d50480fd2ad0fbaf436bd53bcb260568921ada403c1772",
     "packages/core/test/shared-current-fixture.ts": "15c96f0556956bbac3138ecf49118a765e66f3c7fe35fff4913476e1b0cd4b1e",
-    "packages/cli/src/sdk.ts": "e75784b900fd1c7c0722b15e81da5c2d3cf5cac18d2d31e2fbcf1269f44b94ac",
+    "packages/cli/src/sdk.ts": "79b8e7faf987d09ac217f38fcf0b1b854e677c5ed7a78add82a055d3c0fd4f5f",
     "packages/cli/src/operation-runtime.ts": "51d97df5587658afb4f5159e374c77062f47583ccf29f21c19c115ee766ace64",
     "packages/cli/src/commands-content.ts": "f5243b69ba79b57e0df25a9f9ad36ba64713caea738f05777ad4f466487b9274",
     "packages/core/src/notion-mcp-client.ts": "e30a584dd1e0f73df0f2876170c84d055b7808100c8c0bb374ac8bf380b4ae46",
@@ -285,9 +285,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "DisabledHasNoNetwork"
-      ]
+      "expected_broken": ["DisabledHasNoNetwork"]
     },
     {
       "model": "SearchAdmission",
@@ -311,9 +309,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "MetadataDoesNotStartMcp"
-      ]
+      "expected_broken": ["MetadataDoesNotStartMcp"]
     },
     {
       "model": "SearchAdmission",
@@ -337,9 +333,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "RestAdmissionExistsBeforeSearch"
-      ]
+      "expected_broken": ["RestAdmissionExistsBeforeSearch"]
     },
     {
       "model": "SearchAdmission",
@@ -363,9 +357,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "QueryUsesBoundConnection"
-      ]
+      "expected_broken": ["QueryUsesBoundConnection"]
     },
     {
       "model": "SearchAdmission",
@@ -389,9 +381,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "RetiredRequestCannotDispatch"
-      ]
+      "expected_broken": ["RetiredRequestCannotDispatch"]
     },
     {
       "model": "SearchAdmission",
@@ -415,9 +405,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "AuthorizedBeforeDisclosure"
-      ]
+      "expected_broken": ["AuthorizedBeforeDisclosure"]
     },
     {
       "model": "SearchAdmission",
@@ -441,9 +429,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "WorkspaceResponseRequired"
-      ]
+      "expected_broken": ["WorkspaceResponseRequired"]
     },
     {
       "model": "SearchAdmission",
@@ -467,10 +453,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "AuthorizedBeforeDisclosure",
-        "RetiredResultCannotPublish"
-      ]
+      "expected_broken": ["AuthorizedBeforeDisclosure", "RetiredResultCannotPublish"]
     },
     {
       "model": "SearchAdmission",
@@ -494,9 +477,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "SearchKeepsPins"
-      ]
+      "expected_broken": ["SearchKeepsPins"]
     },
     {
       "model": "SearchAdmission",
@@ -520,9 +501,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "RemoteHitIsNotExactByteProof"
-      ]
+      "expected_broken": ["RemoteHitIsNotExactByteProof"]
     },
     {
       "model": "SearchAdmission",
@@ -546,9 +525,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "EmptyIsNotExhaustiveAbsence"
-      ]
+      "expected_broken": ["EmptyIsNotExhaustiveAbsence"]
     },
     {
       "model": "SearchAdmission",
@@ -573,9 +550,7 @@
         "NoDeadlock",
         "NoNativeDisclosed"
       ],
-      "expected_broken": [
-        "NoNativeDisclosed"
-      ]
+      "expected_broken": ["NoNativeDisclosed"]
     },
     {
       "model": "SearchAdmission",
@@ -600,9 +575,7 @@
         "NoDeadlock",
         "NoProjectionDisclosed"
       ],
-      "expected_broken": [
-        "NoProjectionDisclosed"
-      ]
+      "expected_broken": ["NoProjectionDisclosed"]
     },
     {
       "model": "SearchAdmission",
@@ -626,9 +599,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "BindingResolvedBeforeSearch"
-      ]
+      "expected_broken": ["BindingResolvedBeforeSearch"]
     },
     {
       "model": "SearchAdmission",
@@ -652,9 +623,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "RetiredStatusCannotPublish"
-      ]
+      "expected_broken": ["RetiredStatusCannotPublish"]
     },
     {
       "model": "SearchAdmission",

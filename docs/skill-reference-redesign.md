@@ -54,7 +54,7 @@ A short reference at a CLI entry needs `--database ENTRY` or a configured
 An explicitly supplied incompatible database is a scope error.
 
 For authored content, use ordinary relative paths within one Skill and
-`skill://ID` between Skills. A selected Source may retain an existing cross-root
+`skill://architect` between Skills. A selected Source may retain an existing cross-root
 repository link when its original path/revision and contribution mapping prove
 the target. Do not rely on that exception for portable native documents.
 

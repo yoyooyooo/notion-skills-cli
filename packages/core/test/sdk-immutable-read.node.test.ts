@@ -772,7 +772,11 @@ test("public SDK reports the retired cache generation when clear races a current
           Effect.scoped,
         ),
       )
-      expect(retired.entries.some((key) => key.endsWith(`/${listing.record.id}/.fence`))).toBe(true)
+      expect(
+        retired.entries.some((key) =>
+          key.endsWith(`/${encodeURIComponent(listing.record.id)}/.fence`),
+        ),
+      ).toBe(true)
     } finally {
       hold.release()
     }

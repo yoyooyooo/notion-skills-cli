@@ -40,6 +40,45 @@ test("the plan preserves existing links, code, styles, nested structures and com
   ).toBeUndefined()
 })
 
+test("the write plan restores only exact authored Skill links dropped by Markdown transport", () => {
+  const pin = "s_" + "a".repeat(64)
+  const expected = `[Two](skill://cycle-two/SKILL.md) and [**fixed**](skill://other/references/design.md?library=library-other&snapshot=${pin}) with SKILL.md.`
+  const observed = "Two and **fixed** with [SKILL.md](http://SKILL.md)."
+  expect(compareNativeMarkdown({ expected, observed })).toBe("different")
+  const plan = nativePlainTextPlan({ expected, observed })
+  expect(plan).toHaveLength(1)
+  expect(plan?.[0]?.expected).toContainEqual(
+    expect.objectContaining({
+      kind: "text",
+      text: "Two",
+      link: { href: "skill://cycle-two/SKILL.md", title: null },
+    }),
+  )
+  expect(nativePlainTextPlan({ expected, observed: expected })).toHaveLength(1)
+  // Planning a corrective write never changes the strict completion comparison.
+  expect(compareNativeMarkdown({ expected, observed })).toBe("different")
+})
+
+test.each([
+  ["[Two](skill://cycle-two/SKILL.md)", "Other"],
+  ["[**Two**](skill://cycle-two/SKILL.md)", "Two"],
+  ["[Two](skill://cycle-two/SKILL.md)", "[Two](skill://other/SKILL.md)"],
+  [
+    "[Two](skill://cycle-two/SKILL.md?library=one)",
+    "[Two](skill://cycle-two/SKILL.md?library=two)",
+  ],
+  ["[Two](https://example.com)", "Two"],
+  ["[Two](other-protocol://two)", "Two"],
+  ["[Two](skill://Two)", "Two"],
+  ["[Two](skill://two?file_id=old)", "Two"],
+  ['[Two](skill://two "Retained title")', "Two"],
+  ["[Two](skill://two)\n\n[unused]: skill://unused", "Two"],
+  ["![Two](skill://two)", "Two"],
+])("a Skill link correction cannot hide another authored change: %s", (expected, observed) => {
+  expect(nativePlainTextPlan({ expected, observed })).toBeUndefined()
+  expect(compareNativeMarkdown({ expected, observed })).toBe("different")
+})
+
 test.each([
   ["SKILL.md", "[SKILL.md](https://different.example)"],
   ["SKILL.md", "[OTHER.md](http://OTHER.md)"],

@@ -36,7 +36,10 @@ export async function buildDeclarations(root: string, target: string) {
         getNewLine: () => "\n",
       }),
     )
-  const pending = [...entries.map((name) => join(outDir, `cli/src/${name}.d.ts`)), join(outDir, "core/src/skill-ref.d.ts")]
+  const pending = [
+    ...entries.map((name) => join(outDir, `cli/src/${name}.d.ts`)),
+    join(outDir, "core/src/skill-ref.d.ts"),
+  ]
   const declarations = new Map<string, string>()
   while (pending.length) {
     const path = pending.pop()!

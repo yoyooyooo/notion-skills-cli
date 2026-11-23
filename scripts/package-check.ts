@@ -250,6 +250,10 @@ if (
   sdk?.contract !== "current-only" ||
   sdk.selection !== "all" ||
   sdk.failed !== 0 ||
-  sdk.passed !== 12
+  sdk.passed !== 13 ||
+  !sdk.cases.some(
+    (entry: { name: string; status: string }) =>
+      entry.name === "installed-pure-reference-module" && entry.status === "passed",
+  )
 )
-  throw new Error("The installed current SDK gate did not complete its 12 current contract cases.")
+  throw new Error("The installed current SDK gate did not complete its 13 current contract cases.")

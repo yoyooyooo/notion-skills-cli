@@ -202,6 +202,13 @@ Unsupported shapes are rejected and actual content changes remain unfinished.
 The original input/hash, stored frontmatter and mode stay fixed. Read/export uses
 the current Notion body, so native does not promise original Markdown byte equality.
 
+Notion's Markdown endpoint can remove a `skill://` hyperlink while keeping its
+label. Native imports restore an eligible exact author link through rich text
+within the same frozen write intent, then compare the complete body again.
+This applies only when the text, styles, structure and physical block binding
+still match; an altered destination or unrelated edit remains unfinished.
+The correction belongs to authoring and recovery, not ordinary read/export.
+
 All four daily actions support --dry-run and invocation budgets. Repeat the same
 command and intent after interruption; preserve original input, local state and
 credential scope. Equal current content makes zero semantic writes. Do not clear

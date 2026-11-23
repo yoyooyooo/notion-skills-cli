@@ -6,7 +6,7 @@ Changes since the published [0.3.0 release](https://github.com/yoyooyooo/notion-
 
 ### Skill references and explicit batch import
 
-- Use one `skill://ID[/path]?library=LIBRARY_ID` protocol across Core, CLI, SDK
+- Use one `skill://<stable-skill-id>[/path]?library=<logical-library-id>` protocol across Core, CLI, SDK
   and the paired Broker. Contextual refs bind to the containing Library; names,
   legacy identity prefixes and public `file_id` parameters no longer select content.
 - Keep fixed reads on the exact selected manifest and path, including Source
@@ -18,6 +18,9 @@ Changes since the published [0.3.0 release](https://github.com/yoyooyooo/notion-
   phase. Cross-Library rewriting requires `--rebind-from` and an exact batch-owned target.
 - Document conservative first-create Members inference, explicit Requires,
   cross-Skill relative path limits and the breaking reference cutover.
+- Preserve native Skill hyperlinks that Notion's Markdown endpoint drops by
+  restoring exact author spans through the same pending write intent, followed
+  by complete strict readback. Unknown outcomes retain their original operation.
 
 ### Current-only convergence on `next`
 

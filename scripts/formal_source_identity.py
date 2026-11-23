@@ -74,7 +74,7 @@ def source_identity(repository, protected_files, environment=None):
     for name, expected in protected_files.items():
         # Dependencies are separately bound by coverage and the paired build.
         # They are not files from the original Git/source inventory.
-        if name.startswith("node_modules/"):
+        if "node_modules" in PurePosixPath(name).parts:
             continue
         require(inventory.get(name) == expected, "protected source differs from the selected build: " + name)
         target = (repository / name).resolve(strict=True)

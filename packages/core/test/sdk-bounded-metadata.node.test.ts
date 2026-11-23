@@ -205,7 +205,12 @@ test.each([false, true])(
         (node) => property(node.error).code === "ACCESS_DENIED",
       )
       expect(denied).toMatchObject([
-        { id: c.f.pageIds[1], ref: fileRef(c.f.pageIds[1]!, ""), roles: ["required"] },
+        {
+          id: c.f.pageIds[1],
+          ref: `https://www.notion.so/${c.f.pageIds[1]!.replaceAll("-", "")}`,
+          roles: ["required"],
+          error: { details: { page_id: c.f.pageIds[1] } },
+        },
       ])
       const start = c.source.requests.length
       for (const ref of [child.ref, c.stable("leaf-0")])

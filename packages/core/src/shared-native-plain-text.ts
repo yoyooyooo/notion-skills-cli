@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
+import { parseSkillRef } from "./skill-ref.ts"
 import type { CurrentOperationSession } from "./shared-current-operation.ts"
 import { readCurrentBodyBlocks } from "./shared-current-projection.ts"
 import {
@@ -28,7 +29,7 @@ type Rich = {
 const invalid = () =>
   fail(
     "CURRENT_NATIVE_ROUNDTRIP",
-    "The complete native body cannot be bound to an exact plain-text correction. The current intent remains pending.",
+    "The complete native body cannot be bound to an exact inline correction. The current intent remains pending.",
   )
 const checked = <A>(read: () => A) =>
   Effect.try({ try: read, catch: (error) => (error instanceof SkillsError ? error : invalid()) })
@@ -86,10 +87,24 @@ function automaticLink(part: Extract<Inline, { kind: "text" }>): boolean {
   }
 }
 
+/** The Markdown endpoint can drop a Skill hyperlink that the rich-text endpoint
+ * preserves. Validate its protocol, but retain the frozen author's exact URL:
+ * correction is not identity resolution, rebinding or a current selection. */
+function authoredSkillLink(part: Extract<Inline, { kind: "text" }>): boolean {
+  if (part.link === null || part.link.title !== null) return false
+  try {
+    parseSkillRef(part.link.href)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function compatible(
   expected: readonly Inline[],
   observed: readonly Inline[],
   added: Set<string>,
+  dropped: Set<string>,
 ): boolean {
   let left = 0,
     right = 0,
@@ -106,8 +121,9 @@ function compatible(
     }
     if (a.code !== b.code || !same(a.style, b.style)) return false
     if (!same(a.link, b.link)) {
-      if (a.link !== null || a.code || !automaticLink(b)) return false
-      added.add(canonical(b.link))
+      if (a.link === null && !a.code && automaticLink(b)) added.add(canonical(b.link))
+      else if (b.link === null && authoredSkillLink(a)) dropped.add(canonical(a.link))
+      else return false
     }
     const count = Math.min(a.text.length - leftOffset, b.text.length - rightOffset)
     if (
@@ -144,14 +160,15 @@ export function nativePlainTextPlan(input: {
   }
   const a = groups(expected),
     b = groups(observed),
-    added = new Set<string>()
+    added = new Set<string>(),
+    dropped = new Set<string>()
   if (!same(a.shape, b.shape) || a.values.length !== b.values.length) return
   for (const [index, value] of a.values.entries())
-    if (!compatible(value, b.values[index]!, added)) return
+    if (!compatible(value, b.values[index]!, added, dropped)) return
   const original = new Set(expected.destinations.map(canonical)),
     actual = new Set(observed.destinations.map(canonical))
   if (
-    [...original].some((value) => !actual.has(value)) ||
+    [...original].some((value) => !actual.has(value) && !dropped.has(value)) ||
     [...actual].some((value) => !original.has(value) && !added.has(value))
   )
     return
@@ -313,7 +330,9 @@ export function planCurrentNativePlainText(input: {
             if (
               !selected.some((group) =>
                 group.expected.some(
-                  (part) => part.kind === "text" && !part.code && part.link === null,
+                  (part) =>
+                    part.kind === "text" &&
+                    ((!part.code && part.link === null) || authoredSkillLink(part)),
                 ),
               )
             )
@@ -378,7 +397,8 @@ export function applyCurrentNativePlainText(input: {
           if (
             actual.length !== target.groups.length ||
             actual.some(
-              (parts, index) => !compatible(target.groups[index]!.expected, parts, new Set()),
+              (parts, index) =>
+                !compatible(target.groups[index]!.expected, parts, new Set(), new Set()),
             )
           )
             throw invalid()

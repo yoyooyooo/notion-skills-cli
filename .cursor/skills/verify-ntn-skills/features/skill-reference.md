@@ -65,6 +65,12 @@ unknown CREATE 当前未观察到结果时不可重发。
 Requires 只显式维护。普通名称、代码、图片、模板、注释和未确认路径均不产生关系。
 可发现成员关系不代表执行授权，也不证明任意自然语言意图。
 
+## 真实 Notion 回放
+
+沿 [Skill reference live check](../references/harness.md#skill-reference-live-check)
+选择独立测试 Library，执行同一打包产物的公开 CLI 导入、跨库读取与原操作恢复。
+该入口记录具体输入、操作 ID 和保留的回执；模型与受控 fixture 通过不能代填其结果。
+
 ## 安装与交接
 
 沿 [独立包消费](portable-export-package-consumption.md) 检查同一个 archive 的 CLI、
