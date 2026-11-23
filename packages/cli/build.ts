@@ -35,6 +35,7 @@ for (const relative of ["docs", "skills/ntn-skills", "skills/notion"]) {
 for (const [entry, name] of [
   ["launcher", "ntn-skills"],
   ["sdk", "sdk"],
+  ["management", "management"],
 ]) {
   const result = await Bun.build({
     entrypoints: [new URL(`src/${entry}.ts`, import.meta.url).pathname],
@@ -91,6 +92,7 @@ await writeFile(
       artifacts: await buildInventory(target, [
         "dist/ntn-skills.js",
         "dist/sdk.js",
+        "dist/management.js",
         "dist/types",
         "skills",
       ]),
@@ -100,4 +102,6 @@ await writeFile(
     2,
   ) + "\n",
 )
-console.log(`Built CLI, SDK and ${declarations} declaration files in ${target}`)
+console.log(
+  `Built CLI, consumption SDK, management SDK and ${declarations} declaration files in ${target}`,
+)

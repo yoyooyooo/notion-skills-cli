@@ -246,7 +246,17 @@ test("current management and export schemas contain no historical compatibility 
     ],
     [
       ["ctl", "library", "source"],
-      ["apply", "disable", "enable", "refresh", "remove", "restore-follow", "takeover"],
+      [
+        "apply",
+        "check",
+        "disable",
+        "enable",
+        "refresh",
+        "remove",
+        "restore-follow",
+        "sync",
+        "takeover",
+      ],
     ],
     [
       ["ctl", "builtin"],

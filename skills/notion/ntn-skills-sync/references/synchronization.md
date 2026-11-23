@@ -2,6 +2,7 @@
 
 - [Profile rules](#profile-rules)
 - [Current Source](#current-source-boundaries)
+- [Scheduled upstream batches](#scheduled-upstream-batches)
 - [Declaration input](#a-source-management-request)
 - [Daily Notion text](#daily-notion-text)
 - [Restore a trashed Skill](#restore-a-trashed-skill)
@@ -98,6 +99,51 @@ Missing cached bytes require the current owner/descriptor to still match.
 Ordinary reads do not follow the latest branch, publish discovered members,
 repair projections or create records. A generated body edit does not transfer
 authority; native ownership is an explicit management choice.
+
+## Scheduled upstream batches
+
+`ctl library source check` and `ctl library source sync` require an exact library
+and one or more repeatable `--source SOURCE_ID` arguments. They share one request,
+byte and elapsed-time budget across the invocation. Use `--max-requests N`,
+`--max-bytes N` and `--timeout MS` to bound it. A Source enumeration must finish
+before any selected item starts; a provider failure is never an empty selection.
+Equal upstream observations can coalesce within the batch. There is no persistent
+ref TTL; the scheduler controls how often it invokes the command.
+
+Check makes no semantic Notion writes. `upstream_unchanged` describes the observed
+upstream and configuration, not target integrity. Unfinished Source or affected
+target work blocks a check, including an old owner's pending projection.
+
+Sync checks and freezes one exact commit before preparing bytes and publishing
+through the existing finite writer. With `--mode changed`, the first run and a
+configuration change require full reconciliation. A later matching successful
+local receipt can skip unchanged upstream. Use `--mode full` for a scheduled
+integrity pass even at the same commit. Disabled Sources, pinned policy and exact
+fixed refs are skipped. Existing native/resource ownership and contribution
+exclusions remain part of the current declaration's normal write rules.
+
+The default `--projection none` publishes consumption content only. With
+`--projection markdown`, the report separately records content publication and
+reading projection completion. A failed projection retains the published content
+and its original recovery input. Sync resumes compatible pending work before
+checking a newer upstream head.
+
+For automation, supply stable `--manager MANAGER_ID` and an `--execution-id` that
+identifies the installed package generation. Keep the same original local Store
+for retries. The CLI defaults manager to manual and derives execution identity
+from its bundled file; a source TypeScript invocation needs an explicit identity.
+The `ntn-skills/management` SDK exposes `checkSources` and `syncSources` with the
+same report contract and requires explicit manager/execution identity for sync.
+The consumption `ntn-skills/sdk` remains read-only.
+
+JSON is always written to stdout; no `--json` flag is needed. Exit 0 means complete,
+75 means every incomplete item is retryable, 1 means another incomplete result,
+and 2 means invalid arguments. Budget exhaustion preserves completed items and
+marks remaining items `not_started`. Repeat a compatible invocation only within
+the scheduler's retry and time limits. An unknown remote outcome, foreign pending
+work or changed execution identity needs inspection; do not clear pending state
+or replay a mutation from the scheduler. The local Store lock serializes cooperating
+writers on one host; it does not provide distributed Notion CAS.
 
 ## A Source-management request
 

@@ -1,15 +1,116 @@
 import assert from "node:assert/strict"
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawnSync } from "node:child_process"
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 import { assertFormalCase } from "./formal-result-contract.mjs"
 
 const root = fileURLToPath(new URL("../", import.meta.url))
 const suites = ["request-engine", "current-lifecycle", "notion-mcp-auth", "notion-mcp-search"]
+test("gitless formal mutations require the selected paired build and original protected bytes", (t) => {
+  const scratch = mkdtempSync(join(tmpdir(), "notion-formal-source-identity-"))
+  const runRoot = join(scratch, "runs", "fixture-run")
+  const repository = join(runRoot, "source", "cli")
+  const buildRoot = join(scratch, "builds", "fixture-build")
+  const sourceName = "packages/core/src/guard.ts"
+  mkdirSync(join(repository, "packages/core/src"), { recursive: true })
+  mkdirSync(buildRoot, { recursive: true })
+  const digest = (value) => createHash("sha256").update(value).digest("hex")
+  const original = "export const guarded = true\n"
+  const files = [{ path: sourceName, sha256: digest(original) }]
+  const source = { commit: "a".repeat(40), files, sha256: digest(JSON.stringify(files)) }
+  const build = {
+    version: 1,
+    kind: "paired-build",
+    root: buildRoot,
+    environment_id: "fixture-environment",
+    build_id: "fixture-build",
+    sources: { cli: source },
+  }
+  const run = {
+    version: 1,
+    kind: "isolated-development-run",
+    target: "command",
+    root: runRoot,
+    environment_id: "fixture-environment",
+    run_id: "fixture-run",
+    build_id: "fixture-build",
+    build_root: buildRoot,
+    paths: { PAIRED_CLI_SOURCE: repository },
+  }
+  const environment = { PAIRED_CLI_SOURCE: repository, PAIRED_RUN_ROOT: runRoot }
+  const protectedFiles = { [sourceName]: files[0].sha256 }
+  const save = (runValue = run, buildValue = build) => {
+    writeFileSync(join(repository, sourceName), original)
+    writeFileSync(join(runRoot, "run.json"), JSON.stringify(runValue))
+    writeFileSync(join(buildRoot, "build.json"), JSON.stringify(buildValue))
+  }
+  const inspect = (env = environment) =>
+    spawnSync(
+      "python3",
+      [
+        "-B",
+        "-c",
+        [
+          "import json, sys",
+          "from pathlib import Path",
+          "from scripts.formal_source_identity import source_identity",
+          "request = json.load(sys.stdin)",
+          "print(json.dumps(source_identity(Path(request['repository']), request['files'], request['environment'])))",
+        ].join("\n"),
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+        input: JSON.stringify({ repository, files: protectedFiles, environment: env }),
+      },
+    )
+  const rejected = (result, reason) => {
+    assert.equal(result.status, 1, result.stdout + result.stderr)
+    assert.match(result.stderr, reason)
+  }
+  save()
+  const valid = inspect()
+  assert.equal(valid.status, 0, valid.stderr)
+  const identity = JSON.parse(valid.stdout)
+  assert.equal(identity.checkout_commit, null)
+  assert.deepEqual(identity.source_provenance.protected_source_files_verified, [sourceName])
+  assert.equal(identity.source_provenance.original_commit, source.commit)
+  assert.equal(identity.source_provenance.source_inventory_sha256, source.sha256)
+
+  rejected(inspect({}), /gitless sources require the official paired run/)
+  rejected(inspect({ ...environment, PAIRED_CLI_SOURCE: buildRoot }), /selected CLI source differs/)
+  const missing = join(scratch, "missing-manifest")
+  mkdirSync(missing)
+  rejected(inspect({ ...environment, PAIRED_RUN_ROOT: missing }), /FileNotFoundError/)
+  save({ ...run, root: buildRoot })
+  rejected(inspect(), /run root or ID differs/)
+  save(run, { ...build, kind: "unrelated-build" })
+  rejected(inspect(), /unexpected build manifest/)
+  save(run, { ...build, build_id: "another-build" })
+  rejected(inspect(), /selected build root or ID differs/)
+  save(run, { ...build, environment_id: "another-environment" })
+  rejected(inspect(), /environment ID differs/)
+  save(run, { ...build, sources: { cli: { ...source, sha256: "0".repeat(64) } } })
+  rejected(inspect(), /source inventory digest differs/)
+  const changedFiles = [{ path: sourceName, sha256: "e".repeat(64) }]
+  save(run, {
+    ...build,
+    sources: {
+      cli: { ...source, files: changedFiles, sha256: digest(JSON.stringify(changedFiles)) },
+    },
+  })
+  rejected(inspect(), /protected source differs from the selected build/)
+  save()
+  writeFileSync(join(repository, sourceName), "export const guarded = false\n")
+  rejected(inspect(), /protected source bytes differ/)
+  save()
+  assert.equal(inspect().status, 0)
+  t.diagnostic("Retained paired-source provenance fixtures: " + scratch)
+})
 test("current suites share one driver and frozen tools while owning independent inventories", () => {
   const locks = []
   for (const suite of suites) {

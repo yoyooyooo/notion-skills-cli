@@ -73,6 +73,8 @@ type SourceWriteOptions = {
   readonly operation_id: string
   readonly mode?: CurrentWriteMode
   readonly dry_run?: boolean
+  /** Read-only completion proof after a lost final response. Never repairs drift. */
+  readonly verify_only?: boolean
 }
 type Pending = Effect.Success<ReturnType<typeof readCurrentOperationIntent>>
 
@@ -292,6 +294,49 @@ function sourceManifest(prepared: PreparedCurrentSourceInput) {
   } satisfies Pick<CurrentSharedSource, "source_id" | "revision" | "manifest">
 }
 
+/** A Source must not invalidate an unfinished projection on an old or new target.
+ * Only the exact current parent's child, or its explicit predecessor, may enter.
+ * This is a single-writer precondition, not a cross-machine compare-and-swap. */
+export function assertCurrentSourceTargetsAvailable(
+  library: SharedLibrary,
+  affected: readonly string[],
+  intent: Extract<CurrentOperationIntent, { source_input: unknown }>,
+  predecessor?: Extract<CurrentOperationIntent, { source_input: unknown }>,
+) {
+  return Effect.gen(function* () {
+    for (const skill_id of affected) {
+      const pending = yield* readCurrentOperationIntent(library, { kind: "skill", id: skill_id })
+      if (pending === undefined) continue
+      const binding = "source" in pending.intent ? pending.intent.source : undefined
+      const allowed = [intent, ...(predecessor === undefined ? [] : [predecessor])]
+      const parent = allowed.find(
+        (parent) =>
+          binding !== undefined &&
+          binding.source_id === parent.owner.id &&
+          binding.operation_id === parent.operation_id &&
+          binding.input_sha256 === parent.input_sha256,
+      )
+      const child =
+        parent === undefined
+          ? undefined
+          : "source-target-" + (yield* sha256(canonicalSharedJson([parent.operation_id, skill_id])))
+      if (parent === undefined || pending.intent.operation_id !== child)
+        return yield* Effect.fail(
+          fail(
+            "CURRENT_OPERATION_PENDING",
+            "Finish the target's original intent before changing its Source.",
+            {
+              source_id: intent.owner.id,
+              skill_id,
+              operation_id: pending.intent.operation_id,
+              next: "resume_original_target_intent",
+            },
+          ),
+        )
+    }
+  })
+}
+
 function executeCurrentSource(
   library: SharedLibrary,
   prepared: PreparedCurrentSourceInput,
@@ -466,6 +511,14 @@ function executeCurrentSource(
       return yield* Effect.fail(
         invalid("The selected Source differs from the original frozen intent."),
       )
+    const predecessor = typeof options.mode === "object" ? original : pending?.predecessor?.intent
+    const targetFence = assertCurrentSourceTargetsAvailable(
+      library,
+      affected,
+      intent,
+      predecessor !== undefined && "source_input" in predecessor ? predecessor : undefined,
+    )
+    yield* targetFence
     const inspected = []
     const inspectedPlans = new Map<
       string,
@@ -611,10 +664,37 @@ function executeCurrentSource(
         if (verified !== undefined) unchanged.set(plan.skill_id, verified)
       }
     }
+    if (options.verify_only) {
+      if (
+        current === undefined ||
+        current.state.state !== "ready" ||
+        original !== undefined ||
+        !currentSourceManagementMatches(current, wanted) ||
+        retirements.length !== 0 ||
+        unchanged.size !== plans.length
+      )
+        return yield* Effect.fail(
+          invalid("The completed Source cannot be verified without another write."),
+        )
+      return {
+        ...resultBase,
+        source_page_id: current.page_id,
+        state: "ready" as const,
+        status: "unchanged" as const,
+        targets: plans.map((plan) => ({
+          skill_id: plan.skill_id,
+          page_id: unchanged.get(plan.skill_id)!.page_id,
+          status: "unchanged" as const,
+          notion_pages: unchanged.get(plan.skill_id)!.files.length + 1,
+          source_files: desiredBySkill.get(plan.skill_id)!.files.length,
+        })),
+      }
+    }
     return yield* withCurrentOperation(library, {
       intent,
       ownerPageId: currentPage ?? null,
       mode: options.mode,
+      beforeMutation: targetFence,
       run: (session) =>
         Effect.gen(function* () {
           if (

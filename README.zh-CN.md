@@ -194,6 +194,7 @@ Skill 内的相对引用以实际包含链接的文件为基准。跨 Skill 相�
 | 读取支持文件、查看完整目录、导出当前选择 | [日常命令](docs/usage.md) |
 | 替换完整本地树、选择 native 文件、继续原导入 | [完整导入](docs/shared-authoring.md#prepare-the-entire-replacement-tree) |
 | 应用或刷新 Git 贡献、管理来源、接管文件 | [Source 管理](skills/notion/ntn-skills-sync/references/synchronization.md#current-source-boundaries) |
+| 用 CLI、SDK 或定时任务检查并同步上游 Git | [上游同步](docs/source-sync.md) |
 | 为导入内容或 Source 生成 Notion 阅读页 | [阅读投影](docs/shared-authoring.md#generate-readable-text-in-notion) |
 | 从 Trash 恢复原 Skill | [恢复说明](docs/shared-authoring.md#restore-a-trashed-skill) |
 | 选择 View、共享 Profile 和 freshness 规则 | [Profile 与 View](docs/usage.md#choose-a-profile-or-view) |

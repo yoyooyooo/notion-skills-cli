@@ -634,6 +634,25 @@ silently deleted. Reapplying a saved declaration can recreate a deleted Source o
 Skill. Human policy values cannot be reconstructed from upstream content and must
 be preserved on surviving pages or supplied separately when rebuilding.
 
+`source check --entry DB --source SOURCE_ID` observes the registered declaration
+and upstream ref without publishing. `source sync` exposes the same management
+operation through the CLI and `ntn-skills/management`, with an explicit Source
+allowlist, one invocation budget and serial publication. It first recovers an
+owned unfinished input, then returns that Source's result; a later invocation can
+select a newer upstream commit. An unchanged ref does not certify target contents.
+Schedulers select `changed` checks or `full` reconciliation; ordinary consumption
+continues to use Notion's published exact version and its existing freshness policy.
+
+Source publication and optional Markdown projection have separate outcomes.
+Projection and full-batch progress use finite protected checkpoints. A completed
+Source records its exact terminal result in the owning full batch before retiring
+its local pending input, including when a `changed` call completes that input.
+Later hourly publication cannot erase that batch's completed prefix. A batch
+report describes each Source at its processing time, not one atomic final snapshot.
+Cache timestamps never authorize completion or recovery. The [Source sync guide](source-sync.md)
+defines manager and execution identity, bounded retries, result fields and caller
+responsibilities.
+
 `source takeover SOURCE_ID SOURCE_PATH --skill-id ID --file-id ID --as native|resource`
 transfers exactly one selected original into Notion authority. Resource is the
 default representation. Native requires supported UTF-8 Markdown and complete

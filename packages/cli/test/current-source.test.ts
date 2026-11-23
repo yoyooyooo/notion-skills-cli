@@ -122,7 +122,17 @@ test("current Source action routes expose the same bounded finite intent control
     currentSourceCommand.subcommands.flatMap((group) =>
       group.commands.map((command) => command.name),
     ),
-  ).toEqual(["apply", "refresh", "enable", "disable", "remove", "takeover", "restore-follow"])
+  ).toEqual([
+    "apply",
+    "refresh",
+    "check",
+    "sync",
+    "enable",
+    "disable",
+    "remove",
+    "takeover",
+    "restore-follow",
+  ])
   for (const command of [
     applyCurrentSourceCommand,
     refreshCurrentSourceCommand,

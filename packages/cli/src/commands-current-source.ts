@@ -19,6 +19,10 @@ import {
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { emit, requiredSingleton, singleton, switchFlag } from "./command-options.ts"
 import { selectCurrentWriteMode } from "./current-write-options.ts"
+import {
+  checkCurrentSourcesCommand,
+  syncCurrentSourcesCommand,
+} from "./commands-current-source-sync.ts"
 
 const MAX_DECLARATION_BYTES = 512 * 1024
 const invalid = (message: string, details?: unknown) =>
@@ -437,6 +441,8 @@ export const currentSourceCommand = defineCommand("source").pipe(
   Command.withSubcommands([
     applyCurrentSourceCommand,
     refreshCurrentSourceCommand,
+    checkCurrentSourcesCommand,
+    syncCurrentSourcesCommand,
     enableCurrentSourceCommand,
     disableCurrentSourceCommand,
     removeCurrentSourceCommand,

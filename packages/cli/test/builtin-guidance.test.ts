@@ -80,7 +80,17 @@ test("executable builtin examples stay within the public current command surface
               expect(library.has(words[2]!), label).toBe(true)
               if (words[2] === "source")
                 expect(
-                  ["apply", "refresh", "enable", "disable", "remove", "takeover", "restore-follow"],
+                  [
+                    "apply",
+                    "check",
+                    "sync",
+                    "refresh",
+                    "enable",
+                    "disable",
+                    "remove",
+                    "takeover",
+                    "restore-follow",
+                  ],
                   label,
                 ).toContain(words[3]!)
               if (words[2] === "skill")
@@ -250,6 +260,7 @@ test("the published documentation allowlist contains only current guides", () =>
     "docs/current-contract.md",
     "docs/usage.md",
     "docs/notion-mcp.md",
+    "docs/source-sync.md",
     "docs/shared-authoring.md",
     "docs/protocol.md",
     "docs/maintenance-verification-review.md",

@@ -29,6 +29,46 @@ const restrictedHash = "9".repeat(64)
 const restrictionKey = `content-restrictions/local/${restrictedHash}.json`
 const restriction = { version: 1, sha256: restrictedHash, reason: "local_resource" }
 
+const syncKey = `operations/current-source-sync/${scope}/pending.json`
+const syncInput = {
+  version: 1,
+  kind: "current_source_sync",
+  scope,
+  manager_id: "mini",
+  execution_id: "package-a",
+  phase: "content",
+  input: {
+    operation_id: "sync-a",
+    declaration: {
+      version: 1,
+      definition: {
+        version: 1,
+        source_id: "sqlite-sync",
+        name: "SQLite sync",
+        description: "Frozen source synchronization",
+        enabled: true,
+        policy: "manual",
+        adapter: { type: "git", url: "https://github.com/example/skills", ref: "refs/heads/main" },
+        selection: { roots: ["skills"], include: [], exclude: [], mapping: {} },
+        options: {},
+      },
+      contributions: [
+        { member_key: "skills/one", skill_id: "one", mount_path: "", mapping: {}, exclude: [] },
+        { member_key: "skills/two", skill_id: "two", mount_path: "", mapping: {}, exclude: [] },
+      ],
+    },
+    configuration_sha256: "b".repeat(64),
+    resolved_commit: "c".repeat(40),
+    revision: "d".repeat(64),
+    source_page_id: "00000000-0000-4000-8000-000000000001",
+    baseline_revision: "e".repeat(64),
+    baseline_configuration_sha256: "f".repeat(64),
+    affected_skill_ids: ["one", "two"],
+    retirements: [],
+    projection: "markdown",
+  },
+}
+
 function processProgram(root: string, body: string) {
   return `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
 import {Effect,FileSystem} from ${JSON.stringify(import.meta.resolve("effect"))};
@@ -513,6 +553,251 @@ test("local-content restrictions survive restarts and cache retirement, and cann
       removed: "Failure",
       changed: "Failure",
     })
+  })
+}, 30_000)
+
+test("Source sync restart preserves its input and advances the frozen projection cursor one target at a time", async () => {
+  await isolated(async (root) => {
+    const write = (value: unknown) =>
+      child(root, `yield* state.write(${JSON.stringify(syncKey)},${JSON.stringify(value)});`)
+    expect((await write(syncInput)).exit).toBe(0)
+    const read = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(syncKey)})));`,
+    )
+    expect(read.exit, read.stderr).toBe(0)
+    expect(JSON.parse(read.stdout)).toEqual(syncInput)
+    for (const changed of [
+      { ...syncInput, manager_id: "other" },
+      { ...syncInput, execution_id: "package-b" },
+      { ...syncInput, input: { ...syncInput.input, resolved_commit: "a".repeat(40) } },
+      { ...syncInput, input: { ...syncInput.input, affected_skill_ids: ["one", "three"] } },
+      {
+        ...syncInput,
+        input: {
+          ...syncInput.input,
+          declaration: { ...syncInput.input.declaration, contributions: [] },
+        },
+      },
+    ]) {
+      const rejected = await write(changed)
+      expect(rejected.exit).not.toBe(0)
+      expect(rejected.stderr).toContain("preserve its owner")
+    }
+    const projection = {
+      ...syncInput,
+      phase: "projection",
+      next_index: 0,
+      targets: [
+        { skill_id: "one", page_id: "00000000-0000-4000-8000-000000000002" },
+        { skill_id: "two", page_id: "00000000-0000-4000-8000-000000000003" },
+      ],
+    }
+    expect((await write({ ...projection, next_index: 1 })).exit).not.toBe(0)
+    expect((await write(projection)).exit).toBe(0)
+    expect((await write(projection)).exit).toBe(0)
+    expect((await write({ ...projection, next_index: 2 })).exit).not.toBe(0)
+    expect((await write({ ...projection, next_index: 1 })).exit).toBe(0)
+    expect((await write(projection)).exit).not.toBe(0)
+    expect(
+      (await write({ ...projection, next_index: 1, targets: [...projection.targets].reverse() }))
+        .exit,
+    ).not.toBe(0)
+    expect(
+      (
+        await write({
+          ...projection,
+          next_index: 1,
+          targets: projection.targets.map((target) => ({
+            ...target,
+            page_id: "00000000-0000-4000-8000-000000000004",
+          })),
+        })
+      ).exit,
+    ).not.toBe(0)
+    expect(
+      (
+        await write({
+          ...projection,
+          next_index: 1,
+          full_batch: { scope, batch_id: "00000000-0000-4000-8000-000000000005" },
+        })
+      ).exit,
+    ).not.toBe(0)
+    expect((await write({ ...projection, next_index: 2 })).exit).toBe(0)
+    const completed = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(syncKey)})));`,
+    )
+    expect(completed.exit, completed.stderr).toBe(0)
+    expect(JSON.parse(completed.stdout)).toEqual({ ...projection, next_index: 2 })
+    expect((await write(syncInput)).exit).not.toBe(0)
+    expect((await write({ ...projection, targets: [] })).exit).not.toBe(0)
+    const retired = await child(
+      root,
+      `yield* state.retire([${JSON.stringify(syncKey)}]);console.log(JSON.stringify(yield* state.list('operations/current-source-sync')));`,
+    )
+    expect(retired.exit, retired.stderr).toBe(0)
+    expect(JSON.parse(retired.stdout)).toEqual([])
+    expect((await write(projection)).exit).not.toBe(0)
+    expect(
+      (await write({ ...syncInput, input: { ...syncInput.input, operation_id: "sync-b" } })).exit,
+    ).toBe(0)
+  })
+}, 30_000)
+
+test("two Source sync processes cannot replace each other's first frozen input", async () => {
+  await isolated(async (root) => {
+    expect((await child(root, "console.log('ready')")).exit).toBe(0)
+    const contenders = await Promise.all(
+      ["mini-a", "mini-b"].map((manager_id) =>
+        child(
+          root,
+          `yield* state.write(${JSON.stringify(syncKey)},${JSON.stringify({ ...syncInput, manager_id })});`,
+        ),
+      ),
+    )
+    expect(contenders.filter((result) => result.exit === 0)).toHaveLength(1)
+    expect(contenders.filter((result) => result.exit !== 0)[0]!.stderr).toContain(
+      "preserve its owner",
+    )
+    const read = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(syncKey)})));`,
+    )
+    expect(["mini-a", "mini-b"]).toContain(JSON.parse(read.stdout).manager_id)
+  })
+}, 30_000)
+
+test("full Source batches preserve an exact terminal prefix across real processes and reject skipped work or changed generations", async () => {
+  await isolated(async (root) => {
+    const key = `operations/current-source-sync-batch/${scope}/pending.json`
+    const batch = {
+      version: 1,
+      kind: "current_source_sync_batch",
+      scope,
+      batch_id: "00000000-0000-4000-8000-000000000006",
+      library_id: "sqlite-library",
+      sources_data_source_id: "sqlite-sources",
+      manager_id: "mini",
+      execution_id: "package-a",
+      source_ids: ["alpha", "beta", "gamma"],
+      projection: "markdown",
+      started_at: 1,
+      results: [],
+    }
+    const failed = {
+      source_id: "alpha",
+      operation_id: null,
+      content: { status: "not_started" },
+      projection: { status: "not_started" },
+      status: "blocked",
+      retryable: false,
+      error: { code: "CURRENT_SOURCE_TARGET_PENDING", message: "Original owner must finish." },
+    }
+    const skipped = (source_id: string) => ({
+      source_id,
+      operation_id: null,
+      content: { status: "not_started" },
+      projection: { status: "not_started" },
+      status: "skipped",
+      reason: "disabled",
+      retryable: false,
+      error: null,
+    })
+    const write = (value: unknown) =>
+      child(root, `yield* state.write(${JSON.stringify(key)},${JSON.stringify(value)});`)
+    expect((await write({ ...batch, results: [failed] })).exit).not.toBe(0)
+    expect((await write(batch)).exit).toBe(0)
+    for (const changed of [
+      { ...batch, scope: "b".repeat(64) },
+      { ...batch, batch_id: "00000000-0000-4000-8000-000000000007" },
+      { ...batch, execution_id: "package-b" },
+      { ...batch, source_ids: ["alpha", "gamma"] },
+      { ...batch, projection: "none" },
+      { ...batch, results: [failed, skipped("beta")] },
+      { ...batch, results: [skipped("beta")] },
+      { ...batch, results: [{ ...failed, status: "pending", retryable: true }] },
+    ])
+      expect((await write(changed)).exit).not.toBe(0)
+    const prefix = { ...batch, results: [failed] }
+    expect((await write(prefix)).exit).toBe(0)
+    expect((await write(prefix)).exit).toBe(0)
+    expect((await write({ ...batch, results: [skipped("alpha")] })).exit).not.toBe(0)
+    expect((await write(batch)).exit).not.toBe(0)
+    const next = { ...batch, results: [failed, skipped("beta")] }
+    expect((await write(next)).exit).toBe(0)
+    const reopened = await child(
+      root,
+      `yield* state.retire(yield* state.list('cache'));console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})));`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(JSON.parse(reopened.stdout)).toEqual(next)
+    expect((await write({ ...batch, results: [...next.results, skipped("gamma")] })).exit).toBe(0)
+    const retired = await child(
+      root,
+      `yield* state.retire([${JSON.stringify(key)}]);console.log(JSON.stringify(yield* state.list('operations/current-source-sync-batch')));`,
+    )
+    expect(retired.exit, retired.stderr).toBe(0)
+    expect(JSON.parse(retired.stdout)).toEqual([])
+    expect((await write({ ...batch, batch_id: "00000000-0000-4000-8000-000000000008" })).exit).toBe(
+      0,
+    )
+  })
+}, 30_000)
+
+test("competing full Source batches cannot replace the first persisted identity", async () => {
+  await isolated(async (root) => {
+    expect((await child(root, "console.log('ready')")).exit).toBe(0)
+    const key = `operations/current-source-sync-batch/${scope}/pending.json`
+    const batch = {
+      version: 1,
+      kind: "current_source_sync_batch",
+      scope,
+      library_id: "sqlite-library",
+      sources_data_source_id: "sqlite-sources",
+      manager_id: "mini",
+      execution_id: "package-a",
+      source_ids: ["alpha"],
+      projection: "none",
+      started_at: 1,
+      results: [],
+    }
+    const ids = ["00000000-0000-4000-8000-000000000009", "00000000-0000-4000-8000-000000000010"]
+    const contenders = await Promise.all(
+      ids.map((batch_id) =>
+        child(
+          root,
+          `yield* state.write(${JSON.stringify(key)},${JSON.stringify({ ...batch, batch_id })});`,
+        ),
+      ),
+    )
+    expect(contenders.filter((result) => result.exit === 0)).toHaveLength(1)
+    expect(contenders.find((result) => result.exit !== 0)!.stderr).toContain(
+      "preserve its frozen scope",
+    )
+    const reopened = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})));`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(ids).toContain(JSON.parse(reopened.stdout).batch_id)
+  })
+}, 30_000)
+
+test("Source synchronization keeps one bounded disposable observation and no completed tick journals", async () => {
+  await isolated(async (root) => {
+    const key = `cache/current-source-sync/${scope}/latest.json`
+    const repeated = await child(
+      root,
+      `for(let i=0;i<100;i++){yield* state.write(${JSON.stringify(syncKey)},{...${JSON.stringify(syncInput)},input:{...${JSON.stringify(syncInput.input)},operation_id:'sync-'+i}});yield* state.write(${JSON.stringify(key)},{version:1,scope:${JSON.stringify(scope)},completed_at:i});yield* state.retire([${JSON.stringify(syncKey)}]);}console.log(JSON.stringify({pending:yield* state.list('operations/current-source-sync'),cache:yield* state.rebuildableCacheRecords()}));`,
+    )
+    expect(repeated.exit, repeated.stderr).toBe(0)
+    const result = JSON.parse(repeated.stdout)
+    expect(result.pending).toEqual([])
+    expect(result.cache).toHaveLength(1)
+    expect(JSON.parse(result.cache[0].payload).completed_at).toBe(99)
+    expect(result.cache[0].admitted_at).toBeGreaterThan(0)
   })
 }, 30_000)
 
