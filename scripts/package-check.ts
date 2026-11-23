@@ -87,6 +87,7 @@ const publicFiles = [
   "docs/README.md",
   "docs/current-contract.md",
   "docs/usage.md",
+  "docs/notion-mcp.md",
   "docs/shared-authoring.md",
   "docs/protocol.md",
   "docs/maintenance-verification-review.md",

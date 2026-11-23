@@ -2,12 +2,7 @@
   {
     "name": "retained-disabled-claim",
     "file": "packages/core/src/notion-mcp-search.ts",
-    "replacements": [
-      [
-        "claims.get(candidate.owner)?.record.enabled !== true",
-        "false"
-      ]
-    ],
+    "replacements": [["claims.get(candidate.owner)?.record.enabled !== true", "false"]],
     "test": "packages/core/test/notion-mcp-search.test.ts",
     "pattern": "an accepted disabled claim",
     "rule": "AuthorizedBeforeDisclosure"
@@ -15,12 +10,7 @@
   {
     "name": "final-enabled-observation",
     "file": "packages/core/src/notion-mcp-search.ts",
-    "replacements": [
-      [
-        "latest.enabled !== true ||",
-        "false ||"
-      ]
-    ],
+    "replacements": [["latest.enabled !== true ||", "false ||"]],
     "test": "packages/core/test/notion-mcp-search.test.ts",
     "pattern": "the final owner read",
     "rule": "AuthorizedBeforeDisclosure"
@@ -42,10 +32,7 @@
     "name": "supporting-file-publication-binding",
     "file": "packages/core/src/notion-mcp-search.ts",
     "replacements": [
-      [
-        "canonicalSharedJson(latest.success) !== canonicalSharedJson(binding.file)",
-        "false"
-      ]
+      ["canonicalSharedJson(latest.success) !== canonicalSharedJson(binding.file)", "false"]
     ],
     "test": "packages/core/test/notion-mcp-search.test.ts",
     "pattern": "supporting File rebinding",
@@ -55,14 +42,8 @@
     "name": "ready-at-both-admission-boundaries",
     "file": "packages/core/src/notion-mcp-search.ts",
     "replacements": [
-      [
-        "if (current.state.state !== \"ready\")",
-        "if (false)"
-      ],
-      [
-        "current.state.state !== \"ready\" ||",
-        "false ||"
-      ]
+      ["if (current.state.state !== \"ready\")", "if (false)"],
+      ["current.state.state !== \"ready\" ||", "false ||"]
     ],
     "test": "packages/core/test/notion-mcp-search.test.ts",
     "pattern": "pending current work",
@@ -84,12 +65,7 @@
   {
     "name": "rest-credential-fence",
     "file": "packages/core/src/notion-mcp-search.ts",
-    "replacements": [
-      [
-        "before.scope !== after.scope ||",
-        "false ||"
-      ]
-    ],
+    "replacements": [["before.scope !== after.scope ||", "false ||"]],
     "test": "packages/core/test/notion-mcp-search.test.ts",
     "pattern": "query bounds and fresh source identity",
     "rule": "BindingResolvedBeforeSearch"
@@ -97,12 +73,7 @@
   {
     "name": "rest-workspace-fence",
     "file": "packages/core/src/notion-mcp-search.ts",
-    "replacements": [
-      [
-        "before.workspaceId !== after.workspaceId ||",
-        "false ||"
-      ]
-    ],
+    "replacements": [["before.workspaceId !== after.workspaceId ||", "false ||"]],
     "test": "packages/core/test/notion-mcp-search.test.ts",
     "pattern": "query bounds and fresh source identity",
     "rule": "BindingResolvedBeforeSearch"
