@@ -35,7 +35,7 @@ node --test scripts/formal-runner-contract.test.mjs
 
 coverage hash 用于阻止未经审阅的漂移。先核当前行为，再更新准确映射；不批量刷新 hash 来制造通过。删除产品协议时，连同不再适用的模型和调用入口退役，保留仍适用的权限、完整性、预算和取消守卫。
 
-`scripts/check-formal-mutations.py --suite request-engine` 在独立副本中回放 19 个实际 guard。每个必须原件通过、突变导致行为断言失败、恢复后通过。导入失败或语法错误不算捕获。当前 immutable runtime case 修改 `shared-current-resource.ts`，并通过公开 SDK 取消 creator，确认另一个 runtime 的读取仍可完成。
+`scripts/check-formal-mutations.py --suite request-engine` 在独立副本中回放 19 个实际 guard。每个必须原件通过、突变导致行为断言失败、恢复后通过。`formal_mutation_result.py` 只接受真实断言诊断；expect 统计行、超时、导入失败或语法错误都不算捕获，混有断言的工具失败也拒绝。现有 runner contract 测试用实际 Bun 输出和 Vitest 结构化错误核对判据。异步用例必须无条件释放自有 latch，让断言错误能够完成退出。当前 immutable runtime case 修改 `shared-current-resource.ts`，并通过公开 SDK 取消 creator，确认另一个 runtime 的读取仍可完成。
 
 同一入口的 `--suite current-lifecycle` 回放四个实际 guard：current 最后读回 fence、projection 分类、never-replay 的未知 action、非内容完成时的 owner 资格。只改外层 activation 条件会被下一层写入边界拒绝；这种未触发行为断言的异常不是该性质已被杀死。每个保留负例都需与模型的真实路径一致。
 
