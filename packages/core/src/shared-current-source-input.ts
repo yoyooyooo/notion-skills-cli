@@ -158,13 +158,16 @@ export function validateCurrentSourceInput(input: unknown): CurrentSourceDeclara
     ...requested,
     adapter: { ...requested.adapter, url },
   }
-  const permitted = new Set(["accepted_ref"])
+  const permitted = new Set(["accepted_ref", "require_all_included"])
   for (const key of Object.keys(definition.options))
     if (!permitted.has(key))
       throw unsupported("This option has no current fixed-file write behavior.", { option: key })
   const accepted = definition.options.accepted_ref
   if (accepted !== undefined && (typeof accepted !== "string" || !/^[a-f0-9]{40}$/u.test(accepted)))
     throw invalid("accepted_ref must select an exact lowercase Git commit.")
+  const requireAllIncluded = definition.options.require_all_included
+  if (requireAllIncluded !== undefined && typeof requireAllIncluded !== "boolean")
+    throw invalid("require_all_included must be boolean.")
   if (
     definition.policy === "pinned" &&
     definition.adapter.type === "git" &&

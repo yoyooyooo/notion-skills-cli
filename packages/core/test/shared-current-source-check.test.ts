@@ -3,10 +3,11 @@ import { Effect } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Notion } from "../src/notion.ts"
+import { trashPath } from "../src/local-locks.ts"
 import { makeRequestBudget, RequestBudget } from "../src/request-budget.ts"
 import { currentOwnedResourceCreateRequest } from "../src/shared-current-records.ts"
 import { prepareCurrentSharedResource } from "../src/shared-current-resource.ts"
@@ -135,7 +136,7 @@ async function fixture<A>(
     }
     return await run({ directory, first, current, f: currentWriteFixture(root), commands: [] })
   } finally {
-    await rm(root, { recursive: true, force: true })
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
   }
 }
 
@@ -377,6 +378,10 @@ test("configuration fingerprints match preparation and include complete selectio
         ...declaration,
         definition: { ...declaration.definition, options: { accepted_ref: input.first } },
       },
+      {
+        ...declaration,
+        definition: { ...declaration.definition, options: { require_all_included: true } },
+      },
       ...[
         { skill_id: "renamed-target" },
         { mount_path: "vendor" },
@@ -390,6 +395,62 @@ test("configuration fingerprints match preparation and include complete selectio
     for (const change of changes)
       expect(await input.f.run(currentSourceConfigurationFingerprint(change))).not.toBe(fingerprint)
     expect(input.f.mutations()).toEqual([])
+  })
+})
+
+test("real Git preparation honors required members at the configured tag and refuses their removal on a branch", async () => {
+  await fixture(async (input) => {
+    git(input.directory, ["tag", "-a", "--no-sign", "required", "-m", "required member fixture"])
+    const strict: CurrentSourceDeclaration = {
+      ...declaration,
+      definition: {
+        ...declaration.definition,
+        adapter: { type: "git", url, ref: "refs/tags/required" },
+        selection: { ...declaration.definition.selection, include: ["skills/alpha"] },
+        options: { require_all_included: true },
+      },
+    }
+    const observed = await input.f.run(
+      routed(
+        input,
+        checkCurrentSource(library, {
+          current: { ...input.current, declaration: storedDeclaration(strict) },
+          scope: "fixture",
+        }),
+      ),
+    )
+    expect(observed).toMatchObject({
+      status: "upstream_unchanged",
+      observation: { resolved_ref: "refs/tags/required", resolved_commit: input.first },
+    })
+    const first = await input.f.run(routed(input, prepareCurrentSource(strict)))
+    expect(first.resolved_commit).toBe(input.first)
+    expect(first.targets).toHaveLength(1)
+    expect(first.declaration.definition.options).toEqual({ require_all_included: true })
+
+    // Commit an empty upstream tree without deleting the retained fixture file.
+    git(input.directory, ["update-index", "--force-remove", sourcePath])
+    git(input.directory, ["commit", "--no-gpg-sign", "-m", "remove required member from upstream"])
+    const removed = git(input.directory, ["rev-parse", "HEAD"])
+    expect(removed).not.toBe(input.first)
+    expect(await readFile(join(input.directory, sourcePath), "utf8")).toContain("name: alpha")
+    const tagged = await input.f.run(routed(input, prepareCurrentSource(strict)))
+    expect(tagged.resolved_commit).toBe(input.first)
+    const branch: CurrentSourceDeclaration = {
+      ...strict,
+      definition: { ...strict.definition, adapter: { type: "git", url, ref: "main" } },
+    }
+    await expect(input.f.run(routed(input, prepareCurrentSource(branch)))).rejects.toThrow(
+      "An explicitly included source member is missing SKILL.md",
+    )
+    const optional: CurrentSourceDeclaration = {
+      ...branch,
+      definition: { ...branch.definition, options: { require_all_included: false } },
+    }
+    const empty = await input.f.run(routed(input, prepareCurrentSource(optional)))
+    expect(empty.resolved_commit).toBe(removed)
+    expect(empty.targets).toEqual([])
+    expect(input.f.calls).toEqual([])
   })
 })
 

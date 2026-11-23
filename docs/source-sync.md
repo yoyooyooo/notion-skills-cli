@@ -67,6 +67,14 @@ not changed. This is useful for deliberate repairs after a target or reading
 page was removed. Disabled and fixed Sources remain skipped by this upstream
 synchronization command.
 
+A Source may set `options.require_all_included` to a boolean. When it is `true`,
+every literal member path in `selection.include` must still contain `SKILL.md`
+at the selected commit. A missing required member fails preparation before
+publication; it cannot authorize removing the corresponding targets. This does
+not make wildcard patterns require a match. When the option is absent or `false`,
+the normal complete-selection rules allow vanished members and empty selections
+to reconcile. The option remains part of the frozen Source configuration.
+
 `--projection none` is the default. `--projection markdown` generates the
 standard selected reading pages after content publication. The report separates
 content from projection, so a published Source with unfinished projection is

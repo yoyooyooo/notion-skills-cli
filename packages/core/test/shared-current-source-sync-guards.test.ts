@@ -9,7 +9,9 @@ import { trashPath } from "../src/local-locks.ts"
 import { fail, property, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { RequestBudget } from "../src/request-budget.ts"
+import { queryCurrentSkillIndex } from "../src/shared-current-index.ts"
 import { readCurrentOperationIntent } from "../src/shared-current-operation.ts"
+import { readCurrentBodyBlocks } from "../src/shared-current-projection.ts"
 import { projectCurrentSkill } from "../src/shared-current-projection-write.ts"
 import {
   prepareCurrentSourceFromDiscovery,
@@ -460,6 +462,74 @@ test("Source sync guard reconciles changed configuration at the same commit inst
   expect(h.f.pages.get(beta)).toMatchObject({ in_trash: true })
   expect(h.f.table("skills").map((page) => page.id)).not.toContain(beta)
   expect(await h.selected()).toMatchObject({ commit: firstCommit })
+})
+
+test("Source sync full repairs generated body drift at the same commit after changed mode skips it", async () => {
+  const h = await syncFixture()
+  const withProjection = { ...request, projection: "markdown" } satisfies CurrentSourceSyncRequest
+  expect((await h.f.run(h.use(syncCurrentSources(library, withProjection)))).status).toBe(
+    "complete",
+  )
+  const page = skillPage(h.f, "sync-guard-alpha")
+  const before = await h.f.run(queryCurrentSkillIndex(library, page))
+  const selected = await h.selected()
+  const readingBody = async () =>
+    (await h.f.run(readCurrentBodyBlocks(page))).map(({ value }) => ({
+      type: value.type,
+      content: value[String(value.type)],
+    }))
+  const originalBody = await readingBody()
+  const drifted = structuredClone(h.f.blocks.get(page))
+  const paragraph = drifted?.find((block) => block.type === "paragraph")
+  if (drifted === undefined || paragraph === undefined)
+    throw new Error("The completed Source projection requires an existing paragraph.")
+  property(paragraph.paragraph).rich_text = sourceRich("External reading-only edit.")
+  h.f.blocks.set(page, drifted)
+  const driftedBody = await readingBody()
+  expect(driftedBody).not.toEqual(originalBody)
+  const prepared = h.preparations.length
+  h.f.clearCalls()
+
+  const unchanged = await h.f.run(
+    h.use(syncCurrentSources(library, { ...withProjection, mode: "changed" })),
+  )
+  expect(unchanged.status).toBe("complete")
+  expect(single(unchanged)).toMatchObject({
+    status: "upstream_unchanged",
+    projection: { status: "not_started" },
+  })
+  expect(h.preparations).toHaveLength(prepared)
+  expect(h.f.mutations()).toEqual([])
+  expect(await readingBody()).toEqual(driftedBody)
+  h.f.clearCalls()
+
+  const repaired = await h.f.run(h.use(syncCurrentSources(library, withProjection)))
+  expect(repaired.status).toBe("complete")
+  expect(single(repaired)).toMatchObject({
+    content: { status: "published", resolved_commit: firstCommit },
+    projection: { status: "complete", skill_ids: ["sync-guard-alpha", "sync-guard-beta"] },
+  })
+  expect(h.f.mutations().some((call) => call.path === `v1/pages/${page}/markdown`)).toBe(true)
+  expect(await readingBody()).toEqual(originalBody)
+  const after = await h.f.run(queryCurrentSkillIndex(library, page))
+  expect(after.main).toMatchObject({
+    file_id: before.main.file_id,
+    page_id: before.main.page_id,
+    skill_page_id: before.main.skill_page_id,
+    path: before.main.path,
+    content: before.main.content,
+  })
+  expect(await h.selected()).toEqual(selected)
+  expect(pendingSyncKeys(h.f)).toEqual([])
+  h.f.clearCalls()
+
+  const repeated = await h.f.run(h.use(syncCurrentSources(library, withProjection)))
+  expect(repeated.status).toBe("complete")
+  expect(single(repeated).projection.status).toBe("complete")
+  expect(h.f.mutations()).toEqual([])
+  expect(await readingBody()).toEqual(originalBody)
+  expect(await h.selected()).toEqual(selected)
+  expect(pendingSyncKeys(h.f)).toEqual([])
 })
 
 test.each([
