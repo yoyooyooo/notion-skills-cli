@@ -153,8 +153,9 @@ signal and deadline; resolving the presentation means that it was shown, not
 that consent succeeded. Headless callers should omit it.
 
 Credential selection, callback parsing and token rotation are covered by the
-[auth model suite](../verification/models/notion-mcp-auth/README.md). Physical
+[auth model suite](https://github.com/yoyooyooo/notion-skills-cli/blob/next/verification/models/notion-mcp-auth/README.md). Physical
 admission and publication correspondence are documented in the
-[search model suite](../verification/models/notion-mcp-search/README.md).
-These are bounded models with concrete regression and guard-mutation checks,
-not proofs of remote indexing completeness or atomic external permissions.
+[search model suite](https://github.com/yoyooyooo/notion-skills-cli/blob/next/verification/models/notion-mcp-search/README.md).
+Both links follow the repository's `next` branch. These are bounded models with
+concrete regression and guard-mutation checks, not proofs of remote indexing
+completeness or atomic external permissions.

@@ -911,7 +911,13 @@ async function waitForFlight(ctx: AuthContext): Promise<void> {
       signal: selected.controller.signal,
       deadline: selected.deadline,
     }
-    const timer = setTimeout(() => selected.controller.abort(), selected.deadline - Date.now())
+    const timer = setTimeout(() => {
+      const expired = fail("MCP_AUTH_TIMEOUT", "This authorization flight reached its deadline.")
+      // Settle the deadline failure before aborting pending callback and HTTP work.
+      selected.url.reject(expired)
+      selected.result.reject(expired)
+      selected.controller.abort()
+    }, selected.deadline - Date.now())
     void authorize(flightContext, selected)
       .then(
         () => selected.result.resolve(),

@@ -38,7 +38,7 @@ test("bundled current instructions include every relative reference without chec
 })
 
 test("executable builtin examples stay within the public current command surface", () => {
-  const roots = new Set(["list", "read", "use", "files", "export", "schema", "ctl"])
+  const roots = new Set(["list", "read", "use", "files", "export", "schema", "ctl", "auth"])
   const controls = new Set([
     "library",
     "config",

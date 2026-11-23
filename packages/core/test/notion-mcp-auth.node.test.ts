@@ -941,3 +941,54 @@ test("an expired waiter cannot resume while a different live waiter completes th
     }
   })
 })
+
+test("a full flight deadline remains a timeout when its timer precedes the wall clock tick", async () => {
+  await withFixture(async (f) => {
+    const visible = latch<McpAuthorizationRequest>()
+    const currentTime = Date.now
+    const currentTimer = globalThis.setTimeout
+    let expireFlight: (() => void) | undefined
+    function observedTimer<Args extends unknown[]>(
+      callback: (...args: Args) => void,
+      delay?: number,
+      ...args: Args
+    ): ReturnType<typeof setTimeout> {
+      if (delay !== undefined && delay >= 290_000 && expireFlight === undefined)
+        expireFlight = () => callback(...args)
+      return currentTimer(callback, delay, ...args)
+    }
+    globalThis.setTimeout = Object.assign(observedTimer, currentTimer)
+    try {
+      const pending = loginMcp({
+        ...f.options,
+        deadline: currentTime() + 360_000,
+        onAuthorize: (request) => {
+          visible.resolve(request)
+          return new Promise<void>((resolve) => {
+            request.signal.addEventListener("abort", () => resolve(), { once: true })
+          })
+        },
+      }).then(
+        (value) => value,
+        (error: unknown) => error,
+      )
+      const request = await visible.promise
+      if (!expireFlight)
+        throw new Error("The fixture did not observe the shared flight deadline timer.")
+      Date.now = () => request.deadline - 1
+      expireFlight()
+      const outcome = await pending
+      Date.now = currentTime
+      await f.authorize(request).catch(() => undefined)
+      const status = await getMcpAuthStatus(f.options)
+      expect(outcome).toMatchObject({ code: "MCP_AUTH_TIMEOUT" })
+      expect(request.signal.aborted).toBe(true)
+      expect(f.exchanges).toBe(0)
+      expect(status.oauth).toBe("absent")
+      expect(status.identity).toBeNull()
+    } finally {
+      Date.now = currentTime
+      globalThis.setTimeout = currentTimer
+    }
+  })
+})

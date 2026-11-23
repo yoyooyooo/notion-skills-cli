@@ -98,7 +98,7 @@ const cli = async (argv: string[], exit = 0) => {
 const rootSchema = await cli(["schema"])
 assert.deepEqual(
   rootSchema.schema.commands.map((command: { name: string }) => command.name).sort(),
-  ["ctl", "export", "files", "list", "read", "schema", "use"],
+  ["auth", "ctl", "export", "files", "list", "read", "schema", "use"],
 )
 for (const path of [["read"], ["use"], ["files"], ["export"], ["ctl", "prepare"]]) {
   const schema = await cli(["schema", ...path])
