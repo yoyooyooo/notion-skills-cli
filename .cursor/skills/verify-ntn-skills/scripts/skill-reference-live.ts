@@ -8,6 +8,7 @@ import { property } from "../../../../packages/core/src/model.ts"
 import { MANIFEST } from "../../../../packages/core/src/portable.ts"
 import { fileRef, pageId } from "../../../../packages/core/src/ref.ts"
 import { ImportPlanSchema } from "../../../../packages/core/src/shared-current-import-plan-model.ts"
+import { canonicalSharedJson } from "../../../../packages/core/src/shared-records.ts"
 import {
   bindSkillRef,
   formatSkillIdentity,
@@ -115,6 +116,14 @@ async function completedUpstream(
     readonly corpus_sha256: string
     readonly cli_sha256: unknown
   },
+  recovery?: {
+    readonly original_command: string
+    readonly command: string
+    readonly receipt: Record<string, unknown>
+    readonly execution: Record<string, unknown>
+    readonly request_sha256: string
+    readonly definition_sha256: string
+  },
 ) {
   assert.ok(isAbsolute(root))
   const readJson = async (path: string) => property(JSON.parse(await readFile(path, "utf8")))
@@ -161,13 +170,48 @@ async function completedUpstream(
   )
   assert.equal(writes.length, 1, "Continuation requires one exact original upstream batch")
   const command = writes[0]!
-  assert.equal(command.value.exit, 0)
-  const applied = property(command.value.output)
+  let failedBody: Record<string, unknown> | undefined
+  if (recovery === undefined) assert.equal(command.value.exit, 0)
+  else {
+    assert.equal(recovery.original_command, command.path)
+    assert.equal(command.value.exit, 1)
+    assert.equal(command.value.signal, null)
+    const failed = property(command.value.output)
+    assert.equal(failed.ok, false)
+    assert.equal(property(failed.error).code, "WRITE_OUTCOME_UNKNOWN")
+    failedBody = property(property(failed.error).details)
+    assert.equal(failedBody.cause_code, "NOTION_UNAVAILABLE")
+    assert.equal(failedBody.reason, "network")
+    assert.equal(property(failed.request_metrics).in_flight, 0)
+    assert.equal(recovery.receipt.exit, 0)
+    assert.equal(recovery.receipt.signal, null)
+    assert.equal(recovery.execution.layer, "live_installed_cli")
+    assert.equal(recovery.execution.cli_sha256, selected.cli_sha256)
+    assert.deepEqual(recovery.execution.stores, property(report.execution).stores)
+    const resumedArgv = Schema.decodeUnknownSync(Schema.Array(Schema.String))(recovery.receipt.argv)
+    assert.equal(resumedArgv.filter((arg) => arg === "--resume").length, 1)
+    const intent = (args: readonly string[]) => {
+      const result: string[] = []
+      for (let index = 0; index < args.length; index++) {
+        const value = args[index]!
+        if (value === "--resume") continue
+        if (["--max-requests", "--timeout"].includes(value)) {
+          assert.match(args[++index] ?? "", /^[1-9]\d*$/u)
+          continue
+        }
+        result.push(value)
+      }
+      return result
+    }
+    assert.deepEqual(intent(resumedArgv), intent(command.argv))
+  }
+  const applied = property((recovery?.receipt ?? command.value).output)
   assert.equal(applied.ok, true)
   assert.equal(applied.status, "applied")
   assert.equal(applied.operation_id, selected.prefix + "-upstream")
   assert.equal(command.argv[3], join(root, "fixtures/upstream/batch.json"))
   assert.equal(command.argv[command.argv.indexOf("--library") + 1], B.library_id)
+  assert.equal(command.argv[command.argv.indexOf("--operation") + 1], applied.operation_id)
   for (const later of commands.slice(commands.indexOf(command) + 1))
     requireZeroNotionWrites(later.value.output)
   const database = join(originalRun, "state/cli/state.sqlite")
@@ -197,6 +241,34 @@ async function completedUpstream(
     assert.equal(plan.skills_data_source_id, B.skills.data_source_id)
     assert.equal(plan.definition.kind, "batch")
     assert.deepEqual(plan.definition.mapping, applied.mapping)
+    if (recovery !== undefined) {
+      assert.ok(failedBody)
+      assert.equal(plan.request_sha256, recovery.request_sha256)
+      assert.equal(plan.definition_sha256, recovery.definition_sha256)
+      assert.equal(digest(canonicalSharedJson(plan.definition)), recovery.definition_sha256)
+      const failedSkill = String(failedBody.skill_id)
+      assert.equal(
+        plan.definition.items.find((item) => item.skill_id === failedSkill)?.body_input_sha256,
+        failedBody.input_sha256,
+      )
+      assert.equal(plan.steps["body:" + failedSkill]?.operation_id, failedBody.operation_id)
+      const recovered = rows(applied.skills).find((item) => item.skill_id === failedSkill)
+      assert.ok(recovered)
+      assert.equal(
+        property(recovered.body).page_id,
+        failedBody.skill_page_id,
+        "Recovery cannot replace the original Skill page",
+      )
+      assert.deepEqual(
+        ordered(rows(applied.skills).map((item) => String(item.skill_id))),
+        ordered(plan.definition.items.map((item) => item.skill_id)),
+      )
+      for (const item of plan.definition.items) {
+        assert.equal(plan.steps["body:" + item.skill_id]?.phase, "complete")
+        if (item.relations !== undefined)
+          assert.equal(plan.steps["relations:" + item.skill_id]?.phase, "complete")
+      }
+    }
     for (const step of Object.values(plan.steps)) assert.equal(step.phase, "complete")
     for (const item of rows(applied.skills)) {
       assert.deepEqual(plan.steps["body:" + String(item.skill_id)]?.result, item.body)
@@ -214,9 +286,53 @@ async function completedUpstream(
     A,
     B,
     applied,
-    command: command.path,
+    command: recovery?.command ?? command.path,
     initialization: join(root, "initialization/evidence/empty-library/initialization-result.json"),
   }
+}
+
+/** A public --resume may complete the original network-unknown batch. Its
+ * receipt is a separate run; original Store, intent and failed evidence remain. */
+async function completedUpstreamRecovery(
+  path: string,
+  selected: Parameters<typeof completedUpstream>[1],
+) {
+  assert.ok(isAbsolute(path))
+  const readJson = async (file: string) => property(JSON.parse(await readFile(file, "utf8")))
+  const handoff = await readJson(path)
+  assert.equal(handoff.status, "completed_upstream_recovery")
+  assert.equal(handoff.prefix, selected.prefix)
+  assert.equal(handoff.cli_sha256, selected.cli_sha256)
+  const runRoot = dirname(dirname(dirname(path)))
+  assert.equal(handoff.run_root, runRoot)
+  assert.equal(path, join(runRoot, "evidence/upstream-recovery/handoff.json"))
+  assert.equal(handoff.resume_receipt, join(runRoot, "evidence/upstream-recovery/resume.json"))
+  const run = await readJson(join(runRoot, "result.json"))
+  assert.equal(run.status, "passed")
+  assert.equal(run.timed_out, false)
+  assert.equal(run.frozen_artifacts, "passed")
+  assert.equal(property(run.runtime_check).status, "unchanged")
+  assert.ok(typeof handoff.previous_report === "string")
+  assert.ok(isAbsolute(handoff.previous_report))
+  const root = dirname(handoff.previous_report)
+  assert.equal(handoff.previous_report, join(root, "report.json"))
+  const previous = await readJson(handoff.previous_report)
+  const stores = property(property(previous.execution).stores)
+  assert.equal(handoff.state_root, stores.NTN_SKILLS_HOME)
+  assert.ok(typeof handoff.original_command === "string")
+  assert.equal(dirname(handoff.original_command), join(root, "commands"))
+  assert.ok(typeof handoff.request_sha256 === "string")
+  assert.match(handoff.request_sha256, /^[a-f0-9]{64}$/u)
+  assert.ok(typeof handoff.definition_sha256 === "string")
+  assert.match(handoff.definition_sha256, /^[a-f0-9]{64}$/u)
+  return await completedUpstream(root, selected, {
+    original_command: handoff.original_command,
+    command: String(handoff.resume_receipt),
+    receipt: await readJson(String(handoff.resume_receipt)),
+    execution: property(handoff.resume_execution),
+    request_sha256: handoff.request_sha256,
+    definition_sha256: handoff.definition_sha256,
+  })
 }
 
 /** One retained frontier: a successful recovery of the exact native cycles
@@ -378,6 +494,7 @@ export async function runSkillReferenceLive(input: {
   readonly parent: string
   readonly existing_library: string
   readonly completed_upstream?: string
+  readonly completed_upstream_recovery?: string
   readonly completed_native_recovery?: string
   readonly drive: Drive
   readonly execution: Record<string, unknown>
@@ -388,7 +505,11 @@ export async function runSkillReferenceLive(input: {
   assert.equal(pageId(input.existing_library), input.existing_library)
   const corpus = await verifyMembersCorpus(input.corpus)
   assert.ok(
-    input.completed_upstream === undefined || input.completed_native_recovery === undefined,
+    [
+      input.completed_upstream,
+      input.completed_upstream_recovery,
+      input.completed_native_recovery,
+    ].filter((value) => value !== undefined).length <= 1,
     "Select one exact continuation frontier",
   )
   const selection = {
@@ -401,9 +522,11 @@ export async function runSkillReferenceLive(input: {
   const continued =
     input.completed_native_recovery !== undefined
       ? await completedNativeRecovery(input.completed_native_recovery, selection)
-      : input.completed_upstream === undefined
-        ? undefined
-        : await completedUpstream(input.completed_upstream, selection)
+      : input.completed_upstream_recovery !== undefined
+        ? await completedUpstreamRecovery(input.completed_upstream_recovery, selection)
+        : input.completed_upstream === undefined
+          ? undefined
+          : await completedUpstream(input.completed_upstream, selection)
   await mkdir(dirname(input.root), { recursive: true, mode: 0o700 })
   await mkdir(input.root, { mode: 0o700 }) // Refuse to overwrite an earlier journey.
   const fixtures = join(input.root, "fixtures")
@@ -425,6 +548,7 @@ export async function runSkillReferenceLive(input: {
             initialization: continued.initialization,
             mutation_replayed: false,
           },
+    completed_upstream_recovery: input.completed_upstream_recovery ?? null,
     completed_native_recovery: input.completed_native_recovery ?? null,
     corpus: {
       path: input.corpus,
@@ -435,7 +559,7 @@ export async function runSkillReferenceLive(input: {
     libraries: {} as Record<string, SharedLibrary>,
     cases: [] as Array<{ name: string; status: string; evidence?: unknown; error?: string }>,
     boundary:
-      "Real installed CLI and real Notion. Parent allocation is explicit test setup. Unknown-outcome recovery and crash injection remain controlled-test evidence.",
+      "Real installed CLI and real Notion. Parent allocation is explicit test setup. A recovery handoff verifies only its named retained operation; crash injection remains controlled-test evidence.",
   }
   const save = () => json(join(input.root, "report.json"), report)
   let observation = 0
@@ -1397,6 +1521,7 @@ async function mainCommand() {
     "--parent",
     "--existing-library",
     "--completed-upstream",
+    "--completed-upstream-recovery",
     "--completed-native-recovery",
   ]
   for (let index = 0; index < argv.length; index += 2) {
@@ -1416,10 +1541,12 @@ async function mainCommand() {
   const root = required("--output")
   const driver = await installedDriver(required("--cli"), required("--runtime"), root)
   const previousRoot = args.get("--completed-upstream")
+  const upstreamRecoveredPath = args.get("--completed-upstream-recovery")
   const recoveredPath = args.get("--completed-native-recovery")
+  const handoffPath = recoveredPath ?? upstreamRecoveredPath
   const previousPrefix =
-    recoveredPath !== undefined
-      ? property(JSON.parse(await readFile(recoveredPath, "utf8"))).prefix
+    handoffPath !== undefined
+      ? property(JSON.parse(await readFile(handoffPath, "utf8"))).prefix
       : previousRoot === undefined
         ? undefined
         : property(JSON.parse(await readFile(join(previousRoot, "report.json"), "utf8"))).prefix
@@ -1430,6 +1557,9 @@ async function mainCommand() {
     parent: required("--parent"),
     existing_library: required("--existing-library"),
     ...(previousRoot === undefined ? {} : { completed_upstream: previousRoot }),
+    ...(upstreamRecoveredPath === undefined
+      ? {}
+      : { completed_upstream_recovery: upstreamRecoveredPath }),
     ...(recoveredPath === undefined ? {} : { completed_native_recovery: recoveredPath }),
     prefix:
       args.get("--prefix") ??
