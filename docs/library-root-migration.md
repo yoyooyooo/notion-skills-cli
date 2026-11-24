@@ -1,4 +1,11 @@
-# Move an existing Library to its root identity
+# Existing Library cutover requirements
+
+The one-time migration executor has been retired from the current repository.
+This guide preserves the ownership, recovery and adoption requirements of the
+transition; it does not expose another supported command or identity resolver.
+The original executor, inventory, exact plan, journal and readback evidence remain
+with [AH-1300](https://linear.app/yoyooyooo/issue/AH-1300). Current CLI and SDK
+operations use the root-page contract described in [Library roots](library-roots.md).
 
 Library v2 uses the canonical UUID of its owning Notion page as `library_id`.
 The four database and data source bindings remain in the sole descriptor in
@@ -8,7 +15,7 @@ the Skills database description. The marker is `ntn-skills-library:v2 `.
 An existing dedicated parent can become the root without moving or recreating
 any database. When several Libraries share a parent, give each its own root,
 move the exact existing databases through a supported Notion operation, then
-verify their actual parents. The migration tool refuses to promote a shared
+verify their actual parents. A safe cutover must refuse to promote a shared
 parent. A title, a copied descriptor or a search result cannot establish ownership.
 
 This procedure is a one-time cutover. It does not add a v1 resolver, an alias
@@ -30,16 +37,16 @@ table, automatic old-config handling or a second runtime identity path.
 | Historical Records, snapshots and source/resource bytes | Preserve them. An affected pin or immutable content reference blocks automatic cutover; never replace its owner or remove the pin to select latest. |
 | Pending operations | Settle them with the original package, Store, owner and frozen inputs before changing identity. |
 
-Current data and historical evidence are different scopes. The tool reads only
+Current data and historical evidence are different scopes. The inventory covers only
 current operation/profile Records and never rewrites old audit payloads. Existing
 snapshot ownership is not a migration input to mutate. If an actively used old
 pin needs a replacement, explicitly reacquire and verify a new snapshot through
 the current public workflow.
 
-The one-time parser also recognizes `shared_skill:<old-library>:<skill-id>`
+The retired parser recognized `shared_skill:<old-library>:<skill-id>`
 authorities and old page-UUID authorities. The former must name the exact Library
 being migrated; the latter must match an observed current row when it is not
-already an exact Skill ID. Both become the single current protocol. This does
+already an exact Skill ID. Both were converted to the single current protocol. This does
 not make those spellings valid in the CLI, SDK or Broker after cutover.
 
 Code formatting does not establish that a reference is only an example. The
@@ -47,7 +54,7 @@ audit scans inline code, fenced code and ordinary text. Only the exact
 `skill://...` placeholder and a bare `skill://` scheme carry no identity to map.
 A code block is never edited automatically, and an embedded reference that
 needs rebinding blocks the plan. An unknown authority also blocks the plan;
-the tool cannot guess that a database UUID means a Skill or a normal Notion URL.
+a database UUID cannot be guessed to mean a Skill or a normal Notion URL.
 
 For a source-owned file, publishing replacement bytes also requires a new valid
 Source manifest and revision. Creating an object with a new hash and retaining
@@ -60,7 +67,16 @@ does not by itself prove remote data loss.
 ## Prepare the maintenance window
 
 Inventory every caller before selecting a root: CLI config, Broker sources,
-portable exports, profiles, scripts and scheduled writers. A database found in
+every configured `discoveryCatalogs` file, portable exports, profiles, scripts
+and scheduled writers. Local Router catalogs can retain remote member identities
+even when the Source configuration already selects the new root. Audit their
+Library, Skill, page, database and data source IDs against the exact migration
+mapping. Rebind only proven current members with the selected CLI's reference
+formatter; preserve paths, labels and local members. A fixed snapshot blocks
+automatic rebinding. Preserve original bytes, compare the exact intended
+changes and replace each reviewed file only if its original hash still matches.
+Check generated catalog owners too, so regeneration cannot restore old identities.
+A database found in
 Trash is a stale selection, not permission to recreate or revive a Library.
 
 Suspend scheduled admission and account for queued and active attempts. A stopped
@@ -82,124 +98,71 @@ explicit maintenance window supplies that boundary; a local journal is not a
 distributed lock. Avoid consuming the Library while its current IDs are being
 rebound under the old descriptor.
 
-## Build a read-only plan
+## Preserve the exact inventory and plan
 
-Run the following commands from a `notion-skills-cli` repository checkout on
-`next`. These one-time scripts live in the repository. Use Node 26 and the
-existing `ntn` command. Supply the approved Notion token only
-through `NOTION_API_TOKEN` in the process environment. The tool never reads a
-secret manager, evaluates token commands or prints credentials. Keep its
-inventory, plans and journal in a task-owned private directory; they contain
-current metadata and native content.
+A legacy installation requires a separately reviewed cutover. Keep the accepted
+original package and Store available for pending-operation recovery; the current
+runtime cannot reinterpret an old descriptor or pin. Evidence must identify the
+exact old logical Library, physical tables and new root, with no name-based match.
 
-```sh
-node scripts/library-root-migrate.mjs inspect \
-  --entry OLD_SKILLS_DATABASE_UUID \
-  --root LIBRARY_ROOT_PAGE_UUID \
-  --store /absolute/original/ntn-skills-state \
-  --objects-root /absolute/verified/objects \
-  --output /absolute/owned/migration/inventory.json
+The cutover inventory must enumerate the root, each table and every native body,
+including pagination, actual parents, stable property IDs and original pending
+state. Read-only object-cache inputs are accepted only when their byte count and
+SHA-256 match the current Content field. Missing local bytes are not proof that
+content has no references. Reacquire the exact recorded bytes through the original
+consumer or verified fixed source before preparing a complete inventory.
 
-node scripts/library-root-migrate.mjs plan \
-  --inventory /absolute/owned/migration/inventory.json \
-  --output /absolute/owned/migration/plan.json
-```
+The reviewed plan records:
 
-Repeat `--store` for the original local Stores and `--objects-root` for existing
-content-addressed object directories. Both are read-only inputs. Each object is
-accepted only when its byte count and SHA-256 match the current Content field.
-Missing source/resource bytes produce `CONTENT_COVERAGE_MISSING`; they are not
-assumed reference-free. Obtain the exact bytes with the original public consumer
-or its verified fixed source, and collect a new inventory. Do not resolve latest
-to fill the gap. An external reference requiring new bytes must be changed by
-its author and accepted through its current Source/resource workflow.
-
-`inspect` completes pagination for the root, each table and every native body.
-It verifies actual parent ownership, current row identity, stable property IDs
-and the original Store. Synced content owned elsewhere is not silently adopted.
-The generated plan includes:
-
-- The exact old logical Library, old Skills database and new root mapping.
+- The old logical Library, unchanged Skills database and new root mapping.
 - Every old/new Skill ID and its unchanged Notion page ID.
-- An ordered list of existing-object PATCHes, before/after values and hashes.
-- Separate counts for page, block and descriptor writes.
-- Blockers for pending work, incomplete content or an unsafe reference.
-- An inventory digest and a digest of the complete plan.
+- Ordered existing-object PATCHes, exact before/after values and hashes.
+- Separate page, block and descriptor write counts.
+- Blockers for pending work, incomplete content, ambiguous identity and affected pins.
+- Digests of the complete inventory and plan.
 
-Plans can be generated while work is blocked for review. A blocked plan cannot
-be applied. Resolve the recorded condition, then collect and plan again before
-the first write. Never edit a plan's blocker list or recompute its hash by hand.
+A blocked plan cannot authorize writes. Resolve its cause and recollect before
+the first write. Never remove blockers or recompute a modified plan's digest by
+hand. Synced content owned elsewhere and source-owned bytes require their own
+owner's reviewed change; they cannot be silently adopted by this migration.
 
-## Apply and recover the exact plan
+## Keep recovery bound to the original plan
 
-After the original work has settled, regenerate the final inventory while
-writers are quiescent. Review its concrete patch list and use that exact digest:
+The bounded procedure rereads original pending state, current operation/Profile
+Records, owner pointers and actual table ownership before writing. It compares
+the complete table and native-body inventory at admission and before committing
+the descriptor. Only listed fields may equal their exact planned before or after
+values. Added or removed rows/blocks, changed unlisted properties, schema or owner
+changes are drift, even when the intended patch itself appears safe.
 
-```sh
-node scripts/library-root-migrate.mjs apply \
-  --inventory /absolute/owned/migration/inventory.json \
-  --plan /absolute/owned/migration/plan.json \
-  --journal /absolute/owned/migration/journal \
-  --ack-plan EXACT_PLAN_SHA256 \
-  --writers-quiesced
-```
+Each patch has a durable intent, an idempotent update to an existing object and
+an independent readback. The descriptor commits last, after every earlier patch
+matches its planned result. The cutover does not create replacement Notion
+objects, write historical Records or manufacture a new binding for an old pin.
+Notion's mirror of the Skills database description into its registered data
+source is acceptable only when both exact original and planned values agree;
+the Skills database remains the sole descriptor authority.
 
-The tool rereads original local pending state, remote current operations,
-owner operation pointers and actual table ownership before writing. It also
-enumerates the complete original four-table input and native body collection
-at the start of every apply/resume and again before the descriptor commits.
-Only the listed PATCH fields may equal their exact planned before or after
-values. Added or removed rows/blocks, changed unlisted properties, schema or
-owner changes fail as `INVENTORY_DRIFT`. Notion's generated timestamps, actor
-metadata, object display URLs and rich-text display fields are excluded from
-this comparison; row parents, archived state and relation schema remain inputs.
-Local snapshot history and object-cache locations are not current identity.
-Notion mirrors the Skills database description into its registered data source.
-The comparison accepts that mirror only when it originally matched the exact
-descriptor before value and now matches the same observed descriptor value.
-Other data-source description edits still fail. The Skills database remains the
-sole descriptor authority.
+If an acknowledgement is lost, preserve the original inventory, plan, journal
+and maintenance window. Observe the exact target: the planned after-value proves
+that patch applied; another value is drift. An uncertain request is not blindly
+replayed. Do not generate a replacement plan from a partly migrated Library,
+because the original admission proof belongs to the retained inventory.
+These reads do not create a Notion transaction or prevent an external writer from
+changing data afterward; writer quiescence remains necessary throughout adoption.
 
-The tool compares each target's current value with the planned before/after values, records intent
-durably, sends one idempotent PATCH, then reads the result back. It creates no
-Notion object and writes no historical record.
+## Adopt and verify the current selection
 
-The descriptor PATCH is last and requires every earlier PATCH to be observed
-at its exact after value. A committed descriptor with an earlier PATCH still
-at its before value is rejected. Resume always reads the original inventory's
-fixed tables, including after the descriptor has changed; it never follows a
-new resolver binding. These repeated reads do not provide a remote transaction
-or prevent an external writer from changing data after a read. Keep the
-maintenance window active throughout.
+Prepare each private configuration from the independently observed v2 descriptor
+and exact mapping. Preserve credentials and unrelated settings. Create new
+candidate files with private permissions, record their digests, and replace an
+existing file only if its observed original bytes still match. Report paths and
+nonsecret selection facts, not tokens or entire credential-bearing files.
 
-If an acknowledgement is lost, retain the same
-inventory, plan and journal and rerun the same command while the maintenance
-window remains active. A target already equal to the exact planned result is
-observed as applied. A target with another value fails as drift. An uncertain
-request is never retried blindly, and a partial cutover is not reported complete.
-Do not collect a new plan from a partly migrated Library: its original admission
-proof belongs to the retained inventory. Resume the original plan forward.
-
-## Adopt the new caller selection
-
-After remote migration verifies, generate a private config candidate:
-
-```sh
-node scripts/library-root-migrate.mjs config \
-  --input /absolute/current/config.json \
-  --plan /absolute/owned/migration/plan.json \
-  --output /absolute/owned/migration/config.candidate.json
-```
-
-The output uses exclusive creation and mode 0600. The command prints its path
-and digest, not the configuration or token. Review the nonsecret selection and
-install the candidate through the caller's normal configuration workflow.
-`portable` adds `--tree /absolute/exported/package` for an explicitly selected
-`.ntn-skills.json` candidate. It checks that package's ordinary files before
-changing its origin. An affected document reference blocks the candidate until
-the corresponding author change is reviewed; changing the manifest alone must
-not silently rebind old short references. It never discovers arbitrary exports
-or modifies their files on disk.
+For an owned portable package, verify its ordinary files as well as its origin
+manifest. An affected document reference requires its corresponding author
+change; changing only the manifest must not rebind old short references. Inventory
+only the explicitly reviewed exports, and record the scope that was actually read.
 
 Broker Notion sources select `library: <root UUID>`. CLI commands and SDK 3 use
 `--library` / `options.library`. The default is `default_library`; explicit
@@ -219,23 +182,18 @@ same-token independent test Libraries, exact references and read-only consumer
 request metrics. Only then restore scheduled admission and record the actual
 adopted package and source identities.
 
-## Executable proof and limits
+## Evidence and retirement
 
-```sh
-node --test scripts/library-root-migration.test.mjs
-```
+The archived deterministic tests cover lost acknowledgements at every patch
+position, descriptor-last publication, observation-based continuation, foreign
+ownership, shared parents, incomplete enumeration, pending work, changed plans,
+ambiguous IDs and pin rebinding. They also cover current Profiles, portable
+origins and stale cached descriptors. Those model and adapter results do not prove
+live permissions, original Store recovery or actual caller adoption.
 
-The tests enumerate a lost acknowledgement at every patch position, require the
-descriptor to remain last, exercise observation-based continuation and refuse
-foreign ownership, shared parents, incomplete enumeration, pending work,
-changed plans, ambiguous IDs and pin rebinding. They also cover current Profiles,
-portable origins and stale cached config descriptors. These are deterministic
-model and adapter proofs; live permissions, existing Store recovery and actual
-caller adoption require separate observed evidence.
-
-The migration implementation is confined to
-`scripts/library-root-migration.mjs` and `scripts/library-root-migrate.mjs`.
-Neither is imported by the product resolver or packaged as an alternative
-selection API. Remove the one-time tool once the supported installed Libraries
-and owned portable exports have completed the cutover; preserve the bounded
-operator evidence needed to explain the transition.
+Keep original inputs, executor hashes, mutation receipts, independent readbacks
+and caller-adoption results as static evidence. State any truncated relation
+projection or body-read limit explicitly. Retiring the executable does not erase
+an unfinished writer or turn an untested caller into a successful adoption.
+The current repository and packages expose one root-identity path; they contain
+no one-time legacy migration command or compatibility alias.

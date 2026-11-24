@@ -50,7 +50,7 @@ Both commands verify the root and four-table ownership read-only. They do not
 save a default or repair an older layout. Init success means the structure is
 ready; its next list can be empty. A new `init --parent` creates a new root.
 Use the same executable's Builtin guidance without copying it into Notion.
-Existing libraries require the explicit migration in [the migration guide](https://github.com/yoyooyooo/notion-skills-cli/blob/next/docs/library-root-migration.md).
+Legacy libraries require a separately reviewed cutover; the current runtime does not attach old descriptors. See the preserved [migration requirements](https://github.com/yoyooyooo/notion-skills-cli/blob/next/docs/library-root-migration.md). The one-time executor is retired.
 
 If requested, `ctl config set default_library LIBRARY_ID` saves the consumption
 default used by CLI and SDK. Writers still require an explicit target. A full ref
@@ -180,7 +180,7 @@ Set `library_id` to the canonical Library root page UUID. Create only the parent
 directory; each export creates its own new child directory:
 
 ```sh
-library_id='PASTE_LIBRARY_SKILLS_DATABASE_ID'
+library_id='PASTE_LIBRARY_ROOT_PAGE_ID'
 bootstrap_dir=$(mktemp -d "${TMPDIR:-/tmp}/ntn-bootstrap.XXXXXX")
 bootstrap_dir=$(cd "$bootstrap_dir" && pwd -P)
 
