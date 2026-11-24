@@ -84,7 +84,7 @@ function fixture(
   const base = currentSnapshotFixture()
   const config = {
     sources: options.unconfigured ? [] : [configuredSource],
-    default_library: id(999),
+    ...(options.unconfigured ? {} : { default_library: library.library_id }),
   }
   base.json.set("config.json", structuredClone(config))
   const requests: { readonly path: string; readonly body: unknown }[] = []
@@ -354,7 +354,7 @@ describe("shared library Views metadata", () => {
     expect(
       f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
     ).toHaveLength(1)
-    expect(f.requests.some((request) => request.path.startsWith("v1/pages/"))).toBe(false)
+    expect(f.requests.some((request) => (request.path.startsWith("v1/pages/") && request.path !== `v1/pages/${library.library_id}`))).toBe(false)
     assertMetadataOnly(f)
   })
 
@@ -451,11 +451,16 @@ describe("shared library Views metadata", () => {
             }),
           ),
       })
-      const error = await f.run(Effect.flip(listCatalog({ library: library.library_id, directory: {} })))
-      expect(error.code).toBe(change === "scope" ? "ACCESS_DENIED" : "SHARED_LIBRARY_ID_CONFLICT")
-      expect(
-        f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
-      ).toHaveLength(2)
+      if (change === "scope") {
+        const error = await f.run(Effect.flip(listCatalog({ library: library.library_id, directory: {} })))
+        expect(error.code).toBe("ACCESS_DENIED")
+        expect(f.requests.filter(request => request.path.includes("/data_sources/" + ds + "/query"))).toHaveLength(2)
+      } else {
+        const result = await f.run(listCatalog({ library: library.library_id, directory: {} }))
+        expect(result.catalog).toMatchObject({ ok: false, error: { code: "LIBRARY_SCHEMA_CONFLICT" } })
+        expect(result.directory).toMatchObject({ ok: false, error: { code: "LIBRARY_SCHEMA_CONFLICT" } })
+        expect(f.requests.filter(request => request.path.includes("/data_sources/" + ds + "/query"))).toHaveLength(0)
+      }
     },
   )
 
@@ -599,14 +604,10 @@ describe("shared library Views metadata", () => {
     assertMetadataOnly(f)
   })
 
-  test("globally discovers a shared Skills entry and chooses its first native View", async () => {
+  test("an unconfigured View does not infer a Library through global discovery", async () => {
     const f = fixture({ unconfigured: true })
-    const result = await f.run(viewCatalog())
-    expect(result.view?.id).toBe(viewA)
-    expect(result.view_selection).toBe("first")
-    expect(result.records.map((record) => record.name)).toEqual(["Gamma", "Alpha"])
-    expect(f.requests.some((request) => request.path === "v1/search")).toBe(true)
-    assertMetadataOnly(f)
+    await expect(f.run(viewCatalog())).rejects.toMatchObject({ code: "LIBRARY_CONTEXT_REQUIRED" })
+    expect(f.requests).toEqual([])
   })
 
   test("zero Views remains an empty directory rather than a whole-library query", async () => {

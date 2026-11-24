@@ -171,7 +171,7 @@ describe("current native relation round-trip", () => {
     ).toBe(true)
     expect(
       f.calls
-        .filter((call) => call.path.includes("/blocks/"))
+        .filter((call) => call.path.includes("/blocks/") && !(call.method === "GET" && call.path.split("?")[0] === `v1/blocks/${library.library_id}/children`))
         .every((call) => call.path.includes(result.page_id)),
     ).toBe(true)
   })

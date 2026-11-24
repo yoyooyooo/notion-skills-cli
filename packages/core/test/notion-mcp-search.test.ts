@@ -16,7 +16,7 @@ import {
 const match = (pageId: string) => ({ pageId, title: "remote title", snippet: "remote body needle" })
 async function setup() {
   const fixture = currentSnapshotFixture()
-  const selected = await fixture.run(contentSearchSource(currentLibrary.skills.database_id))
+  const selected = await fixture.run(contentSearchSource(currentLibrary.library_id))
   fixture.clearCalls()
   return { fixture, selected }
 }

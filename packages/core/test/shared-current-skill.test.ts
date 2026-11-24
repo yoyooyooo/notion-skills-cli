@@ -436,7 +436,7 @@ test.each([false, true])(
   "native authoring restores a dropped Skill URL in the same intent, including response loss: %s",
   async (loseCorrection) => {
     const f = automaticLinkWriter(loseCorrection, true)
-    const href = "skill://cycle-two/SKILL.md?library=library-two"
+    const href = "skill://cycle-two/SKILL.md?library=00000000-0000-4000-8000-000000000113"
     const markdown = `[Two](${href})`
     const plan = await f.run(
       prepareCurrentSkillWrite(

@@ -91,6 +91,12 @@ function routerFixture(registered = true) {
                   next_cursor: null,
                 })
               }
+              if (endpoint === `v1/data_sources/${library.skills.data_source_id}`)
+                return api.request(path, body, options).pipe(Effect.map(raw => {
+                  const value = structuredClone(property(raw))
+                  property(property(value.properties).Members).id = "members%3A"
+                  return value
+                }))
               if (endpoint === `v1/databases/${library.skills.database_id}`)
                 return api.request(path, body, options).pipe(
                   Effect.map((raw) => ({

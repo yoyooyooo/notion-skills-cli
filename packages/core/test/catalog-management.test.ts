@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
 import { catalog, discoverLibraries } from "../src/catalog.ts"
-import { property } from "../src/model.ts"
+import { fail, property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
@@ -82,6 +82,8 @@ function fixture(
             ...api,
             request: (path, body, requestOptions) => {
               const endpoint = path.split("?", 1)[0]
+              if (endpoint === `v1/pages/${legacy.database_id}`)
+                return Effect.fail(fail("NOTION_NOT_FOUND", "The database ID is not a root page."))
               if (endpoint === `v1/databases/${registered.skills.database_id}`)
                 return api.request(path, body, requestOptions).pipe(
                   Effect.map((raw) => ({
@@ -92,6 +94,8 @@ function fixture(
               const ordinary = [...managed, legacy].find(
                 (table) => endpoint === `v1/databases/${table.database_id}`,
               )
+              if (ordinary && ordinary.database_id !== legacy.database_id)
+                return api.request(path, body, requestOptions)
               if (ordinary) {
                 f.calls.push({ path, body, method: requestOptions?.method ?? "GET" })
                 return Effect.succeed({
@@ -105,6 +109,8 @@ function fixture(
               const ordinarySchema = [...managed, legacy].find(
                 (table) => endpoint === `v1/data_sources/${table.data_source_id}`,
               )
+              if (ordinarySchema && ordinarySchema.data_source_id !== legacy.data_source_id)
+                return api.request(path, body, requestOptions).pipe(Effect.map(raw => ({ ...property(raw), properties: { ...references, ...property(property(raw).properties) } })))
               if (ordinarySchema) {
                 f.calls.push({ path, body, method: requestOptions?.method ?? "GET" })
                 return Effect.succeed({ id: ordinarySchema.data_source_id, properties: references })
@@ -129,7 +135,7 @@ test.each([true, false])(
   "fresh four-table descriptors exclude management candidates independent of search order (%s)",
   async (managementFirst) => {
     const f = fixture({ managementFirst, registeredManagement: true })
-    const result = await f.run(catalog({ refresh: true }))
+    const result = await f.run(catalog({ all: true, refresh: true }))
     expect(result.records.map((record) => record.id)).toEqual([
       `skill://a?library=${encodeURIComponent(library.library_id)}`,
     ])
@@ -172,7 +178,7 @@ test("an invalid current Skill Kind fails while obsolete tables are never consum
 test("an explicit obsolete entry fails current admission without reading its rows", async () => {
   const f = fixture()
   const error = await f.run(Effect.flip(catalog({ library: f.legacy.database_id, refresh: true })))
-  expect(error.code).toBe("CURRENT_SCHEMA_REQUIRED")
+  expect(error.code).toBe("NOTION_NOT_FOUND")
   expect(f.calls.some((call) => query(call.path, f.legacy.data_source_id))).toBe(false)
   expect(f.writeCount()).toBe(0)
 })
@@ -183,7 +189,7 @@ test("cold logical ref refresh without database resolves the shared Skill withou
   const result = await f.run(readSkill(fileRef(target, "SKILL.md"), { refresh: true }))
   expect(result.record.id).toBe(target)
   expect("content" in result && result.content).toContain("# a instruction")
-  expect(f.calls.some((call) => call.path === "v1/search")).toBe(true)
+  expect(f.calls.some((call) => call.path === "v1/search")).toBe(false)
   expect(
     f.calls.some((call) => call.path === `v1/pages/${f.pageIds[0]}/markdown?markdown_version=v2`),
   ).toBe(true)

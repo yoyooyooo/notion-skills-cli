@@ -353,15 +353,9 @@ describe("shared catalog routing", () => {
     })
     const selected = await f.run(explicitSource("team"))
     expect(selected).toEqual(registered)
-    expect(f.calls).toHaveLength(3)
-    expect(
-      f.calls.every(
-        (call) =>
-          call.path === `v1/databases/${library.skills.database_id}` &&
-          call.body === undefined &&
-          call.method === undefined,
-      ),
-    ).toBe(true)
+    expect(f.calls).toHaveLength(45)
+    expect(f.calls.filter(call => call.path === `v1/pages/${library.library_id}`)).toHaveLength(3)
+    expect(f.calls.every(call => call.body === undefined && call.method === undefined)).toBe(true)
   })
 
   test("shared configuration refuses malformed descriptors and mismatched identities without persisting", async () => {
@@ -383,13 +377,8 @@ describe("shared catalog routing", () => {
         const result = await f.run(operation.pipe(Effect.result))
         expect(result._tag).toBe("Failure")
         expect(f.saved.get("config.json")).toEqual(configuration)
-        expect(f.calls).toEqual([
-          {
-            path: `v1/databases/${library.skills.database_id}`,
-            body: undefined,
-            method: undefined,
-          },
-        ])
+        expect(f.calls.every(call => call.body === undefined && call.method === undefined)).toBe(true)
+        expect(f.calls.some(call => call.path.includes("/query") || call.path.includes("/markdown"))).toBe(false)
       }
     }
   })
@@ -399,7 +388,9 @@ describe("shared catalog routing", () => {
     const result = await f.run(explicitSource(library.library_id))
     expect(result.shared_library).toEqual(library)
     expect(result.data_source_ids).toEqual([library.skills.data_source_id])
-    expect(f.calls.map((call) => call.path)).toEqual([`v1/databases/${library.skills.database_id}`])
+    expect(f.calls).toHaveLength(15)
+    expect(f.calls.filter(call => call.path.includes("/query"))).toEqual([])
+    expect(f.calls.filter(call => call.path.startsWith("v1/pages/"))).toEqual([{ path: `v1/pages/${library.library_id}`, body: undefined, method: undefined }])
   })
 
   test("cold explicit catalog is metadata only and includes the shared stable identity", async () => {
@@ -409,7 +400,7 @@ describe("shared catalog routing", () => {
     expect(result.records[0]?.locator.type).toBe("shared_skill")
     expect(result.coverage.exhaustive).toBe(true)
     expect(result.databases[0]?.shared_library).toEqual(library)
-    expect(f.calls).toHaveLength(3)
+    expect(f.calls).toHaveLength(17)
     const query = f.calls.find((call) => call.path.includes("/query?"))
     if (query === undefined) throw new Error("Missing selected Skills query")
     const fields = new URL(query.path, "https://api.notion.com/").searchParams.getAll(
@@ -428,8 +419,8 @@ describe("shared catalog routing", () => {
       f.calls.some(
         (call) =>
           call.path.includes("/markdown") ||
-          call.path.includes(library.files.data_source_id) ||
-          call.path.includes(library.records.data_source_id),
+          call.path.includes(`${library.files.data_source_id}/query`) ||
+          call.path.includes(`${library.records.data_source_id}/query`),
       ),
     ).toBe(false)
     const record = result.records[0]
@@ -446,9 +437,9 @@ describe("shared catalog routing", () => {
     const f = fixture({ rows })
     const result = await f.run(catalog({ library: library.library_id, refresh: true }))
     expect(result.records).toHaveLength(101)
-    expect(f.calls).toHaveLength(4)
+    expect(f.calls).toHaveLength(18)
     expect(f.calls.filter((call) => call.path.includes("/query?"))).toHaveLength(2)
-    expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
+    expect(f.calls.some((call) => (call.path.startsWith("v1/pages/") && call.path !== `v1/pages/${library.library_id}`))).toBe(false)
   })
 
   test("a malformed identity on a later catalog page is rejected without extra requests", async () => {
@@ -467,9 +458,9 @@ describe("shared catalog routing", () => {
       reason: "empty",
       value_length: 0,
     })
-    expect(f.calls).toHaveLength(4)
+    expect(f.calls).toHaveLength(18)
     expect(f.calls.filter((call) => call.path.includes("/query?"))).toHaveLength(2)
-    expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
+    expect(f.calls.some((call) => (call.path.startsWith("v1/pages/") && call.path !== `v1/pages/${library.library_id}`))).toBe(false)
   })
 
   test("TTL hits issue no remote requests and keep the original validation time", async () => {
@@ -511,8 +502,8 @@ describe("shared catalog routing", () => {
       skillIdentity(library.library_id, "skill-1"),
     ])
     expect(result.coverage.exhaustive).toBe(true)
-    expect(f.calls).toHaveLength(3)
-    expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
+    expect(f.calls).toHaveLength(17)
+    expect(f.calls.some((call) => (call.path.startsWith("v1/pages/") && call.path !== `v1/pages/${library.library_id}`))).toBe(false)
     // Directory eligibility does not establish the page's authoring or recovery state.
     expect(() =>
       sharedRecordFromPage(
@@ -541,13 +532,13 @@ describe("shared catalog routing", () => {
     const result = await f.run(catalog({ library: library.library_id, refresh: true }))
     expect(result.records).toHaveLength(1)
     expect(result.coverage.exhaustive).toBe(true)
-    expect(f.calls).toHaveLength(3)
+    expect(f.calls).toHaveLength(17)
     expect(() => sharedRecordFromPage(draft, source, library.skills.data_source_id)).toThrow(
       "Skill ID must be a stable bounded identity.",
     )
   })
 
-  test("global discovery reads one current descriptor for repeated search entries", async () => {
+  test("global discovery resolves one Library for repeated search entries", async () => {
     const f = fixture({ searchRepeated: true })
     const result = await f.run(catalog({ all: true, refresh: true }))
     expect(result.records[0]?.locator.type).toBe("shared_skill")
@@ -555,7 +546,8 @@ describe("shared catalog routing", () => {
     expect(result.coverage.search_index_limited).toBe(true)
     expect(
       f.calls.filter((call) => call.path === `v1/databases/${library.skills.database_id}`),
-    ).toHaveLength(1)
+    ).toHaveLength(3)
+    expect(f.calls.filter(call => call.path === `v1/pages/${library.library_id}`)).toHaveLength(1)
     expect(
       f.calls.some((call) => call.path === `v1/data_sources/${library.skills.data_source_id}`),
     ).toBe(false)

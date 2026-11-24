@@ -227,7 +227,7 @@ function fixture(count = 2, relations = false) {
                   const update = controls.beforeSelectedGet
                   controls.beforeSelectedGet = undefined
                   update?.()
-                } else if (method === "GET" && /^\/v1\/pages\/[^/]+$/u.test(url.pathname)) {
+                } else if (method === "GET" && url.pathname !== "/v1/pages/" + library.library_id && /^\/v1\/pages\/[^/]+$/u.test(url.pathname)) {
                   const row = rows.find((row) => url.pathname === "/v1/pages/" + row.id)
                   return row === undefined
                     ? Effect.fail(

@@ -161,7 +161,7 @@ test("API order selects first View regardless of name and ignores checkbox as an
   expect(f.requests.some((x) => /markdown|blocks|export|upstream/.test(x.path) && !x.path.startsWith(`v1/blocks/${library.library_id}/children`))).toBe(false)
   expect(f.requests.find((x) => x.path.endsWith("/queries"))?.body).toEqual({ page_size: 100 })
   expect(f.requests.filter((x) => x.path.startsWith(`v1/data_sources/${ds}/query`))).toHaveLength(1)
-  expect(f.requests.some((x) => x.path.startsWith("v1/pages/"))).toBe(false)
+  expect(f.requests.some((x) => x.path.startsWith("v1/pages/") && x.path !== `v1/pages/${library.library_id}`)).toBe(false)
 })
 
 test("default operation identity validates once per fresh read and reuses the warm observation", async () => {

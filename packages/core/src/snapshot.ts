@@ -116,8 +116,11 @@ function openSnapshot(
         return yield* Effect.fail(
           fail("NOT_SKILL", "The page must belong to an accessible current Skill library."),
         )
-      const source = yield* sourceForSkillsDatabase(parent.database_id)
-      if (selectedLibrary !== undefined && selectedLibrary !== source.shared_library.library_id)
+      const source = selectedLibrary === undefined
+        ? yield* sourceForSkillsDatabase(parent.database_id)
+        : yield* explicitSource(selectedLibrary)
+      if (parent.database_id !== source.database_id ||
+          parent.data_source_id !== source.shared_library.skills.data_source_id)
         return yield* Effect.fail(fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected Library."))
       return yield* openSharedConsumer({
         library: source.shared_library,
@@ -204,7 +207,7 @@ function assertSnapshotTarget(snapshot: Snapshot, target: SkillTarget, database?
       ? snapshot.record.locator.library_id
       : undefined) !== database
   )
-    throw fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected database.")
+    throw fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected Library.")
   if (
     snapshot.record.locator.type === "shared_skill" &&
     snapshot.record.kind === "router" &&
@@ -326,7 +329,7 @@ function acquireTargetSnapshot(
           return yield* Effect.fail(
             fail(
               target.kind === "page" ? "SKILL_NOT_FOUND" : "LIBRARY_SCOPE_MISMATCH",
-              "The Skill does not belong to the selected database.",
+              "The Skill does not belong to the selected Library.",
             ),
           )
         if (access !== "all" || observed.snapshot.record.locator.type === "shared_skill") {

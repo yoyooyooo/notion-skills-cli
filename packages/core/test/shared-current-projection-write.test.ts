@@ -233,7 +233,7 @@ test("projects complete text to existing Skill and File pages, preserves authori
   )
   expect(
     f.calls.filter(
-      (call) => call.method === "GET" && /^v1\/blocks\/[^/]+\/children(?:\?|$)/u.test(call.path),
+      (call) => call.method === "GET" && call.path.split("?")[0] !== `v1/blocks/${library.library_id}/children` && /^v1\/blocks\/[^/]+\/children(?:\?|$)/u.test(call.path),
     ),
   ).toHaveLength(4)
   expect(f.calls).toHaveLength(14)

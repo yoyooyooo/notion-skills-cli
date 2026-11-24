@@ -237,16 +237,17 @@ for (const [label, description, code] of [
     LIBRARY_MARKER + JSON.stringify({ ...currentLibrary, sources: undefined }),
     "CURRENT_SCHEMA_REQUIRED",
   ],
-  ["malformed JSON", LIBRARY_MARKER + "{", "INVALID_RESPONSE"],
+  ["malformed JSON", LIBRARY_MARKER + "{", "LIBRARY_INVALID"],
 ] as const)
   test(
     "current libraries reject " + label + " descriptors before metadata acquisition",
     async () => {
       const f = fixture()
       f.fault((call) =>
-        call.path.startsWith("v1/databases/")
+        call.path === `v1/databases/${currentLibrary.skills.database_id}`
           ? {
               id: currentLibrary.skills.database_id,
+              parent: { type: "page_id", page_id: currentLibrary.library_id },
               description: [{ plain_text: description }],
               data_sources: [{ id: currentLibrary.skills.data_source_id, name: "Skills" }],
               title: [],
@@ -259,7 +260,9 @@ for (const [label, description, code] of [
       )
       expect(result._tag === "Failure" && result.failure.code).toBe(code)
       expect(f.calls.map((call) => call.path)).toEqual([
-        `v1/databases/${currentLibrary.skills.database_id}`,
+        `v1/pages/${currentLibrary.library_id}`,
+        `v1/blocks/${currentLibrary.library_id}/children?page_size=100`,
+        ...(["skills", "files", "records", "sources"] as const).map(role => `v1/databases/${currentLibrary[role].database_id}`),
       ])
     },
   )
@@ -314,7 +317,7 @@ test("search and projected metadata exhaust their cursors, ignore ordinary sourc
   expect(
     new URL("https://fixture/" + queries[0]!.path).searchParams.getAll("filter_properties").sort(),
   ).toEqual(["default", "description", "enabled", "kind", "skill-id", "title"])
-  expect(f.calls.some((call) => /pages\/|markdown|blocks\//u.test(call.path))).toBe(false)
+  expect(f.calls.some((call) => /pages\/|markdown|blocks\//u.test(call.path) && call.path !== `v1/pages/${currentLibrary.library_id}` && !call.path.startsWith(`v1/blocks/${currentLibrary.library_id}/children`))).toBe(false)
 })
 
 for (const boundary of ["search", "metadata"] as const)
@@ -571,7 +574,7 @@ for (const count of [101, 205])
     expect(
       f.calls.filter((call) => call.path.startsWith(`v1/data_sources/${ds}/query`)),
     ).toHaveLength(Math.ceil(count / 100))
-    expect(f.calls.some((call) => /v1\/pages\/|markdown|blocks|export/u.test(call.path))).toBe(
+    expect(f.calls.some((call) => /v1\/pages\/|markdown|blocks|export/u.test(call.path) && call.path !== `v1/pages/${currentLibrary.library_id}` && !call.path.startsWith(`v1/blocks/${currentLibrary.library_id}/children`))).toBe(
       false,
     )
     expect(

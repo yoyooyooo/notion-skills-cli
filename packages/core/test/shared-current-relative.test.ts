@@ -161,9 +161,9 @@ test("containing Library binds short references independently of ambient default
   const other = await f.run(resolveReference("skill://other", { from, offline: true }))
   expect(other.ref).toBe("skill://other?library=00000000-0000-4000-8000-000000000002")
   const foreign = await f.run(
-    resolveReference("skill://demo?library=testing", { from, offline: true }),
+    resolveReference("skill://demo?library=00000000-0000-4000-8000-000000000117", { from, offline: true }),
   )
-  expect(foreign.ref).toBe("skill://demo?library=testing")
+  expect(foreign.ref).toBe("skill://demo?library=00000000-0000-4000-8000-000000000117")
   expect(f.calls).toEqual([])
   expect(f.semanticWrites()).toEqual([])
 })

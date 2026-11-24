@@ -513,6 +513,7 @@ test("descriptor rejects empty, unsafe and overlapping optional Members identiti
     expect(() =>
       libraryFromDatabase({
         id: library.skills.database_id,
+        parent: { type: "page_id", page_id: library.library_id },
         description: [{ plain_text: `ntn-skills-library:v2 ${JSON.stringify(descriptor)}` }],
       }),
     ).toThrow()
@@ -530,6 +531,7 @@ test("descriptor rejects empty, unsafe and overlapping optional Members identiti
   expect(() =>
     libraryFromDatabase({
       id: library.skills.database_id,
+      parent: { type: "page_id", page_id: library.library_id },
       description: [{ plain_text: `ntn-skills-library:v2 ${JSON.stringify(descriptor)}` }],
     }),
   ).toThrow("Members binding")

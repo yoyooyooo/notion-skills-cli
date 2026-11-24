@@ -1,3 +1,4 @@
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer } from "effect"
@@ -10,40 +11,40 @@ import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 
 const first = "12345678-1234-1234-1234-123456789abc"
 const second = "87654321-1234-1234-1234-123456789abc"
+const libraryFor = (id: string) => {
+  const offset = id === first ? 100 : 200
+  return {
+    ...structuredClone(currentLibrary),
+    library_id: id,
+    operation_id: `library-${id}`,
+    skills: { ...currentLibrary.skills, database_id: currentId(offset + 7), data_source_id: currentId(offset) },
+    files: {
+      ...currentLibrary.files,
+      database_id: currentId(offset + 1),
+      data_source_id: currentId(offset + 2),
+    },
+    records: {
+      ...currentLibrary.records,
+      database_id: currentId(offset + 3),
+      data_source_id: currentId(offset + 4),
+    },
+    sources: {
+      ...currentLibrary.sources,
+      database_id: currentId(offset + 5),
+      data_source_id: currentId(offset + 6),
+    },
+  }
+}
+const source = (id: string) => ({
+  role: "content" as const,
+  alias: id,
+  database_id: libraryFor(id).skills.database_id,
+  title: "skills",
+  data_source_ids: [libraryFor(id).skills.data_source_id],
+  shared_library: libraryFor(id),
+})
 function setup(initial: unknown, ids: string[], broken?: string) {
   let config = initial
-  const libraryFor = (id: string) => {
-    const offset = id === first ? 100 : 200
-    return {
-      ...structuredClone(currentLibrary),
-      library_id: `library-${id}`,
-      operation_id: `library-${id}`,
-      skills: { ...currentLibrary.skills, database_id: id, data_source_id: currentId(offset) },
-      files: {
-        ...currentLibrary.files,
-        database_id: currentId(offset + 1),
-        data_source_id: currentId(offset + 2),
-      },
-      records: {
-        ...currentLibrary.records,
-        database_id: currentId(offset + 3),
-        data_source_id: currentId(offset + 4),
-      },
-      sources: {
-        ...currentLibrary.sources,
-        database_id: currentId(offset + 5),
-        data_source_id: currentId(offset + 6),
-      },
-    }
-  }
-  const source = (id: string) => ({
-    role: "content" as const,
-    alias: id,
-    database_id: id,
-    title: "Skills",
-    data_source_ids: [libraryFor(id).skills.data_source_id],
-    shared_library: libraryFor(id),
-  })
   const store = Layer.succeed(Store, {
     backup: () => Effect.die(new Error("Unexpected backup")),
     root: "/memory",
@@ -73,7 +74,7 @@ function setup(initial: unknown, ids: string[], broken?: string) {
         return Effect.succeed({
           results: ids.map((id) => ({
             id: libraryFor(id).skills.data_source_id,
-            parent: { database_id: id },
+            parent: { database_id: libraryFor(id).skills.database_id },
             database_type: "skills",
             title: [{ plain_text: "Skills" }],
           })),
@@ -82,14 +83,10 @@ function setup(initial: unknown, ids: string[], broken?: string) {
         })
       const id = path.split("/").at(-1)!
       if (id === broken) return Effect.fail(fail("ACCESS_DENIED", "denied"))
-      if (path.startsWith("v1/databases/"))
-        return Effect.succeed({
-          id,
-          database_type: null,
-          description: [{ plain_text: `${LIBRARY_MARKER}${JSON.stringify(libraryFor(id))}` }],
-          title: [{ plain_text: "Skills" }],
-          data_sources: [{ id: libraryFor(id).skills.data_source_id, name: "Skills" }],
-        })
+      for (const root of [first, second]) {
+        const schema = librarySchemaResponse(path, libraryFor(root))
+        if (schema !== undefined) return Effect.succeed(schema)
+      }
       return Effect.fail(fail("UNEXPECTED", "unexpected"))
     },
   })
@@ -115,31 +112,31 @@ test("default updates and source registration preserve each other's configuratio
   })
 })
 
-test("registered aliases select databases exactly and defaults persist canonical IDs", async () => {
+test("registered aliases select Library roots exactly and defaults persist canonical IDs", async () => {
   const fixture = setup({ sources: [], token: "configured-fixture-token" }, [first, second])
   await fixture.run(addSource("frontend", first))
   await fixture.run(addSource("ops", second))
-  expect((await fixture.run(explicitSource("frontend"))).database_id).toBe(first)
+  expect((await fixture.run(explicitSource("frontend"))).shared_library?.library_id).toBe(first)
   expect((await fixture.run(explicitSource(first))).alias).toBe("frontend")
   expect(
     (await fixture.run(explicitSource(`https://www.notion.so/${first.replaceAll("-", "")}`))).alias,
   ).toBe("frontend")
-  expect((await fixture.run(explicitSource("ops"))).database_id).toBe(second)
+  expect((await fixture.run(explicitSource("ops"))).shared_library?.library_id).toBe(second)
   await fixture.run(setDefaultLibrary("frontend"))
   expect(fixture.config().default_library).toBe(first)
   expect(fixture.config().token).toBe("configured-fixture-token")
-  expect((await fixture.run(explicitSource("ops"))).database_id).toBe(second)
+  expect((await fixture.run(explicitSource("ops"))).shared_library?.library_id).toBe(second)
   for (const selector of ["Frontend", "Skills", "missing"]) {
     const result = await fixture.run(explicitSource(selector).pipe(Effect.result))
-    expect(result._tag === "Failure" && result.failure.code).toBe("DATABASE_NOT_FOUND")
+    expect(result._tag === "Failure" && result.failure.code).toBe("LIBRARY_NOT_FOUND")
   }
 })
 
-test("an ambiguous or inaccessible alias never redirects to another database", async () => {
+test("an ambiguous or inaccessible alias never redirects to another Library", async () => {
   const denied = setup(
     {
       sources: [
-        { alias: "frontend", database_id: first, title: "Frontend Skills", data_source_ids: [] },
+        { ...source(first), alias: "frontend", title: "Frontend Skills" },
       ],
       default_library: second,
     },
@@ -149,20 +146,15 @@ test("an ambiguous or inaccessible alias never redirects to another database", a
   const result = await denied.run(explicitSource("frontend").pipe(Effect.result))
   expect(result._tag === "Failure" && result.failure).toMatchObject({
     code: "ACCESS_DENIED",
-    details: { database_id: first, alias: "frontend", title: "Frontend Skills" },
+
   })
   const duplicate = setup(
     {
-      sources: [first, second].map((database_id) => ({
-        alias: "shared",
-        database_id,
-        title: "Skills",
-        data_source_ids: [],
-      })),
+      sources: [first, second].map((root) => ({ ...source(root), alias: "shared" })),
     },
     [first, second],
   )
   const ambiguous = await duplicate.run(libraryId("shared").pipe(Effect.result))
-  expect(ambiguous._tag === "Failure" && ambiguous.failure.code).toBe("DATABASE_AMBIGUOUS")
+  expect(ambiguous._tag === "Failure" && ambiguous.failure.code).toBe("LIBRARY_AMBIGUOUS")
   expect(await duplicate.run(libraryId(first))).toBe(first)
 })

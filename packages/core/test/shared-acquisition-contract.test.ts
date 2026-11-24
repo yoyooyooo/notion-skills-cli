@@ -1,3 +1,4 @@
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import * as NodeServices from "@effect/platform-node/NodeServices"
@@ -227,6 +228,8 @@ function fixture(input: { beforeProvider?: () => Effect.Effect<void> } = {}) {
     request: (request, body, options) =>
       Effect.gen(function* () {
         calls.push(request)
+        const schema = (options?.method ?? "GET") === "GET" ? librarySchemaResponse(request, library) : undefined
+        if (schema !== undefined) return schema
         if (request === `v1/databases/${library.skills.database_id}` && body === undefined)
           return {
             id: library.skills.database_id,

@@ -247,12 +247,12 @@ describe("once consume contract", () => {
   })
 
   test("encoded stable shared identities remain valid through fixed consume and its decoder", async () => {
-    const f = await fixture({ "guide-v1": { library: "org:team" } })
-    const input = f.input([f.ref("guide-v1")])
+    const f = await fixture({ "guide:v1": { library: "00000000-0000-4000-8000-000000000114" } })
+    const input = f.input([f.ref("guide:v1")])
     const result = await f.run(consume(input))
     expect(result.status).toBe("ready")
     if (result.status !== "ready") throw new Error(JSON.stringify(result))
-    expect(result.entries[0]?.manifest.record.id).toBe(skillIdentity("org:team", "guide-v1"))
+    expect(result.entries[0]?.manifest.record.id).toBe(skillIdentity("00000000-0000-4000-8000-000000000114", "guide:v1"))
     expect(await f.run(decodeConsumeResult(result, input))).toEqual(result)
     expect(f.calls).toHaveLength(0)
   })
@@ -298,14 +298,14 @@ describe("once consume contract", () => {
 
   test("identical names and source bytes in different libraries remain separate bindings", async () => {
     const f = await fixture({
-      a: { name: "Same name", library: "one", content: "same" },
-      b: { name: "Same name", library: "two", content: "same" },
+      a: { name: "Same name", library: "00000000-0000-4000-8000-000000000115", content: "same" },
+      b: { name: "Same name", library: "00000000-0000-4000-8000-000000000116", content: "same" },
     })
     const result = await f.run(consume(f.input([f.ref("a"), f.ref("b")])))
     if (result.status !== "ready") throw new Error(JSON.stringify(result))
     expect(result.preparation.session_bindings.map((binding) => binding.record.id)).toEqual([
-      "skill://a?library=one",
-      "skill://b?library=two",
+      "skill://a?library=00000000-0000-4000-8000-000000000115",
+      "skill://b?library=00000000-0000-4000-8000-000000000116",
     ])
     expect(new Set(result.entries.map((entry) => entry.manifest.snapshot_id)).size).toBe(2)
     const wrongRequest = await f.run(

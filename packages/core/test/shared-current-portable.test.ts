@@ -28,7 +28,7 @@ test("portable relationship context binds once, preserves omission and rejects d
   expect(validatePortableRelations(base)).not.toHaveProperty("members")
   expect(validatePortableRelations({ ...base, members: [] }).members).toEqual([])
   expect(
-    portableRelationSelection({ ...base, members: ["skill://architect"] }, "test", {
+    portableRelationSelection({ ...base, members: ["skill://architect"] }, base.library_id, {
       members: ["skill://architect?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
     }),
   ).toEqual({ members: ["skill://architect?library=cc029b5c-680e-576d-a381-a069d3f9f26e"] })

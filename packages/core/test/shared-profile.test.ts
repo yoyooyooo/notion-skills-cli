@@ -1214,6 +1214,7 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
+      default_library: library.library_id,
       shared_profile: { library_id: library.library_id, profile_id: "daily" },
     })
     f.seed(
@@ -1229,7 +1230,7 @@ describe("Profile machine binding and default discovery", () => {
     expect("profile" in result).toBe(false)
     expect(f.queries()).toBe(0)
     expect(f.calls.some((call) => call.path.startsWith("v1/views"))).toBe(false)
-    expect(f.calls.some((call) => /\/markdown|\/blocks|\/export|\/pages\//u.test(call.path))).toBe(
+    expect(f.calls.some((call) => /\/markdown|\/blocks|\/export|\/pages\//u.test(call.path) && call.path !== `v1/pages/${library.library_id}` && !call.path.startsWith(`v1/blocks/${library.library_id}/children`))).toBe(
       false,
     )
   })
@@ -1238,6 +1239,7 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
+      default_library: library.library_id,
       shared_profile: { library_id: library.library_id, profile_id: "daily" },
     })
     f.seed(
@@ -1260,7 +1262,7 @@ describe("Profile machine binding and default discovery", () => {
         call.path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`),
       ),
     ).toHaveLength(1)
-    expect(f.calls.some((call) => /\/pages\/|\/markdown|\/blocks|\/export/u.test(call.path))).toBe(
+    expect(f.calls.some((call) => /\/pages\/|\/markdown|\/blocks|\/export/u.test(call.path) && call.path !== `v1/pages/${library.library_id}` && !call.path.startsWith(`v1/blocks/${library.library_id}/children`))).toBe(
       false,
     )
     expect(f.calls.every((call) => call.content === undefined)).toBe(true)
@@ -1281,6 +1283,7 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
+      default_library: library.library_id,
       shared_profile: { library_id: library.library_id, profile_id: "daily" },
     })
     f.seed(
@@ -1330,6 +1333,7 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
+      default_library: library.library_id,
       shared_profile: { library_id: library.library_id, profile_id: "daily" },
     })
     const result = await f.run(
@@ -1359,6 +1363,7 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
+      default_library: library.library_id,
       shared_profile: { library_id: library.library_id, profile_id: "daily" },
     })
     const saved = await f.run(

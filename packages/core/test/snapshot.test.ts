@@ -80,6 +80,7 @@ for (const matches of [0, 1])
 for (const matches of [0, 1])
   test(`a short ref cannot infer Library from ${matches} discoverable matches`, async () => {
     const f = await fixture()
+    f.json.delete("config.json")
     const run = <A, E>(effect: Effect.Effect<A, E, Services>) =>
       f.run(
         Effect.gen(function* () {
@@ -207,7 +208,7 @@ test("current metadata edits do not rewrite authored frontmatter or selected byt
   expect(f.semanticWrites()).toEqual([])
 })
 
-test("physical page reads accept configured aliases and selected database checks stay local", async () => {
+test("physical page reads accept configured aliases and selected Library checks stay local", async () => {
   const f = await fixture()
   const otherLibrary = {
     ...currentLibrary,
@@ -238,14 +239,14 @@ test("physical page reads accept configured aliases and selected database checks
     page_id: page,
   })
   const wrongOnline = await f.run(openSkill(page, { library: "ops" }).pipe(Effect.result))
-  expect(wrongOnline._tag === "Failure" && wrongOnline.failure.code).toBe("SKILL_NOT_FOUND")
+  expect(wrongOnline._tag === "Failure" && wrongOnline.failure.code).toBe("LIBRARY_SCOPE_MISMATCH")
   f.failRequests(() => fail("ACCESS_DENIED", "Remote access revoked."))
   f.clearCalls()
   const read = await f.run(readSkill(snapshot.snapshot_id, { library: "frontend" }))
   expect("content" in read && read.content).toBe(frontmatter + originalMain)
   for (const [selector, code] of [
     ["ops", "LIBRARY_SCOPE_MISMATCH"],
-    ["missing", "DATABASE_NOT_FOUND"],
+    ["missing", "LIBRARY_NOT_FOUND"],
   ] as const) {
     const result = await f.run(
       readSkill(snapshot.snapshot_id, { library: selector }).pipe(Effect.result),
@@ -264,7 +265,7 @@ test("current page acquisition fences the owner before and after body reads", as
   expect(bodyReads.length).toBe(2)
   expect(ownerReads[0]).toBeLessThan(Math.min(...bodyReads))
   expect(ownerReads[1]).toBeGreaterThan(Math.max(...bodyReads))
-  expect(f.calls.filter((call) => call.path === `v1/databases/${database}`)).toHaveLength(1)
+  expect(f.calls.filter((call) => call.path === `v1/databases/${database}`)).toHaveLength(3)
   expect(f.calls.some((call) => /\/ai\/|\/blocks\/|\/properties\//u.test(call.path))).toBe(false)
   expect(f.semanticWrites()).toEqual([])
 })
@@ -301,8 +302,8 @@ test("explicit refresh reads current native files and resource bytes without a p
 for (const [change, code] of [
   ["trash", "NOT_SKILL"],
   ["id", "INVALID_RESPONSE"],
-  ["database", "SKILL_NOT_FOUND"],
-  ["data-source", "INVALID_SHARED_SKILL"],
+  ["database", "LIBRARY_SCOPE_MISMATCH"],
+  ["data-source", "LIBRARY_SCOPE_MISMATCH"],
 ] as const)
   test(`physical page acquisition rejects ${change} drift before any body reads`, async () => {
     const f = await fixture()
@@ -323,6 +324,7 @@ for (const [change, code] of [
     const result = await f.run(openSkill(page, { library: currentLibrary.library_id }).pipe(Effect.result))
     expect(result._tag === "Failure" && result.failure.code).toBe(code)
     expect(f.bodyCalls()).toEqual([])
+    expect(f.calls.some(call => call.path === `v1/databases/${currentId(99)}` || call.path === `v1/data_sources/${currentId(99)}`)).toBe(false)
   })
 
 test("stable identity resolution rechecks live metadata while preserving independently authored frontmatter", async () => {
@@ -351,7 +353,7 @@ for (const [change, code] of [
   ["trash", "INVALID_SHARED_SKILL"],
   ["id", "SHARED_SKILL_ID_CONFLICT"],
   ["database", "INVALID_SHARED_SKILL"],
-  ["data-source", "INVALID_SHARED_SKILL"],
+  ["data-source", "LIBRARY_SCOPE_MISMATCH"],
   ["stable-id", "SHARED_SKILL_ID_CONFLICT"],
 ] as const)
   test(`stable identity resolution rejects fresh ${change} ownership drift before body reads`, async () => {
@@ -384,6 +386,7 @@ for (const [change, code] of [
     )
     expect(result._tag === "Failure" && result.failure.code).toBe(code)
     expect(f.bodyCalls()).toEqual([])
+    expect(f.calls.some(call => call.path === `v1/databases/${currentId(99)}` || call.path === `v1/data_sources/${currentId(99)}`)).toBe(false)
   })
 
 for (const [change, code] of [

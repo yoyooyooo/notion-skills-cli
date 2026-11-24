@@ -1,3 +1,4 @@
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { afterAll, describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { join } from "node:path"
@@ -120,6 +121,8 @@ function fixture(
         const method = options?.method ?? "GET",
           request = property(body)
         calls.push({ path, body, method })
+        const schema = method === "GET" ? librarySchemaResponse(path, library) : undefined
+        if (schema !== undefined) return schema
         if (path.startsWith("v1/data_sources/" + library.records.data_source_id + "/query"))
           return {
             object: "list",
@@ -262,6 +265,7 @@ function fixture(
                 before.version,
                 before.scope,
                 before.library_id,
+                before.library,
                 before.record_id,
                 property(before.intent).owner,
               ]) !==
@@ -269,6 +273,7 @@ function fixture(
                   after.version,
                   after.scope,
                   after.library_id,
+                  after.library,
                   after.record_id,
                   property(after.intent).owner,
                 ])
@@ -283,6 +288,7 @@ function fixture(
                 row.version,
                 row.scope,
                 row.library_id,
+                row.library,
                 row.record_id,
                 row.intent,
                 row.completion,

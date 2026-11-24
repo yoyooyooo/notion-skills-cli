@@ -437,7 +437,7 @@ describe("fixed snapshot selected files", () => {
     const invalid = [
       {
         target: parseTarget(
-          fileRef("skill://owner?library=another", "SKILL.md", f.snapshot.snapshot_id),
+          fileRef("skill://owner?library=00000000-0000-4000-8000-000000000112", "SKILL.md", f.snapshot.snapshot_id),
         ),
         code: "SNAPSHOT_CONFLICT",
       },

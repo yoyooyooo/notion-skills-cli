@@ -280,9 +280,9 @@ describe("selected graph metadata stays bounded by requested identities", () => 
 describe("physical authorization across stable identity changes", () => {
   test("the Store boundary fences both stable pins if a physical page alias has changed", async () => {
     const f = selectedFixture({ width: 1 })
-    const database = f.descriptor.skills.database_id
+    const libraryRoot = f.descriptor.library_id
     const first = await f.run(
-      prepareGraph({ roots: [f.pageIds[0]!], purpose: "use" }, { library: database }),
+      prepareGraph({ roots: [f.pageIds[0]!], purpose: "use" }, { library: libraryRoot }),
     )
     const child = first.nodes.find(
       (node) => node.state === "prepared" && node.roles.includes("required"),
@@ -298,7 +298,7 @@ describe("physical authorization across stable identity changes", () => {
     f.bodies.set(f.pageIds[1]!, changedContent)
     const changed = await f.run(
       readSkill(fileRef(skillIdentity(f.descriptor.library_id, "changed-child"), "SKILL.md"), {
-        library: database,
+        library: libraryRoot,
         refresh: true,
       }),
     )
@@ -324,7 +324,7 @@ describe("physical authorization across stable identity changes", () => {
       expect(result._tag === "Failure" && result.failure.code).toBe("ACCESS_DENIED")
     }
     expect(f.calls).toEqual([])
-    await f.run(readSkill(changed.record.ref, { library: database, refresh: true }))
+    await f.run(readSkill(changed.record.ref, { library: libraryRoot, refresh: true }))
     f.clearCalls()
     const pins = [
       { ref: child.ref, snapshot_id: child.binding.snapshot_id, content: "# leaf-0 instruction\n" },
@@ -382,8 +382,8 @@ describe("physical authorization across stable identity changes", () => {
   test("a physical grant does not become a duplicate current cache observation", async () => {
     const f = selectedFixture({ width: 0 })
     const page = f.pageIds[0]!
-    const database = f.descriptor.skills.database_id
-    const first = await f.run(readSkill(page, { library: database }))
+    const libraryRoot = f.descriptor.library_id
+    const first = await f.run(readSkill(page, { library: libraryRoot }))
     f.json.delete(`cache/shared-page-identities/${first.scope}/${page}.json`)
     await f.run(
       invalidateSnapshotCache(page, first.scope, {
@@ -391,7 +391,7 @@ describe("physical authorization across stable identity changes", () => {
         accessDenied: "ACCESS_DENIED",
       }),
     )
-    await f.run(readSkill(page, { library: database, refresh: true }))
+    await f.run(readSkill(page, { library: libraryRoot, refresh: true }))
     f.clearCalls()
     const status = await f.run(cacheStatus())
     expect(status.observations).toHaveLength(1)
@@ -689,7 +689,7 @@ describe("bounded target observations preserve identity and failure boundaries",
       const f = selectedFixture({ width: 201 })
       const identity =
         issue === "wrong-library"
-          ? skillIdentity("another-library", "a")
+          ? skillIdentity("00000000-0000-4000-8000-000000000118", "a")
           : issue === "missing-id"
             ? skillIdentity(f.descriptor.library_id, "absent")
             : `shared_skill:${f.descriptor.library_id}:a:invalid`

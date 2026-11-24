@@ -122,7 +122,7 @@ test("exact stable identity selection preserves root and resource paths without 
     ref: fileRef(record.id, record.entrypoint),
   })
   expect(
-    resolveCatalogReference("skill://first/references/a%20b.md", selected, "library").ref,
+    resolveCatalogReference("skill://first/references/a%20b.md", selected, library.library_id).ref,
   ).toBe(fileRef(record.id, "references/a b.md"))
   for (const target of [
     "First Skill",
@@ -130,7 +130,7 @@ test("exact stable identity selection preserves root and resource paths without 
     "skill://First%20Skill/SKILL.md",
     "skill://first-skill?library=0c64a309-510e-5d37-b23c-3ce2f966c66e",
   ])
-    expect(() => resolveCatalogReference(target, selected, "library")).toThrow()
+    expect(() => resolveCatalogReference(target, selected, library.library_id)).toThrow()
   expect(() => resolveCatalogReference("skill://first", selected)).toThrow(
     expect.objectContaining({ code: "LIBRARY_CONTEXT_REQUIRED" }),
   )
@@ -195,8 +195,8 @@ test("same display names stay independent and duplicate stable identities are re
       },
     ],
   }
-  expect(resolveCatalogReference("skill://first", two, "library").record.id).toBe(first.id)
-  expect(resolveCatalogReference("skill://first", two, "test").record.id).toBe(foreign.id)
+  expect(resolveCatalogReference("skill://first", two, library.library_id).record.id).toBe(first.id)
+  expect(resolveCatalogReference("skill://first", two, foreignLibrary.library_id).record.id).toBe(foreign.id)
   expect(() => resolveCatalogReference("skill://first", two)).toThrow()
   expect(() =>
     resolveCatalogReference(first.id, {

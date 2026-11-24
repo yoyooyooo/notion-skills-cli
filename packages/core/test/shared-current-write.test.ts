@@ -851,7 +851,7 @@ describe("complete current Skill writer", () => {
           ),
         ).toMatchObject({ state: "ready" })
         expect(f.pages.get(file.page_id)?.in_trash).toBe(true)
-        expect(f.calls.filter((call) => call.path.includes("/children"))).toEqual([])
+        expect(f.calls.filter((call) => call.path.includes("/children") && !(call.method === "GET" && call.path.split("?")[0] === `v1/blocks/${library.library_id}/children`))).toEqual([])
       }
     },
   )
