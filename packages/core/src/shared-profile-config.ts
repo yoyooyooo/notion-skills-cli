@@ -95,7 +95,7 @@ export function catalogWithProfile(options: ProfileCatalogOptions = {}) {
       )
     if (options.profile !== undefined && options.library === undefined)
       return yield* Effect.fail(
-        fail("INVALID_ARGUMENT", "--profile requires an explicit --library shared library entry."),
+        fail("INVALID_ARGUMENT", "--profile requires an explicit --library root."),
       )
     const policy: ReadPolicyOptions = {
       ...(options.refresh === undefined ? {} : { refresh: options.refresh }),
@@ -109,7 +109,7 @@ export function catalogWithProfile(options: ProfileCatalogOptions = {}) {
 
     let binding: SharedProfileBinding | undefined
     if (options.profile !== undefined) {
-      // The explicit database requirement was checked before any I/O above.
+      // The explicit Library requirement was checked before any I/O above.
       const entry = yield* libraryId(options.library!)
       binding = { library_id: entry, profile_id: options.profile }
     } else {

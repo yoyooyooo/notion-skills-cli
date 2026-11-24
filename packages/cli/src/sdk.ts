@@ -217,7 +217,7 @@ export async function contentSearch(
 ): Promise<ContentSearchResult> {
   const request = validateContentSearchInput(input)
   if (typeof options?.library !== "string" || !options.library.trim())
-    throw fail("INVALID_ARGUMENT", "Content search requires one explicit library entry.")
+    throw fail("INVALID_ARGUMENT", "Content search requires one explicit Library root.")
   const env = { ...(options.env ?? process.env) }
   const complete = { ...options, env }
   const deadline = options.deadline ?? Date.now() + 360_000

@@ -37,7 +37,7 @@ export function inspectCurrentLibraryOperation(input: {
           /^notion_page:/iu.test(input.library) ||
           (/^[a-z][a-z\d+.-]*:\/\//iu.test(input.library) && !/^https?:\/\//iu.test(input.library))
         )
-          throw fail("INVALID_ARGUMENT", "Operation inspection requires a current library entry.")
+          throw fail("INVALID_ARGUMENT", "Operation inspection requires an explicit Library root.")
         let owner: CurrentOperationOwner
         if (input.kind === "source") {
           validateCurrentSourceId(input.ownerId)

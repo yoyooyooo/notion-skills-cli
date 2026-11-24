@@ -19,7 +19,7 @@ const initialize = defineCommand(
   "init",
   {
     parent: singleton("parent", "Create one current library under this exact parent page"),
-    library: singleton("library", "Inspect an existing current library entry"),
+    library: singleton("library", "Inspect an existing Library root"),
     operation: singleton("operation", "Reconcile the exact pending table creation"),
     resume: switchFlag(
       "resume",

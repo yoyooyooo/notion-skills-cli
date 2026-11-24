@@ -40,7 +40,7 @@ export function resolveCatalogReference(input: string, value: unknown, contextLi
   )
     throw fail(
       "CATALOG_INCOMPLETE",
-      "Exact selection requires a complete ordinary catalog or an explicit database.",
+      "Exact selection requires a complete ordinary catalog or an explicit Library root.",
       {
         selector: target.selector,
         coverage: directory.coverage,

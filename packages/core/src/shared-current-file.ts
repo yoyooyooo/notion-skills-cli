@@ -56,7 +56,7 @@ export type CurrentSkillState = typeof CurrentSkillStateSchema.Type
 export function currentSchemaRequired(details?: unknown): SkillsError {
   return fail(
     "CURRENT_SCHEMA_REQUIRED",
-    "This library entry requires explicit current-content migration before use.",
+    "This Library requires explicit current-content migration before use.",
     { next: "migrate_current_content", ...(details === undefined ? {} : { missing: details }) },
   )
 }

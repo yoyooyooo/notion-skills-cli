@@ -68,7 +68,7 @@ export function contentSearchSource(database: string) {
   return Effect.gen(function* () {
     if (typeof database !== "string" || !database.trim())
       return yield* Effect.fail(
-        fail("INVALID_ARGUMENT", "Content search requires one explicit library entry."),
+        fail("INVALID_ARGUMENT", "Content search requires one explicit Library root."),
       )
     const scope = yield* authScope
     const api = yield* Notion

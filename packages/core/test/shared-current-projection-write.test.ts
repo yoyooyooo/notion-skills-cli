@@ -189,6 +189,11 @@ test("projects complete text to existing Skill and File pages, preserves authori
     projectCurrentSkill(library, { target: written.page_id, operation_id: "project" }),
   )
   expect(result.status).toBe("applied")
+  expect(result.library).toEqual({
+    library_id: library.library_id,
+    database_id: library.skills.database_id,
+    data_source_id: library.skills.data_source_id,
+  })
   expect(result.counts).toEqual({
     total: 6,
     selected: 6,
@@ -2132,6 +2137,11 @@ test("public cancellation keeps an old frozen hash and dense physical links with
     cancelCurrentSkillProjection(library, { target: written.page_id, operation_id }),
   )
   expect(cancelled).toMatchObject({ status: "cancelled", operation_id, input_sha256: inputHash })
+  expect(cancelled.library).toEqual({
+    library_id: library.library_id,
+    database_id: library.skills.database_id,
+    data_source_id: library.skills.data_source_id,
+  })
   expect([...f.blocks]).toEqual(bodies)
   expect(
     (await f.run(queryCurrentSkillIndex(library, written.page_id))).files.map(

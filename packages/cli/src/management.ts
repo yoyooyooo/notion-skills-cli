@@ -47,7 +47,7 @@ function checkedEntry(input: SourceCheckInput, options: ManagementOptions): stri
     typeof input.library !== "string" ||
     !input.library.trim()
   )
-    throw fail("INVALID_ARGUMENT", "Source management requires one explicit library entry.")
+    throw fail("INVALID_ARGUMENT", "Source management requires one explicit Library root.")
   if (
     /^notion_page:/iu.test(input.library) ||
     (/^[a-z][a-z\d+.-]*:\/\//iu.test(input.library) && !/^https?:\/\//iu.test(input.library))

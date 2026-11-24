@@ -917,7 +917,7 @@ function cachedTarget(target: string, database?: string) {
           : observed.snapshot.record.locator.library_id) !== selectedDatabase
       )
         return yield* Effect.fail(
-          fail("SKILL_NOT_FOUND", "Target is outside the selected database."),
+          fail("SKILL_NOT_FOUND", "Target is outside the selected Library."),
         )
       return { page: observed?.snapshot.record.id ?? id, scope: scope! }
     }

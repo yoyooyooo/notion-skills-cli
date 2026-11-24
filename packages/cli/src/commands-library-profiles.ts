@@ -139,7 +139,7 @@ const bind = defineCommand("bind", { profile, library: libraryFlag }, (options) 
   }),
 ).pipe(
   Command.withDescription(
-    "Validate an enabled shared Profile and store only its library entry and Profile ID on this machine. The binding participates in list --default-view and the default capability directory. Bare list remains complete explicit discovery, and an explicit --view takes precedence. Profile rules and membership remain in Notion.",
+    "Validate an enabled shared Profile and store only its Library root and Profile ID on this machine. The binding participates in list --default-view and the default capability directory. Bare list lists the complete selected Library, and an explicit --view takes precedence. Profile rules and membership remain in Notion.",
   ),
 )
 

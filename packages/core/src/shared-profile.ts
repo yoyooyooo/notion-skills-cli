@@ -295,7 +295,7 @@ function invalidateProfileObservation(library: SharedLibrary, profileId: string,
 /**
  * Profile rules use the existing View-observation cache and generation fences.
  * Only a complete, unique current record is cached; local preferences still
- * contain only the selected library entry and Profile ID.
+ * contain only the selected Library root and Profile ID.
  */
 export function loadSharedProfileCached(
   library: SharedLibrary,

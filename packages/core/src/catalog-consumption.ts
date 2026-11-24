@@ -119,7 +119,7 @@ function listCatalogDirectory(options: ListCatalogDirectoryOptions) {
             selection.profile !== undefined &&
             options.library === undefined
           )
-            throw fail("INVALID_ARGUMENT", "A directory Profile requires an explicit database.")
+            throw fail("INVALID_ARGUMENT", "A directory Profile requires an explicit Library root.")
           return selection
         },
         catch: (error) =>

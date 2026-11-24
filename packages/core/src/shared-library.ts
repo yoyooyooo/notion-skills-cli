@@ -141,7 +141,7 @@ export function libraryFromDatabase(raw: unknown): SharedLibrary | undefined {
   if (value.in_trash === true || value.id !== library.skills.database_id)
     throw fail(
       "LIBRARY_INVALID",
-      "The library entry does not match its registered Skills database.",
+      "The descriptor does not match its registered Skills database.",
     )
   exactId(library.library_id)
   if (property(value.parent).page_id !== library.library_id)
@@ -649,7 +649,7 @@ export function initializeSharedLibrary(input: {
     const selectedParent = input.parent
     if (!selectedParent)
       return yield* Effect.fail(
-        fail("INVALID_ARGUMENT", "Select an exact parent page or an existing library entry."),
+        fail("INVALID_ARGUMENT", "Select an exact parent page or an existing Library root."),
       )
     const container = yield* checked(() => exactId(selectedParent))
     const crypto = yield* Crypto.Crypto
@@ -730,7 +730,7 @@ export function initializeSharedLibrary(input: {
               return yield* Effect.fail(
                 fail(
                   "LIBRARY_SCHEMA_CONFLICT",
-                  "The library entry belongs to a different initialization parent, operation or library identity.",
+                  "The Library belongs to a different initialization root, operation or identity.",
                 ),
               )
             for (const binding of [
