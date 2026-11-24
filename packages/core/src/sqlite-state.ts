@@ -16,7 +16,11 @@ import {
   CurrentSourceSyncBatchSchema,
   preservesCurrentSourceSyncBatch,
 } from "./shared-current-source-sync-batch-model.ts"
-import { ImportPlanSchema, preservesCurrentImportPlan } from "./shared-current-import-plan-model.ts"
+import {
+  ImportPlanSchema,
+  currentImportPlanAddressInput,
+  preservesCurrentImportPlan,
+} from "./shared-current-import-plan-model.ts"
 import {
   LibraryInitializationPendingSchema,
   preservesLibraryInitialization,
@@ -799,14 +803,7 @@ export function sqliteState(
                       }),
                     catch: () => fail("STATE_CORRUPT", "Invalid frozen import plan."),
                   })
-                  const address = yield* digest(
-                    JSON.stringify([
-                      next.scope,
-                      next.library_id,
-                      next.skills_data_source_id,
-                      next.operation_id,
-                    ]),
-                  )
+                  const address = yield* digest(currentImportPlanAddressInput(next))
                   if (
                     key !== `operations/import-plan/${address}/plan.json` ||
                     !preservesCurrentImportPlan(next, next)

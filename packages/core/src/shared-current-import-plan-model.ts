@@ -62,6 +62,13 @@ export const ImportPlanSchema = Schema.Struct({
 )
 export type ImportPlan = typeof ImportPlanSchema.Type
 
+/** A replacement table must not make an unfinished root-owned plan disappear. */
+export function currentImportPlanAddressInput(
+  value: Pick<ImportPlan, "scope" | "library_id" | "operation_id">,
+): string {
+  return JSON.stringify([value.scope, value.library_id, value.operation_id])
+}
+
 /** Dispatch progress is additive. The compiled mapping, content, relation
  * policy and each started child's exact payload can never be replaced. */
 export function preservesCurrentImportPlan(before: unknown, after: unknown): boolean {
