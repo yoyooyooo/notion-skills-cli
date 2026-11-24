@@ -7,7 +7,9 @@ import re
 import subprocess
 
 
-def source_identity(repository, protected_files, environment=None):
+def source_identity(repository, protected_files, environment=None, role="cli"):
+    if role not in ("cli", "broker"):
+        raise ValueError("Formal source provenance: unknown paired role")
     repository = Path(repository).resolve(strict=True)
     environment = os.environ if environment is None else environment
     observed = subprocess.run(
@@ -34,17 +36,19 @@ def source_identity(repository, protected_files, environment=None):
         require(isinstance(value, dict), "expected a manifest object")
         return value, hashlib.sha256(raw).hexdigest()
 
-    require(environment.get("PAIRED_CLI_SOURCE") and environment.get("PAIRED_RUN_ROOT"),
+    source_variable = "PAIRED_" + role.upper() + "_SOURCE"
+    role_name = role.upper()
+    require(environment.get(source_variable) and environment.get("PAIRED_RUN_ROOT"),
             "gitless sources require the official paired run")
-    require(absolute(environment["PAIRED_CLI_SOURCE"]) == repository, "selected CLI source differs")
+    require(absolute(environment[source_variable]) == repository, "selected " + role_name + " source differs")
     run_root = absolute(environment["PAIRED_RUN_ROOT"])
     run, run_hash = read(run_root / "run.json")
     require(run.get("version") == 1 and run.get("kind") == "isolated-development-run"
             and run.get("target") == "command", "unexpected run manifest")
     require(absolute(run.get("root")) == run_root and run.get("run_id") == run_root.name,
             "run root or ID differs")
-    require(absolute(run.get("paths", {}).get("PAIRED_CLI_SOURCE")) == repository
-            and (run_root / "source/cli").resolve() == repository, "run CLI source differs")
+    require(absolute(run.get("paths", {}).get(source_variable)) == repository
+            and (run_root / "source" / role).resolve() == repository, "run " + role_name + " source differs")
     build_root = absolute(run.get("build_root"))
     build, build_hash = read(build_root / "build.json")
     require(build.get("version") == 1 and build.get("kind") == "paired-build",
@@ -54,9 +58,9 @@ def source_identity(repository, protected_files, environment=None):
             "selected build root or ID differs")
     require(isinstance(run.get("environment_id"), str) and run["environment_id"]
             and run["environment_id"] == build.get("environment_id"), "environment ID differs")
-    source = build.get("sources", {}).get("cli", {})
+    source = build.get("sources", {}).get(role, {})
     require(isinstance(source, dict) and re.fullmatch(r"[a-f0-9]{40}", source.get("commit", "")),
-            "missing original CLI commit")
+            "missing original " + role_name + " commit")
     members = source.get("files")
     require(isinstance(members, list), "missing source inventory")
     digest = hashlib.sha256(json.dumps(members, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
@@ -92,3 +96,13 @@ def source_identity(repository, protected_files, environment=None):
             "protected_source_files_verified": sorted(verified),
         },
     }
+
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repository", type=Path, required=True)
+    parser.add_argument("--role", choices=("cli", "broker"), default="cli")
+    args = parser.parse_args()
+    print(json.dumps(source_identity(args.repository, json.load(sys.stdin), role=args.role)))

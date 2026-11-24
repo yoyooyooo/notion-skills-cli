@@ -16,10 +16,11 @@ const suites = [
   "notion-mcp-search",
   "skill-reference",
 ]
-test("gitless formal mutations require the selected paired build and original protected bytes", (t) => {
+for (const role of ["cli", "broker"]) test(`gitless ${role} formal runs require the selected paired build and original protected bytes`, (t) => {
   const scratch = mkdtempSync(join(tmpdir(), "notion-formal-source-identity-"))
   const runRoot = join(scratch, "runs", "fixture-run")
-  const repository = join(runRoot, "source", "cli")
+  const repository = join(runRoot, "source", role)
+  const sourceVariable = "PAIRED_" + role.toUpperCase() + "_SOURCE"
   const buildRoot = join(scratch, "builds", "fixture-build")
   const sourceName = "packages/core/src/guard.ts"
   const dependencyName = "packages/core/node_modules/@effect/platform-node-shared/src/dependency.ts"
@@ -39,7 +40,7 @@ test("gitless formal mutations require the selected paired build and original pr
     root: buildRoot,
     environment_id: "fixture-environment",
     build_id: "fixture-build",
-    sources: { cli: source },
+    sources: { [role]: source },
   }
   const run = {
     version: 1,
@@ -50,9 +51,9 @@ test("gitless formal mutations require the selected paired build and original pr
     run_id: "fixture-run",
     build_id: "fixture-build",
     build_root: buildRoot,
-    paths: { PAIRED_CLI_SOURCE: repository },
+    paths: { [sourceVariable]: repository },
   }
-  const environment = { PAIRED_CLI_SOURCE: repository, PAIRED_RUN_ROOT: runRoot }
+  const environment = { [sourceVariable]: repository, PAIRED_RUN_ROOT: runRoot }
   const protectedFiles = {
     [sourceName]: files[0].sha256,
     [dependencyName]: digest(dependency),
@@ -74,13 +75,13 @@ test("gitless formal mutations require the selected paired build and original pr
           "from pathlib import Path",
           "from scripts.formal_source_identity import source_identity",
           "request = json.load(sys.stdin)",
-          "print(json.dumps(source_identity(Path(request['repository']), request['files'], request['environment'])))",
+          "print(json.dumps(source_identity(Path(request['repository']), request['files'], request['environment'], request['role'])))",
         ].join("\n"),
       ],
       {
         cwd: root,
         encoding: "utf8",
-        input: JSON.stringify({ repository, files: protectedFiles, environment: env }),
+        input: JSON.stringify({ repository, files: protectedFiles, environment: env, role }),
       },
     )
   const rejected = (result, reason) => {
@@ -95,9 +96,15 @@ test("gitless formal mutations require the selected paired build and original pr
   assert.deepEqual(identity.source_provenance.protected_source_files_verified, [sourceName])
   assert.equal(identity.source_provenance.original_commit, source.commit)
   assert.equal(identity.source_provenance.source_inventory_sha256, source.sha256)
+  const command = spawnSync("python3", ["-B", join(root, "scripts/formal_source_identity.py"),
+    "--repository", repository, "--role", role], {
+    encoding: "utf8", input: JSON.stringify(protectedFiles), env: { ...process.env, ...environment },
+  })
+  assert.equal(command.status, 0, command.stderr)
+  assert.deepEqual(JSON.parse(command.stdout), identity)
 
   rejected(inspect({}), /gitless sources require the official paired run/)
-  rejected(inspect({ ...environment, PAIRED_CLI_SOURCE: buildRoot }), /selected CLI source differs/)
+  rejected(inspect({ ...environment, [sourceVariable]: buildRoot }), new RegExp("selected " + role.toUpperCase() + " source differs"))
   const missing = join(scratch, "missing-manifest")
   mkdirSync(missing)
   rejected(inspect({ ...environment, PAIRED_RUN_ROOT: missing }), /FileNotFoundError/)
@@ -109,13 +116,13 @@ test("gitless formal mutations require the selected paired build and original pr
   rejected(inspect(), /selected build root or ID differs/)
   save(run, { ...build, environment_id: "another-environment" })
   rejected(inspect(), /environment ID differs/)
-  save(run, { ...build, sources: { cli: { ...source, sha256: "0".repeat(64) } } })
+  save(run, { ...build, sources: { [role]: { ...source, sha256: "0".repeat(64) } } })
   rejected(inspect(), /source inventory digest differs/)
   const changedFiles = [{ path: sourceName, sha256: "e".repeat(64) }]
   save(run, {
     ...build,
     sources: {
-      cli: { ...source, files: changedFiles, sha256: digest(JSON.stringify(changedFiles)) },
+      [role]: { ...source, files: changedFiles, sha256: digest(JSON.stringify(changedFiles)) },
     },
   })
   rejected(inspect(), /protected source differs from the selected build/)
