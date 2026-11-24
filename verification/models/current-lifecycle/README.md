@@ -83,6 +83,12 @@ readback 和随后远端写入不是原子事务。Ready 记录核验发布时�
 冻结 current binding 与真实 SQLite 不可变身份。独立夹具先固化物理事实，
 不从被测描述符推导期望结果。模型、行为测试与 mutation 各自以实际运行回执为准。
 
+DS 的 parent 同时由 `inspectTable` 与最终 Sources relations readback 的
+`dataSource` 核验。单独移除前者仍安全拒绝，原存活回放保留为冗余防御证据，
+不记作 mutation 检出。对应 invariant 的 compound mutation 明确移除这两处
+parent 检查，保留 ID、Trash、schema 和关系检查；运行器逐文件保留原件、突变件、
+hash 与恢复核对，必须由独立 foreign-parent 的 Ready 拒绝断言检出。
+
 导入计划还必须穿过实际 SQLite Store。`shared-current-import-plan.node.test.ts`
 在四个独立进程中保存计划、拒绝重复 apply 与同根换表、恢复原 child 并完成退役，
 且禁止所有 Notion 请求。`library-import-sqlite-address` 将 SQLite 校验恢复为旧的

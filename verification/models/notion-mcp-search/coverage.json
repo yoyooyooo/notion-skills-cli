@@ -296,9 +296,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "DisabledHasNoNetwork"
-      ]
+      "expected_broken": ["DisabledHasNoNetwork"]
     },
     {
       "model": "SearchAdmission",
@@ -322,9 +320,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "MetadataDoesNotStartMcp"
-      ]
+      "expected_broken": ["MetadataDoesNotStartMcp"]
     },
     {
       "model": "SearchAdmission",
@@ -348,9 +344,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "RestAdmissionExistsBeforeSearch"
-      ]
+      "expected_broken": ["RestAdmissionExistsBeforeSearch"]
     },
     {
       "model": "SearchAdmission",
@@ -374,9 +368,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "QueryUsesBoundConnection"
-      ]
+      "expected_broken": ["QueryUsesBoundConnection"]
     },
     {
       "model": "SearchAdmission",
@@ -400,9 +392,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "RetiredRequestCannotDispatch"
-      ]
+      "expected_broken": ["RetiredRequestCannotDispatch"]
     },
     {
       "model": "SearchAdmission",
@@ -426,9 +416,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "AuthorizedBeforeDisclosure"
-      ]
+      "expected_broken": ["AuthorizedBeforeDisclosure"]
     },
     {
       "model": "SearchAdmission",
@@ -452,9 +440,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "WorkspaceResponseRequired"
-      ]
+      "expected_broken": ["WorkspaceResponseRequired"]
     },
     {
       "model": "SearchAdmission",
@@ -478,10 +464,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "AuthorizedBeforeDisclosure",
-        "RetiredResultCannotPublish"
-      ]
+      "expected_broken": ["AuthorizedBeforeDisclosure", "RetiredResultCannotPublish"]
     },
     {
       "model": "SearchAdmission",
@@ -505,9 +488,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "SearchKeepsPins"
-      ]
+      "expected_broken": ["SearchKeepsPins"]
     },
     {
       "model": "SearchAdmission",
@@ -531,9 +512,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "RemoteHitIsNotExactByteProof"
-      ]
+      "expected_broken": ["RemoteHitIsNotExactByteProof"]
     },
     {
       "model": "SearchAdmission",
@@ -557,9 +536,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "EmptyIsNotExhaustiveAbsence"
-      ]
+      "expected_broken": ["EmptyIsNotExhaustiveAbsence"]
     },
     {
       "model": "SearchAdmission",
@@ -584,9 +561,7 @@
         "NoDeadlock",
         "NoNativeDisclosed"
       ],
-      "expected_broken": [
-        "NoNativeDisclosed"
-      ]
+      "expected_broken": ["NoNativeDisclosed"]
     },
     {
       "model": "SearchAdmission",
@@ -611,9 +586,7 @@
         "NoDeadlock",
         "NoProjectionDisclosed"
       ],
-      "expected_broken": [
-        "NoProjectionDisclosed"
-      ]
+      "expected_broken": ["NoProjectionDisclosed"]
     },
     {
       "model": "SearchAdmission",
@@ -637,9 +610,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "BindingResolvedBeforeSearch"
-      ]
+      "expected_broken": ["BindingResolvedBeforeSearch"]
     },
     {
       "model": "SearchAdmission",
@@ -663,9 +634,7 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "RetiredStatusCannotPublish"
-      ]
+      "expected_broken": ["RetiredStatusCannotPublish"]
     },
     {
       "model": "SearchAdmission",

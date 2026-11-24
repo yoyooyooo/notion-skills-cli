@@ -45,7 +45,8 @@
     "packages/core/test/shared-current-write.test.ts": "f2acccd10ee328eadaa41264e862fb07bd587eb44ba85863d9239cb3882f3ac5",
     "packages/core/test/shared-current-import-plan.test.ts": "07d683662216ed09e8cb274cdb8f7cf4cbaf8afa048fb140d3bfe5ebc86b1730",
     "packages/core/test/shared-current-operation.node.test.ts": "5a1344e8eb7a052660f8d32a7654c765573b5a64251136d03b58496182e1f47c",
-    "packages/core/test/shared-current-import-plan.node.test.ts": "6063bf7ba7fedd705d79f717d971971dc045464fe9fda760038d19c483654a23"
+    "packages/core/test/shared-current-import-plan.node.test.ts": "6063bf7ba7fedd705d79f717d971971dc045464fe9fda760038d19c483654a23",
+    "packages/core/src/shared-sources-library.ts": "4dceacdb4a2be5f5ddc797f5298ecb75086a9700ec003d39e4df872d80189b42"
   },
   "models": {
     "CurrentLifecycle": {
@@ -1056,9 +1057,10 @@
         "packages/core/src/shared-library.ts",
         "packages/core/src/shared-library-model.ts",
         "packages/core/test/library-lifecycle-guards.test.ts",
-        "packages/core/test/library-schema-fixture.ts"
+        "packages/core/test/library-schema-fixture.ts",
+        "packages/core/src/shared-sources-library.ts"
       ],
-      "scope": "Requested root, descriptor claims, actual DB parent and actual DS parent are independently fixed. Complete child pagination must find exactly one descriptor; every registered role is present and its physical/schema binding is read before returning Ready. Actual guard mutations cover wrong root, moved Files DB, foreign DS, missing Sources schema and a second descriptor on a later child page. Normal inspection has no semantic writes."
+      "scope": "Requested root, descriptor claims, actual DB parent and actual DS parent are independently fixed. Complete child pagination must find exactly one descriptor; every registered role is present and its physical/schema binding is read before returning Ready. Actual guard mutations cover wrong root, moved Files DB, foreign DS, missing Sources schema and a second descriptor on a later child page. Normal inspection has no semantic writes. Data-source parents have two independent enforcers: inspectTable and final Sources relation readback through shared-sources-library.dataSource. The first single-guard mutant remained safely rejected and its failed mutation run is retained. The invariant-level compound mutant removes only these two parent checks, keeps ID/trash/schema/relations checks, and must allow the independent foreign-parent fixture to reach an erroneous Ready result; baseline and exact two-file restoration must pass."
     },
     {
       "name": "library_original_initialization_intent",
@@ -1244,7 +1246,8 @@
     "reviewed_against": "5a3f36f",
     "guard_replay": "Thirteen Library cases in the existing current-lifecycle mutation runner; baseline/mutant/restored results are separate run evidence. Nine prior current/Source cases remain, for twenty-two total.",
     "limitations": "One cooperating owner/local lock; complete readback is an observation and no Notion cross-table CAS or power-loss guarantee is claimed.",
-    "reviewed_through": "3361718496e3b0f4a3886764cb28ef88079703c4"
+    "reviewed_through": "3361718496e3b0f4a3886764cb28ef88079703c4",
+    "data_source_parent_mutation": "Explicit two-file invariant-level mutation: initial inspectTable parent guard plus final relation dataSource parent guard. Single-guard survival is retained as evidence of redundant enforcement, not counted as a killed mutant."
   },
   "library_root_review": {
     "reviewed_from": "5a3f36f",

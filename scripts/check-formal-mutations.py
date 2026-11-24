@@ -400,22 +400,38 @@ def run(label, test, pattern):
 def passed_test(p):
     return (any(a["status"] == "passed" for a in p.real_assertions)
             if hasattr(p, "real_assertions") else "(pass)" in p.stdout + p.stderr)
+# Files/Skills/Records/Sources parent ownership is independently enforced by
+# inspectTable and the final relation readback. Removing only one is safely
+# rejected by the other; this one invariant-level mutant removes both checks.
+additional_mutation_files = {
+    "library-physical-data-source-parent": [
+        ("packages/core/src/shared-sources-library.ts",
+         [("property(row.parent).database_id !== table.database_id", "false")]),
+    ],
+}
 save()
 for name, filename, replacements, test, pattern, rule in cases:
-    target = fixture / filename
-    original = target.read_bytes()
-    (originals / (name + ".original")).write_bytes(original)
-    text = original.decode()
-    for old, new in replacements:
-        assert text.count(old) == 1, (name, "guard drift", old, text.count(old))
-        text = text.replace(old, new, 1)
-    mutated = text.encode()
-    (originals / (name + ".mutant")).write_bytes(mutated)
+    mutations = []
+    for index, (member, changes) in enumerate(
+            [(filename, replacements), *additional_mutation_files.get(name, [])]):
+        target = fixture / member
+        original = target.read_bytes()
+        stem = name if index == 0 else name + "." + str(index) + "." + target.name
+        (originals / (stem + ".original")).write_bytes(original)
+        text = original.decode()
+        for old, new in changes:
+            assert text.count(old) == 1, (name, member, "guard drift", old, text.count(old))
+            text = text.replace(old, new, 1)
+        mutated = text.encode()
+        (originals / (stem + ".mutant")).write_bytes(mutated)
+        mutations.append((member, target, original, mutated))
+    assert len({target for _, target, _, _ in mutations}) == len(mutations), name
     baseline, baseline_seconds = run(name + "-baseline", test, pattern)
     assert baseline.returncode == 0, (name, "baseline failed", baseline.stderr)
     assert passed_test(baseline), (name, "no baseline test ran")
-    target.write_bytes(mutated)
     try:
+        for _, target, _, mutated in mutations:
+            target.write_bytes(mutated)
         broken, broken_seconds = run(name + "-mutant", test, pattern)
         output = broken.stdout + broken.stderr
         assert broken.returncode != 0, (name, "real mutation escaped")
@@ -425,16 +441,21 @@ for name, filename, replacements, test, pattern, rule in cases:
                        for message in broken.assertion_failures), (
                 name, "survivor must encounter the creator's closed scheduler", output)
     finally:
-        assert target.read_bytes() == mutated, (name, "concurrent fixture modification")
-        target.write_bytes(original)
+        unchanged = all(target.read_bytes() == mutated for _, target, _, mutated in mutations)
+        for _, target, original, _ in mutations:
+            target.write_bytes(original)
+        assert unchanged, (name, "concurrent fixture modification")
     restored, restored_seconds = run(name + "-restored", test, pattern)
     assert restored.returncode == 0, (name, "restored failed", restored.stderr)
     assert passed_test(restored), (name, "no restored test ran")
-    assert target.read_bytes() == original
+    assert all(target.read_bytes() == original for _, target, original, _ in mutations)
+    _, _, original, mutated = mutations[0]
     row = {
         "case": name, "rule": rule, "file": filename,
         "test": test, "test_pattern": pattern,
         "original_sha256": sha(original), "mutant_sha256": sha(mutated),
+        "mutated_files": [{"file": member, "original_sha256": sha(before),
+                           "mutant_sha256": sha(after)} for member, _, before, after in mutations],
         "baseline_exit": baseline.returncode, "mutant_exit": broken.returncode,
         "restored_exit": restored.returncode,
         "seconds": [baseline_seconds, broken_seconds, restored_seconds],
