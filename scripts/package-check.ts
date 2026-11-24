@@ -252,10 +252,14 @@ if (
   sdk?.contract !== "current-only" ||
   sdk.selection !== "all" ||
   sdk.failed !== 0 ||
-  sdk.passed !== 13 ||
+  sdk.passed !== 14 ||
   !sdk.cases.some(
     (entry: { name: string; status: string }) =>
       entry.name === "installed-pure-reference-module" && entry.status === "passed",
+  ) ||
+  !sdk.cases.some(
+    (entry: { name: string; status: string }) =>
+      entry.name === "installed-library-selection-is-local-and-fresh" && entry.status === "passed",
   )
 )
-  throw new Error("The installed current SDK gate did not complete its 13 current contract cases.")
+  throw new Error("The installed current SDK gate did not complete its 14 current contract cases.")
