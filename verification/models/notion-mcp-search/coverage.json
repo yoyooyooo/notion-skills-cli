@@ -6,18 +6,18 @@
   "correspondence": "One request, nine remote result classes, two fixed selection pins, four independent epoch owners and a two-tick deadline. Source hashes bind reviewed working-tree bytes; source_base is their baseline, not a claim that new bytes were already committed.",
   "review_basis": "Preserves SearchAdmission v4 transitions, complete independent expected rule inventories and expected counterexamples. Reviews REST preflight before MCP dispatch, verified same-physical-entry access, explicit connection/grant epoch checks before and after refresh, current physical page/owner/stable-claim/source admission, retained disabled observations, supporting File binding rereads, and final source/credential/deadline fences. The hosted wire decoder accepts only observed workspace_search shapes and never upgrades remote matching to exact consumption-byte proof. Broker owns disabled tool registration, host session/metadata qualification and active pins; its separate suite and installed Pi acceptance must establish those obligations. Node source-mode review: the package-version import now uses the existing default JSON import with type=json attribute and reads the same manifest.version. This corrects native Node module loading; operation, admission, deadline, credential and result semantics are unchanged. The existing real source-mode dev-launcher regression and full installed-package check must pass. Native Node type-erasure review: NotionMcpClient stores the identical options through an explicit readonly field and constructor assignment instead of a TypeScript parameter property. Transport, schema, byte/deadline budgets and result guards are unchanged; the real source-mode launcher, transport and SDK regressions verify this boundary. Reviewed the AH-1277 SDK boundary extraction at 90051b844aa15a86975054c81df83981c3c3a028 against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. runOperation now delegates to the shared runRuntimeOperation while retaining the consumption capability check before service acquisition. The complete per-call environment, pre-abort check, nodeRuntime/ConfigProvider, Notion acquisition, Effect.scoped lifetime, AbortSignal, error propagation and final metrics callback retain their reviewed behavior. The helper is independently hash-bound below so moving the implementation does not remove its protection. Resolving cwd now precedes rejection of an invalid readOnly option; this changes no legal invocation or network admission and is outside the finite model. Management chooses its own factory; consumption still uses its existing read-only boundary. No finite model, configuration, independent rule inventory or existing guard mutation target changes. This is a source-correspondence review, not a new verification result. Reviewed the Skill-reference v2 task diff against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. The shared Skill constructor now emits complete canonical root URIs and validates lowercase stable Skill IDs through the shared protocol. Current record refs use the same formatter; cached identity must still match its locator and declared kind entrypoint. Stable-claim lookup uses that constructor without changing complete pagination, disabled-claim participation, physical admission or freshness checks. SDK exports SKILL_REF_VERSION. Both search models, all 23 configurations and the eight search mutation targets are unchanged. This updates only the three reviewed source pins and does not claim a verification run. Integration checkpoint: preserve every upstream SourceSync and SourceSyncProgress model, case, implementation binding and source guard. The final merged source bytes, including SDK changes shared by both branches, still require a fresh diff review before final hash binding and execution. Final integration review against upstream next 9d986a83aaae35e3f9f6cd35341add0476f5c887 and task checkpoint ad7d09c9cd21aad6e318eca52bcb167b46e9bf78: the merged SDK differs from upstream only by re-exporting SKILL_REF_VERSION. All search source/auth/epoch guards, 23 complete case inventories, implementation bindings and the reviewed mutation inventory remain unchanged. Upstream gitless paired-build source identity and runner counterexamples are retained. Only the reviewed SDK hash is rebound; a final frozen-source receipt is required separately.",
   "files": {
-    "packages/core/src/notion-mcp-search.ts": "c8e97baf785ede69d0da6f8d67c14676ab77e23a85f8fe5d246e5819a8e01632",
+    "packages/core/src/notion-mcp-search.ts": "299e3edc6a054d24ce6489b2f741cf247a9636223fb350063fb500d30126560a",
     "packages/core/src/shared-current-index.ts": "3f904a6a590fd3e2be765caf7343125c2c474485f38278995df5c2d70848ff62",
     "packages/core/src/shared-skill-targets.ts": "b73e7ee9c84293f44013fd17ecfc2e9dab18e7af2ffbaa26489a5818ff738dea",
     "packages/core/src/shared-content.ts": "04c158c5b8e915b95cfcd700bc981cb6f8f4e39bc543062702993027b13c6218",
-    "packages/core/test/notion-mcp-search.test.ts": "4a264aa1b763bfa9e4d50480fd2ad0fbaf436bd53bcb260568921ada403c1772",
-    "packages/core/test/shared-current-fixture.ts": "15c96f0556956bbac3138ecf49118a765e66f3c7fe35fff4913476e1b0cd4b1e",
-    "packages/cli/src/sdk.ts": "79b8e7faf987d09ac217f38fcf0b1b854e677c5ed7a78add82a055d3c0fd4f5f",
-    "packages/cli/src/operation-runtime.ts": "51d97df5587658afb4f5159e374c77062f47583ccf29f21c19c115ee766ace64",
-    "packages/cli/src/commands-content.ts": "f5243b69ba79b57e0df25a9f9ad36ba64713caea738f05777ad4f466487b9274",
+    "packages/core/test/notion-mcp-search.test.ts": "05247c993ca3939767ecdaee8980d0f8c66be12741efdddf76d5712079f0391e",
+    "packages/core/test/shared-current-fixture.ts": "ed69b28c12a69b12dbcc5fbbe6f5dd8015982689734756db4cbcf28ee4f5ccaa",
+    "packages/cli/src/sdk.ts": "44c7c22cd676e543c55f3e425accf7fc385aaf8e296e67ca5ebf7e456b2e8e75",
+    "packages/cli/src/operation-runtime.ts": "952b627e875d32f2d9e331941cb8b184908a368e688f80e2e472b00c14972d97",
+    "packages/cli/src/commands-content.ts": "12aa116d3f0e7ff13d8c92dfa7b2d9465a98aa072644b0264f2c45d92e9f5b1b",
     "packages/core/src/notion-mcp-client.ts": "e30a584dd1e0f73df0f2876170c84d055b7808100c8c0bb374ac8bf380b4ae46",
     "packages/core/test/notion-mcp-client.test.ts": "05d4ec7de65e1b7bd815e89a1a7f89a2ddc7855e1d2a4a409d763269b48e8f1f",
-    "packages/core/test/sdk-mcp-search.node.test.ts": "33dda3f1d81971411c17e8fe1af440067145872acac6c360228db838cf1d5f64"
+    "packages/core/test/sdk-mcp-search.node.test.ts": "f8341c3c1c577f26ec8e3383f5cfac018b539c217e5766907b5b3e0f687ad304"
   },
   "models": {
     "SearchAdmission": {
@@ -74,6 +74,17 @@
         "packages/cli/src/operation-runtime.ts"
       ],
       "scope": "Real loopback REST and MCP services, independent private credential store, preflight dispatch ordering, no explicit-token fallback, wrong workspace/entry suppression, positive/empty responses, revoked/replaced grants during query/401 refresh, cancellation and deadline propagation. No product function is mocked."
+    },
+    {
+      "name": "sdk3_physical_library_scope",
+      "files": [
+        "packages/cli/src/sdk.ts",
+        "packages/cli/src/operation-runtime.ts",
+        "packages/cli/src/commands-content.ts",
+        "packages/core/src/notion-mcp-search.ts",
+        "packages/core/test/sdk-mcp-search.node.test.ts"
+      ],
+      "scope": "An explicit library selects the canonical root; MCP fetch uses that actual root URL. REST physical Library validation still precedes authorization, reruns after authorization and before publication, while grant/connection/current-owner checks and non-exhaustive search semantics remain. New independent HTTP fixtures serve real root/DB/DS placement; queue/latch cancellation and deadline tests wait on the intended query rather than counting root schema traffic as Skill/File body reads."
     }
   ],
   "unmodeled_bindings": [
@@ -285,7 +296,9 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["DisabledHasNoNetwork"]
+      "expected_broken": [
+        "DisabledHasNoNetwork"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -309,7 +322,9 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["MetadataDoesNotStartMcp"]
+      "expected_broken": [
+        "MetadataDoesNotStartMcp"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -333,7 +348,9 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["RestAdmissionExistsBeforeSearch"]
+      "expected_broken": [
+        "RestAdmissionExistsBeforeSearch"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -357,7 +374,9 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["QueryUsesBoundConnection"]
+      "expected_broken": [
+        "QueryUsesBoundConnection"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -381,7 +400,9 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["RetiredRequestCannotDispatch"]
+      "expected_broken": [
+        "RetiredRequestCannotDispatch"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -405,7 +426,9 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["AuthorizedBeforeDisclosure"]
+      "expected_broken": [
+        "AuthorizedBeforeDisclosure"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -429,7 +452,9 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["WorkspaceResponseRequired"]
+      "expected_broken": [
+        "WorkspaceResponseRequired"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -453,7 +478,10 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["AuthorizedBeforeDisclosure", "RetiredResultCannotPublish"]
+      "expected_broken": [
+        "AuthorizedBeforeDisclosure",
+        "RetiredResultCannotPublish"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -477,7 +505,9 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["SearchKeepsPins"]
+      "expected_broken": [
+        "SearchKeepsPins"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -501,7 +531,9 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["RemoteHitIsNotExactByteProof"]
+      "expected_broken": [
+        "RemoteHitIsNotExactByteProof"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -525,7 +557,9 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["EmptyIsNotExhaustiveAbsence"]
+      "expected_broken": [
+        "EmptyIsNotExhaustiveAbsence"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -550,7 +584,9 @@
         "NoDeadlock",
         "NoNativeDisclosed"
       ],
-      "expected_broken": ["NoNativeDisclosed"]
+      "expected_broken": [
+        "NoNativeDisclosed"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -575,7 +611,9 @@
         "NoDeadlock",
         "NoProjectionDisclosed"
       ],
-      "expected_broken": ["NoProjectionDisclosed"]
+      "expected_broken": [
+        "NoProjectionDisclosed"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -599,7 +637,9 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["BindingResolvedBeforeSearch"]
+      "expected_broken": [
+        "BindingResolvedBeforeSearch"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -623,7 +663,9 @@
         "RequestTerminates",
         "NoDeadlock"
       ],
-      "expected_broken": ["RetiredStatusCannotPublish"]
+      "expected_broken": [
+        "RetiredStatusCannotPublish"
+      ]
     },
     {
       "model": "SearchAdmission",
@@ -653,5 +695,12 @@
         "RetiredStatusCannotPublish"
       ]
     }
-  ]
+  ],
+  "library_root_review": {
+    "reviewed_from": "5a3f36f",
+    "reviewed_through": "3361718496e3b0f4a3886764cb28ef88079703c4",
+    "scope": "Canonical root UUID selection, SDK3 library options, independently declared physical root/four-DB/four-DS fixtures, complete root readback and full frozen Library bindings. Reviewed the actual 9f9a641 restart checks, 419123f metadata classification, 53240db projection receipts, 53fe6b7 shared durable import address and the subsequent formatting-only changes.",
+    "preserved": "No existing finite model, candidate/defect/witness configuration, independent expected_rules or expected_broken inventory is weakened. Request admission, current-read final fences, MCP connection/grant epochs and cancellation remain the original owner contracts.",
+    "evidence_boundary": "Source hashes bind reviewed bytes; they are not passing run receipts, remote CAS, cross-machine exclusion, Notion indexing proof or implementation refinement. Real root children stay actual Notion body observations; metadata regressions allow only the exact root page/children and declared schema reads, while Skill/File body reads remain distinct."
+  }
 }

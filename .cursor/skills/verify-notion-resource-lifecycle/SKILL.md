@@ -50,6 +50,10 @@ current-lifecycle 的 LibraryLifecycle 全部正反配置。用独立 world fact
 接受丢响应且不可见。完整读回才 Ready；只读检查零语义写。原 pending 寻址与读到后的
 绑定比较要分别验证，不能只测一个 helper。SDK/CLI 和 SQLite 结果沿原领域入口，
 Broker 的 branch/turn/迟到目录沿其 consumer-state 的 LibrarySession。
+导入计划必须含 `shared-current-import-plan.node.test.ts` 的真实 Store 重启回放。
+先保存并观察计划，再跨进程验证重复 apply、同根 Files DB/Skills DS 变化、原 child
+续跑与完成退役。地址 helper 和内存 fixture 通过，不能替代 coordinator/SQLite
+使用同一地址的证明；`library-import-sqlite-address` 恢复旧含 DS 校验来检出这类裂缝。
 
 检查全部正例/预期反例与条件进展；明确外部返回、显式 resume 及公平性假设。NoDeadlock 不等于最终恢复。实际 guard 原件通过、突变行为失败、恢复通过；导入/语法错误不算检出。
 

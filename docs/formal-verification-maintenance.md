@@ -66,7 +66,7 @@ root/DB/DS 的独立事实及原 pending 存在是 oracle，不能直接复用�
 
 `scripts/check-formal-mutations.py --suite request-engine` 在独立副本中回放 19 个实际 guard。每个必须原件通过、突变导致行为断言失败、恢复后通过。`formal_mutation_result.py` 只接受真实断言诊断；expect 统计行、超时、导入失败或语法错误都不算捕获，混有断言的工具失败也拒绝。现有 runner contract 测试用实际 Bun 输出和 Vitest 结构化错误核对判据。异步用例必须无条件释放自有 latch，让断言错误能够完成退出。当前 immutable runtime case 修改 `shared-current-resource.ts`，并通过公开 SDK 取消 creator，确认另一个 runtime 的读取仍可完成。
 
-同一入口的 `--suite current-lifecycle` 回放二十一个实际 guard，其中原有九个是：原有 current 最后读回 fence、projection 分类、never-replay 的未知 action、非内容完成时的 owner 资格；新增 Source 完整 affected 范围、pending 优先、精确 observed commit、no-op 配置 receipt 与 manager/generation 恢复资格。pending mutation 同时移除本地 pipeline 和远端原意图两道拒绝，因为单独去掉一层仍会安全阻塞。只改 projection 外层 activation 条件也会被下一层写入边界拒绝；这种未触发对应行为断言的异常不是该性质已被杀死。各 mutation 必须与模型的真实坏路径一致。Library 的十二条回放另查原 root CREATE 意图、未知写入、根单调性、真实 DB/DS parent、完整 schema/分页、原 current/import pending 寻址和 SQLite 完整绑定；独立物理事实和原 Store 意图不能由候选描述符或新 lookup key 自证。
+同一入口的 `--suite current-lifecycle` 回放二十二个实际 guard，其中原有九个是：原有 current 最后读回 fence、projection 分类、never-replay 的未知 action、非内容完成时的 owner 资格；新增 Source 完整 affected 范围、pending 优先、精确 observed commit、no-op 配置 receipt 与 manager/generation 恢复资格。pending mutation 同时移除本地 pipeline 和远端原意图两道拒绝，因为单独去掉一层仍会安全阻塞。只改 projection 外层 activation 条件也会被下一层写入边界拒绝；这种未触发对应行为断言的异常不是该性质已被杀死。各 mutation 必须与模型的真实坏路径一致。Library 的十三条回放另查原 root CREATE 意图、未知写入、根单调性、真实 DB/DS parent、完整 schema/分页、原 current/import pending 寻址和 SQLite 完整绑定；独立物理事实和原 Store 意图不能由候选描述符或新 lookup key 自证。 新增真实 SQLite 地址回放专门复现 coordinator 已改为 root/operation、持久层仍含 DS 的裂缝；四个 Node 子进程贯穿真实保存、重启、换表拒绝、child 恢复和退役。其 mutant 必须以行为断言失败，不能用类型或导入错误替代。
 
 SourceSync 的七个故意缺陷配置不等于七个独立实现 guard。旧投影归属和 Source/projection 结果分离还依赖原有有限内核，专属 sync 回归在真实协调路径中验证它们，不虚构每条性质都有一个可删除的 `if`。完成 Source 写入后丢失本地 phase 保存，再发生人工 Main metadata 漂移的情况由真实 writer 的只读 `verify_only` 回放；该边界没有被两个抽象 child 步骤证明。
 
@@ -85,3 +85,11 @@ RequestAdmission 不建模多步骤 import、字节流、multipart 或有限 Ope
 请求模型仍只证明 safety/NoDeadlock；CurrentLifecycle 的条件进展要求外部调用返回、准确显式 resume 及所列弱公平性。SourceSync 另假设 affected 范围内的单写者与一次保留原意图的重入；它的两个 child 步骤不证明真实多文件事务、未知请求或 SQLite 持久性。SourceSyncProgress 限于两个 Source 各两个目标、一次崩溃及一次 retryable，最多六次调用，且每次预算必须覆盖完整 scope preflight 加一个剩余目标。这一次崩溃可在目标游标保存前或 parent checkpoint 成功后发生；精确 parent 完成资格抽象为两个身份。永久失败和任意小预算不在进展承诺内；full 进度保存在原 dispatch parent，缓存和墙钟不授权 child 清理。blocked 是保留未知意图的明确结果，partial 也不算业务全完成；这些假设必须随回执保留。Mini 调度、时区、升级、installed package generation 和磁盘治理沿真实运行验收，不能由模型代填。
 
 发现当前未建模的具体风险，优先给实际行为加必要的反例；只有状态分析确实需要时才扩展对应模型。达到本次行为和边界的验证目标后停止。
+
+## 无 Git 的官方源码快照
+
+正式 model runner 和 mutation runner 共用 `formal_source_identity.py`。真实 Git checkout
+保留其 HEAD；官方 paired command 的无 Git 源码则校验 run/build manifest、原始 commit、
+源清单及受保护源码、模型、配置和 runner 的实际字节，并明确记录 `checkout_commit: null`。
+开发 overlay 不属于选中 build，仍须拒绝；不能补造 HEAD 或借用旧候选的来源身份。
+Broker 的无 Git model runner 复用 paired CLI 中同一份、先经原始清单校验的 helper。

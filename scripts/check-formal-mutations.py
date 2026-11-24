@@ -156,8 +156,8 @@ source_sync_test = "packages/core/test/shared-current-source-sync-guards.test.ts
 # Both the local pipeline and the original remote Source intent reject a new
 # decision. This is deliberately a compound mutation, not one absent guard.
 source_pending_bypass = [
-    ('if (pending !== undefined) {\n      progress.operation_id',
-     'if (false && pending !== undefined) {\n      progress.operation_id'),
+    ('if (pending !== undefined) {\n      if (!preservesSharedLibraryBindings(pending.library, library))',
+     'if (false && pending !== undefined) {\n      if (!preservesSharedLibraryBindings(pending.library, library))'),
     ('parent !== undefined &&\n      (own?.phase !== "content" ||',
      'false && parent !== undefined &&\n      (own?.phase !== "content" ||'),
 ]
@@ -167,7 +167,7 @@ lifecycle_cases = [
      "packages/core/test/library-lifecycle-guards.test.ts",
      "root CREATE sees its independent original intent", "IntentBeforeRootCreate"),
     ("library-unknown-root-replay", "packages/core/src/shared-library.ts",
-     [('session.perform("create:root", "never",', 'session.perform("create:root", "idempotent",')],
+     [('"create:root",\n                "never",', '"create:root",\n                "idempotent",')],
      "packages/core/test/shared-library.test.ts",
      "unknown root CREATE is observed", "UnknownCreateNeverReplayed"),
     ("library-known-root-replacement", "packages/core/src/shared-library.ts",
@@ -200,15 +200,20 @@ lifecycle_cases = [
      "packages/core/test/shared-current-write.test.ts",
      "same-root table replacement cannot hide", "PendingLookupIsStable"),
     ("library-pending-frozen-binding", operation,
-     [('            pending.library_id !== library.library_id ||\n        !preservesSharedLibraryBindings(pending.library, library) ||\n            pending.record_id !== recordId)',
+     [('            pending.library_id !== library.library_id ||\n            !preservesSharedLibraryBindings(pending.library, library) ||\n            pending.record_id !== recordId)',
        '            pending.library_id !== library.library_id ||\n            pending.record_id !== recordId)')],
      "packages/core/test/shared-current-write.test.ts",
      "same-root table replacement cannot hide", "FrozenOperationTarget"),
     ("library-import-pending-address", "packages/core/src/shared-current-import-plan.ts",
-     [('        library.library_id,\n        request.operation_id,',
-       '        library.library_id,\n        library.skills.data_source_id,\n        request.operation_id,')],
+     [('currentImportPlanAddressInput({\n        scope,\n        library_id: library.library_id,\n        operation_id: request.operation_id,\n      })',
+       'canonicalSharedJson([scope, library.library_id, library.skills.data_source_id, request.operation_id])')],
      "packages/core/test/shared-current-import-plan.test.ts",
      "an unfinished import stays discoverable", "PendingLookupIsStable"),
+    ("library-import-sqlite-address", "packages/core/src/sqlite-state.ts",
+     [('digest(currentImportPlanAddressInput(next))',
+       'digest(JSON.stringify([next.scope, next.library_id, next.skills_data_source_id, next.operation_id]))')],
+     "packages/core/test/shared-current-import-plan.node.test.ts",
+     "real Store import plans survive restart at the same root", "PendingLookupIsStable"),
     ("library-sqlite-frozen-binding", "packages/core/src/sqlite-state.ts",
      [('                        currentIntentIdentity(row.library),\n', '')],
      "packages/core/test/shared-current-operation.node.test.ts",
@@ -353,7 +358,7 @@ summary = {
                    if args.suite == "request-engine" else None),
     "scope": ("Controlled public Notion service/coalescer/scheduler and SDK code. The immutable runtime case uses an owned local HTTP server, independent public SDK runtimes and a frozen fixture; no real credentials or remote Notion mutations."
               if args.suite == "request-engine" else
-              "Production current reader, finite operation kernel and Source sync coordinator with controlled Notion/Git service responses. Each guard is removed in an isolated source copy and checked by its behavioral assertion. The pending-before-decision case deliberately removes both local-pipeline and remote-intent checks. Library guards use independently fixed root/DB/DS facts and the original Store intent; the SQLite binding case exercises real owned local storage across independent process restart. No live Notion, Pi, real provider, cross-machine locking, power-loss, or read-after-check CAS claim."
+              "Production current reader, finite operation kernel and Source sync coordinator with controlled Notion/Git service responses. Each guard is removed in an isolated source copy and checked by its behavioral assertion. The pending-before-decision case deliberately removes both local-pipeline and remote-intent checks. Library guards use independently fixed root/DB/DS facts and the original Store intent; the SQLite binding and coordinator/address cases exercise real owned local storage across independent process restart. No live Notion, Pi, real provider, cross-machine locking, power-loss, or read-after-check CAS claim."
               if args.suite == "current-lifecycle" else
               "Production MCP authorization and credential store with real loopback OAuth HTTP, fake credentials, independent Node processes and an owned SIGKILL crash. Every mutation must fail an existing behavior assertion, then restore and pass. The pre-exchange, abandoned-refresh and expired-publication cases remove multiple defensive checks. No real OAuth, remote Notion, browser, cross-machine or power-loss guarantee."
               if args.suite == "notion-mcp-auth" else

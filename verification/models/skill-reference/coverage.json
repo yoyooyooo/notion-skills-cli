@@ -8,35 +8,35 @@
   "files": {
     "docs/skill-reference-redesign.md": "85807facd2abaa9232414a0b15e0497ad7d248e875a362efac638cf5dfe0d756",
     "packages/cli/src/commands-current-import-batch.ts": "aa1e8a218b82122fb707249edaeeeb94284ad697066e838cb137b7dcfbaa9c56",
-    "packages/cli/src/commands-current-import.ts": "a241f18a550db871c58e6d8da9638b6129cc5d95200a5fd44cd2e0c03eaf3a96",
+    "packages/cli/src/commands-current-import.ts": "65fe2da5b9b5439796ec4f4a2c6841eabff87ef486ea6a05b07b8ae371ba3eda",
     "packages/cli/src/commands-current-members.ts": "371f509d8fb5537929a516c8a503d76b9c11dfc53783c103787a93cacb52510d",
-    "packages/cli/test/current-import-batch.test.ts": "1408b6c3237697666f142a078c8ab74cce8a73786bd813ba76687722e9fe913b",
-    "packages/cli/test/current-import.test.ts": "6f0b02ec305ef9cd64b45b1da5a91e5222e71c6903a98f9a72cc6300c969ddc4",
-    "packages/cli/test/current-members.test.ts": "d63b47af05d44ee9c579d2fff50ca82b141569f23a1ed5dfaace89b0d75fb589",
+    "packages/cli/test/current-import-batch.test.ts": "57df9f38cfef73a61eb147e04f19d7373f65ddb5e8202761851d60cd2cd1d42d",
+    "packages/cli/test/current-import.test.ts": "6298d26090068c3ab71d476d21640a04975461a4cc2354a22938a9fbcbb75278",
+    "packages/cli/test/current-members.test.ts": "d784a957c9e24564bbbef5e689d24e9782cab31d3b83bb747a5d415a049baf64",
     "packages/core/src/cache-address.ts": "55cdc63aea7fbd2751e3a550d2b2e086c1f0f6b753c9ae136a4632dbf46cfaea",
-    "packages/core/src/shared-current-import-plan-model.ts": "3b8f865032d8e4a514954c7626b1d8565c036453b62547933147dbcaaa198ab3",
+    "packages/core/src/shared-current-import-plan-model.ts": "2f06171a957bbf35699a0a07c733e9fc1d9e7e83218ac25540942fcea76b5f42",
     "packages/core/src/shared-current-member-discovery.ts": "1d7f1b4725dfc624824bef5b9a9d8a1d8ca0b61b5a1e646d5796b2233789e8f5",
-    "packages/core/src/shared-current-operation.ts": "5e22f1f7194ca99385d6e110b948a60ba1c26496a1f04865b2b76d82b9941927",
+    "packages/core/src/shared-current-operation.ts": "afe1bc7058c753d07d134f336fcd1690c8f0998b163f8d0032313e13c1f824d3",
     "packages/core/src/shared-current-skill-target.ts": "ec60a8976411bd19adb1d8c879cef0274f46d7b149b9641f748afaa69460d114",
     "packages/core/src/shared-current-write.ts": "3b9984c7b39ae3fa21dc3228c58c3db7861013a078bff84c512a540fedb5f4e8",
     "packages/core/src/shared-source-references.ts": "d326dc74a1b97dd5c97e8164201dc3bfb2dad5bcf78e5c9ada9621c8f9e40399",
     "packages/core/src/skill-ref.ts": "638de57b0cad8904769e16dc421577ab47f356fa8449c2dab123993898cb367e",
-    "packages/core/src/snapshot.ts": "f6f9971c11281a442a4bd6a5e1e7391c4be73aaa61f7751eb4cea410deafc12e",
-    "packages/core/test/shared-current-import-plan.test.ts": "8f9c6f4bccaec3d8e20de0b941cbfaddf08f3c6e8ca4a89eddfa212c80f0a1d4",
+    "packages/core/src/snapshot.ts": "d35a84d0b3b04ed2929871c6907e3bd9eee15b49f513128121ff4b0ed38ebf5f",
+    "packages/core/test/shared-current-import-plan.test.ts": "07d683662216ed09e8cb274cdb8f7cf4cbaf8afa048fb140d3bfe5ebc86b1730",
     "packages/core/test/shared-current-member-discovery.test.ts": "5a2414badcd01914a5d25b3445629d6d0aa6ea488b71b086a007f128a0971e19",
     "packages/core/test/shared-current-operation.test.ts": "cddab077508f39f6a0f0cc3afe79f3d3be1e444bd2b57d8bd44ca651e716311e",
-    "packages/core/test/shared-current-relative.test.ts": "3209f45fc8ec3babfe92d43ef8c9de9731f3a6dceb560bc8a1d78960fddd4172",
+    "packages/core/test/shared-current-relative.test.ts": "354b8b120d87a95fb1c7598b65b9591b91bf2eb2015015d83a2dadd0b0a33263",
     "packages/core/test/shared-source-references.test.ts": "bfa32574f86f5a7a1063169ec3d1d70d3d225a16edd96b462d9538bbc2f527cf",
-    "packages/core/test/skill-ref.test.ts": "91edc5f214da0cb26a7577b49c2406f2fb6deee96efa5f5b12c8805b513957be",
-    "packages/core/test/skill-reference-guards.test.ts": "5fe41e112b0e03e6d616530d0ba0c9f6c175094ff140333e56064122eb9bcb9c",
-    "packages/core/test/sqlite-state.node.test.ts": "c384aa1fb97cd26d282633946d897593d8cf5dd6ffc3b4633c1b577f292c3b8d",
-    "verification/models/skill-reference/mutations.json": "6fc9c86f4d368d59115a4ceeda8611f9929dc4c5026a8036143295c8c989acfb",
-    "packages/core/src/catalog.ts": "0c88763b5314dd2f12f80b16c016b7690d901aa5b6f3ef5d6057d6e4b7097500",
-    "packages/core/src/library-selection.ts": "a70b91f43c8761d68ac7cc3dd9f5479f8b85243754bc3eb9f141eb2da0635818",
-    "packages/core/src/shared-library.ts": "13483d1a6a3fd7bb19bfeaa4505ed5e0295dc6b4606a436f82aa6f79f06571ac",
+    "packages/core/test/skill-ref.test.ts": "c4ae7d881f7f617c61e3c7386deb35e29e58a20b1a771ff0e091df0b6db30068",
+    "packages/core/test/skill-reference-guards.test.ts": "6bc72b90f32d0743faa12fb22827620535bf8628a6267462742702756ad3c612",
+    "packages/core/test/sqlite-state.node.test.ts": "c962b83f3b387f1dfcf10a9fb2fafdfbd47d7f20aac47c43b0b0c73307fad955",
+    "verification/models/skill-reference/mutations.json": "96e0cc15a1e30c8562afea79e93d7e8142adccbfcc9730066a2298c95c844dc7",
+    "packages/core/src/catalog.ts": "b2beb45bf3794492fd442eb35e5024d4b646fedf30d1b96243b53d6680940383",
+    "packages/core/src/library-selection.ts": "e1cff08feed83b3479566c1a47108d0126552c4bfbb72f0d74ad9e576b081e12",
+    "packages/core/src/shared-library.ts": "90adf217346484735fd24d377261d3468068b93a4f03fc8f2a9df2197915445a",
     "packages/core/src/shared-library-model.ts": "331dfe22a7fb88cf97236dd860bceae280022e5473c7bc0d591bd8295bd04f1c",
-    "packages/core/src/shared-current-import-plan.ts": "39141fd8ddb274223bb5c8e74b0285245646d163cbcce3afbd5da6280963e4ab",
-    "packages/core/test/library-schema-fixture.ts": "b6cb73830b204fc35dd6e3a8c248a6f230659c2180ef7c8b511f7b1455ec5063"
+    "packages/core/src/shared-current-import-plan.ts": "9d357dd9cbc5b2cdaea96c9a77692be4e1cd23bfa50bb21f093aea8e4db5f3f1",
+    "packages/core/test/library-schema-fixture.ts": "901ecd1d8c5a3a185a3648b08d77fc45f898d29c5059bb58d780b778055d1df5"
   },
   "models": {
     "ReferenceSelection": {
@@ -681,5 +681,12 @@
   "library_scope_design": {
     "status": "implementation_correspondence_reviewed",
     "note": "The explicit call constraint remains separate from ambient/containing context. The complete reference binds directly to its root; no search-based name fallback. catalog.bindEntryTarget is now an actual protected and mutated boundary. Mutation/model results remain external run receipts."
+  },
+  "library_root_review": {
+    "reviewed_from": "5a3f36f",
+    "reviewed_through": "3361718496e3b0f4a3886764cb28ef88079703c4",
+    "scope": "Canonical root UUID selection, SDK3 library options, independently declared physical root/four-DB/four-DS fixtures, complete root readback and full frozen Library bindings. Reviewed the actual 9f9a641 restart checks, 419123f metadata classification, 53240db projection receipts, 53fe6b7 shared durable import address and the subsequent formatting-only changes.",
+    "preserved": "No existing finite model, candidate/defect/witness configuration, independent expected_rules or expected_broken inventory is weakened. Request admission, current-read final fences, MCP connection/grant epochs and cancellation remain the original owner contracts.",
+    "evidence_boundary": "Source hashes bind reviewed bytes; they are not passing run receipts, remote CAS, cross-machine exclusion, Notion indexing proof or implementation refinement. Real root children stay actual Notion body observations; metadata regressions allow only the exact root page/children and declared schema reads, while Skill/File body reads remain distinct."
   }
 }

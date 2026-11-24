@@ -21,20 +21,20 @@
     "bun.lock": "6bc8237b714f67b00a08fc7ccf126affc80bbfd1e02c3f647d177cd9584704dc",
     "node_modules/effect/dist/Cache.js": "435911c3d851939b72c8cd189d78e928cdd6ac861495c5435d3c658e8c39c16c",
     "packages/core/src/shared-immutable-read.ts": "e99cb0238e19486ad3d56c7063a38df0655183669ac56b92693810bbae924ca9",
-    "packages/core/src/resource-read.ts": "24178179e026d028c3613b056b4f8ef0d4f087979de45a3274bdaccd42d38837",
+    "packages/core/src/resource-read.ts": "3cbef77d02517e65c100e852370bc5f35e02e2767093f48a72fc8b2645f56920",
     "packages/cli/src/runtime.ts": "db678d0d7153b40272e4ae89a36cb4abcfca4e65f8329255fccf7bcdd6163345",
     "packages/core/test/shared-immutable-read.test.ts": "7f5d980fbfcfb381327b565c48c8928e8c62ac76184bb18f4b0f04b640113658",
-    "packages/core/test/sdk-immutable-read.node.test.ts": "47f92e4b242382fef8a4229b402c87ccd4881b4c2827bd3da30f95f2ef50c92a",
-    "scripts/sdk-source-fixture.mjs": "ab4f8ba117be01b93083aed528f08b92dd90145f1b1978401de5d54eab9c4309",
+    "packages/core/test/sdk-immutable-read.node.test.ts": "fe77686eed6167fdcbc72e702e6c97d8614ef9959c55dde02b28d7a1d340d31d",
+    "scripts/sdk-source-fixture.mjs": "adbe8c1256d9c4c2015b1b4cadcbd4a2e32ffa461d240e82486cb37246ec9f20",
     "vitest.config.ts": "af31568d9aee84d21f3ba5622d68ba4706ca49e901e63538fa42db137399d01d",
     "packages/core/src/shared-current-resource.ts": "6e2ccfacd1bcdc1955c9a6d084e59f95178b4c07b0e3f3ae596ad483f255c4d8",
-    "packages/core/test/shared-current-fixture.ts": "15c96f0556956bbac3138ecf49118a765e66f3c7fe35fff4913476e1b0cd4b1e",
+    "packages/core/test/shared-current-fixture.ts": "ed69b28c12a69b12dbcc5fbbe6f5dd8015982689734756db4cbcf28ee4f5ccaa",
     "packages/core/src/request-budget-http.ts": "dec67067ce708d24523f79880471dc96177025b5b2adb3a3876d2dc28b174797",
     "packages/core/src/shared-current-invocation.ts": "043dc5f1e5f4be6f07c79649e5233bf56bda65b03e303be8b0f03655e9f9a91b",
     "packages/core/test/shared-current-invocation.test.ts": "5274a5354b814fb877145ff53f82728f564ab9865622089e58d8e2d26be15df2",
-    "packages/cli/src/sdk.ts": "79b8e7faf987d09ac217f38fcf0b1b854e677c5ed7a78add82a055d3c0fd4f5f",
-    "packages/cli/src/operation-runtime.ts": "51d97df5587658afb4f5159e374c77062f47583ccf29f21c19c115ee766ace64",
-    "packages/cli/test/sdk.test.ts": "bc3e191ac4a862d69df1089914866f8afdbbfaad5f53bf115b01874beca3f006",
+    "packages/cli/src/sdk.ts": "44c7c22cd676e543c55f3e425accf7fc385aaf8e296e67ca5ebf7e456b2e8e75",
+    "packages/cli/src/operation-runtime.ts": "952b627e875d32f2d9e331941cb8b184908a368e688f80e2e472b00c14972d97",
+    "packages/cli/test/sdk.test.ts": "71fe42ac3cee2aec463f32a6f32ff8532335326d18e848bcba5e6e73d7d86af3",
     "packages/core/src/upstream-source.ts": "a271c12f5b2048b7c9ddd3d980c5e56bd201a97bb47d1231f5022959b1c5c925",
     "packages/core/test/source-git-runtime.test.ts": "2502378487ee73e7bbee17ef6dd3f1fee3f0a44cbeef30b8e98228b3b37ac0d5",
     "packages/core/node_modules/@effect/platform-node-shared/src/NodeChildProcessSpawner.ts": "0e1b55d9e2a52d8d05b720098f485f9d427fa41100795c340bf1ffa1406e1ee3",
@@ -94,7 +94,9 @@
     {
       "model": "SharedProducer",
       "config": "cancel.cfg",
-      "expected_broken": ["SurvivingWaiterKeepsProducer"],
+      "expected_broken": [
+        "SurvivingWaiterKeepsProducer"
+      ],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -112,7 +114,9 @@
     {
       "model": "SharedProducer",
       "config": "release.cfg",
-      "expected_broken": ["LastWaiterReleasesProducer"],
+      "expected_broken": [
+        "LastWaiterReleasesProducer"
+      ],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -130,7 +134,9 @@
     {
       "model": "SharedProducer",
       "config": "scope.cfg",
-      "expected_broken": ["ScopeIsolated"],
+      "expected_broken": [
+        "ScopeIsolated"
+      ],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -148,7 +154,9 @@
     {
       "model": "SharedProducer",
       "config": "budget.cfg",
-      "expected_broken": ["BudgetIsolated"],
+      "expected_broken": [
+        "BudgetIsolated"
+      ],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -166,7 +174,9 @@
     {
       "model": "SharedProducer",
       "config": "queue.cfg",
-      "expected_broken": ["QueueBudgetIsolated"],
+      "expected_broken": [
+        "QueueBudgetIsolated"
+      ],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -184,7 +194,9 @@
     {
       "model": "SharedProducer",
       "config": "service.cfg",
-      "expected_broken": ["ServiceIsolated"],
+      "expected_broken": [
+        "ServiceIsolated"
+      ],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -202,7 +214,9 @@
     {
       "model": "SharedProducer",
       "config": "cache.cfg",
-      "expected_broken": ["SettledResultNotReused"],
+      "expected_broken": [
+        "SettledResultNotReused"
+      ],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -220,7 +234,9 @@
     {
       "model": "SharedProducer",
       "config": "cleanup.cfg",
-      "expected_broken": ["ReplacementSurvivesOldCleanup"],
+      "expected_broken": [
+        "ReplacementSurvivesOldCleanup"
+      ],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -238,7 +254,9 @@
     {
       "model": "SharedProducer",
       "config": "runtime.cfg",
-      "expected_broken": ["SurvivingWaiterKeepsProducer"],
+      "expected_broken": [
+        "SurvivingWaiterKeepsProducer"
+      ],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -256,7 +274,9 @@
     {
       "model": "SharedProducer",
       "config": "capacity.cfg",
-      "expected_broken": ["SharedAdmissionBounded"],
+      "expected_broken": [
+        "SharedAdmissionBounded"
+      ],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -274,7 +294,9 @@
     {
       "model": "SharedProducer",
       "config": "cleanup-capacity.cfg",
-      "expected_broken": ["SharedAdmissionBounded"],
+      "expected_broken": [
+        "SharedAdmissionBounded"
+      ],
       "expected_rules": [
         "TypeOK",
         "SurvivingWaiterKeepsProducer",
@@ -308,7 +330,9 @@
     {
       "model": "RequestAdmission",
       "config": "cooldown.cfg",
-      "expected_broken": ["CooldownBeforeAdmission"],
+      "expected_broken": [
+        "CooldownBeforeAdmission"
+      ],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -324,7 +348,9 @@
     {
       "model": "RequestAdmission",
       "config": "queue.cfg",
-      "expected_broken": ["CallerDeadlineRespected"],
+      "expected_broken": [
+        "CallerDeadlineRespected"
+      ],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -340,7 +366,9 @@
     {
       "model": "RequestAdmission",
       "config": "operation.cfg",
-      "expected_broken": ["CallerDeadlineRespected"],
+      "expected_broken": [
+        "CallerDeadlineRespected"
+      ],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -356,7 +384,9 @@
     {
       "model": "RequestAdmission",
       "config": "attempts.cfg",
-      "expected_broken": ["AttemptBudgetRespected"],
+      "expected_broken": [
+        "AttemptBudgetRespected"
+      ],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -372,7 +402,9 @@
     {
       "model": "RequestAdmission",
       "config": "unknown.cfg",
-      "expected_broken": ["UnknownMutationNeverRetried"],
+      "expected_broken": [
+        "UnknownMutationNeverRetried"
+      ],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -388,7 +420,9 @@
     {
       "model": "RequestAdmission",
       "config": "permit.cfg",
-      "expected_broken": ["NoPermitDuringQueueOrBackoff"],
+      "expected_broken": [
+        "NoPermitDuringQueueOrBackoff"
+      ],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -404,7 +438,9 @@
     {
       "model": "RequestAdmission",
       "config": "lease.cfg",
-      "expected_broken": ["CancelledQueueReleasesLease"],
+      "expected_broken": [
+        "CancelledQueueReleasesLease"
+      ],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -420,7 +456,9 @@
     {
       "model": "RequestAdmission",
       "config": "timeout.cfg",
-      "expected_broken": ["AttemptDeadlineRespected"],
+      "expected_broken": [
+        "AttemptDeadlineRespected"
+      ],
       "expected_rules": [
         "TypeOK",
         "CooldownBeforeAdmission",
@@ -472,6 +510,17 @@
         "packages/core/src/request-timeout.ts"
       ],
       "scope": "Transport identity retains effective queue budget and RequestBudget identity. Multipart partNumber also participates in request identity, but multipart protocol is outside the model. Detached current reads provide their own HTTP service and transport Scope. Scheduler guards and uncertain-write classification implement the named admission rules; first exhaustion remains terminal for this budget. Byte-trigger calculation and immutable limits are exercised by implementation tests rather than TLA state variables."
+    },
+    {
+      "name": "sdk3_root_selection_boundary",
+      "files": [
+        "packages/cli/src/sdk.ts",
+        "packages/cli/src/operation-runtime.ts",
+        "packages/core/src/resource-read.ts",
+        "packages/core/test/sdk-immutable-read.node.test.ts",
+        "scripts/sdk-source-fixture.mjs"
+      ],
+      "scope": "SDK3 rejects retired selectors and compares fixed resource owners to the selected canonical Library root. selectLibrary uses the local Store runtime without constructing HTTP transport/scheduler; remote resolveLibrary is a separate operation. SDK HTTP fixtures declare actual root/children/four DB/DS independently. Existing creator/last-waiter cancellation, isolated environment/budget/Store and original validation checks remain. These selector, physical-root and local-configuration facts are concrete obligations outside the finite producer/admission variables."
     }
   ],
   "unmodeled_bindings": [
@@ -526,5 +575,12 @@
     "unmodeled_changes": "Use the focused implementation regressions for bytes, wrappers and current writer behavior. A passing bounded model does not prove these unmodeled semantics.",
     "rule_inventory": "cases.expected_rules is an independently reviewed inventory. Do not regenerate it automatically from changed cfg files.",
     "outputs": "Use a new absolute output directory per run. Model results, raw traces and generated views belong to that run; no checked-in historical result or private evidence path is required."
+  },
+  "library_root_review": {
+    "reviewed_from": "5a3f36f",
+    "reviewed_through": "3361718496e3b0f4a3886764cb28ef88079703c4",
+    "scope": "Canonical root UUID selection, SDK3 library options, independently declared physical root/four-DB/four-DS fixtures, complete root readback and full frozen Library bindings. Reviewed the actual 9f9a641 restart checks, 419123f metadata classification, 53240db projection receipts, 53fe6b7 shared durable import address and the subsequent formatting-only changes.",
+    "preserved": "No existing finite model, candidate/defect/witness configuration, independent expected_rules or expected_broken inventory is weakened. Request admission, current-read final fences, MCP connection/grant epochs and cancellation remain the original owner contracts.",
+    "evidence_boundary": "Source hashes bind reviewed bytes; they are not passing run receipts, remote CAS, cross-machine exclusion, Notion indexing proof or implementation refinement. Real root children stay actual Notion body observations; metadata regressions allow only the exact root page/children and declared schema reads, while Skill/File body reads remain distinct."
   }
 }
