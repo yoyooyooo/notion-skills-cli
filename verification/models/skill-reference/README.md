@@ -60,6 +60,12 @@ Notion 阅读投影行，因此模型和实现都不能强求或伪造 File ID�
 Library 字符串在本模型中抽象 canonical root UUID；具体 URL/UUID 规范化由 parser
 回归验证，根页面及四表归属沿 current-lifecycle 的 LibraryLifecycle。
 
+入口约束的实际变异使用冷启动的完整 ref 读取：选中 A 的 ref，同时显式约束 B，
+必须在任何 Notion 请求前拒绝；同一个 A ref 在显式 A 下仍能正常读取。
+原有 warm current、fixed 和 resource 拒绝测试继续保留。它们有独立缓存/manifest
+检查，所以不能单靠这些测试证明入口 guard 已被覆盖。`formal-guards-final-02`
+中该单守卫存活的结果保留，后续回放以冷启动行为断言识别同一变异。
+
 ## 导入模型
 
 ImportRelations 单独表示输入、冻结计划、对象创建、未知结果、

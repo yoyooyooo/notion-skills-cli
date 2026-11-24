@@ -28,9 +28,9 @@
     "packages/core/test/shared-current-relative.test.ts": "354b8b120d87a95fb1c7598b65b9591b91bf2eb2015015d83a2dadd0b0a33263",
     "packages/core/test/shared-source-references.test.ts": "bfa32574f86f5a7a1063169ec3d1d70d3d225a16edd96b462d9538bbc2f527cf",
     "packages/core/test/skill-ref.test.ts": "c4ae7d881f7f617c61e3c7386deb35e29e58a20b1a771ff0e091df0b6db30068",
-    "packages/core/test/skill-reference-guards.test.ts": "6bc72b90f32d0743faa12fb22827620535bf8628a6267462742702756ad3c612",
+    "packages/core/test/skill-reference-guards.test.ts": "060982d502d1b8fc10298ec41196e44355e11192fe2e635c8e1b39b62640bb40",
     "packages/core/test/sqlite-state.node.test.ts": "c962b83f3b387f1dfcf10a9fb2fafdfbd47d7f20aac47c43b0b0c73307fad955",
-    "verification/models/skill-reference/mutations.json": "96e0cc15a1e30c8562afea79e93d7e8142adccbfcc9730066a2298c95c844dc7",
+    "verification/models/skill-reference/mutations.json": "d2cfd8b9ac749c669fa0bd0494c6220fb52508bf8aee7921620b7030243dd182",
     "packages/core/src/catalog.ts": "b2beb45bf3794492fd442eb35e5024d4b646fedf30d1b96243b53d6680940383",
     "packages/core/src/library-selection.ts": "e1cff08feed83b3479566c1a47108d0126552c4bfbb72f0d74ad9e576b081e12",
     "packages/core/src/shared-library.ts": "90adf217346484735fd24d377261d3468068b93a4f03fc8f2a9df2197915445a",
@@ -124,7 +124,7 @@
         "packages/core/src/shared-library-model.ts",
         "packages/core/test/skill-reference-guards.test.ts"
       ],
-      "scope": "A full reference retains its canonical root unless the call explicitly constrains another root, which fails LIBRARY_SCOPE_MISMATCH before I/O. An ambient/default root is only used to bind a short reference. The actual explicit-library-constraint mutation removes the tool-entry guard; current, fixed and resource reads must detect it. Physical topology validation belongs to LibraryLifecycle; UUID/URL parsing is a concrete protocol obligation."
+      "scope": "A full reference retains its canonical root unless the call explicitly constrains another root, which fails LIBRARY_SCOPE_MISMATCH before I/O. An ambient/default root is only used to bind a short reference. The actual explicit-library-constraint mutation removes the tool-entry guard and must be caught by a cold public read, with an independent successful same-root read. Warm current, fixed and resource reads retain separate cache/manifest checks; their survival after deleting only the entry guard is not a killed mutation. Physical topology validation belongs to LibraryLifecycle; UUID/URL parsing is a concrete protocol obligation."
     }
   ],
   "unmodeled_bindings": [
@@ -693,5 +693,12 @@
       "file": "docs/skill-reference-redesign.md",
       "scope": "Read the late documentation diff from 3361718: canonical root UUID replaces logical IDs, init creates a dedicated root plus four direct DBs, inspect/consume/manage select that root, examples use canonical UUIDs, and physical-page checks constrain the selected Library. This aligns the already-reviewed SDK3/root implementation; no model, mutation, rule inventory or product source changes."
     }
+  },
+  "entry_guard_cold_read_review": {
+    "reviewed_against": "6e1c59be94390c5b60fdb3669c140b164c666718",
+    "retained_failed_run": "formal-guards-final-02",
+    "finding": "The original explicit-scope oracle prewarmed every read. Independent cached-current and fixed-manifest checks rejected the request after the entry guard was removed, so the mutation survived. A new cold public read distinguishes this guard without deleting those independent checks.",
+    "change": "Add a cold full-reference versus explicit foreign-root rejection with zero Notion calls, then prove the same reference reads successfully under its own root. Route the unchanged actual product mutation to that assertion. Keep all warm/fixed/resource regressions and the original surviving result.",
+    "evidence_boundary": "No product, model, finite bounds or expected rule changes. The development baseline/mutant/restored diagnostic is separate from the required final frozen-candidate reference wrapper."
   }
 }

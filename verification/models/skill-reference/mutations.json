@@ -193,7 +193,7 @@
       ]
     ],
     "test": "packages/core/test/skill-reference-guards.test.ts",
-    "pattern": "an explicit database conflict keeps its Library error",
+    "pattern": "an explicit Library constraint rejects a cold full reference before I/O",
     "rule": "ExplicitScopeConstraint"
   }
 ]

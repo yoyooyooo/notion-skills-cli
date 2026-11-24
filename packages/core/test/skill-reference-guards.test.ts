@@ -2,7 +2,22 @@ import { expect, test } from "bun:test"
 import { fileRef } from "../src/ref.ts"
 import { readResources } from "../src/resource-read.ts"
 import { readSkill } from "../src/snapshot.ts"
-import { currentId, currentSnapshotFixture } from "./shared-current-fixture.ts"
+import { currentId, currentLibrary, currentSnapshotFixture } from "./shared-current-fixture.ts"
+
+test("an explicit Library constraint rejects a cold full reference before I/O", async () => {
+  const f = currentSnapshotFixture({ fileCount: 0 })
+  const ref = fileRef(`skill://demo?library=${currentLibrary.library_id}`, "SKILL.md")
+  await expect(f.run(readSkill(ref, { library: currentId(9999) }))).rejects.toMatchObject({
+    code: "LIBRARY_SCOPE_MISMATCH",
+  })
+  expect(f.calls).toEqual([])
+  expect(f.semanticWrites()).toEqual([])
+
+  const allowed = await f.run(readSkill(ref, { library: currentLibrary.library_id }))
+  expect(allowed.record.id).toBe(`skill://demo?library=${currentLibrary.library_id}`)
+  expect(allowed).toMatchObject({ content: expect.stringContaining("Keep the author's content.") })
+  expect(f.semanticWrites()).toEqual([])
+})
 
 test.each(["current", "fixed", "resources"] as const)(
   "an explicit database conflict keeps its Library error without I/O for %s selection",
