@@ -490,10 +490,10 @@ export async function runSkillReferenceLive(input: {
     return { code, notion_writes: 0, command: result.record }
   }
   const id = (suffix: string) => input.prefix + "-" + suffix
-  const verifyPlacement = async (label: string, library: SharedLibrary) => {
+  const verifyPlacement = async (label: string, library: SharedLibrary, parent = input.parent) => {
     const facts = await verifyLibraryPlacement({
       library,
-      parent: input.parent,
+      parent,
       probe: async (request) =>
         Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(
           await probeEmptyLibrary(request),
@@ -729,7 +729,18 @@ export async function runSkillReferenceLive(input: {
           requireZeroNotionWrites(attached)
           const library = Schema.decodeUnknownSync(SharedLibrarySchema)(attached.library)
           assert.deepEqual(library, continued.B)
-          await verifyPlacement("continued-b", library)
+          const initialization = property(JSON.parse(await readFile(
+            join(continued.root, "initialization/evidence/empty-library/state.json"),
+            "utf8",
+          )))
+          assert.equal(initialization.kind, "library_ready")
+          assert.equal(initialization.container, input.parent)
+          assert.deepEqual(initialization.library, library)
+          const parent = pageId(String(initialization.parent))
+          assert.ok(parent, "Continuation requires the original test parent")
+          const actualParent = property(await probeEmptyLibrary({ kind: "page", id: parent }))
+          assert.equal(property(actualParent.parent).page_id, input.parent)
+          await verifyPlacement("continued-b", library, parent)
           report.libraries.B = library
           return library
         }
