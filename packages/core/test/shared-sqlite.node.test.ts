@@ -218,7 +218,8 @@ test("a newer native observation can follow a rebuilt page without changing logi
     expect(sameGeneration.exit).not.toBe(0)
     expect(sameGeneration.stderr).toContain("different content")
     for (const field of ["scope", "library_id", "skill_id"] as const) {
-      const foreign = await child(root, write({ ...rebuilt, [field]: "foreign-owner" }, 4))
+      const value = field === "library_id" ? "77e861a8-6432-51ac-a09e-90a2ab20a36c" : "foreign-owner"
+      const foreign = await child(root, write({ ...rebuilt, [field]: value }, 4))
       expect(foreign.exit).not.toBe(0)
       expect(foreign.stderr).toContain("cannot change its owner")
     }
@@ -573,6 +574,13 @@ test("Source sync restart preserves its input and advances the frozen projection
     for (const changed of [
       { ...syncInput, manager_id: "other" },
       { ...syncInput, execution_id: "package-b" },
+      {
+        ...syncInput,
+        library: {
+          ...currentLibrary,
+          files: { ...currentLibrary.files, database_id: "77e861a8-6432-51ac-a09e-90a2ab20a36c" },
+        },
+      },
       { ...syncInput, input: { ...syncInput.input, resolved_commit: "a".repeat(40) } },
       { ...syncInput, input: { ...syncInput.input, affected_skill_ids: ["one", "three"] } },
       {
@@ -676,12 +684,13 @@ test("full Source batches preserve an exact terminal prefix across real processe
   await isolated(async (root) => {
     const key = `operations/current-source-sync-batch/${scope}/pending.json`
     const batch = {
-      version: 1,
+      version: 2,
       kind: "current_source_sync_batch",
+      library: currentLibrary,
       scope,
       batch_id: "00000000-0000-4000-8000-000000000006",
-      library_id: "96fdf089-f1b2-55ce-97aa-3abcbb8a57c5",
-      sources_data_source_id: "sqlite-sources",
+      library_id: currentLibrary.library_id,
+      sources_data_source_id: currentLibrary.sources.data_source_id,
       manager_id: "mini",
       execution_id: "package-a",
       source_ids: ["alpha", "beta", "gamma"],
@@ -716,6 +725,13 @@ test("full Source batches preserve an exact terminal prefix across real processe
       { ...batch, scope: "b".repeat(64) },
       { ...batch, batch_id: "00000000-0000-4000-8000-000000000007" },
       { ...batch, execution_id: "package-b" },
+      {
+        ...batch,
+        library: {
+          ...currentLibrary,
+          files: { ...currentLibrary.files, database_id: "77e861a8-6432-51ac-a09e-90a2ab20a36c" },
+        },
+      },
       { ...batch, source_ids: ["alpha", "gamma"] },
       { ...batch, projection: "none" },
       { ...batch, results: [failed, skipped("beta")] },
@@ -754,11 +770,12 @@ test("competing full Source batches cannot replace the first persisted identity"
     expect((await child(root, "console.log('ready')")).exit).toBe(0)
     const key = `operations/current-source-sync-batch/${scope}/pending.json`
     const batch = {
-      version: 1,
+      version: 2,
       kind: "current_source_sync_batch",
+      library: currentLibrary,
       scope,
-      library_id: "96fdf089-f1b2-55ce-97aa-3abcbb8a57c5",
-      sources_data_source_id: "sqlite-sources",
+      library_id: currentLibrary.library_id,
+      sources_data_source_id: currentLibrary.sources.data_source_id,
       manager_id: "mini",
       execution_id: "package-a",
       source_ids: ["alpha"],

@@ -23,7 +23,7 @@ Effect.runPromise(Effect.gen(function*(){
 const store=yield* Store;
 const bytes=new TextEncoder().encode('durable content');
 const hash=yield* sha256(bytes);
-const recordId=skillIdentity('durable-library','fixture');
+const recordId=skillIdentity('9da21cdf-3065-52cc-adb1-6fb46cd795e6','fixture');
 const id='s_'+(yield* sha256(JSON.stringify(['scope',recordId,hash])));
 const key='snapshots/'+id+'.json';
 const snapshot={snapshot_id:id,scope:'scope',version_id:hash,entrypoint:'SKILL.md',created_at:123,

@@ -158,7 +158,7 @@ test("library initialization exposes explicit continuation and rejects incomplet
   expect(help.exit).toBe(0)
   expect(help.onlineCalled).toBe(false)
   expect(help.stdout).toContain("structure is ready")
-  expect(help.stdout).toContain("library.skills.database_id")
+  expect(help.stdout).toContain("library.library_id")
   expect(help.stdout.replace(/\s+/g, " ")).toContain("next.argv is a read-only list")
   expect(help.stdout.replace(/\s+/g, " ")).toContain(
     "does not create Skill content or copy builtins",
@@ -406,7 +406,7 @@ test("unknown flags, obsolete selectors and conflicting paths fail before online
 
 test("explicit identity reads and valid freshness policies reach online validation", async () => {
   for (const command of [
-    ["list"],
+    ["list", "--library", "cc029b5c-680e-576d-a381-a069d3f9f26e"],
     ["read", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
     ["files", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
     ["export", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e", "--output", "output.zip"],
@@ -424,7 +424,7 @@ test("explicit identity reads and valid freshness policies reach online validati
 
 test("offline policy fails explicitly without a safe cached identity", async () => {
   for (const command of [
-    ["list"],
+    ["list", "--library", "cc029b5c-680e-576d-a381-a069d3f9f26e"],
     ["read", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
     ["files", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
     ["export", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e", "--output", "output.zip"],
@@ -439,7 +439,7 @@ test("offline policy fails explicitly without a safe cached identity", async () 
 
 test("read policies reject combinations and invalid durations before online work", async () => {
   for (const command of [
-    ["list"],
+    ["list", "--library", "cc029b5c-680e-576d-a381-a069d3f9f26e"],
     ["read", "sample"],
     ["files", "sample"],
     ["export", "sample", "--output", "output.zip"],
@@ -672,7 +672,7 @@ test("consumer catalog identity follows remote scope without local configuration
   const first = await identity(database)
   expect((await identity("shared")).identity).toBe(first.identity)
   expect((await identity(database.replaceAll("-", "").toUpperCase())).identity).toBe(first.identity)
-  expect((await identity()).identity).not.toBe(first.identity)
+  jsonFailure(await invoke(["ctl", "cache", "identity"], { root, traceOnline: true }), "LIBRARY_CONTEXT_REQUIRED", 1)
   const localPreferences = {
     ...original,
     default_library: otherDatabase,
@@ -683,6 +683,7 @@ test("consumer catalog identity follows remote scope without local configuration
   expect(changedPolicy.identity).toBe(first.identity)
   expect(changedPolicy.catalog_max_age_ms).toBe(120000)
   expect((await identity(otherDatabase)).identity).not.toBe(first.identity)
+  expect((await identity()).identity).toBe((await identity(otherDatabase)).identity)
   await save({ ...original, upstream_database: otherDatabase })
   const retired = await invoke(["ctl", "cache", "identity", "--library", database], {
     root,

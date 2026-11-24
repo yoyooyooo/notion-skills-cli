@@ -90,7 +90,7 @@ test("canonical Skill identities survive SQLite restart and retiring one Library
   const directory = await mkdtemp(join(tmpdir(), "ntn-sqlite-library-identity-"))
   const root = join(directory, "state")
   const scope = "same-connection-scope"
-  const snapshots = ["library-test", "8fd04dc2-3275-55d6-be9e-37cd996baca1"].map((libraryId, index) => {
+  const snapshots = ["6b823b9d-a768-5a28-82cb-771cd72a8746", "8fd04dc2-3275-55d6-be9e-37cd996baca1"].map((libraryId, index) => {
     const current = currentRecord({ libraryId, skillId: "architect", name: "Architect" })
     const record = {
       ...current,
