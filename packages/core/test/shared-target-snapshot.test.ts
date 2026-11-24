@@ -14,8 +14,8 @@ import {
   currentBytes as encode,
 } from "./shared-current-fixture.ts"
 
-const options = { database: library.skills.database_id }
-const stableId = "skill://demo?library=library-current"
+const options = { library: library.library_id }
+const stableId = "skill://demo?library=00000000-0000-4000-8000-000000000002"
 const stableRef = fileRef(stableId, "SKILL.md")
 
 function latestEntries(fixture: ReturnType<typeof currentSnapshotFixture>) {

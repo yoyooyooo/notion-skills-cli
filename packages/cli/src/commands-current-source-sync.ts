@@ -22,8 +22,8 @@ const budgetFlag = (name: string, description: string) =>
     Flag.withDescription(description),
   )
 const flags = {
-  entry: requiredSingleton(
-    "entry",
+  library: requiredSingleton(
+    "library",
     "Current Skills database ID, Notion URL or exact registered alias",
   ),
   sources: Flag.String("source").pipe(
@@ -45,7 +45,7 @@ const flags = {
 }
 
 type BatchOptions = {
-  readonly entry: string
+  readonly library: string
   readonly sources: readonly string[]
   readonly maxRequests: Option.Option<number>
   readonly maxBytes: Option.Option<number>
@@ -117,7 +117,7 @@ function runBatch(entry: string, input: CurrentSourceSyncCommand) {
 }
 
 export const checkCurrentSourcesCommand = defineCommand("check", flags, (options) =>
-  runBatch(options.entry, {
+  runBatch(options.library, {
     action: "check",
     source_ids: options.sources,
     limits: limits(options),
@@ -129,7 +129,7 @@ export const checkCurrentSourcesCommand = defineCommand("check", flags, (options
   Command.withExamples([
     {
       command:
-        "ntn-skills ctl library source check --entry LIBRARY_ID --source team-skills --source shared-tools",
+        "ntn-skills ctl library source check --library LIBRARY_ID --source team-skills --source shared-tools",
       description: "Check an explicit bounded Source set without publishing changes",
     },
   ]),
@@ -172,7 +172,7 @@ export const syncCurrentSourcesCommand = defineCommand(
       })
       const execution_id =
         Option.getOrUndefined(options.executionId) ?? (yield* currentSourceSyncExecutionIdentity())
-      yield* runBatch(options.entry, {
+      yield* runBatch(options.library, {
         action: "sync",
         source_ids: options.sources,
         limits: limits(options),
@@ -191,12 +191,12 @@ export const syncCurrentSourcesCommand = defineCommand(
   ),
   Command.withExamples([
     {
-      command: "ntn-skills ctl library source sync --entry LIBRARY_ID --source team-skills",
+      command: "ntn-skills ctl library source sync --library LIBRARY_ID --source team-skills",
       description: "Synchronize with the installed bundle identity and default manual manager",
     },
     {
       command:
-        "ntn-skills ctl library source sync --entry LIBRARY_ID --source team-skills --source shared-tools --manager scheduled-sync --execution-id PACKAGE_SHA256 --mode changed --projection markdown --max-requests 1000 --max-bytes 536870912 --timeout 600000",
+        "ntn-skills ctl library source sync --library LIBRARY_ID --source team-skills --source shared-tools --manager scheduled-sync --execution-id PACKAGE_SHA256 --mode changed --projection markdown --max-requests 1000 --max-bytes 536870912 --timeout 600000",
       description: "Run a bounded scheduled batch with explicit deployment identity",
     },
   ]),

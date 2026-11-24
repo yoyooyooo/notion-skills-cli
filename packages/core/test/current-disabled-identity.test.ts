@@ -17,13 +17,13 @@ const ref = fileRef(id, "SKILL.md")
 
 test("a cold exact shared identity reports disabled instead of confusing directory omission with absence", async () => {
   const f = disabledFixture()
-  const directory = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
+  const directory = await f.run(catalog({ library: library.library_id, refresh: true }))
   expect(directory.records.some((record) => record.id === id)).toBe(false)
   f.clearCalls()
   const result = await f.run(
     consume(
       { version: 1, targets: [ref], purpose: "inspect", freshness: { policy: "refresh" } },
-      { database: library.skills.database_id },
+      { library: library.library_id },
     ),
   )
   expect(result.status).toBe("failed")
@@ -41,7 +41,7 @@ test("a cold exact shared identity reports disabled instead of confusing directo
 test("scalar current read reports disabled by exact identity and never selects a display name", async () => {
   const f = disabledFixture()
   const exact = await f.run(
-    targetSnapshot(parseTarget(ref), { database: library.skills.database_id, refresh: true }).pipe(
+    targetSnapshot(parseTarget(ref), { library: library.library_id, refresh: true }).pipe(
       Effect.result,
     ),
   )
@@ -53,7 +53,7 @@ test("scalar current read reports disabled by exact identity and never selects a
   expect(f.semanticWrites().length).toBe(0)
   const name = await f.run(
     targetSnapshot(parseTarget("other-display-name"), {
-      database: library.skills.database_id,
+      library: library.library_id,
       refresh: true,
     }).pipe(Effect.result),
   )

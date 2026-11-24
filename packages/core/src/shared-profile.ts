@@ -284,7 +284,7 @@ function profileObservationKey(scope: string, selection: string) {
 function invalidateProfileObservation(library: SharedLibrary, profileId: string, scope: string) {
   return Effect.gen(function* () {
     const descriptor = yield* profileSelection(library, profileId)
-    const entry = yield* profileEntrySelection(library.skills.database_id, profileId)
+    const entry = yield* profileEntrySelection(library.library_id, profileId)
     yield* (yield* Store).retireKeys([
       profileObservationKey(scope, descriptor),
       profileObservationKey(scope, entry),
@@ -304,7 +304,7 @@ export function loadSharedProfileCached(
 ) {
   return Effect.gen(function* () {
     const selection = yield* profileSelection(library, profileId)
-    return yield* observeProfile(selection, library.skills.database_id, profileId, options, library)
+    return yield* observeProfile(selection, library.library_id, profileId, options, library)
   })
 }
 
@@ -360,7 +360,7 @@ function observeProfile(
           saved.profile_id !== profileId ||
           saved.profile.profile_id !== profileId ||
           saved.profile.library_id !== saved.library.library_id ||
-          saved.library.skills.database_id !== entry ||
+          saved.library.library_id !== entry ||
           !Number.isSafeInteger(saved.generation) ||
           saved.generation <= 0 ||
           !Number.isFinite(saved.fetched_at) ||
@@ -385,7 +385,8 @@ function observeProfile(
           // a local shape check, not a claim of current remote availability.
           yield* checked(() =>
             libraryFromDatabase({
-              id: entry,
+              id: saved.library.skills.database_id,
+              parent: { page_id: saved.library.library_id },
               description: [
                 { plain_text: `${LIBRARY_MARKER}${canonicalSharedJson(saved.library)}` },
               ],

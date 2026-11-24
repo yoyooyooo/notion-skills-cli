@@ -202,7 +202,7 @@ test("native LF and CRLF normalize through full readback while the admitted inpu
     expect(
       await f.run(
         readSkill(written.page_id, {
-          database: library.skills.database_id,
+          library: library.library_id,
           path: selected,
           refresh: true,
         }),
@@ -211,7 +211,7 @@ test("native LF and CRLF normalize through full readback while the admitted inpu
     const output = join(parent, "normalized-export")
     await f.run(
       exportSkill(written.page_id, {
-        database: library.skills.database_id,
+        library: library.library_id,
         output,
         format: "directory",
       }),
@@ -259,7 +259,7 @@ test("unsupported native structure fails public admission before remote work", a
     f.run(
       Command.runWith(currentImportCommand, { version: "test", renderErrors: false })([
         directory,
-        "--entry",
+        "--library",
         library.skills.database_id,
         "--skill-id",
         "unsupported-native",
@@ -280,7 +280,7 @@ test("the public parser accepts repeatable native flags and rejects duplicates b
     f.run(
       Command.runWith(currentImportCommand, { version: "test", renderErrors: false })([
         directory,
-        "--entry",
+        "--library",
         library.skills.database_id,
         "--skill-id",
         "native-skill",
@@ -327,11 +327,11 @@ test("mixed CLI import writes editable native bodies, reads and exports exact fi
     ).toBe(true)
   f.clearCalls()
   const main = await f.run(
-      readSkill(written.page_id, { database: library.skills.database_id, refresh: true }),
+      readSkill(written.page_id, { library: library.library_id, refresh: true }),
     ),
     guide = await f.run(
       readSkill(written.page_id, {
-        database: library.skills.database_id,
+        library: library.library_id,
         path: "references/guide.txt",
       }),
     )
@@ -340,7 +340,7 @@ test("mixed CLI import writes editable native bodies, reads and exports exact fi
   const output = join(parent, "exported")
   await f.run(
     exportSkill(written.page_id, {
-      database: library.skills.database_id,
+      library: library.library_id,
       output,
       format: "directory",
     }),
@@ -375,7 +375,7 @@ test("mixed CLI import writes editable native bodies, reads and exports exact fi
   f.clearCalls()
   expect(
     await f.run(
-      readSkill(written.page_id, { database: library.skills.database_id, refresh: true }),
+      readSkill(written.page_id, { library: library.library_id, refresh: true }),
     ),
   ).toMatchObject({ content: nativeHeader + humanBody })
   expect(f.mutations()).toEqual([])
@@ -389,7 +389,7 @@ test("mixed CLI import writes editable native bodies, reads and exports exact fi
   ).toHaveLength(1)
   expect(
     await f.run(
-      readSkill(written.page_id, { database: library.skills.database_id, refresh: true }),
+      readSkill(written.page_id, { library: library.library_id, refresh: true }),
     ),
   ).toMatchObject({ content: nativeHeader + nativeBody })
 })
@@ -441,7 +441,7 @@ test("a changed native round-trip remains pending and a resume cannot change nat
     operation_id: "native-roundtrip",
   })
   await expect(
-    f.run(readSkill(page, { database: library.skills.database_id, refresh: true })),
+    f.run(readSkill(page, { library: library.library_id, refresh: true })),
   ).rejects.toMatchObject({ code: "CURRENT_OPERATION_PENDING" })
 
   const resource = await f.run(prepareCurrentImport(directory, { skillId: "native-skill" }))
@@ -547,9 +547,9 @@ test("current portable relations survive local admission and invalid selections 
   const relations = {
     version: 1 as const,
     ownership: "notion" as const,
-    library_id: "library",
+    library_id: "0c64a309-510e-5d37-b23c-3ce2f966c66e",
     members: [],
-    requires: ["skill://target?library=library"],
+    requires: ["skill://target?library=0c64a309-510e-5d37-b23c-3ce2f966c66e"],
   }
   await writeFile(join(directory, ".ntn-skills.json"), JSON.stringify({ ...base, relations }))
   const admitted = await run(prepareCurrentImport(directory, { skillId: "portable" }))
@@ -557,9 +557,9 @@ test("current portable relations survive local admission and invalid selections 
   expect(admitted.plan.files[0]!.bytes).toEqual(original)
   for (const extra of [
     { requires: ["Display name"] },
-    { requires: ["skill://target?library=other"] },
-    { requires: ["skill://portable?library=library"] },
-    { requires: ["skill://target?library=library", "skill://target?library=library"] },
+    { requires: ["skill://target?library=563e49fa-4378-5493-a5ff-8c96321f9ffd"] },
+    { requires: ["skill://portable?library=0c64a309-510e-5d37-b23c-3ce2f966c66e"] },
+    { requires: ["skill://target?library=0c64a309-510e-5d37-b23c-3ce2f966c66e", "skill://target?library=0c64a309-510e-5d37-b23c-3ce2f966c66e"] },
     { future_relation: [] },
   ]) {
     await writeFile(
@@ -609,7 +609,7 @@ test("the import machine schema exposes bounded integer HTTP controls and timeou
 test("current import rejects ambiguous supersede identities before input or remote acquisition", async () => {
   const directory = await root(),
     f = currentWriteFixture(directory)
-  const base = ["missing.md", "--entry", library.skills.database_id, "--skill-id", "import-target"]
+  const base = ["missing.md", "--library", library.skills.database_id, "--skill-id", "import-target"]
   for (const flags of [
     ["--supersede", "old-intent"],
     ["--supersede", "same-intent", "--operation", "same-intent"],
@@ -651,7 +651,7 @@ test("single portable import preserves origin before omitted explicit-empty and 
       name: "Origin",
       description: "Context fixture",
       main: "SKILL.md",
-      relations: { version: 1, ownership: "notion", library_id: "production", ...fields },
+      relations: { version: 1, ownership: "notion", library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec", ...fields },
     })
   const seed = async (skill_id: string) => {
     const plan = await f.run(
@@ -690,7 +690,7 @@ test("single portable import preserves origin before omitted explicit-empty and 
       )
       .replace(
         "skill://outside/SKILL.md?snapshot=",
-        "skill://outside/SKILL.md?library=production&snapshot=",
+        "skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=",
       )
     expect(new TextDecoder().decode(selected.plan.files[0]!.bytes)).toBe(expected)
     expect(selected.plan.relations).toEqual({
@@ -716,7 +716,7 @@ test("single portable import preserves origin before omitted explicit-empty and 
   expect(existing.members_discovery.member_policy).toBe("preserve_existing")
   expect(existing.plan.relations?.members).toBeUndefined()
   expect(new TextDecoder().decode(existing.plan.files[0]!.bytes)).toContain(
-    "skill://outside/SKILL.md?library=production",
+    "skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec",
   )
   expect(existing.rewrites).toHaveLength(2)
   expect(await readFile(join(directory, "SKILL.md"), "utf8")).toBe(document)

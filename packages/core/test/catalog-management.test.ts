@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
-import { catalog, discoverDatabases } from "../src/catalog.ts"
+import { catalog, discoverLibraries } from "../src/catalog.ts"
 import { property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
@@ -152,7 +152,7 @@ test.each([true, false])(
 
 test("discovery returns only current Skill entries and excludes management and obsolete content tables", async () => {
   const f = fixture()
-  const result = await f.run(discoverDatabases())
+  const result = await f.run(discoverLibraries())
   expect(result.databases.map((source) => source.database_id)).toEqual([library.skills.database_id])
   expect(result.failures).toEqual([])
   expect(f.calls.some((call) => call.path.includes("/query"))).toBe(false)

@@ -1,6 +1,6 @@
 import { Crypto, Effect, Option, Path, Schema } from "effect"
 import { Argument, Command } from "effect/cli"
-import { databaseId } from "../../core/src/catalog.ts"
+import { libraryId } from "../../core/src/catalog.ts"
 import { defineCommand, exclusiveFlags, withConstraints } from "../../core/src/command-schema.ts"
 import { loadSkillUpdateFile } from "../../core/src/import.ts"
 import { lstatNoFollow } from "../../core/src/local-locks.ts"
@@ -520,7 +520,7 @@ export const currentImportBatchCommand = defineCommand(
   "import-batch",
   {
     manifest: Argument.String("manifest"),
-    entry: requiredSingleton("entry", "Current Skills database ID, URL or exact registered alias"),
+    library: requiredSingleton("library", "Current Skills database ID, URL or exact registered alias"),
     operation: singleton("operation", "Exact batch identity; required with --resume"),
     resume: switchFlag(
       "resume",
@@ -561,7 +561,7 @@ export const currentImportBatchCommand = defineCommand(
       )
       const invocation = yield* withCurrentInvocationBudget(
         Effect.gen(function* () {
-          const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
+          const library = yield* loadSharedLibrary(yield* libraryId(options.library))
           if (options.dryRun) {
             const definition = yield* compileCurrentImportBatch(library, loaded)
             return {

@@ -10,7 +10,7 @@ import { currentLibrary } from "./shared-current-fixture.ts"
 
 const library = {
   ...currentLibrary,
-  library_id: "library",
+  library_id: "0c64a309-510e-5d37-b23c-3ce2f966c66e",
   skills: {
     ...currentLibrary.skills,
     database_id: "00000000-0000-4000-8000-000000000010",
@@ -32,7 +32,7 @@ const catalog: ListCatalogResult = {
     },
   ],
   records: ["first", "second", "third"].map((name, index) => ({
-    id: `skill://${name}?library=library`,
+    id: `skill://${name}?library=0c64a309-510e-5d37-b23c-3ce2f966c66e`,
     kind: "skill",
     name,
     alias: name,
@@ -40,10 +40,10 @@ const catalog: ListCatalogResult = {
     default_context: false,
     enabled: true,
     entrypoint: "SKILL.md",
-    ref: fileRef(`skill://${name}?library=library`, "SKILL.md"),
+    ref: fileRef(`skill://${name}?library=0c64a309-510e-5d37-b23c-3ce2f966c66e`, "SKILL.md"),
     locator: {
       type: "shared_skill",
-      library_id: "library",
+      library_id: "0c64a309-510e-5d37-b23c-3ce2f966c66e",
       skill_id: name,
       page_id: `00000000-0000-4000-8000-00000000000${index + 1}`,
       database_id: "00000000-0000-4000-8000-000000000010",
@@ -61,8 +61,8 @@ const catalog: ListCatalogResult = {
     search_index_limited: false,
   },
   profile: {
-    library_id: "library",
-    library_entry: "00000000-0000-4000-8000-000000000010",
+    library_id: "0c64a309-510e-5d37-b23c-3ce2f966c66e",
+    library_id: "00000000-0000-4000-8000-000000000010",
     profile_id: "daily",
     fingerprint: "a".repeat(64),
     selection: "profile",
@@ -129,7 +129,7 @@ test("exact stable identity selection preserves root and resource paths without 
     "First Skill",
     "first-skill",
     "skill://First%20Skill/SKILL.md",
-    "skill://first-skill?library=library",
+    "skill://first-skill?library=0c64a309-510e-5d37-b23c-3ce2f966c66e",
   ])
     expect(() => resolveCatalogReference(target, selected, "library")).toThrow()
   expect(() => resolveCatalogReference("skill://first", selected)).toThrow(
@@ -162,7 +162,7 @@ test("same display names stay independent and duplicate stable identities are re
   ).toThrow(expect.objectContaining({ code: "SKILL_ID_CONFLICT" }))
   const foreignLibrary = {
     ...library,
-    library_id: "test",
+    library_id: "cc029b5c-680e-576d-a381-a069d3f9f26e",
     skills: {
       ...library.skills,
       database_id: "00000000-0000-4000-8000-000000000020",
@@ -171,11 +171,11 @@ test("same display names stay independent and duplicate stable identities are re
   }
   const foreign = {
     ...first,
-    id: "skill://first?library=test",
-    ref: "skill://first/SKILL.md?library=test",
+    id: "skill://first?library=cc029b5c-680e-576d-a381-a069d3f9f26e",
+    ref: "skill://first/SKILL.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e",
     locator: {
       ...first.locator,
-      library_id: "test",
+      library_id: "cc029b5c-680e-576d-a381-a069d3f9f26e",
       database_id: foreignLibrary.skills.database_id,
       data_source_id: foreignLibrary.skills.data_source_id,
     },
@@ -204,7 +204,7 @@ test("same display names stay independent and duplicate stable identities are re
       ...two,
       databases: two.databases.map((source) => ({
         ...source,
-        shared_library: { ...source.shared_library, library_id: "library" },
+        shared_library: { ...source.shared_library, library_id: "0c64a309-510e-5d37-b23c-3ce2f966c66e" },
       })),
     }),
   ).toThrow(expect.objectContaining({ code: "LIBRARY_ID_CONFLICT" }))
@@ -230,7 +230,7 @@ test("zero and one match require complete source coverage before selection", () 
       },
     ])
       expect(() =>
-        resolveCatalogReference("skill://first?library=library", {
+        resolveCatalogReference("skill://first?library=0c64a309-510e-5d37-b23c-3ce2f966c66e", {
           ...ordinary,
           records,
           count: records.length,
@@ -251,7 +251,7 @@ test("Views, Profiles, queried or paged lists cannot prove ordinary identity cov
     { ...ordinary, query: "first" },
     { ...ordinary, count: 1 },
   ])
-    expect(() => resolveCatalogReference("skill://first?library=library", projected)).toThrow(
+    expect(() => resolveCatalogReference("skill://first?library=0c64a309-510e-5d37-b23c-3ce2f966c66e", projected)).toThrow(
       expect.objectContaining({ code: "CATALOG_INCOMPLETE" }),
     )
 })
@@ -260,12 +260,12 @@ test("fixed references use their manifest and malformed or failed catalogs remai
   const ordinary = ordinaryCatalog()
   expect(() =>
     resolveCatalogReference(
-      fileRef("skill://first?library=library", "SKILL.md", `s_${"a".repeat(64)}`),
+      fileRef("skill://first?library=0c64a309-510e-5d37-b23c-3ce2f966c66e", "SKILL.md", `s_${"a".repeat(64)}`),
       ordinary,
     ),
   ).toThrow(expect.objectContaining({ code: "INVALID_ARGUMENT" }))
   for (const invalid of [null, {}, { ...ordinary, ok: false }, { ...ordinary, records: null }])
-    expect(() => resolveCatalogReference("skill://first?library=library", invalid)).toThrow(
+    expect(() => resolveCatalogReference("skill://first?library=0c64a309-510e-5d37-b23c-3ce2f966c66e", invalid)).toThrow(
       expect.objectContaining({ code: "INVALID_RESPONSE" }),
     )
 })

@@ -181,7 +181,7 @@ test("query bounds and fresh source identity are separate from display name", as
       ...selected,
       source: {
         ...selected.source,
-        shared_library: { ...selected.source.shared_library, library_id: "another-library" },
+        shared_library: { ...selected.source.shared_library, library_id: "82c54ed4-c58b-5af1-84b8-cc0b0eccef53" },
       },
     }),
   ).toThrow()

@@ -20,21 +20,21 @@ afterAll(async () => {
 })
 
 test("portable relationship context binds once, preserves omission and rejects duplicate or foreign complete identities", () => {
-  const base = { version: 1 as const, ownership: "notion" as const, library_id: "test" }
+  const base = { version: 1 as const, ownership: "notion" as const, library_id: "cc029b5c-680e-576d-a381-a069d3f9f26e" }
   expect(validatePortableRelations({ ...base, members: ["skill://architect"] })).toEqual({
     ...base,
-    members: ["skill://architect?library=test"],
+    members: ["skill://architect?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
   })
   expect(validatePortableRelations(base)).not.toHaveProperty("members")
   expect(validatePortableRelations({ ...base, members: [] }).members).toEqual([])
   expect(
     portableRelationSelection({ ...base, members: ["skill://architect"] }, "test", {
-      members: ["skill://architect?library=test"],
+      members: ["skill://architect?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
     }),
-  ).toEqual({ members: ["skill://architect?library=test"] })
+  ).toEqual({ members: ["skill://architect?library=cc029b5c-680e-576d-a381-a069d3f9f26e"] })
   for (const members of [
-    ["skill://architect", "skill://architect?library=test"],
-    ["skill://architect?library=production"],
+    ["skill://architect", "skill://architect?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
+    ["skill://architect?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec"],
     ["shared_skill:test:architect"],
     ["skill://architect/SKILL.md"],
     ["skill://architect?snapshot=s_" + "a".repeat(64)],

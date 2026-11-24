@@ -8,7 +8,7 @@ export function inspectSharedRelationSchema(library: SharedLibrary) {
     yield* inspectTable(
       library.skills.database_id,
       registeredSkillProperties(library.skills),
-      library.parent_page_id,
+      library.library_id,
       library.skills,
     )
     const missing = (["Members", "Requires"] as const).filter(

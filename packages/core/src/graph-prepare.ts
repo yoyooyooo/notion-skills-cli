@@ -107,7 +107,7 @@ export function prepareGraph(
 export function prepareGraphWithSnapshots(
   inputValue: PrepareInput,
   options: ConsumptionObservationOptions & {
-    readonly database?: string
+    readonly library?: string
     readonly execution?: PrepareExecutionOptions
     readonly metrics?: boolean
   } = {},
@@ -151,7 +151,7 @@ export function prepareGraphWithSnapshots(
     }
     return yield* withPrepareExecution(
       prepareSelected(input, targets, budget, {
-        database: options.database,
+        library: options.library,
         metrics: options.metrics,
         startedAt,
       }).pipe(Effect.provideService(Notion, selectedApi)),
@@ -170,7 +170,7 @@ function prepareSelected(
   targets: readonly string[],
   budget: PrepareReady["budget"],
   options: {
-    readonly database?: string
+    readonly library?: string
     readonly metrics?: boolean
     readonly startedAt: number
   },
@@ -212,7 +212,7 @@ function prepareSelectedInScope(
   targets: readonly string[],
   budget: PrepareReady["budget"],
   options: {
-    readonly database?: string
+    readonly library?: string
     readonly metrics?: boolean
     readonly startedAt: number
   },

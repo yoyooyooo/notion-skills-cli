@@ -15,7 +15,7 @@ const pendingPayload = {
   owner_page_id: null,
   version: 1,
   scope,
-  library_id: "current-sqlite",
+  library_id: "4f2a903d-8427-5499-968f-92824f397218",
   record_id: "operation-current-" + "c".repeat(64),
   intent: {
     operation_id: "current-write",
@@ -112,11 +112,11 @@ test("the current native slot fences rejected cold reads and pre-clear completio
   const domain = "current-native-bodies"
   await isolated(async (root) => {
     const key = `cache/${domain}/${"7".repeat(64)}/latest.json`
-    const identity = "skill://slot-skill?library=slot-library"
+    const identity = "skill://slot-skill?library=c1349788-03f1-5a64-975e-9d26e4078f36"
     const payload = {
       version: 1,
       scope,
-      library_id: "slot-library",
+      library_id: "c1349788-03f1-5a64-975e-9d26e4078f36",
       skill_id: "slot-skill",
       skill_page_id: "00000000-0000-4000-8000-000000000001",
       files: Array.from({ length: 80 }, (_, index) => ({
@@ -189,11 +189,11 @@ test("the current native slot fences rejected cold reads and pre-clear completio
 test("a newer native observation can follow a rebuilt page without changing logical owner or accepting late old-page publication", async () => {
   await isolated(async (root) => {
     const key = `cache/current-native-bodies/${"8".repeat(64)}/latest.json`
-    const identity = "skill://rebuilt-skill?library=rebuilt-library"
+    const identity = "skill://rebuilt-skill?library=0f655052-64a6-5cce-8087-a8a8e3f83a95"
     const old = {
       version: 1,
       scope,
-      library_id: "rebuilt-library",
+      library_id: "0f655052-64a6-5cce-8087-a8a8e3f83a95",
       skill_id: "rebuilt-skill",
       skill_page_id: "00000000-0000-4000-8000-000000000001",
       files: [],
@@ -677,7 +677,7 @@ test("full Source batches preserve an exact terminal prefix across real processe
       kind: "current_source_sync_batch",
       scope,
       batch_id: "00000000-0000-4000-8000-000000000006",
-      library_id: "sqlite-library",
+      library_id: "96fdf089-f1b2-55ce-97aa-3abcbb8a57c5",
       sources_data_source_id: "sqlite-sources",
       manager_id: "mini",
       execution_id: "package-a",
@@ -754,7 +754,7 @@ test("competing full Source batches cannot replace the first persisted identity"
       version: 1,
       kind: "current_source_sync_batch",
       scope,
-      library_id: "sqlite-library",
+      library_id: "96fdf089-f1b2-55ce-97aa-3abcbb8a57c5",
       sources_data_source_id: "sqlite-sources",
       manager_id: "mini",
       execution_id: "package-a",

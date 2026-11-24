@@ -329,7 +329,7 @@ test("a complete Source successor replaces an uncertain child Skill creation whi
   ).toBe(false)
   expect(
     await f.run(
-      http.use(readSkill(native.page_id, { database: library.skills.database_id, refresh: true })),
+      http.use(readSkill(native.page_id, { library: library.library_id, refresh: true })),
     ),
   ).toMatchObject({ content: nativeHeader + humanBody })
   await assertReady(f)
@@ -590,14 +590,14 @@ test("one Source writes two current Skills, preserves native authorship and reso
   const alphaMain = observed.members[0]!.portable.files[0]!.bytes
   expect(
     await f.run(
-      http.use(readSkill(alphaPage, { database: library.skills.database_id, refresh: true })),
+      http.use(readSkill(alphaPage, { library: library.library_id, refresh: true })),
     ),
   ).toMatchObject({ content: new TextDecoder().decode(alphaMain) })
   expect(
     await f.run(
       http.use(
         readSkill(native.page_id, {
-          database: library.skills.database_id,
+          library: library.library_id,
           path: "vendor/guide.md",
           refresh: true,
         }),
@@ -620,7 +620,7 @@ test("one Source writes two current Skills, preserves native authorship and reso
   const output = join(f.root, "exported-alpha")
   await f.run(
     http.use(
-      exportSkill(alphaPage, { database: library.skills.database_id, output, format: "directory" }),
+      exportSkill(alphaPage, { library: library.library_id, output, format: "directory" }),
     ),
   )
   for (const file of observed.members[0]!.portable.files) {
@@ -661,13 +661,13 @@ test("one Source writes two current Skills, preserves native authorship and reso
   ).toEqual([])
   expect(
     await f.run(
-      http.use(readSkill(native.page_id, { database: library.skills.database_id, refresh: true })),
+      http.use(readSkill(native.page_id, { library: library.library_id, refresh: true })),
     ),
   ).toMatchObject({ content: nativeHeader + humanBody })
   expect(
     await f.run(
       http.use(
-        readSkill(native.page_id, { database: library.skills.database_id, path: "local.json" }),
+        readSkill(native.page_id, { library: library.library_id, path: "local.json" }),
       ),
     ),
   ).toMatchObject({ content: new TextDecoder().decode(localBytes) })
@@ -905,7 +905,7 @@ test("Source writes reach ready without projection bodies and preserve current n
     await f.run(
       http.use(
         readSkill(String(alpha.id), {
-          database: library.skills.database_id,
+          library: library.library_id,
           refresh: true,
         }),
       ),
@@ -917,7 +917,7 @@ test("Source writes reach ready without projection bodies and preserve current n
     await f.run(
       http.use(
         readSkill(native.page_id, {
-          database: library.skills.database_id,
+          library: library.library_id,
           refresh: true,
         }),
       ),
@@ -955,7 +955,7 @@ test("fixed nested File resolution uses the Source path and target mount without
   const selected = await f.run(
     http.use(
       readSkill(String(alpha.id), {
-        database: library.skills.database_id,
+        library: library.library_id,
         refresh: true,
       }),
     ),
@@ -985,7 +985,7 @@ test("fixed nested File resolution uses the Source path and target mount without
     http.use(
       readSkill("../beta/guide.md", {
         from,
-        database: library.skills.database_id,
+        library: library.library_id,
       }),
     ),
   )
@@ -1244,7 +1244,7 @@ test("a Source refresh does not read or rewrite an existing generated projection
     await f.run(
       http.use(
         readSkill(native.page_id, {
-          database: library.skills.database_id,
+          library: library.library_id,
           path: "vendor/guide.md",
           refresh: true,
         }),
@@ -1538,7 +1538,7 @@ test("an explicit Source mapping replaces same-path native authority while retai
   ).toEqual([])
   expect(
     await f.run(
-      http.use(readSkill(native.page_id, { database: library.skills.database_id, refresh: true })),
+      http.use(readSkill(native.page_id, { library: library.library_id, refresh: true })),
     ),
   ).toMatchObject({
     content: new TextDecoder().decode(observed.members[0]!.portable.files[0]!.bytes),
@@ -1597,7 +1597,7 @@ test.each(["skill", "source-and-skills"] as const)(
     expect(f.table("files").some((row) => oldFiles.has(String(row.id)))).toBe(false)
     expect(
       await f.run(
-        http.use(readSkill(rebuiltPage, { database: library.skills.database_id, refresh: true })),
+        http.use(readSkill(rebuiltPage, { library: library.library_id, refresh: true })),
       ),
     ).toMatchObject({
       content: new TextDecoder().decode(observed.members[0]!.portable.files[0]!.bytes),

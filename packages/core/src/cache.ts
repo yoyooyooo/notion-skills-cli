@@ -1,3 +1,4 @@
+import { libraryId } from "./library-selection.ts"
 import { Clock, Crypto, Effect, FileSystem, Path, Schema } from "effect"
 import { bindEntryTarget, catalog } from "./catalog.ts"
 import { identitySegment, identityFromSegment } from "./cache-address.ts"
@@ -896,29 +897,14 @@ function cachedTarget(target: string, database?: string) {
         try: () => parseTarget(target),
         catch: (error) => error as SkillsError,
       }),
-      { database, offline: true },
+      { library: database, offline: true },
     )
     if (parsed.snapshot)
       return yield* Effect.fail(
         fail("INVALID_ARGUMENT", "Cache operations require a current target."),
       )
     const scope = yield* locallySelectedScope(true)
-    const config = yield* configuration
-    const matches = config.sources?.filter((source) => source.alias === database) ?? []
-    if (
-      database !== undefined &&
-      !pageId(database) &&
-      new Set(matches.map((source) => source.database_id)).size > 1
-    )
-      return yield* Effect.fail(
-        fail("DATABASE_AMBIGUOUS", "Registered database alias is ambiguous."),
-      )
-    const selectedDatabase =
-      database === undefined ? undefined : (pageId(database) ?? matches[0]?.database_id)
-    if (database !== undefined && !selectedDatabase)
-      return yield* Effect.fail(
-        fail("DATABASE_NOT_FOUND", "No registered database matched the selector."),
-      )
+    const selectedDatabase = database === undefined ? undefined : yield* libraryId(database)
     const store = yield* Store
     const id = pageId(parsed.selector)
     if (id) {
@@ -928,14 +914,14 @@ function cachedTarget(target: string, database?: string) {
         observed &&
         (observed.snapshot.record.locator.type === "local"
           ? undefined
-          : observed.snapshot.record.locator.database_id) !== selectedDatabase
+          : observed.snapshot.record.locator.library_id) !== selectedDatabase
       )
         return yield* Effect.fail(
           fail("SKILL_NOT_FOUND", "Target is outside the selected database."),
         )
       return { page: observed?.snapshot.record.id ?? id, scope: scope! }
     }
-    const directory = yield* catalog({ database, offline: true })
+    const directory = yield* catalog({ library: parsed.kind === "skill" && parsed.reference.scope.kind === "library" ? parsed.reference.scope.libraryId : database, offline: true })
     if (directory.scope !== scope || directory.coverage.failed_sources.length)
       return yield* Effect.fail(
         fail("CACHE_MISSING", "A complete catalog for this scope is required."),
@@ -947,11 +933,11 @@ function cachedTarget(target: string, database?: string) {
     return { page: skill.id, scope: scope! }
   })
 }
-export function cacheStatus(target?: string, options: { database?: string } = {}) {
+export function cacheStatus(target?: string, options: { library?: string } = {}) {
   return Effect.gen(function* () {
     const store = yield* Store
     const selected =
-      target === undefined ? undefined : yield* cachedTarget(target, options.database)
+      target === undefined ? undefined : yield* cachedTarget(target, options.library)
     const keys = yield* store.listKeys("cache")
     const pairs = new Map<string, { page: string; scope: string }>()
     for (const key of keys) {
@@ -1025,12 +1011,12 @@ export function cacheStatus(target?: string, options: { database?: string } = {}
 }
 export function clearCache(
   target?: string,
-  options: { all?: boolean; database?: string; dryRun?: boolean } = {},
+  options: { all?: boolean; library?: string; dryRun?: boolean } = {},
 ) {
   return Effect.gen(function* () {
     if (
       Number(target !== undefined) + Number(Boolean(options.all)) !== 1 ||
-      (options.all && options.database !== undefined)
+      (options.all && options.library !== undefined)
     )
       return yield* Effect.fail(
         fail(
@@ -1039,7 +1025,7 @@ export function clearCache(
         ),
       )
     const store = yield* Store
-    const selected = options.all ? undefined : yield* cachedTarget(target!, options.database)
+    const selected = options.all ? undefined : yield* cachedTarget(target!, options.library)
     const derivedPrefix =
       selected === undefined
         ? undefined
@@ -1107,7 +1093,7 @@ function property(value: unknown): Record<string, unknown> {
 }
 /** Explicit unreferenced-byte collection. It never retires observations or changes freshness. */
 export function garbageCollectCache(
-  options: { dryRun?: boolean; database?: string; online?: boolean } = {},
+  options: { dryRun?: boolean; library?: string; online?: boolean } = {},
 ) {
   return Effect.gen(function* () {
     const store = yield* Store
@@ -1115,7 +1101,7 @@ export function garbageCollectCache(
     const path = yield* Path.Path
     const absent = new Set<string>()
     if (options.online) {
-      const current = yield* catalog({ refresh: true, database: options.database })
+      const current = yield* catalog({ refresh: true, library: options.library })
       if (!current.coverage.exhaustive || current.coverage.failed_sources.length)
         return yield* Effect.fail(
           fail("CATALOG_INCOMPLETE", "Online GC requires one complete selected catalog."),

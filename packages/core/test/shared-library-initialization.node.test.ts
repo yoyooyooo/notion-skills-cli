@@ -11,10 +11,11 @@ const core = new URL("../src/", import.meta.url).pathname
 const scope = "a".repeat(64)
 const key = `operations/library-init-pending/${scope}/pending.json`
 const initial = {
-  version: 1,
+  version: 2,
   scope,
   operation_id: "library-node-resume",
   parent_page_id: "11111111-1111-4111-8111-111111111111",
+  root_page_id: "11111111-1111-4111-8111-111111111112",
   tables: {},
   in_flight: { action: "create:Skills", request_sha256: "b".repeat(64) },
 }
@@ -82,6 +83,7 @@ const rejected=[];
 for(const changed of [
  {...restored,operation_id:'library-other'},
  {...restored,parent_page_id:'44444444-4444-4444-8444-444444444444'},
+ {...restored,root_page_id:'44444444-4444-4444-8444-444444444444'},
  {...restored,tables:{}},
  {...restored,tables:{Skills:{...skills,data_source_id:'replacement'}}},
  {...restored,tables:{Skills:{...skills,property_ids:{Name:'replacement',Content:'content'}}}},
@@ -98,7 +100,7 @@ console.log(JSON.stringify({restored,afterClear,rejected,expanded,retired,rows:y
     const result = JSON.parse(second.stdout)
     expect(result.restored).toEqual(saved.pending)
     expect(result.afterClear).toEqual(saved.pending)
-    expect(result.rejected).toEqual(Array(5).fill("STATE_CONFLICT"))
+    expect(result.rejected).toEqual(Array(6).fill("STATE_CONFLICT"))
     expect(result.expanded.tables.Skills.property_ids.Members).toBe("members")
     expect(result.retired).toEqual([
       { key, retention_path: "sqlite_library_initialization_cleared" },

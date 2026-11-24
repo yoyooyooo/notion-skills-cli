@@ -15,8 +15,8 @@ import { identityFromSegment, identitySegment } from "../src/cache-address.ts"
 import { bindTarget, fileRef, parseTarget, resolveRef } from "../src/ref.ts"
 
 const snapshot = `s_${"a".repeat(64)}`
-const production = createSkillKey({ libraryId: "library-production", skillId: "architect" })
-const testing = createSkillKey({ libraryId: "library-testing", skillId: "architect" })
+const production = createSkillKey({ libraryId: "8fd04dc2-3275-55d6-be9e-37cd996baca1", skillId: "architect" })
+const testing = createSkillKey({ libraryId: "849b0147-c214-5e2e-b2e0-87e0fb42d0e4", skillId: "architect" })
 
 describe("one Skill reference protocol", () => {
   test("short author refs need a containing scope; duplicate names cannot choose one", () => {
@@ -26,7 +26,7 @@ describe("one Skill reference protocol", () => {
     expect(bindSkillRef(author, production.libraryId).owner).toEqual(production)
     expect(bindSkillRef(author, testing.libraryId).owner).toEqual(testing)
     expect(sameSkillKey(production, testing)).toBe(false)
-    expect(formatSkillIdentity(production)).toBe("skill://architect?library=library-production")
+    expect(formatSkillIdentity(production)).toBe("skill://architect?library=8fd04dc2-3275-55d6-be9e-37cd996baca1")
   })
 
   test("an explicit Library remains explicit when the ambient default changes", () => {
@@ -41,16 +41,16 @@ describe("one Skill reference protocol", () => {
 
   test("root selection and exact file selection remain distinct", () => {
     expect(
-      parseSkillRef(`skill://architect?library=library-production&snapshot=${snapshot}`).path,
+      parseSkillRef(`skill://architect?library=8fd04dc2-3275-55d6-be9e-37cd996baca1&snapshot=${snapshot}`).path,
     ).toBe("")
     const fixed = fileRef(formatSkillIdentity(production), "references/a b.md", snapshot)
     expect(fixed).toBe(
-      `skill://architect/references/a%20b.md?library=library-production&snapshot=${snapshot}`,
+      `skill://architect/references/a%20b.md?library=8fd04dc2-3275-55d6-be9e-37cd996baca1&snapshot=${snapshot}`,
     )
     expect(parseSkillRef(fixed).selection).toEqual(referenceSelection(snapshot))
     expect(() => parseSkillIdentity(fixed)).toThrow()
     expect(() => parseSkillIdentity("skill://architect")).toThrow()
-    expect(() => parseSkillIdentity("skill://%61rchitect?library=library-production")).toThrow()
+    expect(() => parseSkillIdentity("skill://%61rchitect?library=8fd04dc2-3275-55d6-be9e-37cd996baca1")).toThrow()
   })
 
   test("protocol and storage codecs preserve the complete identity across libraries", () => {
@@ -99,8 +99,8 @@ describe("one Skill reference protocol", () => {
 
   test("a new target never inherits a different owner's snapshot syntactically", () => {
     const from = fileRef(formatSkillIdentity(production), "SKILL.md", snapshot)
-    expect(resolveRef(from, "skill://unslop")).toBe("skill://unslop?library=library-production")
-    expect(resolveRef(from, "skill://architect?library=library-testing")).toBe(
+    expect(resolveRef(from, "skill://unslop")).toBe("skill://unslop?library=8fd04dc2-3275-55d6-be9e-37cd996baca1")
+    expect(resolveRef(from, "skill://architect?library=849b0147-c214-5e2e-b2e0-87e0fb42d0e4")).toBe(
       formatSkillIdentity(testing),
     )
   })

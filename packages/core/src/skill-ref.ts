@@ -1,3 +1,5 @@
+import { pageId } from "./notion-id.ts"
+
 /** The side-effect-free reference protocol shared by the CLI, SDK and Broker. */
 export const SKILL_REF_VERSION = 2 as const
 
@@ -58,10 +60,9 @@ export function validateSkillId(value: string): SkillId {
 }
 
 function libraryId(value: string): LibraryId {
-  if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(value)) {
-    return invalid("A Library ID must be an exact bounded identity.")
-  }
-  return value as LibraryId
+  const id = pageId(value)
+  if (id === undefined) return invalid("A Library ID must identify its exact Notion root page.")
+  return id as LibraryId
 }
 
 function snapshotId(value: string): SnapshotId {

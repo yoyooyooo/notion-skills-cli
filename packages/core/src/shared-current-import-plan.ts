@@ -4,7 +4,7 @@ import { fail, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { SKILL_REF_VERSION } from "./skill-ref.ts"
 import type { CurrentWriteMode } from "./shared-current-operation.ts"
-import type { SharedLibrary } from "./shared-library-model.ts"
+import { preservesSharedLibraryBindings, type SharedLibrary } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import {
   copyValidatedCurrentSkillWrite,
@@ -163,7 +163,6 @@ export function withCurrentImportPlan<A, E, R, CE, CR>(
       canonicalSharedJson([
         scope,
         library.library_id,
-        library.skills.data_source_id,
         request.operation_id,
       ]),
     )
@@ -177,6 +176,7 @@ export function withCurrentImportPlan<A, E, R, CE, CR>(
           if (
             saved.scope !== scope ||
             saved.library_id !== library.library_id ||
+            !preservesSharedLibraryBindings(saved.library, library) ||
             saved.skills_data_source_id !== library.skills.data_source_id ||
             saved.operation_id !== request.operation_id ||
             saved.request_sha256 !== request.request_sha256 ||
@@ -202,7 +202,8 @@ export function withCurrentImportPlan<A, E, R, CE, CR>(
             )
           const definition = yield* compile
           saved = {
-            version: 1,
+            version: 2,
+            library: structuredClone(library),
             ref_version: SKILL_REF_VERSION,
             scope,
             library_id: library.library_id,

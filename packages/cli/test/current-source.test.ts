@@ -181,15 +181,15 @@ test("invalid Source command flags and identities fail before every remote handl
     f = currentWriteFixture(directory)
   const file = join(directory, "source.json")
   await writeFile(file, JSON.stringify(declaration))
-  const apply = ["apply", file, "--entry", library.skills.database_id]
-  const refresh = ["refresh", "team-skills", "--entry", library.skills.database_id]
+  const apply = ["apply", file, "--library", library.skills.database_id]
+  const refresh = ["refresh", "team-skills", "--library", library.skills.database_id]
   for (const base of [
     apply,
     refresh,
     ...["enable", "disable", "remove"].map((name) => [
       name,
       "team-skills",
-      "--entry",
+      "--library",
       library.skills.database_id,
     ]),
     ...["takeover", "restore-follow"].map((name) => [
@@ -200,7 +200,7 @@ test("invalid Source command flags and identities fail before every remote handl
       "alpha",
       "--file-id",
       "main-alpha",
-      "--entry",
+      "--library",
       library.skills.database_id,
     ]),
   ])
@@ -223,10 +223,10 @@ test("invalid Source command flags and identities fail before every remote handl
         f.run(Command.runWith(currentSourceCommand, { version: "0" })([...base, ...flags])),
       ).rejects.toThrow()
   for (const args of [
-    ["apply", file, "--entry", "notion_page:old"],
-    ["refresh", "team-skills", "--entry", "skill://old"],
-    ["refresh", `source-${"a".repeat(64)}`, "--entry", library.skills.database_id],
-    ["refresh", "snapshot-old", "--entry", library.skills.database_id],
+    ["apply", file, "--library", "notion_page:old"],
+    ["refresh", "team-skills", "--library", "skill://old"],
+    ["refresh", `source-${"a".repeat(64)}`, "--library", library.skills.database_id],
+    ["refresh", "snapshot-old", "--library", library.skills.database_id],
   ])
     await expect(
       f.run(Command.runWith(currentSourceCommand, { version: "0" })(args)),
@@ -251,7 +251,7 @@ test("malformed local apply input never enters the real Source coordinator", asy
       Command.runWith(currentSourceCommand, { version: "0" })([
         "apply",
         file,
-        "--entry",
+        "--library",
         library.skills.database_id,
         "--dry-run",
       ]),
@@ -265,7 +265,7 @@ test("Source file commands reject incomplete identities, unsafe paths and unsupp
   const directory = await root(),
     f = currentWriteFixture(directory)
   const target = [
-    "--entry",
+    "--library",
     library.skills.database_id,
     "--skill-id",
     "alpha",
@@ -291,7 +291,7 @@ test("Source file commands reject incomplete identities, unsafe paths and unsupp
       "takeover",
       "team-skills",
       "skills/alpha/SKILL.md",
-      "--entry",
+      "--library",
       library.skills.database_id,
       "--skill-id",
       "alpha",

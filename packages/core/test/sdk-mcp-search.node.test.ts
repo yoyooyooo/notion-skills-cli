@@ -289,7 +289,7 @@ async function controlled<A>(
                 NTN_SKILLS_SCHEDULER_ROOT: join(root, "scheduler"),
                 NTN_SKILLS_NOTION_INTERVAL_MS: "100",
               },
-              database: library.skills.database_id,
+              library: library.library_id,
               serverUrl: mcpOrigin + "/mcp",
             }
             const seedGrant = async (workspace = workspaceId) => {
@@ -442,7 +442,7 @@ test("public body search admits Enabled owners outside Default Context and withh
       query_type: "internal",
       page_size: 10,
       max_highlight_length: 350,
-      page_url: `https://www.notion.so/${c.f.descriptor.parent_page_id.replaceAll("-", "")}`,
+      page_url: `https://www.notion.so/${c.f.descriptor.library_id.replaceAll("-", "")}`,
     })
     expect(c.mcp.calls.filter((call) => call.name).map((call) => call.name)).toEqual([
       "notion-fetch",

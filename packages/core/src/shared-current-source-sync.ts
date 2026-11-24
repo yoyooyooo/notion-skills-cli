@@ -1,11 +1,11 @@
 import { Clock, Context, Crypto, Effect } from "effect"
 import { fail, property, SkillsError } from "./model.ts"
-import { databaseId } from "./catalog.ts"
+import { libraryId } from "./catalog.ts"
 import { withLocalLocks } from "./local-locks.ts"
 import { Notion } from "./notion.ts"
 import { RequestBudget } from "./request-budget.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
-import type { SharedLibrary } from "./shared-library-model.ts"
+import { preservesSharedLibraryBindings, type SharedLibrary } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
 import { withCurrentInvocationBudget } from "./shared-current-invocation.ts"
@@ -522,6 +522,8 @@ function processSource(
         conflict("Another credential scope has unfinished synchronization for this Source."),
       )
     if (pending !== undefined) {
+      if (!preservesSharedLibraryBindings(pending.library, library))
+        return yield* Effect.fail(conflict("The Source synchronization retains different physical Library bindings."))
       progress.operation_id = pending.input.operation_id
       progress.content = {
         status: pending.phase === "projection" ? "published" : "observed",
@@ -642,7 +644,8 @@ function processSource(
       )
     yield* pendingOwners(library, live)
     const frozen: CurrentSourceSyncPending = {
-      version: 1,
+      version: 2,
+      library: structuredClone(library),
       kind: "current_source_sync",
       scope,
       manager_id: command.manager_id,
@@ -730,7 +733,6 @@ function executeBatch(library: SharedLibrary, command: CurrentSourceSyncCommand)
         api.apiOrigin ?? "https://api.notion.com",
         yield* api.credentialIdentity,
         library.library_id,
-        library.sources.data_source_id,
       ]),
     )
     const batch = yield* makeCurrentSourceCheckBatch()
@@ -745,9 +747,8 @@ function executeBatch(library: SharedLibrary, command: CurrentSourceSyncCommand)
           if (
             record !== undefined &&
             record.library_id === library.library_id &&
-            record.sources_data_source_id === library.sources.data_source_id &&
             record.manager_id === command.manager_id &&
-            (record.scope !== scope || record.execution_id !== command.execution_id)
+            (record.scope !== scope || record.execution_id !== command.execution_id || !preservesSharedLibraryBindings(record.library, library))
           )
             return yield* Effect.fail(
               conflict(
@@ -758,6 +759,7 @@ function executeBatch(library: SharedLibrary, command: CurrentSourceSyncCommand)
         if (command.mode === "full") {
           const identity = {
             scope,
+            library: structuredClone(library),
             library_id: library.library_id,
             sources_data_source_id: library.sources.data_source_id,
             manager_id: command.manager_id,
@@ -999,7 +1001,7 @@ function report<R>(
 
 /** One library discovery, one budget and one cooperative Store lock for the batch. */
 export function runCurrentSourceSync(entry: string, command: CurrentSourceSyncCommand) {
-  return report(databaseId(entry).pipe(Effect.flatMap(loadSharedLibrary)), command)
+  return report(libraryId(entry).pipe(Effect.flatMap(loadSharedLibrary)), command)
 }
 export function checkCurrentSources(library: SharedLibrary, input: CurrentSourceCheckRequest) {
   return report(Effect.succeed(library), { ...input, action: "check" })

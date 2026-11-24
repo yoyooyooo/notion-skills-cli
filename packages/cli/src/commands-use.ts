@@ -7,7 +7,7 @@ import { bindEntryTarget } from "../../core/src/catalog.ts"
 import { fileRef, parseTarget } from "../../core/src/ref.ts"
 import { Notion } from "../../core/src/notion.ts"
 import {
-  databaseFlag,
+  libraryFlag,
   emit,
   filesConstraints,
   readPolicy,
@@ -21,7 +21,7 @@ export const useCommand = defineCommand(
     selector: Argument.String("ref").pipe(
       Argument.withDescription("One stable Skill ID, physical Notion page, or skill:// reference"),
     ),
-    database: databaseFlag,
+    library: libraryFlag,
     ...readPolicyFlags,
     json: switchFlag("json", "Return complete bodies and machine evidence as structured JSON"),
     metrics: switchFlag("metrics", "Include measured HTTP attempts and bytes; requires --json"),
@@ -41,7 +41,7 @@ export const useCommand = defineCommand(
       })
       const bound = yield* bindEntryTarget(target, {
         ...policy,
-        database: Option.getOrUndefined(config.database),
+        library: Option.getOrUndefined(config.library),
       })
       const selected =
         bound.kind === "skill"
@@ -57,7 +57,7 @@ export const useCommand = defineCommand(
       const result = yield* consume(
         { version: 1, targets: [selected], purpose: "use", freshness },
         {
-          database: Option.getOrUndefined(config.database),
+          library: Option.getOrUndefined(config.library),
           metrics: config.metrics,
         },
       )

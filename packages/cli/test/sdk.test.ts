@@ -31,7 +31,7 @@ import { nodeRuntime } from "../src/runtime.ts"
 
 const input = { version: 1, targets: ["00000000-0000-4000-8000-000000000001"], purpose: "use" }
 const resourceRef =
-  "skill://skill/references/a.txt?library=library&snapshot=s_" + "a".repeat(64) + ""
+  "skill://skill/references/a.txt?library=0c64a309-510e-5d37-b23c-3ce2f966c66e&snapshot=s_" + "a".repeat(64) + ""
 
 function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
   expect(reports).toHaveLength(count)
@@ -68,7 +68,7 @@ describe("Promise SDK boundary", () => {
   })
   test("exact identity resolution is pure and manifest listing preserves the SDK cancellation boundary", async () => {
     expect(() =>
-      resolveCatalogReference("skill://missing/SKILL.md?library=test", {
+      resolveCatalogReference("skill://missing/SKILL.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e", {
         scope: "a".repeat(64),
         fetched_at: 1000,
         databases: [],
@@ -369,9 +369,9 @@ describe("Promise SDK boundary", () => {
     ])
       expect(compareNativeMarkdown({ expected, observed: changed })).toBe("different")
     const wrapped = {
-      expected: "1. Run `list --database\n   ENTRY`.\n\n   Keep the paragraph.\n",
+      expected: "1. Run `list --library\n   ENTRY`.\n\n   Keep the paragraph.\n",
       observed:
-        "1. Run <code>list --database ENTRY</code>.\n   <p>\n   Keep the paragraph.\n   </p>\n",
+        "1. Run <code>list --library ENTRY</code>.\n   <p>\n   Keep the paragraph.\n   </p>\n",
     }
     expect(compareNativeMarkdown(wrapped)).toBe("normalized")
     expect(

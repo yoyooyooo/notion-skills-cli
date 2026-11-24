@@ -25,7 +25,7 @@ const target = "41b5636c-236e-81d3-ba0f-c5fa3f735808"
 const base = {
   target,
   daily: false,
-  entry: library.skills.database_id,
+  library: library.library_id,
   resume: false,
   dryRun: false,
 }
@@ -72,7 +72,7 @@ test("projection recovery names the observed pending intent and never resumes an
       "library",
       "projection",
       target,
-      "--entry",
+      "--library",
       library.skills.database_id,
       "--operation",
       "original-intent",
@@ -108,7 +108,7 @@ test("projection recovery names the observed pending intent and never resumes an
       "owned-skill",
       "--kind",
       "skill",
-      "--entry",
+      "--library",
       library.skills.database_id,
     ],
     read_only: true,
@@ -146,7 +146,7 @@ test("restore recovery uses one public command across both phases with the origi
       "library",
       "projection",
       target,
-      "--entry",
+      "--library",
       library.skills.database_id,
       "--restore",
       "--include",
@@ -184,7 +184,7 @@ test("restore recovery uses one public command across both phases with the origi
       "held",
       "--kind",
       "skill",
-      "--entry",
+      "--library",
       library.skills.database_id,
     ],
     read_only: true,
@@ -280,7 +280,7 @@ test("the same daily CLI command resumes its interrupted Skill then completes th
         const output: string[] = []
         yield* Command.runWith(currentProjectionCommand, { version: "test", renderErrors: false })([
           "--daily",
-          "--entry",
+          "--library",
           library.skills.database_id,
         ]).pipe(
           Effect.provideService(Stdio.Stdio, {
@@ -353,7 +353,7 @@ test.each(["include", "exclude", "both"] as const)(
         projectionCLI([
           written.page_id,
           "--restore",
-          "--entry",
+          "--library",
           library.skills.database_id,
           ...flags,
         ]),
@@ -395,7 +395,7 @@ test("restore returns its public coordinates when the shared budget stops betwee
   let restored = false
   const args = [
     written.page_id,
-    "--entry",
+    "--library",
     library.skills.database_id,
     "--restore",
     "--include",
@@ -483,20 +483,20 @@ test("reading globs replace their own defaults without changing operation scope"
 test("public projection parsing rejects an ambiguous write scope before any remote request", async () => {
   const f = currentWriteFixture(await mkdtemp(join(tmpdir(), "ntn-cli-projection-")))
   for (const args of [
-    ["--entry", library.skills.database_id],
-    [target, "--daily", "--entry", library.skills.database_id],
-    ["--daily", "--operation", "one-intent", "--entry", library.skills.database_id],
-    [target, "--resume", "--entry", library.skills.database_id],
-    [target, "--cancel", "--entry", library.skills.database_id],
-    ["--daily", "--restore", "--entry", library.skills.database_id],
-    [target, "--restore", "--operation", "old", "--entry", library.skills.database_id],
-    [target, "--restore", "--resume", "--entry", library.skills.database_id],
-    [target, "--restore", "--cancel", "--entry", library.skills.database_id],
-    [target, "--restore", "--dry-run", "--entry", library.skills.database_id],
-    [target, "--include", "", "--include", "**/*.md", "--entry", library.skills.database_id],
-    [target, "--exclude", "**/test/**", "--exclude", "", "--entry", library.skills.database_id],
-    [target, "--cancel", "--operation", "old", "--resume", "--entry", library.skills.database_id],
-    [target, "--max-requests", "0", "--entry", library.skills.database_id],
+    ["--library", library.skills.database_id],
+    [target, "--daily", "--library", library.skills.database_id],
+    ["--daily", "--operation", "one-intent", "--library", library.skills.database_id],
+    [target, "--resume", "--library", library.skills.database_id],
+    [target, "--cancel", "--library", library.skills.database_id],
+    ["--daily", "--restore", "--library", library.skills.database_id],
+    [target, "--restore", "--operation", "old", "--library", library.skills.database_id],
+    [target, "--restore", "--resume", "--library", library.skills.database_id],
+    [target, "--restore", "--cancel", "--library", library.skills.database_id],
+    [target, "--restore", "--dry-run", "--library", library.skills.database_id],
+    [target, "--include", "", "--include", "**/*.md", "--library", library.skills.database_id],
+    [target, "--exclude", "**/test/**", "--exclude", "", "--library", library.skills.database_id],
+    [target, "--cancel", "--operation", "old", "--resume", "--library", library.skills.database_id],
+    [target, "--max-requests", "0", "--library", library.skills.database_id],
   ]) {
     await expect(
       f.run(

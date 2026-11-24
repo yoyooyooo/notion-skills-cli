@@ -242,7 +242,7 @@ function fixture() {
 
 test("C1/C3 warm complete reads add zero requests without moving validation or current configuration", async () => {
   const f = fixture()
-  f.json.set("config.json", { sources: [], default_database: database })
+  f.json.set("config.json", { sources: [], default_library: database })
   const first = await f.run(readSkill(page))
   const requests = f.requests.length
   for (const time of [1_000_010, 1_030_000, 1_299_999]) {
@@ -253,7 +253,7 @@ test("C1/C3 warm complete reads add zero requests without moving validation or c
     expect(warm.freshness?.validated_at).toBe(first.freshness?.validated_at)
   }
   expect(f.requests.length).toBe(requests)
-  expect(f.json.get("config.json")).toEqual({ sources: [], default_database: database })
+  expect(f.json.get("config.json")).toEqual({ sources: [], default_library: database })
 })
 
 for (const [offset, online] of [
@@ -662,7 +662,7 @@ test("C10 files lists the fixed manifest while selected reads and full exports r
 test("C11/C16 cache retirement preserves selected bytes and forces current discovery", async () => {
   const f = fixture()
   const snapshot = await f.run(openSkill(page))
-  f.json.set("config.json", { sources: [], default_database: database })
+  f.json.set("config.json", { sources: [], default_library: database })
   await f.run(clearCache(undefined, { all: true }))
   const pinned = await f.run(readSkill(snapshot.snapshot_id))
   expect(pinned.source).toBe("local_snapshot")
@@ -670,7 +670,7 @@ test("C11/C16 cache retirement preserves selected bytes and forces current disco
   const before = f.requests.length
   await f.run(readSkill(page))
   expect(f.requests.length).toBeGreaterThan(before)
-  expect(f.json.get("config.json")).toEqual({ sources: [], default_database: database })
+  expect(f.json.get("config.json")).toEqual({ sources: [], default_library: database })
 })
 
 test("target clear retains native body observations while all clear forces body revalidation without deleting pins", async () => {
@@ -826,7 +826,7 @@ test("P7 saving and clearing policy preserves every typed configuration field an
       data_source_ids: [currentLibrary.skills.data_source_id],
     },
   ]
-  f.json.set("config.json", { token: "secret", default_database: database, sources })
+  f.json.set("config.json", { token: "secret", default_library: database, sources })
   const saved = await f.run(configureCachePolicy({ readMaxAge: 0, catalogMaxAge: 2_000 }))
   expect(JSON.stringify(saved)).not.toContain("secret")
   expect((await f.run(configuration)).sources).toEqual(sources)

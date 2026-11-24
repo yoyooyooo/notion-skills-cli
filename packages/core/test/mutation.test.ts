@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer } from "effect"
-import { addSource, databaseId, explicitSource, setDefaultDatabase } from "../src/catalog.ts"
+import { addSource, libraryId, explicitSource, setDefaultLibrary } from "../src/catalog.ts"
 import { ConfigSchema, decode, fail } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
@@ -101,14 +101,14 @@ function setup(initial: unknown, ids: string[], broken?: string) {
 
 test("default updates and source registration preserve each other's configuration", async () => {
   const fixture = setup({ sources: [], token: "configured-fixture-token" }, [])
-  await fixture.run(setDefaultDatabase(first))
+  await fixture.run(setDefaultLibrary(first))
   await fixture.run(addSource("other", second))
   expect(fixture.config()).toEqual({
-    default_database: first,
+    default_library: first,
     token: "configured-fixture-token",
     sources: [{ ...fixture.source(second), alias: "other" }],
   })
-  await fixture.run(setDefaultDatabase())
+  await fixture.run(setDefaultLibrary())
   expect(fixture.config()).toEqual({
     sources: [{ ...fixture.source(second), alias: "other" }],
     token: "configured-fixture-token",
@@ -125,8 +125,8 @@ test("registered aliases select databases exactly and defaults persist canonical
     (await fixture.run(explicitSource(`https://www.notion.so/${first.replaceAll("-", "")}`))).alias,
   ).toBe("frontend")
   expect((await fixture.run(explicitSource("ops"))).database_id).toBe(second)
-  await fixture.run(setDefaultDatabase("frontend"))
-  expect(fixture.config().default_database).toBe(first)
+  await fixture.run(setDefaultLibrary("frontend"))
+  expect(fixture.config().default_library).toBe(first)
   expect(fixture.config().token).toBe("configured-fixture-token")
   expect((await fixture.run(explicitSource("ops"))).database_id).toBe(second)
   for (const selector of ["Frontend", "Skills", "missing"]) {
@@ -141,7 +141,7 @@ test("an ambiguous or inaccessible alias never redirects to another database", a
       sources: [
         { alias: "frontend", database_id: first, title: "Frontend Skills", data_source_ids: [] },
       ],
-      default_database: second,
+      default_library: second,
     },
     [second],
     first,
@@ -162,7 +162,7 @@ test("an ambiguous or inaccessible alias never redirects to another database", a
     },
     [first, second],
   )
-  const ambiguous = await duplicate.run(databaseId("shared").pipe(Effect.result))
+  const ambiguous = await duplicate.run(libraryId("shared").pipe(Effect.result))
   expect(ambiguous._tag === "Failure" && ambiguous.failure.code).toBe("DATABASE_AMBIGUOUS")
-  expect(await duplicate.run(databaseId(first))).toBe(first)
+  expect(await duplicate.run(libraryId(first))).toBe(first)
 })

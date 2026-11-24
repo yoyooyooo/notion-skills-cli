@@ -25,7 +25,7 @@ function snapshot(input: unknown): CurrentSourceSyncBatch {
 export function makeCurrentSourceSyncBatch(
   input: Omit<CurrentSourceSyncBatch, "version" | "kind" | "results">,
 ): CurrentSourceSyncBatch {
-  return snapshot({ ...input, version: 1, kind: "current_source_sync_batch", results: [] })
+  return snapshot({ ...input, version: 2, kind: "current_source_sync_batch", results: [] })
 }
 
 export function appendCurrentSourceSyncBatchResult(

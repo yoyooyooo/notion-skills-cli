@@ -21,7 +21,7 @@ import {
   readConstraints,
   exportConstraints,
   validateConstraints,
-  databaseFlag,
+  libraryFlag,
   singleton,
   requiredSingleton,
   switchFlag,
@@ -46,7 +46,8 @@ function measuredOutput<A extends object>(value: A, enabled: boolean, startedAt:
 export const listCommand = defineCommand(
   "list",
   {
-    database: databaseFlag,
+    library: libraryFlag,
+    all: switchFlag("all", "Explicitly discover all accessible current Libraries; search coverage may be incomplete"),
     view: singleton(
       "view",
       "Select an exact Notion View ID or URL; cannot be combined with --default-view",
@@ -57,7 +58,7 @@ export const listCommand = defineCommand(
     ),
     profile: singleton(
       "profile",
-      "Use this shared Profile default; requires --database, and an explicit --view takes precedence",
+      "Use this shared Profile default; requires --library, and an explicit --view takes precedence",
     ),
     ...readPolicyFlags,
     metrics: requestMetricsFlag,
@@ -67,7 +68,7 @@ export const listCommand = defineCommand(
     ),
     searchIn: singleton(
       "search-in",
-      "metadata (default) or content via hosted Notion MCP; content requires --database and --query",
+      "metadata (default) or content via hosted Notion MCP; content requires --library and --query",
     ),
     limit: singleton(
       "limit",
@@ -86,7 +87,8 @@ export const listCommand = defineCommand(
         )
       if (searchIn === "content") {
         if (
-          Option.isNone(config.database) ||
+          config.all ||
+          Option.isNone(config.library) ||
           Option.isNone(config.query) ||
           Option.isSome(config.cursor) ||
           Option.isSome(config.view) ||
@@ -99,10 +101,10 @@ export const listCommand = defineCommand(
           return yield* Effect.fail(
             fail(
               "INVALID_ARGUMENT",
-              "Content search requires --database and --query; cursors, Views, shared Profiles, offline/cache policies and REST-only metrics do not apply.",
+              "Content search requires --library and --query; cursors, Views, shared Profiles, offline/cache policies and REST-only metrics do not apply.",
             ),
           )
-        const database = config.database.value,
+        const database = config.library.value,
           query = config.query.value
         const result = yield* Effect.tryPromise({
           try: (signal) =>
@@ -111,7 +113,7 @@ export const listCommand = defineCommand(
                 query,
                 limit: Option.isSome(config.limit) ? Number(config.limit.value) : undefined,
               },
-              { database, signal },
+              { library: database, signal },
             ),
           catch: (error) =>
             error instanceof SkillsError
@@ -129,7 +131,8 @@ export const listCommand = defineCommand(
           }),
         )
       const options = {
-        database: Option.getOrUndefined(config.database),
+        library: Option.getOrUndefined(config.library),
+        all: config.all,
         ...(yield* readPolicy(config)),
       }
       const result = yield* listSkills({
@@ -146,7 +149,7 @@ export const listCommand = defineCommand(
 ).pipe(
   Command.withShortDescription("List available skills with names, descriptions and refs"),
   Command.withDescription(
-    "Use --view ID/Notion-URL for an exact session View, or --default-view for the bound shared Profile default and otherwise the first View in API order; --view and --default-view are mutually exclusive. --profile ID --database ENTRY selects a shared Profile for this invocation. An explicit --view takes precedence over Profile rules. A machine binding is consulted only with --default-view; an explicit different database uses that database's first View. Default capability directories omit Prompts. Bare list discovers the accessible source scope, including Prompts, regardless of the machine binding. Output defaults to 50 records (maximum --limit 500); follow next_cursor with --cursor until has_more is false. count is this page and total_count is the filtered observation; neither upgrades source coverage. Copy the returned cursor unchanged with the same query and selection; changed observations return LIST_CURSOR_STALE. --json is explicit; structured JSON is the default. View membership uses the native query including quick filters, not an additional Default Context gate; Profile and View rules never grant access. List paginated lightweight metadata from current libraries with explicit successful-query coverage. Routers expose current Members; each Skill remains independently available. --query filters Name/alias/Description while retaining the database map. Catalog age defaults to 60s; --refresh validates online, --offline uses stored observations, --max-age overrides age. These policies are mutually exclusive. Cache freshness never improves discovery coverage; failed sources stay explicit. --database accepts one ID, URL or exact registered alias; Search is not workspace-exhaustive. For remote title and body matching, use --search-in content with --database and a nonempty --query. Configure NOTION_MCP_TOKEN or run auth mcp login first; CLI search never starts an interactive login. Content mode accepts --limit 1-50, always validates current REST eligibility, and returns no cursor or exhaustive absence claim. Views, shared Profiles, offline/cache policies and REST-only metrics do not apply to content mode.",
+    "Use --view ID/Notion-URL for an exact session View, or --default-view for the bound shared Profile default and otherwise the first View in API order; --view and --default-view are mutually exclusive. --profile ID --library ENTRY selects a shared Profile for this invocation. An explicit --view takes precedence over Profile rules. A machine binding is consulted only with --default-view; an explicit different database uses that database's first View. Default capability directories omit Prompts. Bare list uses --library or default_library, including Prompts. --all explicitly discovers accessible Libraries and cannot select a View or Profile. Output defaults to 50 records (maximum --limit 500); follow next_cursor with --cursor until has_more is false. count is this page and total_count is the filtered observation; neither upgrades source coverage. Copy the returned cursor unchanged with the same query and selection; changed observations return LIST_CURSOR_STALE. --json is explicit; structured JSON is the default. View membership uses the native query including quick filters, not an additional Default Context gate; Profile and View rules never grant access. List paginated lightweight metadata from current libraries with explicit successful-query coverage. Routers expose current Members; each Skill remains independently available. --query filters Name/alias/Description while retaining the database map. Catalog age defaults to 60s; --refresh validates online, --offline uses stored observations, --max-age overrides age. These policies are mutually exclusive. Cache freshness never improves discovery coverage; failed sources stay explicit. --library accepts one ID, URL or exact registered alias; Search is not workspace-exhaustive. For remote title and body matching, use --search-in content with --library and a nonempty --query. Configure NOTION_MCP_TOKEN or run auth mcp login first; CLI search never starts an interactive login. Content mode accepts --limit 1-50, always validates current REST eligibility, and returns no cursor or exhaustive absence claim. Views, shared Profiles, offline/cache policies and REST-only metrics do not apply to content mode.",
   ),
   Command.withExamples([
     {
@@ -158,20 +161,20 @@ export const listCommand = defineCommand(
       description: "Filter current metadata by Name, alias or Description",
     },
     {
-      command: "ntn-skills list --database LIBRARY_ENTRY --search-in content --query governance",
+      command: "ntn-skills list --library LIBRARY_ENTRY --search-in content --query governance",
       description:
         "Search remote Notion content after configuring an MCP token or running auth mcp login",
     },
     {
-      command: "ntn-skills list --database DATABASE_ID",
+      command: "ntn-skills list --library DATABASE_ID",
       description: "Query a known Skills Database; replace DATABASE_ID with its ID or URL",
     },
     {
-      command: "ntn-skills list --database LIBRARY_ENTRY",
-      description: "Query current Skills from the exact Skills database entry",
+      command: "ntn-skills list --library LIBRARY_ENTRY",
+      description: "Query current Skills from the exact Library root page",
     },
     {
-      command: "ntn-skills list --profile daily --database LIBRARY_ID",
+      command: "ntn-skills list --profile daily --library LIBRARY_ID",
       description: "Use the shared daily Profile's default capability directory",
     },
   ]),
@@ -179,19 +182,19 @@ export const listCommand = defineCommand(
 
 export const viewsCommand = defineCommand(
   "views",
-  { database: databaseFlag, ...readPolicyFlags },
+  { library: libraryFlag, ...readPolicyFlags },
   (config) =>
     Effect.gen(function* () {
       yield* emit(
         yield* listViews({
-          database: Option.getOrUndefined(config.database),
+          library: Option.getOrUndefined(config.library),
           ...(yield* readPolicy(config)),
         }),
       )
     }),
 ).pipe(
   Command.withDescription(
-    "List Notion Views in API order, without reading Skill bodies. Use --database for an ID, URL or registered alias; without it the content library must be unambiguous. View names are display labels, IDs are identities. --refresh, --offline and --max-age follow the catalog observation policy.",
+    "List Notion Views in API order, without reading Skill bodies. Use --library for an ID, URL or registered alias; without it default_library selects the Library. View names are display labels, IDs are identities. --refresh, --offline and --max-age follow the catalog observation policy.",
   ),
 )
 
@@ -204,7 +207,7 @@ export const readCommand = defineCommand(
       ),
     ),
     path: singleton("path", "Skill-relative file path; target must not already contain a path"),
-    database: databaseFlag,
+    library: libraryFlag,
     metrics: requestMetricsFlag,
     json: switchFlag("json", "Emit the stable JSON result; incompatible with --raw"),
     ...readPolicyFlags,
@@ -238,7 +241,7 @@ export const readCommand = defineCommand(
       yield* validateConstraints(readConstraints, config)
       const result = yield* readSkill(config.selector, {
         path: Option.getOrUndefined(config.path),
-        database: Option.getOrUndefined(config.database),
+        library: Option.getOrUndefined(config.library),
         from: Option.getOrUndefined(config.from),
         lines: Option.getOrUndefined(config.lines),
         output: Option.getOrUndefined(config.output),
@@ -292,7 +295,7 @@ export const filesCommand = defineCommand(
       "path",
       "File/directory filter; omit for every file; cannot replace a ref's path",
     ),
-    database: databaseFlag,
+    library: libraryFlag,
     metrics: requestMetricsFlag,
     ...readPolicyFlags,
   },
@@ -302,7 +305,7 @@ export const filesCommand = defineCommand(
       yield* validateConstraints(filesConstraints, config)
       const result = yield* listSkill(config.selector, {
         path: Option.getOrUndefined(config.path),
-        database: Option.getOrUndefined(config.database),
+        library: Option.getOrUndefined(config.library),
         ...(yield* readPolicy(config)),
       })
       yield* emit(yield* measuredOutput(result, config.metrics, startedAt))
@@ -331,7 +334,7 @@ export const exportCommand = defineCommand(
       "Destination ZIP or directory; identical content is reused, differing output is never overwritten",
     ),
     format: singleton("format", "zip or directory; default: zip for .zip outputs"),
-    database: databaseFlag,
+    library: libraryFlag,
     ...readPolicyFlags,
   },
   (config) =>
@@ -342,7 +345,7 @@ export const exportCommand = defineCommand(
         yield* exportSkill(config.selector, {
           output: config.output,
           format: format as "zip" | "directory" | undefined,
-          database: Option.getOrUndefined(config.database),
+          library: Option.getOrUndefined(config.library),
           ...(yield* readPolicy(config)),
         }),
       )

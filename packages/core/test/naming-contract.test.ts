@@ -16,7 +16,7 @@ const page = "12345678-1234-4234-8234-123456789abc"
 const other = "22345678-1234-4234-8234-123456789abc"
 function record(name: string, id = page): ContentRecord {
   return {
-    id: `skill://${id}?library=library-current`,
+    id: `skill://${id}?library=00000000-0000-4000-8000-000000000002`,
     kind: "skill",
     name,
     alias: aliasFor(name),
@@ -24,10 +24,10 @@ function record(name: string, id = page): ContentRecord {
     default_context: false,
     enabled: true,
     entrypoint: "SKILL.md",
-    ref: fileRef(`skill://${id}?library=library-current`, "SKILL.md"),
+    ref: fileRef(`skill://${id}?library=00000000-0000-4000-8000-000000000002`, "SKILL.md"),
     locator: {
       type: "shared_skill",
-      library_id: "library-current",
+      library_id: "00000000-0000-4000-8000-000000000002",
       skill_id: id,
       page_id: id,
       database_id: currentLibrary.skills.database_id,
@@ -94,7 +94,7 @@ describe("human names and callable aliases", () => {
     const directory = catalog([first, second])
     expect(() => resolveCatalogReference("agent-skill", directory)).toThrow()
     expect(() =>
-      resolveCatalogReference("skill://agent-skill?library=library-current", directory),
+      resolveCatalogReference("skill://agent-skill?library=00000000-0000-4000-8000-000000000002", directory),
     ).toThrow()
     expect(resolveCatalogReference(first.id, directory).record.id).toBe(first.id)
     const identityShadow = record(first.id, other)

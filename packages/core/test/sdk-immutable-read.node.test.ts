@@ -112,7 +112,7 @@ process.exit(args.includes('fetch')?17:0);\n`,
       name,
       options: {
         cwd: root,
-        database: library.skills.database_id,
+        library: library.library_id,
         env: {
           PATH: join(root, name, "bin"),
           HOME: root,
@@ -303,7 +303,7 @@ async function bootstrap(source: Source, root: string, name: string) {
     NTN_SKILLS_NOTION_INTERVAL_MS: "100",
     NTN_SKILLS_REQUEST_TRACE_LIMIT: "10000",
   }
-  const options = { env, database: library.skills.database_id, metrics: true }
+  const options = { env, library: library.library_id, metrics: true }
   const main = await readSkill(skillPage, options)
   const directoryRef = new URL(main.ref)
   directoryRef.pathname = "/"

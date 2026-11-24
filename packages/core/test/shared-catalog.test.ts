@@ -2,7 +2,7 @@ import { resolveCatalogReference } from "../src/catalog-reference.ts"
 import { describe, expect, test } from "bun:test"
 import { Crypto, Effect, Layer } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { addSource, catalog, explicitSource, setDefaultDatabase } from "../src/catalog.ts"
+import { addSource, catalog, explicitSource, setDefaultLibrary } from "../src/catalog.ts"
 import {
   ContentRecordSchema,
   decode,
@@ -20,7 +20,7 @@ import { currentLibrary } from "./shared-current-fixture.ts"
 const id = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`
 const library: SharedLibrary = {
   ...structuredClone(currentLibrary),
-  library_id: "library-fixture",
+  library_id: "4a155fa3-08ef-5b35-9f53-2c7fb135630c",
   operation_id: "library-fixture",
 }
 const propertyIds = library.skills.property_ids
@@ -84,7 +84,7 @@ function database() {
     database_type: null,
     title: [{ plain_text: "Shared Skills" }],
     description: [{ plain_text: `${LIBRARY_MARKER}${JSON.stringify(library)}` }],
-    parent: { type: "page_id", page_id: library.parent_page_id },
+    parent: { type: "page_id", page_id: library.library_id },
     data_sources: [{ id: library.skills.data_source_id, name: "Skills" }],
   }
 }
@@ -328,7 +328,7 @@ describe("shared content metadata", () => {
 describe("shared catalog routing", () => {
   test("current registration and defaults preserve unrelated configuration", async () => {
     const f = fixture({
-      configuration: { token: "preserved-fixture-token", default_database: id(88), sources: [] },
+      configuration: { token: "preserved-fixture-token", default_library: id(88), sources: [] },
     })
     const registered = await f.run(addSource("team", library.skills.database_id))
     expect(registered).toEqual({
@@ -339,13 +339,13 @@ describe("shared catalog routing", () => {
     })
     expect(f.saved.get("config.json")).toEqual({
       token: "preserved-fixture-token",
-      default_database: id(88),
+      default_library: id(88),
       sources: [registered],
     })
-    await f.run(setDefaultDatabase("team"))
+    await f.run(setDefaultLibrary("team"))
     expect(f.saved.get("config.json")).toEqual({
       token: "preserved-fixture-token",
-      default_database: library.skills.database_id,
+      default_library: library.skills.database_id,
       sources: [registered],
     })
     const selected = await f.run(explicitSource("team"))
@@ -369,11 +369,11 @@ describe("shared catalog routing", () => {
     ]) {
       for (const operation of [
         addSource("team", library.skills.database_id).pipe(Effect.as(undefined)),
-        setDefaultDatabase(library.skills.database_id).pipe(Effect.as(undefined)),
+        setDefaultLibrary(library.skills.database_id).pipe(Effect.as(undefined)),
       ]) {
         const configuration = {
           token: "preserved-fixture-token",
-          default_database: id(88),
+          default_library: id(88),
           sources: [],
         }
         const f = fixture({ configuration, databaseValue })
@@ -401,7 +401,7 @@ describe("shared catalog routing", () => {
 
   test("cold explicit catalog is metadata only and includes the shared stable identity", async () => {
     const f = fixture({ rows: [row({ renamed: true })] })
-    const result = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
+    const result = await f.run(catalog({ library: library.library_id, refresh: true }))
     expect(result.records).toHaveLength(1)
     expect(result.records[0]?.locator.type).toBe("shared_skill")
     expect(result.coverage.exhaustive).toBe(true)
@@ -441,7 +441,7 @@ describe("shared catalog routing", () => {
       row({ n: index + 1, name: `Skill ${index + 1}` }),
     )
     const f = fixture({ rows })
-    const result = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
+    const result = await f.run(catalog({ library: library.library_id, refresh: true }))
     expect(result.records).toHaveLength(101)
     expect(f.calls).toHaveLength(4)
     expect(f.calls.filter((call) => call.path.includes("/query?"))).toHaveLength(2)
@@ -453,7 +453,7 @@ describe("shared catalog routing", () => {
     rows[100] = row({ n: 101, skillId: "" })
     const f = fixture({ rows })
     const error = await f.run(
-      Effect.flip(catalog({ database: library.skills.database_id, refresh: true })),
+      Effect.flip(catalog({ library: library.library_id, refresh: true })),
     )
     expect(error.code).toBe("INVALID_SHARED_SKILL")
     expect(error.details).toEqual({
@@ -471,9 +471,9 @@ describe("shared catalog routing", () => {
 
   test("TTL hits issue no remote requests and keep the original validation time", async () => {
     const f = fixture()
-    const first = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
+    const first = await f.run(catalog({ library: library.library_id, refresh: true }))
     f.calls.length = 0
-    const cached = await f.run(catalog({ database: library.skills.database_id }))
+    const cached = await f.run(catalog({ library: library.library_id }))
     expect(cached.records).toEqual(first.records)
     expect(cached.fetched_at).toBe(first.fetched_at)
     expect(cached.source).toBe("local_cache")
@@ -482,7 +482,7 @@ describe("shared catalog routing", () => {
 
   test("Enabled false removes a Skill from the directory without changing its identity", async () => {
     const f = fixture({ rows: [row(), row({ n: 2, enabled: false })] })
-    const result = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
+    const result = await f.run(catalog({ library: library.library_id, refresh: true }))
     expect(result.records.map((record) => record.id)).toEqual([
       skillIdentity(library.library_id, "skill-1"),
     ])
@@ -494,7 +494,7 @@ describe("shared catalog routing", () => {
       rows: [row(), row({ n: 2, skillId: "skill-1", name: "Duplicate binding" })],
     })
     const result = await f.run(
-      catalog({ database: library.skills.database_id, refresh: true }).pipe(Effect.result),
+      catalog({ library: library.library_id, refresh: true }).pipe(Effect.result),
     )
     expect(result._tag).toBe("Failure")
     if (result._tag !== "Failure") throw new Error("Expected identity conflict")
@@ -503,7 +503,7 @@ describe("shared catalog routing", () => {
 
   test("an unregistered disabled page does not block registered Skill discovery", async () => {
     const f = fixture({ rows: [row(), row({ n: 2, enabled: false, skillId: "" })] })
-    const result = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
+    const result = await f.run(catalog({ library: library.library_id, refresh: true }))
     expect(result.records.map((record) => record.id)).toEqual([
       skillIdentity(library.library_id, "skill-1"),
     ])
@@ -523,7 +523,7 @@ describe("shared catalog routing", () => {
   test("disabled pages with malformed nonempty identities remain explicit failures", async () => {
     const f = fixture({ rows: [row(), row({ n: 2, enabled: false, skillId: "bad/id" })] })
     const error = await f.run(
-      Effect.flip(catalog({ database: library.skills.database_id, refresh: true })),
+      Effect.flip(catalog({ library: library.library_id, refresh: true })),
     )
     expect(error.code).toBe("INVALID_SHARED_SKILL")
     expect(error.details).toMatchObject({ page_id: id(1002), reason: "invalid_format" })
@@ -535,7 +535,7 @@ describe("shared catalog routing", () => {
     draft.properties.Description = { id: propertyIds.Description, type: "rich_text", rich_text: [] }
     draft.properties.Kind = { id: propertyIds.Kind, type: "select", select: null }
     const f = fixture({ rows: [row(), draft] })
-    const result = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
+    const result = await f.run(catalog({ library: library.library_id, refresh: true }))
     expect(result.records).toHaveLength(1)
     expect(result.coverage.exhaustive).toBe(true)
     expect(f.calls).toHaveLength(3)
@@ -567,7 +567,7 @@ describe("shared catalog routing", () => {
 
   test("incomplete pagination never reports an exhaustive empty directory", async () => {
     const f = fixture({ queryIncomplete: true })
-    const result = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
+    const result = await f.run(catalog({ library: library.library_id, refresh: true }))
     expect(result.coverage.exhaustive).toBe(false)
     expect(result.coverage.failed_sources).toHaveLength(1)
     expect(result.records).toEqual([])

@@ -77,7 +77,7 @@ const recordId = (library: SharedLibrary, n: number) =>
 function anotherLibrary(): SharedLibrary {
   return {
     ...currentLibrary,
-    library_id: "library-other",
+    library_id: "45c64249-e1dd-59ab-ad9f-604ff752ddb4",
     operation_id: "library-other",
     parent_page_id: currentId(20000),
     skills: {
@@ -404,13 +404,13 @@ test("invalid current Notion titles fail with the selected physical page and exa
 for (const defect of ["title", "logical-id", "locator", "legacy-locator"] as const)
   test("cached metadata cannot bypass current " + defect + " validation", async () => {
     const f = fixture()
-    await f.run(catalog({ database: currentLibrary.skills.database_id }))
+    await f.run(catalog({ library: currentLibrary.library_id }))
     for (const [key, value] of f.json)
       if (key.startsWith("cache/catalogs/")) {
         const cached = JSON.parse(JSON.stringify(value)),
           record = cached.records[0]
         if (defect === "title") record.name = "资源\u0000治理"
-        if (defect === "logical-id") record.id = "skill://other?library=library-current"
+        if (defect === "logical-id") record.id = "skill://other?library=00000000-0000-4000-8000-000000000002"
         if (defect === "locator") record.locator.data_source_id = currentId(999)
         if (defect === "legacy-locator")
           record.locator = {
@@ -423,7 +423,7 @@ for (const defect of ["title", "logical-id", "locator", "legacy-locator"] as con
       }
     const before = f.calls.length
     const result = await f.run(
-      catalog({ database: currentLibrary.skills.database_id, offline: true }).pipe(Effect.result),
+      catalog({ library: currentLibrary.library_id, offline: true }).pipe(Effect.result),
     )
     expect(result._tag === "Failure" && result.failure.code).toBe(
       defect === "title" ? "INVALID_SKILL_NAME" : "STATE_CORRUPT",
@@ -504,7 +504,7 @@ test("Default Context is an explicit current checkbox; disabled records do not e
   const f = fixture()
   row.properties.Enabled.checkbox = false
   f.rows.set(currentLibrary.skills.data_source_id, [row])
-  const result = await f.run(catalog({ database: currentLibrary.skills.database_id }))
+  const result = await f.run(catalog({ library: currentLibrary.library_id }))
   expect(result.records).toEqual([])
   expect(result.coverage.exhaustive).toBe(true)
 })
@@ -559,7 +559,7 @@ for (const count of [101, 205])
       Array.from({ length: count }, (_, index) => page(currentLibrary, index, "Skill " + index)),
     )
     const result = await f.run(
-      catalog({ database: currentLibrary.skills.database_id, refresh: true }),
+      catalog({ library: currentLibrary.library_id, refresh: true }),
     )
     expect(result.records).toHaveLength(count)
     expect(result.coverage.exhaustive).toBe(true)

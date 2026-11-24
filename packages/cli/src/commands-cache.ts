@@ -3,7 +3,7 @@ import { Argument, Command } from "effect/cli"
 
 import {
   clearCache,
-  databaseId,
+  selectedLibraryId,
   cacheStatus,
   garbageCollectCache,
   Notion,
@@ -27,23 +27,22 @@ import {
 import {
   cacheClearConstraints,
   validateConstraints,
-  databaseFlag,
+  libraryFlag,
   switchFlag,
   emit,
   dryRunFlag,
   singleton,
 } from "./command-options.ts"
-const cacheIdentityCommand = defineCommand("identity", { database: databaseFlag }, (options) =>
+const cacheIdentityCommand = defineCommand("identity", { library: libraryFlag }, (options) =>
   Effect.gen(function* () {
     const config = yield* configuration
-    const selector = Option.getOrUndefined(options.database)
-    const database =
-      selector === undefined ? undefined : yield* databaseId(selector, config.sources)
+    const selector = Option.getOrUndefined(options.library)
+    const database = yield* selectedLibraryId(selector)
     const sources = config.sources ?? []
     const selectedSources =
       database === undefined
         ? sources
-        : sources.filter((source) => source.database_id === database).slice(0, 1)
+        : sources.filter((source) => source.shared_library?.library_id === database).slice(0, 1)
     const registrations = selectedSources
       .map((source) => [source.database_id, source.alias])
       .sort((a, b) => a[0]!.localeCompare(b[0]!) || a[1]!.localeCompare(b[1]!))
@@ -66,7 +65,7 @@ const cacheIdentityCommand = defineCommand("identity", { database: databaseFlag 
     "Identify the locally selected catalog credentials without network access",
   ),
   Command.withDescription(
-    "Returns an opaque identity digest for the selected credentials and current catalog scope, plus the effective catalog TTL. --database resolves a registered alias, ID or URL locally. Working directory, command spelling, cache policy and request timeout do not change identity. Uses the project's configured token or NOTION_API_TOKEN without a network request. No token, account identity or current authorization is returned; ordinary reads retain online scope validation.",
+    "Returns an opaque identity digest for the selected credentials and current catalog scope, plus the effective catalog TTL. --library resolves a registered alias, ID or URL locally. Working directory, command spelling, cache policy and request timeout do not change identity. Uses the project's configured token or NOTION_API_TOKEN without a network request. No token, account identity or current authorization is returned; ordinary reads retain online scope validation.",
   ),
 )
 
@@ -74,13 +73,13 @@ export const cacheStatusCommand = defineCommand(
   "status",
   {
     target: Argument.String("target").pipe(Argument.optional),
-    database: databaseFlag,
+    library: libraryFlag,
   },
   (config) =>
     Effect.gen(function* () {
       yield* emit(
         yield* cacheStatus(Option.getOrUndefined(config.target), {
-          database: Option.getOrUndefined(config.database),
+          library: Option.getOrUndefined(config.library),
         }),
       )
     }),
@@ -90,7 +89,7 @@ export const cacheClearCommand = defineCommand(
   {
     target: Argument.String("target").pipe(Argument.optional),
     all: switchFlag("all", "Retire disposable observations in every recorded scope"),
-    database: databaseFlag,
+    library: libraryFlag,
     dryRun: dryRunFlag,
   },
   (config) =>
@@ -100,7 +99,7 @@ export const cacheClearCommand = defineCommand(
       yield* emit(
         yield* clearCache(target, {
           all: config.all,
-          database: Option.getOrUndefined(config.database),
+          library: Option.getOrUndefined(config.library),
           dryRun: config.dryRun,
         }),
       )
@@ -115,7 +114,7 @@ export const cacheClearCommand = defineCommand(
 export const cacheGcCommand = defineCommand(
   "gc",
   {
-    database: databaseFlag,
+    library: libraryFlag,
     online: switchFlag(
       "online",
       "Prove selected records absent from one complete refreshed catalog",
@@ -126,7 +125,7 @@ export const cacheGcCommand = defineCommand(
     Effect.gen(function* () {
       yield* emit(
         yield* garbageCollectCache({
-          database: Option.getOrUndefined(config.database),
+          library: Option.getOrUndefined(config.library),
           online: config.online,
           dryRun: config.dryRun,
         }),

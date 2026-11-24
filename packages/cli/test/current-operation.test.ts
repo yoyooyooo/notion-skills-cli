@@ -62,10 +62,10 @@ test("operation local admission refuses invalid kinds, identities, entries and b
       ),
     ).rejects.toThrow()
   for (const args of [
-    [owner.id, "--entry", entry],
-    [owner.id, "--kind", "skill", "--entry", entry, "--resume"],
-    [owner.id, "--kind", "skill", "--entry", entry, "--kind", "source"],
-    [owner.id, "--kind", "skill", "--entry", entry, "--max-requests", "0"],
+    [owner.id, "--library", entry],
+    [owner.id, "--kind", "skill", "--library", entry, "--resume"],
+    [owner.id, "--kind", "skill", "--library", entry, "--kind", "source"],
+    [owner.id, "--kind", "skill", "--library", entry, "--max-requests", "0"],
   ])
     await expect(
       f.run(Command.runWith(currentOperationCommand, { version: "0" })(args)),

@@ -69,7 +69,7 @@ test("public exit mapping retries only the report's explicit retryable outcome",
     kind: "current_source_sync",
     action: "sync",
     status: "complete",
-    library_id: "fixture",
+    library_id: "4ba40d28-dbb8-54ca-99c9-36621a27d5e7",
     results: [],
     request_metrics: null,
     budget: {

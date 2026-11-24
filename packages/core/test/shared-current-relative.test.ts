@@ -23,13 +23,13 @@ test("current relative files stay in their exact Skill and selected directory wi
   )
   expect(parseRef(fromMain)).toMatchObject({
     skillId: "demo",
-    scope: { kind: "library", libraryId: "library-current" },
+    scope: { kind: "library", libraryId: "00000000-0000-4000-8000-000000000002" },
     path: "references/nested/guide.md",
     selection: { kind: "fixed", snapshotId: selected.snapshot_id },
   })
   expect(parseRef(fromNested)).toMatchObject({
     skillId: "demo",
-    scope: { kind: "library", libraryId: "library-current" },
+    scope: { kind: "library", libraryId: "00000000-0000-4000-8000-000000000002" },
     path: "references/1.md",
     selection: { kind: "fixed", snapshotId: selected.snapshot_id },
   })
@@ -57,7 +57,7 @@ test("current resource relative paths retain their owner and mode without fetchi
   )
   expect(parseRef(resolved)).toMatchObject({
     skillId: "demo",
-    scope: { kind: "library", libraryId: "library-current" },
+    scope: { kind: "library", libraryId: "00000000-0000-4000-8000-000000000002" },
     path: "scripts/task.sh",
     selection: { kind: "fixed", snapshotId: selected.snapshot_id },
   })
@@ -100,7 +100,7 @@ test("invalid file syntax remains invalid and an explicitly named Skill ref rema
     await expect(
       f.run(resolveSelectedRelative(selected, "SKILL.md", relative)),
     ).rejects.toMatchObject({ code: "INVALID_PATH" })
-  const explicit = fileRef("skill://another-skill?library=library-current", "SKILL.md")
+  const explicit = fileRef("skill://another-skill?library=00000000-0000-4000-8000-000000000002", "SKILL.md")
   expect(await f.run(resolveSelectedRelative(selected, "SKILL.md", explicit))).toBe(explicit)
   expect(f.calls).toHaveLength(0)
 })
@@ -118,7 +118,7 @@ test("identity resolution and reads require the exact containing manifest path w
   })
   expect(parseRef(resolved.ref)).toMatchObject({
     skillId: "demo",
-    scope: { kind: "library", libraryId: "library-current" },
+    scope: { kind: "library", libraryId: "00000000-0000-4000-8000-000000000002" },
     selection: { kind: "fixed", snapshotId: selected.snapshot_id },
     path: "SKILL.md",
   })
@@ -159,7 +159,7 @@ test("containing Library binds short references independently of ambient default
   const same = await f.run(resolveReference("skill://demo", { from, offline: true }))
   expect(same.ref).toBe(fileRef(selected.record.id, "", selected.snapshot_id))
   const other = await f.run(resolveReference("skill://other", { from, offline: true }))
-  expect(other.ref).toBe("skill://other?library=library-current")
+  expect(other.ref).toBe("skill://other?library=00000000-0000-4000-8000-000000000002")
   const foreign = await f.run(
     resolveReference("skill://demo?library=testing", { from, offline: true }),
   )

@@ -22,6 +22,7 @@ export function withLibraryInitialization<A, R>(
   use: (session: {
     readonly pending: () => LibraryInitializationPending
     readonly requireResumeState: () => Effect.Effect<void, SkillsError>
+    readonly rememberRoot: (root: string) => Effect.Effect<void, SkillsError>
     readonly verifyTable: (
       role: LibraryTableRole,
       table: TableBinding,
@@ -73,10 +74,11 @@ export function withLibraryInitialization<A, R>(
           saved?.operation_id === operation
             ? saved
             : {
-                version: 1,
+                version: 2,
                 scope,
                 operation_id: operation,
                 parent_page_id: parent,
+                root_page_id: null,
                 tables: {},
                 in_flight: null,
               }
@@ -97,6 +99,18 @@ export function withLibraryInitialization<A, R>(
                 ),
               )
             : Effect.void
+        const rememberRoot = (root: string) =>
+          Effect.gen(function* () {
+            if (current.root_page_id !== null && current.root_page_id !== root)
+              return yield* Effect.fail(fail("LIBRARY_INIT_CONFLICT", "The known initialization root was replaced."))
+            if (mode === "reconcile") return
+            const next = {
+              ...current,
+              root_page_id: root,
+              in_flight: current.in_flight?.action === "create:root" ? null : current.in_flight,
+            }
+            if (canonicalSharedJson(next) !== canonicalSharedJson(current)) yield* save(next)
+          })
         const verifyTable = (role: LibraryTableRole, table: TableBinding) => {
           const known = current.tables[role]
           return known !== undefined && !preservesTableBinding(known, table)
@@ -184,6 +198,7 @@ export function withLibraryInitialization<A, R>(
         return yield* use({
           pending: () => current,
           requireResumeState,
+          rememberRoot,
           verifyTable,
           remember,
           perform,
@@ -197,6 +212,7 @@ export function withLibraryInitialization<A, R>(
               ...property(error.details),
               operation_id: operation,
               parent_page_id: parent,
+              root_page_id: current.root_page_id,
               known_tables: Object.fromEntries(
                 Object.entries(current.tables).map(([role, table]) => [role, table.database_id]),
               ),

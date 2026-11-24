@@ -22,7 +22,8 @@ import { CurrentProjectionPolicySchema } from "./shared-current-projection-polic
 import { CurrentSkillRegistrationInputSchema } from "./shared-current-skill-register-input.ts"
 import { CurrentSkillRemovalInputSchema } from "./shared-current-skill-remove-input.ts"
 import { CurrentSkillPatchScopeSchema } from "./shared-current-skill-patch-input.ts"
-import type { SharedLibrary } from "./shared-library-model.ts"
+import { SharedLibrarySchema, preservesSharedLibraryBindings, type SharedLibrary } from "./shared-library-model.ts"
+import { assertSharedLibraryBinding } from "./shared-library.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
 
@@ -111,7 +112,8 @@ const PredecessorSchema = Schema.Struct({
 export type CurrentOperationPredecessor = typeof PredecessorSchema.Type
 
 const PayloadSchema = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literal(2),
+  library: SharedLibrarySchema,
   kind: Schema.Literal("current_operation"),
   library_id: Schema.String,
   owner_data_source_id: Schema.String,
@@ -123,7 +125,8 @@ const PayloadSchema = Schema.Struct({
 })
 type CurrentPayload = typeof PayloadSchema.Type
 export const CurrentWritePendingSchema = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literal(2),
+  library: SharedLibrarySchema,
   scope: Hash,
   library_id: Schema.String,
   record_id: Schema.String,
@@ -580,7 +583,7 @@ function operationAddress(library: SharedLibrary, owner: CurrentOperationOwner) 
       ]),
     )
     const dataSourceId = uuid(ownerTable(library, owner).data_source_id)
-    const target = yield* sha256(canonicalSharedJson([library.library_id, dataSourceId, owner.id]))
+    const target = yield* sha256(canonicalSharedJson([library.library_id, owner.kind, owner.id]))
     return {
       scope,
       dataSourceId,
@@ -594,7 +597,7 @@ function operationAddress(library: SharedLibrary, owner: CurrentOperationOwner) 
         `current-${owner.kind}:` +
         (api.apiOrigin ?? "https://api.notion.com") +
         ":" +
-        dataSourceId +
+        library.library_id +
         ":" +
         owner.id,
     }
@@ -633,6 +636,7 @@ function loadCurrentOperation(library: SharedLibrary, owner: CurrentOperationOwn
       pending !== undefined &&
       (pending.scope !== address.scope ||
         pending.library_id !== library.library_id ||
+        !preservesSharedLibraryBindings(pending.library, library) ||
         pending.record_id !== address.recordId ||
         canonicalSharedJson(pending.intent.owner) !== canonicalSharedJson(owner))
     )
@@ -650,6 +654,7 @@ function loadCurrentOperation(library: SharedLibrary, owner: CurrentOperationOwn
         sameIntent(pending.predecessor.intent, payload.intent)
       if (
         payload.library_id !== library.library_id ||
+        !preservesSharedLibraryBindings(payload.library, library) ||
         payload.owner_data_source_id !== address.dataSourceId ||
         canonicalSharedJson(payload.intent.owner) !== canonicalSharedJson(owner) ||
         payload.intent.operation_id !== record.operation_id ||
@@ -934,7 +939,10 @@ function runCurrentOperation<A, R>(
         let scopeConfirmed = false
         const assertScope = () =>
           Effect.gen(function* () {
-            if (!scopeConfirmed && input.assertScope !== undefined) yield* input.assertScope
+            if (!scopeConfirmed) {
+              yield* assertSharedLibraryBinding(library)
+              if (input.assertScope !== undefined) yield* input.assertScope
+            }
             scopeConfirmed = true
           })
         let pending = yield* store.readJson(key, CurrentWritePendingSchema)
@@ -942,6 +950,7 @@ function runCurrentOperation<A, R>(
           pending !== undefined &&
           (pending.scope !== scope ||
             pending.library_id !== library.library_id ||
+        !preservesSharedLibraryBindings(pending.library, library) ||
             pending.record_id !== recordId)
         )
           return yield* Effect.fail(
@@ -966,7 +975,8 @@ function runCurrentOperation<A, R>(
             ? undefined
             : yield* checked(() => decodePayload(observedRecordPayload))
         const freshPayload = (predecessor?: CurrentOperationPredecessor): CurrentPayload => ({
-          version: 1,
+          version: 2,
+          library: structuredClone(library),
           kind: "current_operation",
           library_id: library.library_id,
           owner_data_source_id: address.dataSourceId,
@@ -988,6 +998,7 @@ function runCurrentOperation<A, R>(
         if (
           observedPayload !== undefined &&
           (observedPayload.library_id !== library.library_id ||
+            !preservesSharedLibraryBindings(observedPayload.library, library) ||
             observedPayload.owner_data_source_id !== address.dataSourceId ||
             canonicalSharedJson(observedPayload.intent.owner) !==
               canonicalSharedJson(intent.owner) ||
@@ -1140,7 +1151,8 @@ function runCurrentOperation<A, R>(
           })
           if (pending === undefined) {
             pending = {
-              version: 1,
+              version: 2,
+              library: structuredClone(library),
               scope,
               library_id: library.library_id,
               record_id: recordId,
@@ -1155,7 +1167,8 @@ function runCurrentOperation<A, R>(
             yield* store.writeJson(key, pending)
           }
           const replacement: LocalPending = {
-            version: 1,
+            version: 2,
+            library: structuredClone(library),
             scope,
             library_id: library.library_id,
             record_id: recordId,
@@ -1195,7 +1208,8 @@ function runCurrentOperation<A, R>(
             state.operation_id === observedPayload.predecessor.intent.operation_id
           ) {
             pending = {
-              version: 1,
+              version: 2,
+              library: structuredClone(library),
               scope,
               library_id: library.library_id,
               record_id: recordId,
@@ -1413,7 +1427,8 @@ function runCurrentOperation<A, R>(
             ),
           )
         let payload: CurrentPayload = {
-          version: 1,
+          version: 2,
+          library: structuredClone(library),
           kind: "current_operation",
           library_id: library.library_id,
           owner_data_source_id: uuid(ownerTable(library, intent.owner).data_source_id),
@@ -1438,6 +1453,7 @@ function runCurrentOperation<A, R>(
           payload = yield* checked(() => decodePayload(found.payload))
           if (
             payload.library_id !== library.library_id ||
+        !preservesSharedLibraryBindings(payload.library, library) ||
             payload.owner_data_source_id !==
               uuid(ownerTable(library, intent.owner).data_source_id) ||
             !sameIntent(payload.intent, intent) ||
@@ -1484,7 +1500,8 @@ function runCurrentOperation<A, R>(
         const saveLocal = (lifecycle: LocalPending["lifecycle"], notDispatched?: ActionMarker) =>
           Effect.gen(function* () {
             const next: LocalPending = {
-              version: 1,
+              version: 2,
+              library: structuredClone(library),
               scope,
               library_id: library.library_id,
               record_id: recordId,

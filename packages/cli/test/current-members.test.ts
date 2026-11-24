@@ -19,7 +19,7 @@ const encode = (text: string) => new TextEncoder().encode(text)
 const member = `skill://target?library=${library.library_id}`
 const canonical = fileRef(member, "SKILL.md")
 const header = "---\nname: Owner\ndescription: Imported owner\n---\n"
-const base = ["--entry", library.skills.database_id, "--skill-id", "owner"]
+const base = ["--library", library.skills.database_id, "--skill-id", "owner"]
 async function setup() {
   const root = await realpath(await mkdtemp(join(tmpdir(), "ntn-members-cli-")))
   const input = join(root, "input")
@@ -144,7 +144,7 @@ test("members-plan preserves portable origin instead of selecting a destination 
       name: "Owner",
       description: "Owner",
       main: "SKILL.md",
-      relations: { version: 1, ownership: "notion", library_id: "production" },
+      relations: { version: 1, ownership: "notion", library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec" },
     }),
   )
   const output = join(root, "origin-preserved")
@@ -164,7 +164,7 @@ test("members-plan preserves portable origin instead of selecting a destination 
     ),
   ).toEqual([])
   expect(await readFile(join(output, "SKILL.md"), "utf8")).toBe(
-    original.replace("skill://target/SKILL.md", "skill://target/SKILL.md?library=production"),
+    original.replace("skill://target/SKILL.md", "skill://target/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec"),
   )
   const prepared = await f.run(prepareCurrentImport(output, { skillId: "owner" }))
   expect(prepared.plan.relations?.members).toBeUndefined()

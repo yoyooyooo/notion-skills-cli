@@ -106,7 +106,7 @@ function routerFixture(registered = true) {
     )
   const target = (options: Parameters<typeof targetSnapshot>[1] = {}) =>
     run(
-      targetSnapshot(parseTarget(skillPage), { database: library.skills.database_id, ...options }),
+      targetSnapshot(parseTarget(skillPage), { library: library.library_id, ...options }),
     )
   return { ...f, member, run, target }
 }
@@ -128,7 +128,7 @@ describe("shared Router snapshot integration", () => {
     const snapshot = await f.target()
     expect(snapshot.entrypoint).toBe("ROUTER.md")
     expect(snapshot.router_members).toHaveLength(1)
-    expect(snapshot.router_members?.[0]?.id).toBe("skill://router-member?library=library-current")
+    expect(snapshot.router_members?.[0]?.id).toBe("skill://router-member?library=00000000-0000-4000-8000-000000000002")
     expect(snapshot.router_members?.[0]?.metadata).toMatchObject({
       name: "Lazy member",
       description: "First member description",

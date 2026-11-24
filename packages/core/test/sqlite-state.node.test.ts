@@ -27,7 +27,7 @@ const pending = {
   version: 1,
   lifecycle: { phase: "active", record_page_id: "00000000-0000-4000-8000-000000000002" },
   scope: "a".repeat(64),
-  library_id: "library-current",
+  library_id: "00000000-0000-4000-8000-000000000002",
   record_id: "operation-current",
   intent: {
     operation_id: "current-test",
@@ -38,7 +38,7 @@ const pending = {
 function currentRecord({
   skillId,
   name,
-  libraryId = "library-current",
+  libraryId = "00000000-0000-4000-8000-000000000002",
 }: {
   skillId: string
   name: string
@@ -90,7 +90,7 @@ test("canonical Skill identities survive SQLite restart and retiring one Library
   const directory = await mkdtemp(join(tmpdir(), "ntn-sqlite-library-identity-"))
   const root = join(directory, "state")
   const scope = "same-connection-scope"
-  const snapshots = ["library-test", "library-production"].map((libraryId, index) => {
+  const snapshots = ["library-test", "8fd04dc2-3275-55d6-be9e-37cd996baca1"].map((libraryId, index) => {
     const current = currentRecord({ libraryId, skillId: "architect", name: "Architect" })
     const record = {
       ...current,
@@ -466,12 +466,12 @@ test("a separate clearing process fences an observation still held by its origin
     for (const [identity, key, payload] of [
       ["page", "cache/latest/scope/page/late.json", { validated_at: 1 }],
       [
-        "skill://current-skill?library=library-current",
+        "skill://current-skill?library=00000000-0000-4000-8000-000000000002",
         `cache/current-native-bodies/${"a".repeat(64)}/latest.json`,
         {
           version: 1,
           scope: "scope",
-          library_id: "library-current",
+          library_id: "00000000-0000-4000-8000-000000000002",
           skill_id: "current-skill",
           skill_page_id: "00000000-0000-4000-8000-000000000001",
           files: [],

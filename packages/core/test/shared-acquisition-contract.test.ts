@@ -33,10 +33,9 @@ const scope = hash(JSON.stringify(["principal", "", "https://api.notion.com", "c
 const bindings = (names: readonly string[]) =>
   Object.fromEntries(names.map((name, index) => [name, name === "Name" ? "title" : `p${index}`]))
 const library: SharedLibrary = {
-  version: 1,
-  library_id: "library-current",
+  version: 2,
+  library_id: "00000000-0000-4000-8000-000000000002",
   operation_id: "library-current",
-  parent_page_id: id(2),
   skills: {
     database_id: id(3),
     data_source_id: id(4),
@@ -453,7 +452,7 @@ describe("current acquisition contract", () => {
     for (const changed of [
       { ...acquisition, files: [route, route] },
       { ...acquisition, files: [{ ...route, path: "absent.md" }] },
-      { ...acquisition, library: { ...library, library_id: "library-other" } },
+      { ...acquisition, library: { ...library, library_id: "45c64249-e1dd-59ab-ad9f-604ff752ddb4" } },
       {
         ...acquisition,
         files: [

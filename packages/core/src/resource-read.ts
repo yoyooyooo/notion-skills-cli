@@ -1,6 +1,6 @@
 import { Cause, Effect, Option, Schema } from "effect"
 import { validateSnapshotManifest } from "./cache.ts"
-import { databaseId as resolveDatabaseId } from "./catalog.ts"
+import { libraryId as resolveLibraryId } from "./catalog.ts"
 import type { VerifiedManifest } from "./consumer-model.ts"
 import {
   withConsumptionEffects,
@@ -170,7 +170,7 @@ function selectFiles(snapshot: Snapshot, input: ResourceReadInput, database?: st
         "The fixed snapshot belongs to another resource owner.",
       )
     const locator = snapshot.record.locator
-    const selectedDatabase = locator.type === "local" ? undefined : locator.database_id
+    const selectedDatabase = locator.type === "local" ? undefined : locator.library_id
     if (database !== undefined && selectedDatabase !== database)
       throw fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected database.")
     const path = boundSnapshotPath(snapshot, target)
@@ -331,7 +331,7 @@ export function decodeResourceReadResult(value: unknown, expected?: ResourceRead
 }
 
 export type ResourceReadOptions = ConsumptionObservationOptions & {
-  readonly database?: string
+  readonly library?: string
   readonly offline?: boolean
   readonly signal?: AbortSignal
 }
@@ -340,7 +340,7 @@ function readReady(input: ResourceReadInput, options: ResourceReadOptions) {
   return Effect.gen(function* () {
     const target = parseTarget(input.refs[0]!)
     const database =
-      options.database === undefined ? undefined : yield* resolveDatabaseId(options.database)
+      options.library === undefined ? undefined : yield* resolveLibraryId(options.library)
     let selected: ReturnType<typeof selectFiles> | undefined
     const opened = yield* openFixedSnapshotFiles(
       target.snapshot!,

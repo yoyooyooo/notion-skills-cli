@@ -1,6 +1,6 @@
 import { Crypto, Effect, Option } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
-import { databaseId } from "../../core/src/catalog.ts"
+import { libraryId } from "../../core/src/catalog.ts"
 import { defineCommand, exclusiveFlags, withConstraints } from "../../core/src/command-schema.ts"
 import { importDocument, loadImport, type ImportFile } from "../../core/src/import.ts"
 import { entrypointFor, fail, property, SkillsError } from "../../core/src/model.ts"
@@ -304,7 +304,7 @@ export const currentImportCommand = defineCommand(
     input: Argument.String("input").pipe(
       Argument.withDescription("Complete local directory, portable ZIP, or one Markdown file"),
     ),
-    entry: requiredSingleton("entry", "Current Skills database ID, URL or exact registered alias"),
+    library: requiredSingleton("library", "Current Skills database ID, URL or exact registered alias"),
     skillId: requiredSingleton(
       "skill-id",
       "Exact stable Skill ID to create or replace in this library",
@@ -355,8 +355,8 @@ export const currentImportCommand = defineCommand(
   (options) =>
     Effect.gen(function* () {
       if (
-        /^notion_page:/iu.test(options.entry) ||
-        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.entry) && !/^https?:\/\//iu.test(options.entry))
+        /^notion_page:/iu.test(options.library) ||
+        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.library) && !/^https?:\/\//iu.test(options.library))
       )
         return yield* Effect.fail(
           fail(
@@ -387,7 +387,7 @@ export const currentImportCommand = defineCommand(
       })
       const invocation = yield* withCurrentInvocationBudget(
         Effect.gen(function* () {
-          const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
+          const library = yield* loadSharedLibrary(yield* libraryId(options.library))
           if (options.dryRun) {
             const selected = yield* prepareCurrentImportMembers(library, prepared.plan)
             return {
@@ -479,22 +479,22 @@ export const currentImportCommand = defineCommand(
   Command.withExamples([
     {
       command:
-        "ntn-skills ctl library import ./skill --entry SKILLS_DATABASE_ID --skill-id my-skill --dry-run",
+        "ntn-skills ctl library import ./skill --library SKILLS_DATABASE_ID --skill-id my-skill --dry-run",
       description: "Review the complete current replacement without writing",
     },
     {
       command:
-        "ntn-skills ctl library import ./skill --entry SKILLS_DATABASE_ID --skill-id my-skill --operation IMPORT_ID",
+        "ntn-skills ctl library import ./skill --library SKILLS_DATABASE_ID --skill-id my-skill --operation IMPORT_ID",
       description: "Apply the complete original file tree under one current operation",
     },
     {
       command:
-        "ntn-skills ctl library import ./skill --entry SKILLS_DATABASE_ID --skill-id my-skill --native SKILL.md --native references/guide.md --dry-run",
+        "ntn-skills ctl library import ./skill --library SKILLS_DATABASE_ID --skill-id my-skill --native SKILL.md --native references/guide.md --dry-run",
       description: "Review editable native bodies alongside exact resource files",
     },
     {
       command:
-        "ntn-skills ctl library import ./skill --entry SKILLS_DATABASE_ID --skill-id my-skill --operation IMPORT_ID --resume",
+        "ntn-skills ctl library import ./skill --library SKILLS_DATABASE_ID --skill-id my-skill --operation IMPORT_ID --resume",
       description: "Reconcile and continue the same current import",
     },
   ]),

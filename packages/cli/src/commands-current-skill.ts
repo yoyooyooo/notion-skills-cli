@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
-import { databaseId } from "../../core/src/catalog.ts"
+import { libraryId } from "../../core/src/catalog.ts"
 import { defineCommand } from "../../core/src/command-schema.ts"
 import { loadSkillUpdateFile } from "../../core/src/import.ts"
 import {
@@ -30,7 +30,7 @@ const budgetFlag = (name: string, description: string) =>
     Flag.withDescription(description),
   )
 const common = () => ({
-  entry: requiredSingleton("entry", "Current Skills database ID, URL or exact registered alias"),
+  library: requiredSingleton("library", "Current Skills database ID, URL or exact registered alias"),
   dryRun: switchFlag(
     "dry-run",
     "Read the complete selected scope and report the plan without writing",
@@ -69,7 +69,7 @@ const relations = () => ({
   ),
 })
 type Common = {
-  readonly entry: string
+  readonly library: string
   readonly dryRun: boolean
   readonly maxRequests: Option.Option<number>
   readonly maxBytes: Option.Option<number>
@@ -109,8 +109,8 @@ function manage<A extends object, R>(
   return Effect.gen(function* () {
     const limits = yield* checked(() => {
       if (
-        /^notion_page:/iu.test(options.entry) ||
-        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.entry) && !/^https?:\/\//iu.test(options.entry))
+        /^notion_page:/iu.test(options.library) ||
+        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.library) && !/^https?:\/\//iu.test(options.library))
       )
         throw fail(
           "INVALID_ARGUMENT",
@@ -130,7 +130,7 @@ function manage<A extends object, R>(
     })
     const invocation = yield* withCurrentInvocationBudget(
       Effect.gen(function* () {
-        const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
+        const library = yield* loadSharedLibrary(yield* libraryId(options.library))
         return yield* run(library)
       }),
       limits,

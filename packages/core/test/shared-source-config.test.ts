@@ -85,7 +85,7 @@ test("explicit local registration uses the actual scoped workspace and never ser
     f.json.set("config.json", {
       sources: [],
       token: "fixture-secret",
-      default_database: "keep-this-entry",
+      default_library: "keep-this-entry",
     })
     expect(
       await f.run(
@@ -120,7 +120,7 @@ test("explicit local registration uses the actual scoped workspace and never ser
     expect(output).not.toContain("fixture-secret")
     expect(property(f.json.get("config.json"))).toMatchObject({
       token: "fixture-secret",
-      default_database: "keep-this-entry",
+      default_library: "keep-this-entry",
     })
   }))
 

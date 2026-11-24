@@ -84,7 +84,7 @@ function fixture(
   const base = currentSnapshotFixture()
   const config = {
     sources: options.unconfigured ? [] : [configuredSource],
-    default_database: id(999),
+    default_library: id(999),
   }
   base.json.set("config.json", structuredClone(config))
   const requests: { readonly path: string; readonly body: unknown }[] = []

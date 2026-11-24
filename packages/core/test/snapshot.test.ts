@@ -211,7 +211,7 @@ test("physical page reads accept configured aliases and selected database checks
   const f = await fixture()
   const otherLibrary = {
     ...currentLibrary,
-    library_id: "other",
+    library_id: "563e49fa-4378-5493-a5ff-8c96321f9ffd",
     operation_id: "other",
     skills: {
       ...currentLibrary.skills,

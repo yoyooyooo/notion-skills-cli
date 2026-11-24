@@ -1,3 +1,4 @@
+import { SharedLibrarySchema, preservesSharedLibraryBindings } from "./shared-library-model.ts"
 import { Schema } from "effect"
 import { CurrentSourceIdSchema } from "./shared-current-file.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
@@ -93,7 +94,8 @@ export function isCurrentSourceSyncBatchTerminal(item: CurrentSourceSyncItem): b
 }
 
 const Batch = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literal(2),
+  library: SharedLibrarySchema,
   kind: Schema.Literal("current_source_sync_batch"),
   scope: Hash,
   batch_id: BatchId,
@@ -135,6 +137,7 @@ export type CurrentSourceSyncBatch = typeof CurrentSourceSyncBatchSchema.Type
 export type CurrentSourceSyncBatchIdentity = Pick<
   CurrentSourceSyncBatch,
   | "scope"
+  | "library"
   | "library_id"
   | "sources_data_source_id"
   | "manager_id"
@@ -150,6 +153,7 @@ export function matchesCurrentSourceSyncBatch(
   return (
     batch.scope === selected.scope &&
     batch.library_id === selected.library_id &&
+    preservesSharedLibraryBindings(batch.library, selected.library) &&
     batch.sources_data_source_id === selected.sources_data_source_id &&
     batch.manager_id === selected.manager_id &&
     batch.execution_id === selected.execution_id &&

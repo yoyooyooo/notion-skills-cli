@@ -217,7 +217,7 @@ test("portable content identity includes kind, exact body bytes, execution mode 
       relations: {
         version: 1 as const,
         ownership: "notion" as const,
-        library_id: "library-current",
+        library_id: "00000000-0000-4000-8000-000000000002",
         members: [],
       },
     },

@@ -12,10 +12,11 @@ export {
 } from "./store.ts"
 export {
   authScope,
-  databaseId,
+  libraryId,
+  selectedLibraryId,
   explicitSource,
-  discoverDatabases,
-  setDefaultDatabase,
+  discoverLibraries,
+  setDefaultLibrary,
   catalog,
   type CatalogOptions,
 } from "./catalog.ts"
@@ -51,3 +52,5 @@ export {
   type BuiltinSkill,
 } from "./builtin.ts"
 export { builtinStatus, installBuiltin, updateBuiltin } from "./builtin-install.ts"
+
+export { resolveLibrary } from "./shared-library.ts"

@@ -14,7 +14,7 @@ const pending = {
   owner_page_id: null,
   version: 1,
   scope: "b".repeat(64),
-  library_id: "current-test-library",
+  library_id: "4890000a-9086-5795-86a2-af110f6ca723",
   record_id: "operation-current-" + "c".repeat(64),
   intent: {
     operation_id: "current-test-one",

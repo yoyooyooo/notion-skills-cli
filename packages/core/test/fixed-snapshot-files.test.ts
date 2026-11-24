@@ -175,7 +175,7 @@ describe("fixed snapshot selected files", () => {
         const reselected = await f.run(
           targetSnapshot(
             parseTarget(fileRef(f.snapshot.record.id, f.snapshot.entrypoint)),
-            { refresh: true, database: library.skills.database_id },
+            { refresh: true, library: library.library_id },
             "entrypoint",
           ),
         )
@@ -225,7 +225,7 @@ describe("fixed snapshot selected files", () => {
     const result = await f.run(
       targetSnapshot(
         parseTarget(fileRef(f.snapshot.record.id, f.snapshot.entrypoint)),
-        { database: library.skills.database_id, maxAge: 1_000 },
+        { library: library.library_id, maxAge: 1_000 },
         "entrypoint",
       ),
     )
@@ -412,7 +412,7 @@ describe("fixed snapshot selected files", () => {
       Effect.flip(
         targetSnapshot(
           parseTarget(f.ref()),
-          { database: library.skills.database_id },
+          { library: library.library_id },
           "entrypoint",
         ),
       ),

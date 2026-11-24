@@ -94,17 +94,17 @@ test("the public CLI creates, updates an explicitly selected main, reads back an
     replacement = join(f.root, "replacement.md")
   await writeFile(input, metadata + "# Daily Native\n\nInitial author text.\n")
   await writeFile(replacement, metadata + "# Daily Native\n\nUpdated author text.\n")
-  await cli(f, ["create", input, "--entry", entry, "--skill-id", "cli-daily"])
+  await cli(f, ["create", input, "--library", entry, "--skill-id", "cli-daily"])
   const owner = f.table("skills")[0]
   expect(owner).toBeDefined()
   const page = String(owner!.id)
   f.clearCalls()
-  await cli(f, ["create", input, "--entry", entry, "--skill-id", "cli-daily"])
+  await cli(f, ["create", input, "--library", entry, "--skill-id", "cli-daily"])
   expect(f.mutations()).toHaveLength(0)
   await cli(f, [
     "update",
     page,
-    "--entry",
+    "--library",
     entry,
     "--input",
     replacement,
@@ -119,7 +119,7 @@ test("the public CLI creates, updates an explicitly selected main, reads back an
   await cli(f, [
     "update",
     page,
-    "--entry",
+    "--library",
     entry,
     "--input",
     replacement,
@@ -127,11 +127,11 @@ test("the public CLI creates, updates an explicitly selected main, reads back an
     "Updated short description",
   ])
   expect(f.mutations()).toHaveLength(0)
-  await cli(f, ["remove", page, "--entry", entry])
+  await cli(f, ["remove", page, "--library", entry])
   expect(f.table("skills")).toHaveLength(0)
   expect(f.table("records")).toHaveLength(0)
   f.clearCalls()
-  await cli(f, ["remove", page, "--entry", entry])
+  await cli(f, ["remove", page, "--library", entry])
   expect(f.mutations()).toHaveLength(0)
   expect(
     text(
@@ -149,10 +149,10 @@ test("public native mutation admission refuses malformed flags before any remote
     ["update", "exact-skill", "--enabled", "maybe"],
     ["register", "00000000-0000-4000-8000-000000000064", "--default-context", "1"],
     ["remove", "exact-skill", "--max-requests", "0"],
-    ["remove", "exact-skill", "--entry", "skill://foreign"],
+    ["remove", "exact-skill", "--library", "skill://foreign"],
   ])
     await expect(
-      cli(f, [...args, ...(args.includes("--entry") ? [] : ["--entry", entry])]),
+      cli(f, [...args, ...(args.includes("--library") ? [] : ["--library", entry])]),
     ).rejects.toThrow()
   expect(f.calls).toHaveLength(0)
   expect(f.mutations()).toHaveLength(0)

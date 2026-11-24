@@ -55,7 +55,7 @@ async function controlled(width: number) {
       NTN_SKILLS_SCHEDULER_ROOT: join(root, "scheduler"),
       NTN_SKILLS_NOTION_INTERVAL_MS: "100",
     },
-    database: library.skills.database_id,
+    library: library.library_id,
   }
   const stable = (id: string) => fileRef(skillIdentity(library.library_id, id), "SKILL.md")
   return { f, library, source, options, stable, root }

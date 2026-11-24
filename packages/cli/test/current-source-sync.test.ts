@@ -17,7 +17,7 @@ import {
   syncCurrentSourcesCommand,
 } from "../src/commands-current-source-sync.ts"
 
-const base = ["--entry", library.skills.database_id, "--source", "pinned-fixture"]
+const base = ["--library", library.skills.database_id, "--source", "pinned-fixture"]
 const identity = ["--manager", "fixture", "--execution-id", "a".repeat(64)]
 
 async function fixture(run: (f: ReturnType<typeof currentWriteFixture>) => Promise<void>) {
@@ -134,8 +134,8 @@ test("Source check and sync expose explicit selection, shared budgets and separa
 test("invalid or implicit Source scope and incompatible modes are rejected before remote work", async () => {
   await fixture(async (f) => {
     for (const args of [
-      ["check", "--entry", library.skills.database_id],
-      ["sync", "--entry", library.skills.database_id, ...identity],
+      ["check", "--library", library.skills.database_id],
+      ["sync", "--library", library.skills.database_id, ...identity],
       ["check", ...base, "--source", "snapshot-retired"],
       ["check", ...base, "--source", "invalid:source"],
       ["check", ...base, "--manager", "unexpected"],

@@ -205,7 +205,7 @@ describe("shared current complete-tree validation receipts", () => {
     for (const [field, value] of Object.entries({
       version: 0,
       scope: "foreign-scope",
-      record_identity: "skill://skill?library=foreign",
+      record_identity: "skill://skill?library=1fed9b5e-352d-53b8-811b-d62ae58344f8",
       snapshot_id: `s_${digest("foreign-snapshot")}`,
       version_id: digest("foreign-version"),
       materialization_version: "unchecked-compiler",

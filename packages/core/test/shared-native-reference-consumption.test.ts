@@ -21,10 +21,10 @@ import {
 } from "./shared-current-fixture.ts"
 import { currentSourceConsumerFixture } from "./shared-current-source-consumer-fixture.ts"
 
-const options = { database: library.skills.database_id }
+const options = { library: library.library_id }
 const url = (page: string) => "https://www.notion.so/" + page.replaceAll("-", "")
 const mention = (page: string) => '<mention url="' + url(page) + '">Guide</mention>\n'
-const owner = "skill://demo?library=library-current"
+const owner = "skill://demo?library=00000000-0000-4000-8000-000000000002"
 
 test("native same-Skill Source reading links retain relative text and usable path references", async () => {
   const f = await currentSourceConsumerFixture()
@@ -47,7 +47,7 @@ test("native same-Skill Source reading links retain relative text and usable pat
   expect(reference.file_id).toBeUndefined()
   expect(parseRef(reference.ref)).toMatchObject({
     skillId: "demo",
-    scope: { kind: "library", libraryId: "library-current" },
+    scope: { kind: "library", libraryId: "00000000-0000-4000-8000-000000000002" },
     path: "references/guide.md",
     selection: { kind: "current" },
   })
@@ -120,7 +120,7 @@ test("cross-Skill native Source reading references support public reads and cold
   expect(reference.file_id).toBeUndefined()
   expect(parseRef(reference.ref)).toMatchObject({
     skillId: "demo",
-    scope: { kind: "library", libraryId: "library-current" },
+    scope: { kind: "library", libraryId: "00000000-0000-4000-8000-000000000002" },
     path: "references/guide.md",
     selection: { kind: "current" },
   })
@@ -239,7 +239,7 @@ test("current paths select the current manifest and fixed paths retain their exa
     (await f.run(listSkill(stable, { offline: true }))).files.map((file) => file.path),
   ).toEqual(["moved/guide.md"])
   expect(await f.run(resolveSkillRef(stable, "guide.md", { offline: true }))).toContain(
-    "/moved/guide.md?library=library-current",
+    "/moved/guide.md?library=00000000-0000-4000-8000-000000000002",
   )
   const historical = await f.run(
     readSkill(fileRef(owner, selected.path, first.snapshot_id), { offline: true }),
@@ -267,12 +267,12 @@ test("fixed manifests cannot cross owners and sibling refs retain owner and snap
   const base = fileRef(owner, "references/0.md", snapshot.snapshot_id)
   expect(parseRef(resolveRef(base, "1.md"))).toMatchObject({
     skillId: "demo",
-    scope: { kind: "library", libraryId: "library-current" },
+    scope: { kind: "library", libraryId: "00000000-0000-4000-8000-000000000002" },
     path: "references/1.md",
     selection: { kind: "fixed", snapshotId: snapshot.snapshot_id },
   })
   const wrong = fileRef(
-    "skill://other?library=library-current",
+    "skill://other?library=00000000-0000-4000-8000-000000000002",
     "references/0.md",
     snapshot.snapshot_id,
   )

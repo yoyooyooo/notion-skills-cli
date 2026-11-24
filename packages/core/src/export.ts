@@ -81,7 +81,7 @@ export function portableIdentity(skill: PortableSkill) {
 }
 
 export interface ExportOptions extends ReadPolicyOptions {
-  readonly database?: string
+  readonly library?: string
   readonly output: string
   readonly format?: "zip" | "directory"
 }

@@ -52,7 +52,7 @@ test("native comparison retains link definitions and escaped or code text", () =
 })
 
 test("native code fences recognize Notion's sh-to-bash spelling without changing payload or transport", () => {
-  const expected = "```sh\nntn-skills read EXACT_REF --database ENTRY --json\n```\n"
+  const expected = "```sh\nntn-skills read EXACT_REF --library ENTRY --json\n```\n"
   const observed = expected.replace("```sh", "```bash")
   expect(compareNativeMarkdown({ expected, observed })).toBe("normalized")
   expect(nativeMarkdownTransport(expected)).toBe(expected)
@@ -222,7 +222,7 @@ test("native readback accepts a paragraph child after a fenced block in a list i
     "1. Discover without loading bodies:",
     "",
     "   ```bash",
-    "   ntn-skills list --database ENTRY --query 'TASK_TERMS'",
+    "   ntn-skills list --library ENTRY --query 'TASK_TERMS'",
     "   ```",
     "",
     "   Use the connected library's ENTRY; continue with `next_cursor`.",
@@ -230,7 +230,7 @@ test("native readback accepts a paragraph child after a fenced block in a list i
   const observed = [
     "1. Discover without loading bodies:",
     "   ```bash",
-    "   ntn-skills list --database ENTRY --query 'TASK_TERMS'",
+    "   ntn-skills list --library ENTRY --query 'TASK_TERMS'",
     "   ```",
     "",
     "   <p>",

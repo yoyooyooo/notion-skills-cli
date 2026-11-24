@@ -7,7 +7,7 @@ import {
   validateReadPolicy,
   type ReadPolicyOptions,
 } from "./cache.ts"
-import { authScope, databaseId, discoverDatabases, explicitSource } from "./catalog.ts"
+import { authScope, selectedLibraryId, explicitSource } from "./catalog.ts"
 import {
   CatalogSchema,
   SkillsError,
@@ -81,7 +81,7 @@ const ViewCatalogSchema = Schema.Struct({
 })
 
 export interface ViewOptions extends ReadPolicyOptions {
-  readonly database?: string
+  readonly library?: string
 }
 export interface ViewCatalogOptions extends ViewOptions {
   readonly view?: string
@@ -151,31 +151,6 @@ function check<A>(f: () => A) {
   })
 }
 
-function selectedDatabase(selector?: string) {
-  return Effect.gen(function* () {
-    if (selector !== undefined) return yield* databaseId(selector)
-    const configured = [...new Set((yield* configuredSources).map((source) => source.database_id))]
-    if (configured.length === 1) return configured[0]!
-    if (configured.length > 1)
-      return yield* Effect.fail(
-        fail("DATABASE_AMBIGUOUS", "Select a content database with --database.", {
-          databases: configured,
-        }),
-      )
-    const found = yield* discoverDatabases()
-    if (found.failures.length)
-      return yield* Effect.fail(
-        fail("CATALOG_INCOMPLETE", "Cannot select a database from incomplete discovery."),
-      )
-    if (found.databases.length !== 1)
-      return yield* Effect.fail(
-        fail("DATABASE_AMBIGUOUS", "Select a content database with --database.", {
-          databases: found.databases,
-        }),
-      )
-    return found.databases[0]!.database_id
-  })
-}
 
 /** Complete observations are cached separately from the full explicit Skill catalog. */
 function observe<S extends Schema.ConstraintDecoder<unknown>, R>(
@@ -251,7 +226,7 @@ export function retrieveView(id: string, database?: string) {
       return yield* Effect.fail(
         fail("VIEW_SCOPE_MISMATCH", "The View does not belong to the selected database.", {
           view_id: id,
-          database_id: database,
+          database_id: source.database_id,
         }),
       )
     return {
@@ -274,7 +249,7 @@ function currentViews(database: string, details: "all" | "first") {
     let cursor: string | undefined
     do {
       const query = new URLSearchParams({
-        database_id: database,
+        database_id: source.database_id,
         page_size: "100",
         ...(cursor ? { start_cursor: cursor } : {}),
       })
@@ -289,7 +264,7 @@ function currentViews(database: string, details: "all" | "first") {
     } while (cursor)
     const views: View[] = []
     for (const id of details === "first" ? ids.slice(0, 1) : ids) {
-      const view = yield* retrieveView(id, database)
+      const view = yield* retrieveView(id, source.database_id)
       if (!source.data_source_ids.includes(view.data_source_id))
         return yield* Effect.fail(
           fail("VIEW_SCOPE_MISMATCH", "View references another data source."),
@@ -302,7 +277,7 @@ function currentViews(database: string, details: "all" | "first") {
 
 function firstView(scope: string, input?: string) {
   return Effect.gen(function* () {
-    const database = yield* selectedDatabase(input)
+    const database = yield* selectedLibraryId(input)
     const current = yield* currentViews(database, "first")
     // Only viewCatalog owns this selected observation. Never cache one detail
     // under the public complete View-list key.
@@ -312,7 +287,7 @@ function firstView(scope: string, input?: string) {
 
 export function listViews(options: ViewOptions = {}) {
   return Effect.gen(function* () {
-    const database = yield* selectedDatabase(options.database)
+    const database = yield* selectedLibraryId(options.library)
     const observed = yield* observe(["list", database], ViewListSchema, options, (scope) =>
       Effect.gen(function* () {
         const current = yield* currentViews(database, "all")
@@ -451,16 +426,14 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
   return Effect.gen(function* () {
     const explicit =
       options.view === undefined ? undefined : yield* check(() => viewId(options.view!))
-    const database =
-      options.database === undefined ? undefined : yield* databaseId(options.database)
-    const configured = yield* configuredSources
+    const library = yield* selectedLibraryId(options.library)
     const observed = yield* observe(
-      ["members", explicit ?? "first", database ?? configured],
+      ["root-members-v2", explicit ?? "first", library],
       ViewCatalogSchema,
       options,
       (scope) =>
         Effect.gen(function* () {
-          const listing = explicit === undefined ? yield* firstView(scope, database) : undefined
+          const listing = explicit === undefined ? yield* firstView(scope, library) : undefined
           if (listing && listing.scope !== scope)
             return yield* Effect.fail(
               fail(
@@ -468,9 +441,8 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
                 "Credential scope changed while selecting the default View; retry discovery.",
               ),
             )
-          const view =
-            explicit !== undefined ? yield* retrieveView(explicit, database) : listing?.view
-          const source = listing?.database ?? (yield* explicitSource(view!.database_id, undefined))
+          const source = listing?.database ?? (yield* explicitSource(library))
+          const view = explicit !== undefined ? yield* retrieveView(explicit, source.database_id) : listing?.view
           if (view && !source.data_source_ids.includes(view.data_source_id))
             return yield* Effect.fail(
               fail("VIEW_SCOPE_MISMATCH", "View references another data source."),
@@ -478,6 +450,7 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
           if (!view)
             return {
               scope,
+              library_id: library,
               fetched_at: yield* Clock.currentTimeMillis,
               databases: [source],
               records: [],
@@ -591,6 +564,7 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
               })
           return {
             scope,
+            library_id: library,
             fetched_at: Math.min(selection.fetched_at, inventory.fetched_at),
             databases: [source],
             records: selection.ids.flatMap((id) => {

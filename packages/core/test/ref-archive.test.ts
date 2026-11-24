@@ -16,15 +16,15 @@ function failureOf(operation: () => unknown): unknown {
 
 describe("protocol references", () => {
   test("round trips stable identities and paths and keeps snapshots across nested relative links", () => {
-    const ref = `skill://resource-governance/references/deep/guide.md?library=docs&snapshot=${snapshot}`
+    const ref = `skill://resource-governance/references/deep/guide.md?library=0602093b-7ffd-5687-9f6a-8a78fa5cd2ba&snapshot=${snapshot}`
     expect(parseRef(ref)).toMatchObject({
       skillId: "resource-governance",
-      scope: { kind: "library", libraryId: "docs" },
+      scope: { kind: "library", libraryId: "0602093b-7ffd-5687-9f6a-8a78fa5cd2ba" },
       path: "references/deep/guide.md",
       selection: { kind: "fixed", snapshotId: snapshot },
     })
     expect(resolveRef(ref, "../../assets/词表.md")).toBe(
-      `skill://resource-governance/assets/%E8%AF%8D%E8%A1%A8.md?library=docs&snapshot=${snapshot}`,
+      `skill://resource-governance/assets/%E8%AF%8D%E8%A1%A8.md?library=0602093b-7ffd-5687-9f6a-8a78fa5cd2ba&snapshot=${snapshot}`,
     )
     expect(pageId(`https://app.notion.com/p/title-${id.replaceAll("-", "")}?v=x`)).toBe(id)
     expect(pageId(`https://www.notion.so/${id.replaceAll("-", "")}`)).toBe(id)

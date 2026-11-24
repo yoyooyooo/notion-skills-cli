@@ -1,3 +1,4 @@
+import { pageId } from "./notion-id.ts"
 import { fail } from "./model.ts"
 import {
   bindSkillRef,
@@ -58,23 +59,7 @@ export function resolveRef(base: string, relative: string): string {
   })
 }
 
-export function pageId(input: string): string | undefined {
-  const raw = /^[a-f\d-]{32,36}$/i.test(input)
-    ? input.replaceAll("-", "")
-    : (() => {
-        try {
-          const url = new URL(input)
-          if (url.protocol !== "https:" && url.protocol !== "http:") return undefined
-          if (!/(^|\.)notion\.(com|site|so)$/.test(url.hostname)) return undefined
-          if (url.username || url.password || url.port) return undefined
-          return /([a-f\d]{32})\/?$/i.exec(url.pathname)?.[1]
-        } catch {
-          return undefined
-        }
-      })()
-  if (!raw || !/^[a-f\d]{32}$/i.test(raw)) return undefined
-  return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20)}`.toLowerCase()
-}
+export { pageId } from "./notion-id.ts"
 
 type TargetPath = { readonly path?: string }
 export type SkillTarget = TargetPath &

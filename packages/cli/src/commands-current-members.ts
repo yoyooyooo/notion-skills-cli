@@ -1,6 +1,6 @@
 import { Effect, FileSystem, Option, Path } from "effect"
 import { Argument, Command } from "effect/cli"
-import { databaseId } from "../../core/src/catalog.ts"
+import { libraryId } from "../../core/src/catalog.ts"
 import { defineCommand } from "../../core/src/command-schema.ts"
 import { exportPortable } from "../../core/src/export.ts"
 import { fail, SkillsError } from "../../core/src/model.ts"
@@ -98,7 +98,7 @@ export const currentMembersPlanCommand = defineCommand(
   "members-plan",
   {
     input: Argument.String("input"),
-    entry: requiredSingleton("entry", "Exact current Skills database entry"),
+    library: requiredSingleton("library", "Exact current Skills database entry"),
     skillId: requiredSingleton("skill-id", "Exact stable identity of the intended import"),
     bindings: singleton(
       "bindings",
@@ -122,7 +122,7 @@ export const currentMembersPlanCommand = defineCommand(
       })
       const invocation = yield* withCurrentInvocationBudget(
         Effect.gen(function* () {
-          const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
+          const library = yield* loadSharedLibrary(yield* libraryId(options.library))
           const bound = yield* Effect.try({
             try: () => {
               const bound = bindCurrentImportOrigin(library.library_id, input.admitted)

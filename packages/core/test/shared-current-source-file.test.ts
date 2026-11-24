@@ -222,7 +222,7 @@ test.each([true, false])(
     const { f, http, page, index } = await seed("\n")
     const sourceBefore = await f.run(queryCurrentSourceManagement(library, "file-source"))
     const original = await f.run(
-      http.use(readSkill(page, { database: library.skills.database_id, refresh: true })),
+      http.use(readSkill(page, { library: library.library_id, refresh: true })),
     )
     if (!("content" in original)) throw new Error("Expected the current Source text")
     expect(original.content.endsWith("\n")).toBe(true)
@@ -256,7 +256,7 @@ test.each([true, false])(
         content: { kind: "native" },
       })
     const retained = await f.run(
-      http.use(readSkill(page, { database: library.skills.database_id, refresh: true })),
+      http.use(readSkill(page, { library: library.library_id, refresh: true })),
     )
     if (!("content" in retained)) throw new Error("Expected the retained Source text")
     expect(retained.content).toBe(
@@ -271,7 +271,7 @@ test.each([true, false])(
         ),
       )
       const followed = await f.run(
-        http.use(readSkill(page, { database: library.skills.database_id, refresh: true })),
+        http.use(readSkill(page, { library: library.library_id, refresh: true })),
       )
       if (!("content" in followed)) throw new Error("Expected the exact selected Source text")
       expect(followed.content).toBe(original.content)
@@ -329,7 +329,7 @@ test("main takeover preserves identity and human edits through refresh, then fol
   )
   await f.run(http.use(writePreparedCurrentSource(library, { prepared, operation_id: "refresh" })))
   expect(
-    await f.run(http.use(readSkill(page, { database: library.skills.database_id, refresh: true }))),
+    await f.run(http.use(readSkill(page, { library: library.library_id, refresh: true }))),
   ).toMatchObject({ content: expect.stringContaining(human) })
   await f.run(
     http.use(
@@ -347,7 +347,7 @@ test("main takeover preserves identity and human edits through refresh, then fol
     content: { kind: "source", source_id: "file-source", source_path: "skills/one/SKILL.md" },
   })
   expect(
-    await f.run(http.use(readSkill(page, { database: library.skills.database_id, refresh: true }))),
+    await f.run(http.use(readSkill(page, { library: library.library_id, refresh: true }))),
   ).toMatchObject({
     content: new TextDecoder().decode(observation(true).members[0]!.portable.files[0]!.bytes),
   })
@@ -382,7 +382,7 @@ test("supporting executable and binary takeovers keep originals and disabled Sou
   expect(
     await f.run(
       http.use(
-        readSkill(page, { database: library.skills.database_id, path: "run.sh", refresh: true }),
+        readSkill(page, { library: library.library_id, path: "run.sh", refresh: true }),
       ),
     ),
   ).toMatchObject({ content: "#!/bin/sh\necho one\n" })
@@ -556,7 +556,7 @@ test("restore-follow consumes exact Source bytes without depending on generated 
     content: { kind: "source", source_path: "skills/one/SKILL.md" },
   })
   expect(
-    await f.run(http.use(readSkill(page, { database: library.skills.database_id, refresh: true }))),
+    await f.run(http.use(readSkill(page, { library: library.library_id, refresh: true }))),
   ).toMatchObject({
     content: new TextDecoder().decode(observation().members[0]!.portable.files[0]!.bytes),
   })
@@ -719,7 +719,7 @@ test.each(["source-ready", "source-retirement"] as const)(
     ).toEqual([])
     expect(
       await f.run(
-        http.use(readSkill(page, { database: library.skills.database_id, refresh: true })),
+        http.use(readSkill(page, { library: library.library_id, refresh: true })),
       ),
     ).toMatchObject({ content: expect.stringContaining(human) })
     await ready(f)

@@ -32,8 +32,8 @@ export type { RequestBudgetLimits, RequestBudgetSnapshot } from "../../core/src/
 export type { RequestMetricsSnapshot } from "../../core/src/request-metrics.ts"
 
 export interface ManagementOptions extends OperationOptions {}
-export type SourceCheckInput = CurrentSourceCheckRequest & { readonly entry: string }
-export type SourceSyncInput = CurrentSourceSyncRequest & { readonly entry: string }
+export type SourceCheckInput = CurrentSourceCheckRequest & { readonly library: string }
+export type SourceSyncInput = CurrentSourceSyncRequest & { readonly library: string }
 
 function checkedEntry(input: SourceCheckInput, options: ManagementOptions): string {
   if (Object.hasOwn(options, "readOnly"))
@@ -44,19 +44,19 @@ function checkedEntry(input: SourceCheckInput, options: ManagementOptions): stri
   if (
     input === null ||
     typeof input !== "object" ||
-    typeof input.entry !== "string" ||
-    !input.entry.trim()
+    typeof input.library !== "string" ||
+    !input.library.trim()
   )
     throw fail("INVALID_ARGUMENT", "Source management requires one explicit library entry.")
   if (
-    /^notion_page:/iu.test(input.entry) ||
-    (/^[a-z][a-z\d+.-]*:\/\//iu.test(input.entry) && !/^https?:\/\//iu.test(input.entry))
+    /^notion_page:/iu.test(input.library) ||
+    (/^[a-z][a-z\d+.-]*:\/\//iu.test(input.library) && !/^https?:\/\//iu.test(input.library))
   )
     throw fail(
       "INVALID_ARGUMENT",
       "Source management requires a current database ID or Notion URL.",
     )
-  return input.entry
+  return input.library
 }
 
 /** Read current declarations and upstream refs. No Notion semantic writes and no
@@ -67,7 +67,7 @@ export function checkSources(
 ): Promise<CurrentSourceSyncResult> {
   return runRuntimeOperation(() => {
     const entry = checkedEntry(input, options)
-    const { entry: _, ...request } = input
+    const { library: _, ...request } = input
     return runCurrentSourceSync(
       entry,
       validateCurrentSourceSyncCommand({ ...request, action: "check" }),
@@ -84,7 +84,7 @@ export function syncSources(
 ): Promise<CurrentSourceSyncResult> {
   return runRuntimeOperation(() => {
     const entry = checkedEntry(input, options)
-    const { entry: _, ...request } = input
+    const { library: _, ...request } = input
     return runCurrentSourceSync(
       entry,
       validateCurrentSourceSyncCommand({ ...request, action: "sync" }),

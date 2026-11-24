@@ -62,12 +62,12 @@ async function consumer(readMaxAge: number) {
     },
   })
   f.json.set("config.json", {
-    shared_profile: { library_entry: library.skills.database_id, profile_id: "daily" },
+    shared_profile: { library_id: library.skills.database_id, profile_id: "daily" },
   })
   return f
 }
-const options = { database: library.skills.database_id }
-const current = parseTarget("skill://demo/SKILL.md?library=library-current")
+const options = { library: library.library_id }
+const current = parseTarget("skill://demo/SKILL.md?library=00000000-0000-4000-8000-000000000002")
 function observations(f: ReturnType<typeof currentSnapshotFixture>) {
   return [...f.json.entries()]
     .filter(([key]) => key.startsWith("cache/latest/"))
@@ -78,7 +78,7 @@ test("strict consume proof retains the effective shared freshness evidence", asy
   const f = await consumer(10_000)
   const input = {
     version: 1 as const,
-    targets: ["skill://demo/SKILL.md?library=library-current"],
+    targets: ["skill://demo/SKILL.md?library=00000000-0000-4000-8000-000000000002"],
     purpose: "use" as const,
   }
   const result = await f.run(consume(input, options))

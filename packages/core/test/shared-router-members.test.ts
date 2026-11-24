@@ -12,7 +12,7 @@ const routerPage = id(1)
 const membersProperty = "mem%3Aroles"
 const library: SharedLibrary = {
   ...currentLibrary,
-  library_id: "library-router",
+  library_id: "88c64f8d-88ee-5ebf-a45c-f9a4a0144e42",
   operation_id: "library-router",
   skills: {
     ...currentLibrary.skills,

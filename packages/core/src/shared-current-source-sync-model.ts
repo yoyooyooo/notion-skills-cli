@@ -1,3 +1,4 @@
+import { SharedLibrarySchema } from "./shared-library-model.ts"
 import { Schema } from "effect"
 import type { RequestBudgetLimits, RequestBudgetSnapshot } from "./request-budget.ts"
 import type { RequestMetricsSnapshot } from "./request-metrics.ts"
@@ -113,7 +114,8 @@ const Input = Schema.Struct({
   projection: Schema.Literals(["none", "markdown"]),
 })
 const PendingBase = {
-  version: Schema.Literal(1),
+  version: Schema.Literal(2),
+  library: SharedLibrarySchema,
   kind: Schema.Literal("current_source_sync"),
   scope: Hash,
   manager_id: Identity,

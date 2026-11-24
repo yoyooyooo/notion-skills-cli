@@ -1,6 +1,6 @@
 import { ByteSize, Crypto, Effect, FileSystem, Option, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
-import { databaseId } from "../../core/src/catalog.ts"
+import { libraryId } from "../../core/src/catalog.ts"
 import { defineCommand, exclusiveFlags, withConstraints } from "../../core/src/command-schema.ts"
 import { lstatNoFollow } from "../../core/src/local-locks.ts"
 import { fail, SkillsError } from "../../core/src/model.ts"
@@ -119,7 +119,7 @@ const budgetFlag = (name: string, description: string) =>
     Flag.withDescription(description),
   )
 const flags = {
-  entry: requiredSingleton("entry", "Current Skills database ID, URL or exact registered alias"),
+  library: requiredSingleton("library", "Current Skills database ID, URL or exact registered alias"),
   operation: singleton(
     "operation",
     "Current Source intent identity; required with --resume or --supersede OLD",
@@ -155,7 +155,7 @@ const fileFlags = {
 }
 const modeConstraints = [exclusiveFlags(["resume", "supersede", "dryRun"])]
 type SourceOptions = {
-  readonly entry: string
+  readonly library: string
   readonly operation: Option.Option<string>
   readonly resume: boolean
   readonly supersede: Option.Option<string>
@@ -173,8 +173,8 @@ function runCurrentSource(options: SourceOptions, request: SourceRequest) {
   return Effect.gen(function* () {
     const selected = yield* checked(() => {
       if (
-        /^notion_page:/iu.test(options.entry) ||
-        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.entry) && !/^https?:\/\//iu.test(options.entry))
+        /^notion_page:/iu.test(options.library) ||
+        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.library) && !/^https?:\/\//iu.test(options.library))
       )
         throw fail(
           "INVALID_ARGUMENT",
@@ -220,7 +220,7 @@ function runCurrentSource(options: SourceOptions, request: SourceRequest) {
           : request
     const invocation = yield* withCurrentInvocationBudget(
       Effect.gen(function* () {
-        const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
+        const library = yield* loadSharedLibrary(yield* libraryId(options.library))
         const operation =
           selected.operation ??
           (yield* (yield* Crypto.Crypto)
@@ -307,17 +307,17 @@ export const applyCurrentSourceCommand = defineCommand(
   ),
   Command.withExamples([
     {
-      command: "ntn-skills ctl library source apply ./source.json --entry LIBRARY_ID --dry-run",
+      command: "ntn-skills ctl library source apply ./source.json --library LIBRARY_ID --dry-run",
       description: "Inspect the complete declaration and its current targets",
     },
     {
       command:
-        "ntn-skills ctl library source apply ./source.json --entry LIBRARY_ID --operation SOURCE_INTENT",
+        "ntn-skills ctl library source apply ./source.json --library LIBRARY_ID --operation SOURCE_INTENT",
       description: "Synchronize every member selected by this Source declaration",
     },
     {
       command:
-        "ntn-skills ctl library source apply ./source.json --entry LIBRARY_ID --operation SOURCE_INTENT --resume",
+        "ntn-skills ctl library source apply ./source.json --library LIBRARY_ID --operation SOURCE_INTENT --resume",
       description: "Continue the same declaration and frozen provider commit",
     },
   ]),
@@ -335,17 +335,17 @@ export const refreshCurrentSourceCommand = defineCommand(
   ),
   Command.withExamples([
     {
-      command: "ntn-skills ctl library source refresh SOURCE_ID --entry LIBRARY_ID --dry-run",
+      command: "ntn-skills ctl library source refresh SOURCE_ID --library LIBRARY_ID --dry-run",
       description: "Inspect current contribution changes without writing",
     },
     {
       command:
-        "ntn-skills ctl library source refresh SOURCE_ID --entry LIBRARY_ID --operation SOURCE_INTENT",
+        "ntn-skills ctl library source refresh SOURCE_ID --library LIBRARY_ID --operation SOURCE_INTENT",
       description: "Refresh using the current Notion declaration",
     },
     {
       command:
-        "ntn-skills ctl library source refresh SOURCE_ID --entry LIBRARY_ID --operation SOURCE_INTENT --resume",
+        "ntn-skills ctl library source refresh SOURCE_ID --library LIBRARY_ID --operation SOURCE_INTENT --resume",
       description: "Continue this unchanged declaration's frozen intent",
     },
   ]),

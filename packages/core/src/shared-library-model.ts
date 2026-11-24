@@ -3,17 +3,19 @@ export const SharedSkillRelationFieldSchema = Schema.Literals(["Members", "Requi
 export type SharedSkillRelationField = typeof SharedSkillRelationFieldSchema.Type
 
 /** Pure descriptor schemas. This module must not import model or a Notion service. */
-export const LIBRARY_MARKER = "ntn-skills-library:v1 "
+export const LIBRARY_MARKER = "ntn-skills-library:v2 "
+export const LibraryIdSchema = Schema.String.check(
+  Schema.isPattern(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u),
+)
 export const TableBindingSchema = Schema.Struct({
   database_id: Schema.String,
   data_source_id: Schema.String,
   property_ids: Schema.Record(Schema.String, Schema.String),
 })
 export const SharedLibrarySchema = Schema.Struct({
-  version: Schema.Literal(1),
-  library_id: Schema.String,
+  version: Schema.Literal(2),
+  library_id: LibraryIdSchema,
   operation_id: Schema.String,
-  parent_page_id: Schema.String,
   skills: TableBindingSchema,
   files: TableBindingSchema,
   records: TableBindingSchema,
@@ -25,6 +27,7 @@ export type TableBinding = typeof TableBindingSchema.Type
 export const LibraryTableRoleSchema = Schema.Literals(["Skills", "Files", "Records", "Sources"])
 export type LibraryTableRole = typeof LibraryTableRoleSchema.Type
 export const LibraryInitializationActionSchema = Schema.Literals([
+  "create:root",
   "create:Skills",
   "create:Files",
   "create:Records",
@@ -36,12 +39,13 @@ export const LibraryInitializationActionSchema = Schema.Literals([
 export type LibraryInitializationAction = typeof LibraryInitializationActionSchema.Type
 const InitializationHash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 export const LibraryInitializationPendingSchema = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literal(2),
   scope: InitializationHash,
   operation_id: Schema.String.check(Schema.isPattern(/^library-[a-zA-Z0-9-]{1,80}$/u)),
   parent_page_id: Schema.String.check(
     Schema.isPattern(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u),
   ),
+  root_page_id: Schema.NullOr(LibraryIdSchema),
   tables: Schema.Struct({
     Skills: Schema.optional(TableBindingSchema),
     Files: Schema.optional(TableBindingSchema),
@@ -75,6 +79,7 @@ export function preservesLibraryInitialization(
     before.scope === after.scope &&
     before.operation_id === after.operation_id &&
     before.parent_page_id === after.parent_page_id &&
+    (before.root_page_id === null || before.root_page_id === after.root_page_id) &&
     (["Skills", "Files", "Records", "Sources"] as const).every((role) => {
       const table = before.tables[role],
         next = after.tables[role]
@@ -91,8 +96,7 @@ export function preservesSharedLibraryBindings(
   if (
     original.version !== current.version ||
     original.library_id !== current.library_id ||
-    original.operation_id !== current.operation_id ||
-    original.parent_page_id !== current.parent_page_id
+    original.operation_id !== current.operation_id
   )
     return false
   for (const role of ["skills", "files", "records", "sources"] as const) {

@@ -20,7 +20,7 @@ import {
   currentSkillPage as skillPage,
 } from "./shared-current-fixture.ts"
 
-const owner = "skill://demo?library=library-current"
+const owner = "skill://demo?library=00000000-0000-4000-8000-000000000002"
 const roots: string[] = []
 afterAll(async () => {
   if (process.platform === "darwin")
@@ -123,7 +123,7 @@ test("public Node read/export with real SQLite completes current native forms an
       return yield* Effect.gen(function* () {
         const store = yield* Store
         const first = yield* readSkill(skillPage, {
-          database: library.skills.database_id,
+          library: library.library_id,
           refresh: true,
         })
         if (!("content" in first)) throw new Error("Expected the selected current main text")
@@ -165,7 +165,7 @@ test("public Node read/export with real SQLite completes current native forms an
         expect(exported.native_references).toEqual(first.native_references)
         x.f.clearCalls()
         x.blockCalls.length = 0
-        const cached = yield* readSkill(skillPage, { database: library.skills.database_id })
+        const cached = yield* readSkill(skillPage, { library: library.library_id })
         expect(cached.snapshot_id).toBe(first.snapshot_id)
         expect(x.f.bodyCalls()).toHaveLength(0)
         expect(x.blockCalls).toHaveLength(0)
@@ -173,7 +173,7 @@ test("public Node read/export with real SQLite completes current native forms an
         x.setTarget(id(101))
         x.f.main.last_edited_time = new Date(Date.now() - 100).toISOString()
         const current = yield* readSkill(skillPage, {
-          database: library.skills.database_id,
+          library: library.library_id,
           refresh: true,
         })
         expect(current.snapshot_id).not.toBe(first.snapshot_id)
@@ -212,7 +212,7 @@ test("public Node/SQLite read rejects an unknown non-page alias before publishin
     Effect.gen(function* () {
       const api = yield* x.program
       const result = yield* Effect.result(
-        readSkill(skillPage, { database: library.skills.database_id, refresh: true }).pipe(
+        readSkill(skillPage, { library: library.library_id, refresh: true }).pipe(
           Effect.provideService(Notion, api),
         ),
       )

@@ -42,7 +42,7 @@ const node = (() => {
   return resolved.stdout.toString().trim()
 })()
 const snapshot = `s_${"0".repeat(64)}`
-const pinned = `skill://sample/SKILL.md?library=test&snapshot=${snapshot}`
+const pinned = `skill://sample/SKILL.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e&snapshot=${snapshot}`
 interface InvocationResult {
   stdout: string
   stderr: string
@@ -168,8 +168,8 @@ test("library initialization exposes explicit continuation and rejects incomplet
   for (const flags of [
     ["--parent", parent, "--resume"],
     ["--operation", "library-test", "--resume"],
-    ["--entry", parent, "--resume"],
-    ["--entry", parent, "--operation", "library-test"],
+    ["--library", parent, "--resume"],
+    ["--library", parent, "--operation", "library-test"],
   ])
     await invalid(["ctl", "library", "init", ...flags])
 }, 30_000)
@@ -312,7 +312,7 @@ test("current management and export schemas contain no historical compatibility 
       "library",
       "import",
       "missing.md",
-      "--entry",
+      "--library",
       "11111111-1111-4111-8111-111111111111",
       "--skill-id",
       "sample",
@@ -406,9 +406,9 @@ test("unknown flags, obsolete selectors and conflicting paths fail before online
 test("explicit identity reads and valid freshness policies reach online validation", async () => {
   for (const command of [
     ["list"],
-    ["read", "skill://sample?library=test"],
-    ["files", "skill://sample?library=test"],
-    ["export", "skill://sample?library=test", "--output", "output.zip"],
+    ["read", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
+    ["files", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
+    ["export", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e", "--output", "output.zip"],
   ]) {
     for (const flags of [
       [],
@@ -424,9 +424,9 @@ test("explicit identity reads and valid freshness policies reach online validati
 test("offline policy fails explicitly without a safe cached identity", async () => {
   for (const command of [
     ["list"],
-    ["read", "skill://sample?library=test"],
-    ["files", "skill://sample?library=test"],
-    ["export", "skill://sample?library=test", "--output", "output.zip"],
+    ["read", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
+    ["files", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
+    ["export", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e", "--output", "output.zip"],
   ]) {
     const result = await invoke([...command, "--offline"], {
       traceOnline: true,
@@ -606,7 +606,7 @@ test("cache duration configuration persists across processes and preserves other
   await mkdir(join(root, "config"))
   const original = {
     token: "offline-fixture-token",
-    default_database: "11111111-1111-4111-8111-111111111111",
+    default_library: "11111111-1111-4111-8111-111111111111",
     sources: [],
   }
   await writeFile(join(root, "config", "config.json"), JSON.stringify(original))
@@ -623,7 +623,7 @@ test("cache duration configuration persists across processes and preserves other
     )
     const show = JSON.parse((await invoke(["ctl", "config", "show"], { root })).stdout)
     expect(show.config.effective_cache_policy.read_max_age_ms).toBe(milliseconds)
-    expect(show.config.default_database).toBe(original.default_database)
+    expect(show.config.default_library).toBe(original.default_library)
     expect(show.config.token_configured).toBe(true)
     expect(show.config.token).toBeUndefined()
   }
@@ -638,7 +638,7 @@ test("cache duration configuration persists across processes and preserves other
     read_max_age_ms: 300000,
     catalog_max_age_ms: 60000,
   })
-  expect(show.config.default_database).toBe(original.default_database)
+  expect(show.config.default_library).toBe(original.default_library)
   expect(show.config.token_configured).toBe(true)
 }, 60000)
 
@@ -658,7 +658,7 @@ test("consumer catalog identity follows remote scope without local configuration
     writeFile(join(root, "config", "config.json"), JSON.stringify(value))
   const identity = async (selector?: string) => {
     const result = await invoke(
-      ["ctl", "cache", "identity", ...(selector ? ["--database", selector] : [])],
+      ["ctl", "cache", "identity", ...(selector ? ["--library", selector] : [])],
       { root, traceOnline: true },
     )
     expect(result.exit).toBe(0)
@@ -673,7 +673,7 @@ test("consumer catalog identity follows remote scope without local configuration
   expect((await identity()).identity).not.toBe(first.identity)
   const localPreferences = {
     ...original,
-    default_database: otherDatabase,
+    default_library: otherDatabase,
     cache_policy: { read_max_age_ms: 1000, catalog_max_age_ms: 120000 },
   }
   await save(localPreferences)
@@ -682,7 +682,7 @@ test("consumer catalog identity follows remote scope without local configuration
   expect(changedPolicy.catalog_max_age_ms).toBe(120000)
   expect((await identity(otherDatabase)).identity).not.toBe(first.identity)
   await save({ ...original, upstream_database: otherDatabase })
-  const retired = await invoke(["ctl", "cache", "identity", "--database", database], {
+  const retired = await invoke(["ctl", "cache", "identity", "--library", database], {
     root,
     traceOnline: true,
   })
@@ -700,14 +700,14 @@ test("current relative resolution preserves owner without consulting Notion", as
       "resolve",
       "../assets/guide.md",
       "--from",
-      "skill://sample/references/page.md?library=test",
+      "skill://sample/references/page.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e",
     ],
     { traceOnline: true },
   )
   expect(result.exit).toBe(0)
   expect(JSON.parse(result.stdout)).toEqual({
     ok: true,
-    ref: "skill://sample/assets/guide.md?library=test",
+    ref: "skill://sample/assets/guide.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e",
   })
   expect(result.onlineCalled).toBe(false)
   const fixed = await invoke(
@@ -716,7 +716,7 @@ test("current relative resolution preserves owner without consulting Notion", as
       "resolve",
       "../assets/guide.md",
       "--from",
-      `skill://sample/references/page.md?library=test&snapshot=${snapshot}`,
+      `skill://sample/references/page.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e&snapshot=${snapshot}`,
     ],
     { traceOnline: true },
   )
@@ -724,7 +724,7 @@ test("current relative resolution preserves owner without consulting Notion", as
   expect(fixed.onlineCalled).toBe(false)
 })
 test("explicit help takes precedence over repeated singleton values", async () => {
-  const result = await invoke(["list", "--database", "frontend", "--database", "ops", "--help"], {
+  const result = await invoke(["list", "--library", "frontend", "--library", "ops", "--help"], {
     inaccessible: true,
     traceOnline: true,
   })
@@ -756,7 +756,7 @@ test("built-ins are explicit offline package identities and cannot capture remot
     jsonFailure(await invoke(["read", name]), "LIBRARY_CONTEXT_REQUIRED", 1)
   }
   await invalid(["ctl", "builtin", "publish", ids[1]!, "--target", "Ntn Skills Maintain"])
-  await invalid(["ctl", "builtin", "publish", ids[1]!, "--database", "a", "--database", "b"])
+  await invalid(["ctl", "builtin", "publish", ids[1]!, "--library", "a", "--library", "b"])
 }, 30000)
 
 test("built-in management defaults to central storage and persists repeated agent targets under Node", async () => {

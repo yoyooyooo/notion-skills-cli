@@ -125,9 +125,9 @@ test("native create freezes authored bytes while sending equivalent soft wraps a
   const header =
     "---\r\nname: native-managed\r\ndescription: Authoring wrapper acceptance\r\n---\r\n"
   const markdown =
-    "# Main\r\n\r\nRead `list --view VIEW_ID --database\r\nENTRY` and [release\r\nchecks](https://example.com).\r\n\r\n1. Run\r\n   now.\r\n\r\n   ```sh\r\n   printf 'keep\\n'\r\n   ```\r\n\r\n   Keep\r\n   this paragraph.\r\n"
+    "# Main\r\n\r\nRead `list --view VIEW_ID --library\r\nENTRY` and [release\r\nchecks](https://example.com).\r\n\r\n1. Run\r\n   now.\r\n\r\n   ```sh\r\n   printf 'keep\\n'\r\n   ```\r\n\r\n   Keep\r\n   this paragraph.\r\n"
   const wire =
-    "# Main\n\nRead `list --view VIEW_ID --database ENTRY` and [release checks](https://example.com).\n\n1. Run now.\n\n   ```sh\n   printf 'keep\\n'\n   ```\n\n   Keep this paragraph.\n"
+    "# Main\n\nRead `list --view VIEW_ID --library ENTRY` and [release checks](https://example.com).\n\n1. Run now.\n\n   ```sh\n   printf 'keep\\n'\n   ```\n\n   Keep this paragraph.\n"
   const bytes = testBytes(header + markdown)
   const plan = await f.run(
     prepareCurrentSkillWrite(
@@ -150,8 +150,8 @@ test("native create freezes authored bytes while sending equivalent soft wraps a
       ...response,
       markdown: response.markdown
         .replace(
-          "`list --view VIEW_ID --database ENTRY`",
-          "<code>list --view VIEW_ID --database ENTRY</code>",
+          "`list --view VIEW_ID --library ENTRY`",
+          "<code>list --view VIEW_ID --library ENTRY</code>",
         )
         .replace("\n   ```sh\n", "\n   ```bash\n")
         .replace("   Keep this paragraph.", "   <p>\n   Keep this paragraph.\n   </p>"),
@@ -181,9 +181,9 @@ test("native create freezes authored bytes while sending equivalent soft wraps a
 test.each([
   {
     difference: "a literal br inside code",
-    markdown: "Read `list --database\nENTRY`.\n",
-    wire: "`list --database ENTRY`",
-    observed: "<code>list --database<br>ENTRY</code>",
+    markdown: "Read `list --library\nENTRY`.\n",
+    wire: "`list --library ENTRY`",
+    observed: "<code>list --library<br>ENTRY</code>",
   },
   {
     difference: "an unexpected filename link",

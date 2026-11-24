@@ -116,7 +116,7 @@ test("unbound, ambiguous, missing, disabled, foreign and nonexact references nev
     ref("disabled"),
     ref("target", "absent.md"),
     ref("target") + "&file_id=wrong-file",
-    fileRef("skill://target?library=other", "SKILL.md"),
+    fileRef("skill://target?library=563e49fa-4378-5493-a5ff-8c96321f9ffd", "SKILL.md"),
     "skill://Same%20display%20name/SKILL.md",
     "skill://%/SKILL.md",
     ref("target") + "&snapshot=s_" + "a".repeat(64),

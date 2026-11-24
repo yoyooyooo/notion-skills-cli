@@ -29,7 +29,7 @@ const pending = {
   owner_page_id: null,
   version: 1,
   scope: "c".repeat(64),
-  library_id: "library-current",
+  library_id: "00000000-0000-4000-8000-000000000002",
   record_id: "current-cache-test",
   intent: {
     operation_id: "cache-test",
@@ -126,7 +126,7 @@ test.skipIf(process.platform !== "darwin")(
           entrypoint: "SKILL.md",
           created_at: 1,
           record: {
-            id: `skill://${id}?library=library-current`,
+            id: `skill://${id}?library=00000000-0000-4000-8000-000000000002`,
             kind: "skill",
             entrypoint: "SKILL.md",
             locator: {
@@ -134,13 +134,13 @@ test.skipIf(process.platform !== "darwin")(
               page_id: "00000000-0000-4000-8000-000000000001",
               database_id: "00000000-0000-4000-8000-000000000003",
               data_source_id: "00000000-0000-4000-8000-000000000004",
-              library_id: "library-current",
+              library_id: "00000000-0000-4000-8000-000000000002",
               skill_id: id,
             },
             name: id,
             alias: id,
             description: id,
-            ref: `skill://${id}/SKILL.md?library=library-current`,
+            ref: `skill://${id}/SKILL.md?library=00000000-0000-4000-8000-000000000002`,
             default_context: false,
           },
           files: [{ path: "SKILL.md", bytes: 8, sha256: payload.sha256 }],
@@ -171,7 +171,7 @@ test.skipIf(process.platform !== "darwin")(
       expect(preview.objects[0]).toMatchObject({
         bytes: 8,
         snapshots: snapshots.map((snapshot) => snapshot.snapshot_id).sort(),
-        owners: ["skill://one?library=library-current", "skill://two?library=library-current"],
+        owners: ["skill://one?library=00000000-0000-4000-8000-000000000002", "skill://two?library=00000000-0000-4000-8000-000000000002"],
       })
       expect(preview.objects[0]?.protected_by).toContain("shared_object")
       expect(preview.database.length).toBeGreaterThan(0)

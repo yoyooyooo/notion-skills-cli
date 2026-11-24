@@ -15,8 +15,8 @@ import {
   authScope,
   bindEntryTarget,
   explicitSource,
-  freshCatalogForRead,
-  databaseId as resolveDatabaseId,
+  sourceForSkillsDatabase,
+  libraryId as resolveLibraryId,
   type CatalogOptions,
 } from "./catalog.ts"
 import {
@@ -79,10 +79,11 @@ function openSnapshot(
       )
     selector = target.selector
     const startedAt = yield* Clock.currentTimeMillis
-    const selectedDatabase =
-      options.database === undefined ? undefined : yield* resolveDatabaseId(options.database)
-    const graphTarget = yield* sharedGraphTarget(selector, selectedDatabase)
-    if (graphTarget !== undefined)
+    const selectedLibrary = options.library === undefined ? undefined : yield* resolveLibraryId(options.library)
+    const graphTarget = yield* sharedGraphTarget(selector)
+    if (graphTarget !== undefined) {
+      if (selectedLibrary !== undefined && graphTarget.library.library_id !== selectedLibrary)
+        return yield* Effect.fail(fail("LIBRARY_SCOPE_MISMATCH", "The target conflicts with the selected Library."))
       return yield* openSharedConsumer({
         ...graphTarget,
         target: String(property(graphTarget.rawPage).id),
@@ -92,6 +93,8 @@ function openSnapshot(
         maxAge: options.maxAge,
         ...selectedFiles,
       })
+    }
+
     const id = pageId(selector)
     if (id !== undefined) {
       const scope = yield* authScope
@@ -113,11 +116,9 @@ function openSnapshot(
         return yield* Effect.fail(
           fail("NOT_SKILL", "The page must belong to an accessible current Skill library."),
         )
-      if (selectedDatabase !== undefined && selectedDatabase !== parent.database_id)
-        return yield* Effect.fail(
-          fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected library."),
-        )
-      const source = yield* explicitSource(parent.database_id)
+      const source = yield* sourceForSkillsDatabase(parent.database_id)
+      if (selectedLibrary !== undefined && selectedLibrary !== source.shared_library.library_id)
+        return yield* Effect.fail(fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected Library."))
       return yield* openSharedConsumer({
         library: source.shared_library,
         target: id,
@@ -129,69 +130,16 @@ function openSnapshot(
         ...selectedFiles,
       })
     }
-    if (selectedDatabase !== undefined && target.kind === "skill") {
-      const identity = yield* Effect.try({
-        try: () => parseSkillIdentity(selector),
-        catch: (error) => error as SkillsError,
-      })
-      const scope = yield* authScope
-      const source = yield* explicitSource(selectedDatabase)
-      const library = source.shared_library
-      if (library.library_id !== identity.libraryId)
-        return yield* Effect.fail(
-          fail(
-            "LIBRARY_SCOPE_MISMATCH",
-            "The Skill identity does not belong to the selected Library descriptor.",
-          ),
-        )
-      const target = yield* sharedGraphSkillIdentity(library, identity.skillId)
-      return yield* openSharedConsumer({
-        library,
-        target: target.record.locator.page_id,
-        expectedSkillId: identity.skillId,
-        scope,
-        startedAt,
-        forceFull: Boolean(options.refresh) || options.maxAge === 0,
-        maxAge: options.maxAge,
-        ...selectedFiles,
-      })
-    }
-    const observation = yield* freshCatalogForRead({ database: options.database })
-    const directory = observation.catalog
-    const owner = yield* Effect.try({
-      try: () => parseSkillIdentity(selector),
-      catch: (error) => error as SkillsError,
-    })
-    // A complete key selects its Library descriptor, never a unique display name
-    // across a search result. Search coverage is not evidence of global absence.
-    const bindings = directory.databases.flatMap((source) =>
-      source.shared_library?.library_id === owner.libraryId ? [source.shared_library] : [],
-    )
-    const physical = new Set(
-      bindings.map((library) => `${library.skills.database_id}/${library.skills.data_source_id}`),
-    )
-    if (physical.size > 1)
-      return yield* Effect.fail(
-        fail("LIBRARY_ID_CONFLICT", "The selected Library ID has multiple physical bindings."),
-      )
-    const library = bindings[0]
-    if (library === undefined)
-      return yield* Effect.fail(
-        fail(
-          directory.coverage.failed_sources.length ? "CATALOG_INCOMPLETE" : "LIBRARY_NOT_FOUND",
-          "No available Library descriptor matches the complete Skill identity. Select its database explicitly.",
-          { library_id: owner.libraryId },
-        ),
-      )
-    const resolved = yield* sharedGraphSkillIdentity(library, owner.skillId)
-    const locator = resolved.record.locator
+    const identity = yield* Effect.try({ try: () => parseSkillIdentity(selector), catch: (error) => error as SkillsError })
+    const scope = yield* authScope
+    const source = yield* explicitSource(identity.libraryId)
+    const library = source.shared_library
+    const resolved = yield* sharedGraphSkillIdentity(library, identity.skillId)
     return yield* openSharedConsumer({
       library,
-      target: locator.page_id,
-      expectedSkillId: locator.skill_id,
-      skillsMetadata: observation.sharedSkills.get(library.skills.data_source_id),
-      rawPage: (yield* sharedGraphTarget(resolved.record.id, library.skills.database_id))?.rawPage,
-      scope: directory.scope,
+      target: resolved.record.locator.page_id,
+      expectedSkillId: identity.skillId,
+      scope,
       startedAt,
       forceFull: Boolean(options.refresh) || options.maxAge === 0,
       maxAge: options.maxAge,
@@ -253,7 +201,7 @@ function assertSnapshotTarget(snapshot: Snapshot, target: SkillTarget, database?
     target.snapshot &&
     database !== undefined &&
     (snapshot.record.locator.type === "shared_skill"
-      ? snapshot.record.locator.database_id
+      ? snapshot.record.locator.library_id
       : undefined) !== database
   )
     throw fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected database.")
@@ -290,8 +238,8 @@ function acquireTargetSnapshot(
     })
     target = yield* bindEntryTarget(target, options)
     const pinnedDatabase =
-      target.snapshot && options.database !== undefined
-        ? yield* resolveDatabaseId(options.database)
+      target.snapshot && options.library !== undefined
+        ? yield* resolveLibraryId(options.library)
         : undefined
     const select = (manifest: Snapshot) => {
       assertSnapshotTarget(manifest, target, pinnedDatabase)
@@ -370,10 +318,10 @@ function acquireTargetSnapshot(
       let materialization: ObservedSnapshot["materialization"]
       if (observed && useObserved) {
         if (
-          options.database !== undefined &&
+          options.library !== undefined &&
           (observed.snapshot.record.locator.type === "shared_skill"
-            ? observed.snapshot.record.locator.database_id
-            : undefined) !== (yield* resolveDatabaseId(options.database))
+            ? observed.snapshot.record.locator.library_id
+            : undefined) !== (yield* resolveLibraryId(options.library))
         )
           return yield* Effect.fail(
             fail(
@@ -582,7 +530,7 @@ export function resolveSkillRef(from: string, relative: string, options: Catalog
 }
 
 export interface ReadOptions extends ReadPolicyOptions, ConsumptionObservationOptions {
-  readonly database?: string
+  readonly library?: string
   readonly path?: string
   readonly from?: string
   readonly lines?: string
@@ -837,7 +785,7 @@ function readSkillContent(input: string, options: ReadOptions) {
 
 export function listSkill(
   input: string,
-  options: ReadPolicyOptions & { readonly database?: string; readonly path?: string } = {},
+  options: ReadPolicyOptions & { readonly library?: string; readonly path?: string } = {},
 ) {
   return Effect.gen(function* () {
     const target = yield* Effect.try({

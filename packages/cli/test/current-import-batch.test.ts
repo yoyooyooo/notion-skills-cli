@@ -45,7 +45,7 @@ async function fixture(inputs: Record<string, string>) {
     f.run(
       command([
         manifest,
-        "--entry",
+        "--library",
         library.skills.database_id,
         ...(args.includes("--operation") ? [] : ["--operation", "batch-fixture"]),
         ...args,
@@ -144,7 +144,7 @@ test("unlisted siblings, missing files, overlapping roots and symlinks are never
   await expect(f.run(loadCurrentImportBatch(manifest))).rejects.toMatchObject({
     code: "CURRENT_IMPORT_BATCH_INVALID",
   })
-  for (const skill_id of ["UPPER", "a?library=foreign", "a/SKILL.md", "shared_skill:a"]) {
+  for (const skill_id of ["UPPER", "a?library=1fed9b5e-352d-53b8-811b-d62ae58344f8", "a/SKILL.md", "shared_skill:a"]) {
     await writeFile(manifest, JSON.stringify({ version: 1, skills: [{ root: "a", skill_id }] }))
     await expect(f.run(loadCurrentImportBatch(manifest))).rejects.toMatchObject({
       code: "CURRENT_IMPORT_BATCH_INVALID",
@@ -162,9 +162,9 @@ test("unlisted siblings, missing files, overlapping roots and symlinks are never
 test("foreign relationships require exact copy authorization and only batch-owned full refs are rebound", async () => {
   const { root, manifest, f } = await fixture({
     a:
-      "[B](skill://b/SKILL.md?library=production)\n[external](skill://outside/SKILL.md?library=production)\n[missing](skill://b/missing.md?library=production)\n[fixed](skill://b/SKILL.md?library=production&snapshot=s_" +
+      "[B](skill://b/SKILL.md?library=production)\n[external](skill://outside/SKILL.md?library=production)\n[missing](skill://b/missing.md?library=production)\n[fixed](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=s_" +
       "a".repeat(64) +
-      ")\n    [example](skill://b/SKILL.md?library=production)\n[use][shared]\n![image][shared]\n\n[shared]: skill://b/SKILL.md?library=production",
+      ")\n    [example](skill://b/SKILL.md?library=production)\n[use][shared]\n![image][shared]\n\n[shared]: skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec",
     b: "# B",
   })
   const unchanged = await f.run(
@@ -174,15 +174,15 @@ test("foreign relationships require exact copy authorization and only batch-owne
   expect(unchanged.items[0]?.relations).toBeUndefined()
   const unboundBody = await f.run(thawCurrentImportSkill(unchanged.items[0]!.body))
   expect(new TextDecoder().decode(unboundBody.files[0]!.bytes)).toContain(
-    "skill://b/SKILL.md?library=production",
+    "skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec",
   )
   await writeFile(
     join(root, "a", ".ntn-skills.json"),
     portable({
       version: 1,
       ownership: "notion",
-      library_id: "production",
-      members: ["skill://b?library=production"],
+      library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+      members: ["skill://b?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec"],
     }),
   )
   await expect(
@@ -193,25 +193,25 @@ test("foreign relationships require exact copy authorization and only batch-owne
   )
   expect(plan.items[0]?.relations?.members).toEqual([`skill://b?library=${library.library_id}`])
   expect(plan.rewrites.map((entry) => entry.before)).toEqual([
-    "skill://b?library=production",
-    "skill://b/SKILL.md?library=production",
+    "skill://b?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+    "skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec",
   ])
   const derived = await f.run(thawCurrentImportSkill(plan.items[0]!.body))
   const body = new TextDecoder().decode(derived.files[0]!.bytes)
-  expect(body).toContain("skill://outside/SKILL.md?library=production")
-  expect(body).toContain("skill://b/missing.md?library=production")
-  expect(body).toContain("skill://b/SKILL.md?library=production&snapshot=s_")
+  expect(body).toContain("skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec")
+  expect(body).toContain("skill://b/missing.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec")
+  expect(body).toContain("skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=s_")
   expect(body).toContain("skill://b/SKILL.md?library=" + library.library_id)
   expect(body).toContain("    [example](skill://b/SKILL.md?library=production)")
-  expect(body).toContain("[shared]: skill://b/SKILL.md?library=production")
+  expect(body).toContain("[shared]: skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec")
   expect(f.mutations()).toEqual([])
   await writeFile(
     join(root, "a", ".ntn-skills.json"),
     portable({
       version: 1,
       ownership: "notion",
-      library_id: "production",
-      members: ["skill://outside?library=production"],
+      library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+      members: ["skill://outside?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec"],
     }),
   )
   await expect(
@@ -249,7 +249,7 @@ test("portable origin binds external short refs before batch Members inference",
     portable({
       version: 1,
       ownership: "notion",
-      library_id: "production",
+      library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec",
     }),
   )
   const original = await readFile(join(root, "a", "SKILL.md"), "utf8")
@@ -267,13 +267,13 @@ test("portable origin binds external short refs before batch Members inference",
   expect(item.relations?.requires).toBeUndefined()
   const derived = await f.run(thawCurrentImportSkill(item.body))
   expect(new TextDecoder().decode(derived.files[0]!.bytes)).toBe(
-    original.replace("skill://outside/SKILL.md", "skill://outside/SKILL.md?library=production"),
+    original.replace("skill://outside/SKILL.md", "skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec"),
   )
   expect(result.success.rewrites).toContainEqual({
     skill_id: "a",
     from: "SKILL.md:5",
     before: "skill://outside/SKILL.md",
-    after: "skill://outside/SKILL.md?library=production",
+    after: "skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec",
   })
   expect(await readFile(join(root, "a", "SKILL.md"), "utf8")).toBe(original)
   expect(f.mutations()).toEqual([])
@@ -292,7 +292,7 @@ test("portable batch short refs keep origin unless exact current copy mapping is
   })
   const original = await readFile(join(root, "a", "SKILL.md"), "utf8")
   const metadata = join(root, "a", ".ntn-skills.json")
-  await writeFile(metadata, portable({ version: 1, ownership: "notion", library_id: "production" }))
+  await writeFile(metadata, portable({ version: 1, ownership: "notion", library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec" }))
   for (const authorized of [false, true]) {
     const result = await f.run(
       compileCurrentImportBatch(
@@ -309,7 +309,7 @@ test("portable batch short refs keep origin unless exact current copy mapping is
       `[B](skill://b/SKILL.md?library=${authorized ? library.library_id : "production"})`,
     )
     expect(text).toContain("[Missing](skill://b/missing.md?library=production)")
-    expect(text).toContain(`[Fixed](skill://b/SKILL.md?library=production&snapshot=${pin})`)
+    expect(text).toContain(`[Fixed](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=${pin})`)
     expect(item.relations?.members).toEqual(
       authorized ? [`skill://b?library=${library.library_id}`] : undefined,
     )
@@ -320,7 +320,7 @@ test("portable batch short refs keep origin unless exact current copy mapping is
     portable({
       version: 1,
       ownership: "notion",
-      library_id: "production",
+      library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec",
       members: [],
       requires: [],
     }),
@@ -338,7 +338,7 @@ test("portable batch short refs keep origin unless exact current copy mapping is
       portable({
         version: 1,
         ownership: "notion",
-        library_id: "production",
+        library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec",
         [field]: ["skill://b"],
       }),
     )
@@ -365,7 +365,7 @@ test("portable origin blocks active shared image destinations but leaves inert m
   })
   await writeFile(
     join(root, "a", ".ntn-skills.json"),
-    portable({ version: 1, ownership: "notion", library_id: "production" }),
+    portable({ version: 1, ownership: "notion", library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec" }),
   )
   await expect(
     f.run(compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest)))),

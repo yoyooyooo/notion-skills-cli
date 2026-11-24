@@ -45,7 +45,7 @@ export function initializeCurrentSourceRelations(library: SharedLibrary, reconci
     const sources = library.sources
     const details = {
       operation_id: library.operation_id,
-      parent_page_id: library.parent_page_id,
+      parent_page_id: library.library_id,
       role: "Sources",
       stage: "origins",
     }
@@ -173,7 +173,7 @@ export function initializeCurrentSourceRelations(library: SharedLibrary, reconci
       fail(error.code, error.message, {
         ...property(error.details),
         operation_id: library.operation_id,
-        parent_page_id: library.parent_page_id,
+        parent_page_id: library.library_id,
         role: "Sources",
         stage: "origins",
       }),

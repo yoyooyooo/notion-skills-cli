@@ -1,3 +1,4 @@
+import { SharedLibrarySchema } from "./shared-library-model.ts"
 import { Schema } from "effect"
 import { PortableRelationsSchema } from "./portable.ts"
 import { SKILL_REF_VERSION } from "./skill-ref.ts"
@@ -40,7 +41,8 @@ const StepSchema = Schema.Struct({
 })
 export type Step = typeof StepSchema.Type
 export const ImportPlanSchema = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literal(2),
+  library: SharedLibrarySchema,
   ref_version: Schema.Literal(SKILL_REF_VERSION),
   scope: Hash,
   library_id: Schema.String,

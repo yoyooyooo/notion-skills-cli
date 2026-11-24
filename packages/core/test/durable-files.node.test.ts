@@ -28,7 +28,7 @@ const id='s_'+(yield* sha256(JSON.stringify(['scope',recordId,hash])));
 const key='snapshots/'+id+'.json';
 const snapshot={snapshot_id:id,scope:'scope',version_id:hash,entrypoint:'SKILL.md',created_at:123,
 record:{id:recordId,kind:'skill',entrypoint:'SKILL.md',
-locator:{type:'shared_skill',library_id:'durable-library',skill_id:'fixture',
+locator:{type:'shared_skill',library_id:'9da21cdf-3065-52cc-adb1-6fb46cd795e6',skill_id:'fixture',
 page_id:'00000000-0000-4000-8000-000000000001',
 database_id:'00000000-0000-4000-8000-000000000003',
 data_source_id:'00000000-0000-4000-8000-000000000004'},

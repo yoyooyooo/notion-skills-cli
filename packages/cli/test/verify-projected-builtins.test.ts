@@ -41,7 +41,7 @@ async function run(scenario = "complete", help = false) {
   await writeFile(cli, fixture)
   const result = spawnSync(
     "node",
-    [runner, "--cli", cli, ...(help ? ["--help"] : ["--entry", "entry-a"])],
+    [runner, "--cli", cli, ...(help ? ["--help"] : ["--library", "entry-a"])],
     {
       encoding: "utf8",
       timeout: 30_000,
@@ -77,8 +77,8 @@ test("projected guidance verifies complete consumer bytes through one fixed sele
   expect(report.skills[0].files).toHaveLength(2)
   expect(report.skills[0].files.every((file: { matches: boolean }) => file.matches)).toBe(true)
   expect(result.calls.filter((args) => args[0] === "list")).toEqual([
-    ["list", "--database", "entry-a", "--limit", "500", "--json", "--refresh"],
-    ["list", "--database", "entry-a", "--limit", "500", "--json", "--cursor", "page-2"],
+    ["list", "--library", "entry-a", "--limit", "500", "--json", "--refresh"],
+    ["list", "--library", "entry-a", "--limit", "500", "--json", "--cursor", "page-2"],
   ])
   expect(result.calls).toContainEqual([
     "read",

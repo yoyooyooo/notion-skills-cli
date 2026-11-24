@@ -42,7 +42,7 @@ test("the plan preserves existing links, code, styles, nested structures and com
 
 test("the write plan restores only exact authored Skill links dropped by Markdown transport", () => {
   const pin = "s_" + "a".repeat(64)
-  const expected = `[Two](skill://cycle-two/SKILL.md) and [**fixed**](skill://other/references/design.md?library=library-other&snapshot=${pin}) with SKILL.md.`
+  const expected = `[Two](skill://cycle-two/SKILL.md) and [**fixed**](skill://other/references/design.md?library=45c64249-e1dd-59ab-ad9f-604ff752ddb4&snapshot=${pin}) with SKILL.md.`
   const observed = "Two and **fixed** with [SKILL.md](http://SKILL.md)."
   expect(compareNativeMarkdown({ expected, observed })).toBe("different")
   const plan = nativePlainTextPlan({ expected, observed })

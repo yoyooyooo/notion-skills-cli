@@ -42,10 +42,9 @@ const fields = {
   Origin: "origin",
 }
 const library: SharedLibrary = {
-  version: 1,
-  library_id: "library-profile",
+  version: 2,
+  library_id: "3edee24e-6f66-5e9a-b5d6-06be63dcbd4d",
   operation_id: "library-profile-init",
-  parent_page_id: id(1),
   skills: {
     database_id: id(2),
     data_source_id: id(3),
@@ -95,7 +94,7 @@ const sessionView = id(9)
 const otherView = id(14)
 const otherLibrary: SharedLibrary = {
   ...library,
-  library_id: "library-other",
+  library_id: "45c64249-e1dd-59ab-ad9f-604ff752ddb4",
   operation_id: "library-other-init",
   parent_page_id: id(10),
   skills: { ...library.skills, database_id: id(12), data_source_id: id(13) },
@@ -1185,7 +1184,7 @@ describe("Profile machine binding and default discovery", () => {
       sources: [source],
       token: "fixture-secret-never-emitted",
       future_preferences: { keep: [1, 2, 3] },
-      default_database: id(90),
+      default_library: id(90),
     }
     f.json.set("config.json", structuredClone(original))
     f.seed(
@@ -1193,8 +1192,8 @@ describe("Profile machine binding and default discovery", () => {
         prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
       ),
     )
-    const result = await f.run(bindSharedProfile({ libraryEntry: "library", profileId: "daily" }))
-    const binding = { library_entry: library.skills.database_id, profile_id: "daily" }
+    const result = await f.run(bindSharedProfile({ library: "library", profileId: "daily" }))
+    const binding = { library_id: library.skills.database_id, profile_id: "daily" }
     expect(result.shared_profile).toEqual(binding)
     expect(f.json.get("config.json")).toEqual({ ...original, shared_profile: binding })
     expect(JSON.stringify(result)).not.toContain(original.token)
@@ -1210,7 +1209,7 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
-      shared_profile: { library_entry: library.skills.database_id, profile_id: "daily" },
+      shared_profile: { library_id: library.skills.database_id, profile_id: "daily" },
     })
     f.seed(
       await f.run(
@@ -1234,7 +1233,7 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
-      shared_profile: { library_entry: library.skills.database_id, profile_id: "daily" },
+      shared_profile: { library_id: library.skills.database_id, profile_id: "daily" },
     })
     f.seed(
       await f.run(
@@ -1277,7 +1276,7 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
-      shared_profile: { library_entry: library.skills.database_id, profile_id: "daily" },
+      shared_profile: { library_id: library.skills.database_id, profile_id: "daily" },
     })
     f.seed(
       await f.run(
@@ -1289,7 +1288,7 @@ describe("Profile machine binding and default discovery", () => {
     )
     const result = await f.run(
       catalogWithProfile({
-        database: library.skills.database_id,
+        library: library.library_id,
         profile: "daily",
         view: sessionView,
       }),
@@ -1326,7 +1325,7 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
-      shared_profile: { library_entry: library.skills.database_id, profile_id: "daily" },
+      shared_profile: { library_id: library.skills.database_id, profile_id: "daily" },
     })
     const result = await f.run(
       catalogWithProfile({ database: otherLibrary.skills.database_id, defaultView: true }),
@@ -1355,7 +1354,7 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
-      shared_profile: { library_entry: library.skills.database_id, profile_id: "daily" },
+      shared_profile: { library_id: library.skills.database_id, profile_id: "daily" },
     })
     const saved = await f.run(
       saveSharedProfile(library, { profile: initial, expectedFingerprint: null }),

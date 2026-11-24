@@ -133,6 +133,7 @@ export const CoverageSchema = Schema.Struct({
 })
 export const CatalogSchema = Schema.Struct({
   scope: Schema.String,
+  library_id: Schema.optional(Schema.String),
   fetched_at: Schema.Number,
   databases: Schema.Array(CatalogSourceSchema),
   records: Schema.Array(ContentRecordSchema),
@@ -204,7 +205,7 @@ export function snapshotMembers(snapshot: Pick<Snapshot, "members" | "router_mem
 }
 /** Machine preference contains identities only; the shared Profile owns its rules. */
 export const SharedProfileBindingSchema = Schema.Struct({
-  library_entry: Schema.String.check(
+  library_id: Schema.String.check(
     Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u),
   ),
   profile_id: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u)),
@@ -219,7 +220,7 @@ export const ConfigSchema = Schema.Struct({
   source_resources: Schema.optional(SourceResourceConfigurationSchema),
   sources: Schema.optional(Schema.Array(SourceSchema)),
   shared_profile: Schema.optional(SharedProfileBindingSchema),
-  default_database: Schema.optional(Schema.String),
+  default_library: Schema.optional(Schema.String),
   token: Schema.optional(Schema.String),
   cache_policy: Schema.optional(
     Schema.Struct({

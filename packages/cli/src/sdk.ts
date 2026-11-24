@@ -1,3 +1,4 @@
+import { resolveLibrary as coreResolveLibrary } from "../../core/src/shared-library.ts"
 import { resolve } from "node:path"
 import { randomUUID } from "node:crypto"
 import { Cause, Effect, Exit, Option } from "effect"
@@ -74,7 +75,7 @@ import {
   type ContentSearchResult,
 } from "../../core/src/notion-mcp-search.ts"
 
-export const SDK_VERSION = 2
+export const SDK_VERSION = 3
 export { SKILL_REF_VERSION } from "../../core/src/skill-ref.ts"
 /** Selected CLI can expose the complete HTTP ledger independently of compact
  * stdout, with an exact closed-output SHA-256 proof. Not remote authority. */
@@ -121,9 +122,14 @@ export type {
 
 export interface SdkOptions extends OperationOptions {}
 
+export function resolveLibrary(options: SdkOptions & { readonly library?: string } = {}) {
+  return runOperation(() => coreResolveLibrary(options), options)
+}
+export type { SharedLibrary } from "../../core/src/shared-library-model.ts"
+
 export type McpOptions = Pick<SdkOptions, "env" | "cwd" | "signal"> &
   Pick<McpAuthOptions, "profile" | "deadline" | "onAuthorize" | "serverUrl">
-export type ContentSearchOptions = McpOptions & { readonly database: string }
+export type ContentSearchOptions = McpOptions & { readonly library: string }
 
 function mcpOptions(options: McpOptions): McpAuthOptions {
   const env = { ...(options.env ?? process.env) }
@@ -200,7 +206,7 @@ export async function contentSearch(
   options: ContentSearchOptions,
 ): Promise<ContentSearchResult> {
   const request = validateContentSearchInput(input)
-  if (typeof options?.database !== "string" || !options.database.trim())
+  if (typeof options?.library !== "string" || !options.library.trim())
     throw fail("INVALID_ARGUMENT", "Content search requires one explicit library entry.")
   const env = { ...(options.env ?? process.env) }
   const complete = { ...options, env }
@@ -208,7 +214,7 @@ export async function contentSearch(
   const before = await withinSearchDeadline(
     Math.min(deadline, Date.now() + 30_000),
     options.signal,
-    (signal) => runOperation(() => contentSearchSource(options.database), { ...complete, signal }),
+    (signal) => runOperation(() => contentSearchSource(options.library), { ...complete, signal }),
   )
   const auth = mcpOptions({ ...complete, deadline: Math.min(deadline, Date.now() + 300_000) })
   let credential = await resolveMcpCredential({
@@ -231,7 +237,7 @@ export async function contentSearch(
       )
         throw fail("MCP_SEARCH_STALE", "The MCP connection changed after authorization.")
       const runtime = { ...complete, signal }
-      const selected = await runOperation(() => contentSearchSource(options.database), runtime)
+      const selected = await runOperation(() => contentSearchSource(options.library), runtime)
       assertContentSearchSource(before, selected)
       const perform = async () => {
         await credential.assertCurrent()
@@ -253,7 +259,7 @@ export async function contentSearch(
           ...connection,
           query: request.query,
           pageSize: request.limit,
-          pageUrl: `https://www.notion.so/${selected.source.shared_library.parent_page_id.replaceAll("-", "")}`,
+          pageUrl: `https://www.notion.so/${selected.source.shared_library.library_id.replaceAll("-", "")}`,
         })
       }
       let remote
@@ -288,7 +294,7 @@ export async function contentSearch(
         () => admitContentSearchMatches(selected, remote.matches),
         runtime,
       )
-      const latest = await runOperation(() => contentSearchSource(options.database), runtime)
+      const latest = await runOperation(() => contentSearchSource(options.library), runtime)
       assertContentSearchSource(selected, latest)
       await credential.assertCurrent()
       const partial =
@@ -401,7 +407,7 @@ export async function consume(
     return await runOperation(
       () =>
         coreConsume(decodeConsumeInput(input), {
-          database: options.database,
+          library: options.library,
           execution: options.execution,
           metrics: options.metrics,
           onEffects: (value) => {
@@ -454,7 +460,7 @@ export async function readResources(
     return await runOperation(
       () =>
         coreReadResources(decodeResourceReadInput(input), {
-          database: options.database,
+          library: options.library,
           offline: options.offline,
           onEffects: (value) => {
             effects = value
@@ -506,7 +512,7 @@ export async function readSkill(
     return await runOperation(
       () =>
         coreReadSkill(target, {
-          database: options.database,
+          library: options.library,
           path: options.path,
           from: options.from,
           lines: options.lines,
@@ -540,7 +546,7 @@ export async function resolveReference(
       () =>
         coreResolveReference(relative, {
           from: options.from,
-          database: options.database,
+          library: options.library,
           refresh: options.refresh,
           offline: options.offline,
           maxAge: options.maxAge,
@@ -565,7 +571,7 @@ export function listSkill(
   return runOperation(
     () =>
       coreListSkill(target, {
-        database: options.database,
+        library: options.library,
         path: options.path,
         refresh: options.refresh,
         offline: options.offline,

@@ -246,11 +246,11 @@ describe("current tree consumption", () => {
       const record = property(current.record)
       if (changed === "alias") record.alias = "forged-alias"
       else if (changed === "entrypoint") current.entrypoint = "missing.md"
-      else if (changed === "owner") property(record.locator).page_id = currentLibrary.parent_page_id
+      else if (changed === "owner") property(record.locator).page_id = currentLibrary.library_id
       else if (changed === "unobserved_owner") {
-        property(record.locator).page_id = currentLibrary.parent_page_id
+        property(record.locator).page_id = currentLibrary.library_id
         if (!Array.isArray(current.file_bindings)) throw new Error("Missing fixture bindings.")
-        property(current.file_bindings[0]).page_id = currentLibrary.parent_page_id
+        property(current.file_bindings[0]).page_id = currentLibrary.library_id
       } else if (["library_id", "skill_id", "database_id", "data_source_id"].includes(changed))
         property(record.locator)[changed] = currentId(900)
       else if (changed === "missing_binding") current.file_bindings = []

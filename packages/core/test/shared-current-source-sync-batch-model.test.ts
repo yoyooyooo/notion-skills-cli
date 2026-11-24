@@ -15,7 +15,7 @@ import type { CurrentSourceSyncItem } from "../src/shared-current-source-sync-mo
 const selection = {
   scope: "a".repeat(64),
   batch_id: "00000000-0000-4000-8000-000000000001",
-  library_id: "batch-library",
+  library_id: "79f7ff18-edd5-5870-8278-2630acd0211c",
   sources_data_source_id: "00000000-0000-4000-8000-000000000002",
   manager_id: "batch-manager",
   execution_id: "batch-generation",
