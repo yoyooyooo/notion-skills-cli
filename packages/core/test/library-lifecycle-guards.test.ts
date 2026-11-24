@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { Effect } from "effect"
+import { tmpdir } from "node:os"
 import { fail, property, type SkillsError } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { loadSharedLibrary, LIBRARY_MARKER } from "../src/shared-library.ts"
@@ -101,7 +102,7 @@ test("Library discovery checks later root pages before admitting a unique descri
 })
 
 test("root CREATE sees its independent original intent in the Store before dispatch", async () => {
-  const f = currentWriteFixture(currentId(901)), observations: unknown[][] = []
+  const f = currentWriteFixture(tmpdir()), observations: unknown[][] = []
   const api: Notion["Service"] = {
     version: Effect.succeed("controlled"),
     credentialIdentity: Effect.succeed("controlled"),
