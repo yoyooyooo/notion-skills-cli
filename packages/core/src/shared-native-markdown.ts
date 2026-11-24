@@ -278,7 +278,11 @@ function destination(
     href: url,
     title: title == null || title === "" ? null : entities(string(title)),
   }
-  context.destinations.set(canonicalSharedJson(result), result)
+  // Definitions can be rendered as either links or images. Their complete
+  // destination ledger uses the same one-layer spelling in both cases, while
+  // an image's actual source below remains exact and independently compared.
+  const recorded = kind === "image" ? { ...result, href: decodeNativeSkillLink(url) } : result
+  context.destinations.set(canonicalSharedJson(recorded), recorded)
   return result
 }
 function language(value: unknown): string {

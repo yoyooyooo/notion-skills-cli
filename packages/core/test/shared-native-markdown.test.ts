@@ -92,6 +92,22 @@ test.each([
   },
 )
 
+test("an image reference definition can become inline without changing its exact source", () => {
+  const source = "skill://router/entrypoint.md/../image.png"
+  expect(
+    compareNativeMarkdown({
+      expected: `![image][ref]\n\n[ref]: ${source}`,
+      observed: `![image](${source})`,
+    }),
+  ).toBe("normalized")
+  expect(
+    compareNativeMarkdown({
+      expected: `![image][ref]\n\n[ref]: ${source}`,
+      observed: "![image](skill://router/image.png)",
+    }),
+  ).toBe("different")
+})
+
 test("native code fences recognize Notion's sh-to-bash spelling without changing payload or transport", () => {
   const expected = "```sh\nntn-skills read EXACT_REF --library ENTRY --json\n```\n"
   const observed = expected.replace("```sh", "```bash")
