@@ -200,6 +200,10 @@ Library. Use `skill://architect/references/design.md` for one file, or add
 At a CLI entry, a short ref needs `--library LIBRARY_ID` or `default_library`.
 Inside a document, its own Library supplies the context even when the machine's
 default changes. Keep complete refs returned by tools for later reads.
+An omitted file path selects that Skill's declared entrypoint, including a Router
+or Prompt. Native Notion hyperlinks may expose a neutral `entrypoint.md/..` path
+pair on export; it preserves that selection and is not a file to create. Authors
+can keep using the short forms above. See [native link transport](docs/current-contract.md#native-skill-hyperlinks).
 When copying a portable input to another Library, import qualifies short refs
 with its declared original Library first. Only an explicitly authorized exact
 batch mapping can rebind them; plain local input without an origin uses the destination.

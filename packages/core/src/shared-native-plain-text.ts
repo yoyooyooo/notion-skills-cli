@@ -3,6 +3,7 @@ import { fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { parseSkillRef } from "./skill-ref.ts"
+import { decodeNativeSkillLink, encodeNativeSkillLink } from "./shared-native-skill-link.ts"
 import type { CurrentOperationSession } from "./shared-current-operation.ts"
 import { readCurrentBodyBlocks } from "./shared-current-projection.ts"
 import {
@@ -87,9 +88,8 @@ function automaticLink(part: Extract<Inline, { kind: "text" }>): boolean {
   }
 }
 
-/** The Markdown endpoint can drop a Skill hyperlink that the rich-text endpoint
- * preserves. Validate its protocol, but retain the frozen author's exact URL:
- * correction is not identity resolution, rebinding or a current selection. */
+/** The Markdown endpoint can drop a Skill hyperlink. Its native wire form is a
+ * reversible path spelling; correction never resolves, rebinds or selects it. */
 function authoredSkillLink(part: Extract<Inline, { kind: "text" }>): boolean {
   if (part.link === null || part.link.title !== null) return false
   try {
@@ -189,10 +189,11 @@ function append(parts: Inline[], part: Inline): void {
 function url(value: string): string {
   try {
     const parsed = new URL(value)
-    return /^https?:$/u.test(parsed.protocol) ? parsed.href : value
+    if (/^https?:$/u.test(parsed.protocol)) return parsed.href
   } catch {
-    return value
+    /* Other protocols are validated by their own parser below. */
   }
+  return decodeNativeSkillLink(value)
 }
 function inlineFromRich(input: unknown): readonly Inline[] {
   if (!Array.isArray(input)) throw invalid()
@@ -248,7 +249,7 @@ function richFromInline(parts: readonly Inline[]): readonly Rich[] {
       code: part.kind === "text" && part.code,
       color: "default" as const,
     }
-    const link = part.link === null ? null : { url: part.link.href }
+    const link = part.link === null ? null : { url: encodeNativeSkillLink(part.link.href) }
     for (let start = 0; start < text.length; ) {
       let end = Math.min(start + 2000, text.length)
       if (end < text.length && /[\uD800-\uDBFF]/u.test(text[end - 1]!)) end--

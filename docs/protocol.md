@@ -127,6 +127,13 @@ For Markdown paths, an automatic link added to original plain text can be
 corrected through its precisely bound rich-text block in the same operation.
 This is a management write followed by strict complete readback; reads do not
 modify content, and existing links, code, styles and other differences are not ignored.
+An exactly matched valid Skill hyperlink dropped by Markdown transport can also
+be restored. Native rich text uses a reversible `entrypoint.md/..` path pair;
+complete comparison checks the same Skill, Library scope, path and selection.
+An empty path still selects the declared entrypoint. This is confined to native
+hyperlink representation: original Markdown requests, frozen input fingerprints,
+image sources and literal text remain unchanged. See [the native contract](current-contract.md#native-skill-hyperlinks)
+for readback and recovery requirements.
 Unknown or noncanonical native paths are rejected locally; the selection is part
 of the input fingerprint and must match on resume. A target containing any Source
 main or supporting file returns `CURRENT_SOURCE_MANAGEMENT_REQUIRED` in both dry-run

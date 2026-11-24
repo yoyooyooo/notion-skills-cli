@@ -90,6 +90,10 @@ The authority component is the stable Skill ID. The optional `library` query is
 the root UUID. A `snapshot=s_<sha256>` parameter selects exact frozen content;
 copy it from tool results rather than constructing it. Display names, invocation
 aliases and a locator's internal `shared_skill` tag are not part of this URI.
+Omitting the path selects the target's declared main file; it does not imply
+`SKILL.md`. Native hyperlink transport can add the neutral path pair
+`entrypoint.md/..` without changing that selection, the Library or a snapshot.
+This is an export spelling, not another reference protocol or a supporting file.
 
 Use ordinary relative paths within a Skill. Cross-Skill relative links require
 the containing file's reliable Source contribution mapping, or the explicit

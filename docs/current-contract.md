@@ -200,8 +200,9 @@ For `.md` and `.markdown` paths, the native transport folds ordinary soft line
 wraps and line endings inside Markdown code spans to spaces, following their
 CommonMark meaning. Other explicitly selected native paths retain their previous
 text transport: CRLF becomes LF without folding line boundaries. Explicit hard
-breaks, fenced code payloads, native `<code>` literals and link destinations stay
-unchanged. The complete structure must still match before any write. Readback
+breaks, fenced code payloads and native `<code>` literals stay unchanged. Link
+destinations retain their targets, with the native Skill hyperlink spelling
+described below. The complete structure must still match before any write. Readback
 also recognizes the attribute-free `<p>` paragraph wrapper that Notion emits for
 list children; its inline body remains one paragraph. A literal `<br>` inside
 code is content, not a line-break spelling, and cannot pass as a space.
@@ -224,9 +225,40 @@ plain text is eligible; original links, code, styles, text and structure remain
 exact requirements. An unrelated difference or incomplete block binding leaves
 the operation unfinished.
 
+### Native Skill hyperlinks
+
+The Markdown endpoint can also drop an authored `skill://` hyperlink while
+retaining its label. A precisely matched, valid Skill URL with no link title can
+be restored through the same rich-text correction. No other lost destination is
+inferred. Notion has rejected pathless and extensionless Skill URLs through this
+endpoint, even though those references are valid in the Skill protocol.
+
+The native rich-text request adds the ordinary, canceling POSIX path pair
+`/entrypoint.md/..` immediately after the Skill ID. For example,
+`skill://router?library=ROOT` is transported as
+`skill://router/entrypoint.md/..?library=ROOT`; `ROOT` here stands for the actual
+Library UUID. This does not choose a file called `entrypoint.md` or `SKILL.md`.
+The original reference still selects the target's declared entrypoint, including
+a Router or Prompt. Explicit paths, Library context and fixed snapshot selection
+keep their original meaning. The writer does not read the target Library to
+construct this representation.
+
+Each raw Markdown or rich-text hyperlink boundary decodes at most one exact
+prefix, only when both complete references validate and have the same Skill ID,
+Library scope, path and snapshot selection. Encoding adds exactly one layer to
+that decoded inline span, so an authored prefix, including a repeated prefix,
+does not grow on repeated writes. Other path spellings and the raw authority and
+query remain unchanged. Image sources, prose and literal code do not receive
+this equivalence. Complete link definitions, labels, titles, formatting and the
+rest of the document still participate in final readback.
+
 The correction uses the same finite operation, input fingerprint and invocation
 budget. Each block request is rebuilt from the original spans; after an unknown
 response, the same-input resume observes that exact action before any retry.
+The original Markdown request is unchanged. An older unresolved correction whose
+exact request fingerprint differs remains blocked; an upgrade cannot rewrite its
+pending request. A definitively rejected correction can continue through the
+original operation's normal recovery path.
 Only complete final Markdown readback can verify the native file and permit
 ready. Ordinary reads never repair content. Author inline code when code styling
 is intended; plain text does not need that styling to preserve its meaning.

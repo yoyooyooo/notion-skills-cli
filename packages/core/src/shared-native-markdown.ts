@@ -1,6 +1,7 @@
 import { SourceLexer } from "@notion-skills-cli/markdown"
 import { fail, property } from "./model.ts"
 import { splitNativeInlineCode } from "./shared-native-inline-code.ts"
+import { decodeNativeSkillLink } from "./shared-native-skill-link.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 
 type Style = {
@@ -258,7 +259,13 @@ function entities(text: string): string {
     }
   })
 }
-function destination(href: unknown, title: unknown, context: Context, literal = false): Link {
+function destination(
+  href: unknown,
+  title: unknown,
+  context: Context,
+  literal = false,
+  kind: "hyperlink" | "image" = "hyperlink",
+): Link {
   let url = literal ? string(href) : entities(string(href))
   try {
     const parsed = new URL(url)
@@ -266,6 +273,7 @@ function destination(href: unknown, title: unknown, context: Context, literal = 
   } catch {
     /* A relative target remains exact. */
   }
+  if (kind === "hyperlink") url = decodeNativeSkillLink(url)
   const result = {
     href: url,
     title: title == null || title === "" ? null : entities(string(title)),
@@ -378,7 +386,7 @@ function inline(
     } else if (type === "image") {
       add({
         kind: "image",
-        source: destination(token.href, token.title, context),
+        source: destination(token.href, token.title, context, false, "image"),
         alt: entities(string(token.text)),
         link,
       })

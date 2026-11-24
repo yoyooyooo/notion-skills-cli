@@ -51,6 +51,47 @@ test("native comparison retains link definitions and escaped or code text", () =
   )
 })
 
+test("native hyperlink equivalence preserves a root selection and complete reference definitions", () => {
+  const ref = "skill://router?library=45c64249-e1dd-59ab-ad9f-604ff752ddb4"
+  const wire = "skill://router/entrypoint.md/..?library=45c64249-e1dd-59ab-ad9f-604ff752ddb4"
+  const expected = `[**run**][ref]\n\n[ref]: ${ref}`
+  expect(compareNativeMarkdown({ expected, observed: `[**run**](${wire})` })).toBe("normalized")
+  expect(nativeMarkdownTransport(expected)).toBe(expected)
+  expect(
+    compareNativeMarkdown({
+      expected: `[run](${ref})\n\n[extra]: skill://other`,
+      observed: `[run](${wire})`,
+    }),
+  ).toBe("different")
+  for (const changed of [
+    wire.replace("router/", "other/"),
+    wire.replace("/..?", "/../SKILL.md?"),
+    wire.replace("45c64249", "55c64249"),
+    wire + "&snapshot=s_" + "a".repeat(64),
+  ])
+    expect(
+      compareNativeMarkdown({ expected: `[run](${ref})`, observed: `[run](${changed})` }),
+    ).toBe("different")
+})
+
+test.each([
+  ["skill://router", "skill://router/entrypoint.md/.."],
+  ["skill://router/entrypoint.md/..", "skill://router/entrypoint.md/../entrypoint.md/.."],
+])(
+  "native wire equivalence never changes literal text, code or image sources: %s",
+  (input, wire) => {
+    for (const wrap of [
+      (href: string) => `Literal ${href}`,
+      (href: string) => "`" + href + "`",
+      (href: string) => "```text\n" + href + "\n```",
+      (href: string) => `![image](${href})`,
+    ])
+      expect(compareNativeMarkdown({ expected: wrap(input), observed: wrap(wire) })).toBe(
+        "different",
+      )
+  },
+)
+
 test("native code fences recognize Notion's sh-to-bash spelling without changing payload or transport", () => {
   const expected = "```sh\nntn-skills read EXACT_REF --library ENTRY --json\n```\n"
   const observed = expected.replace("```sh", "```bash")

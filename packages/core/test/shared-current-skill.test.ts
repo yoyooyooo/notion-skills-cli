@@ -260,6 +260,7 @@ for (const difference of ["metadata", "support-body", "file-count"] as const)
 function automaticLinkWriter(loseCorrection: boolean, dropSkillLinks = false) {
   const f = currentWriteFixture(parent)
   const blockId = id(9999)
+  let rejectCorrection = false
   let owner: string | undefined, block: Record<string, unknown> | undefined
   const rich = (content: string, link: { url: string } | null) => ({
     type: "text",
@@ -286,6 +287,15 @@ function automaticLinkWriter(loseCorrection: boolean, dropSkillLinks = false) {
               if (!block)
                 return yield* Effect.fail(fail("NOT_FOUND", "The exact authored block is absent."))
               if (method === "PATCH") {
+                if (rejectCorrection) {
+                  rejectCorrection = false
+                  return yield* Effect.fail(
+                    fail("NOTION_REQUEST_FAILED", "Invalid URL for link.", {
+                      phase: "definitive_rejection",
+                      http_status: 400,
+                    }),
+                  )
+                }
                 const spans = property(property(body).paragraph).rich_text
                 if (!Array.isArray(spans))
                   return yield* Effect.fail(
@@ -373,7 +383,14 @@ function automaticLinkWriter(loseCorrection: boolean, dropSkillLinks = false) {
         return effect.pipe(Effect.provideService(Notion, { ...api, request }))
       }),
     )
-  return { ...f, run, blockId }
+  return {
+    ...f,
+    run,
+    blockId,
+    rejectCorrectionOnce: () => {
+      rejectCorrection = true
+    },
+  }
 }
 
 test.each([false, true])(
@@ -432,11 +449,34 @@ test.each([false, true])(
   },
 )
 
-test.each([false, true])(
-  "native authoring restores a dropped Skill URL in the same intent, including response loss: %s",
-  async (loseCorrection) => {
+test.each(
+  [
+    ["skill://cycle-two", "skill://cycle-two/entrypoint.md/.."],
+    [
+      "skill://cycle-two?library=00000000-0000-4000-8000-000000000113",
+      "skill://cycle-two/entrypoint.md/..?library=00000000-0000-4000-8000-000000000113",
+    ],
+    [
+      "skill://cycle-two/SKILL.md?library=00000000-0000-4000-8000-000000000113",
+      "skill://cycle-two/entrypoint.md/../SKILL.md?library=00000000-0000-4000-8000-000000000113",
+    ],
+    [
+      "skill://cycle-two/references/config?library=00000000-0000-4000-8000-000000000113&snapshot=s_" +
+        "a".repeat(64),
+      "skill://cycle-two/entrypoint.md/../references/config?library=00000000-0000-4000-8000-000000000113&snapshot=s_" +
+        "a".repeat(64),
+    ],
+    [
+      "skill://cycle-two/entrypoint.md/../entrypoint.md/..",
+      "skill://cycle-two/entrypoint.md/../entrypoint.md/..",
+    ],
+  ].flatMap(([href, wire]) =>
+    [false, true].map((loseCorrection) => ({ href: href!, wire: wire!, loseCorrection })),
+  ),
+)(
+  "native authoring restores $href in the same intent, including response loss: $loseCorrection",
+  async ({ href, wire, loseCorrection }) => {
     const f = automaticLinkWriter(loseCorrection, true)
-    const href = "skill://cycle-two/SKILL.md?library=00000000-0000-4000-8000-000000000113"
     const markdown = `[Two](${href})`
     const plan = await f.run(
       prepareCurrentSkillWrite(
@@ -460,12 +500,14 @@ test.each([false, true])(
     expect(created).toMatchObject({ state: "ready", native: { verified: 1 } })
     if (operation !== undefined) expect(created.operation_id).toBe(operation)
     expect(pending(f)).toEqual([])
-    expect(await body(f, created.page_id)).toBe(markdown)
-    expect(f.mutations().filter((call) => call.path.includes("/markdown"))).toHaveLength(1)
+    expect(await body(f, created.page_id)).toBe(`[Two](${wire})`)
+    const markdownWrites = f.mutations().filter((call) => call.path.includes("/markdown"))
+    expect(markdownWrites).toHaveLength(1)
+    expect(property(markdownWrites[0]!.body).replace_content).toEqual({ new_str: markdown })
     const corrections = f.mutations().filter((call) => call.path === `v1/blocks/${f.blockId}`)
     expect(corrections).toHaveLength(1)
     expect(property(property(corrections[0]!.body).paragraph).rich_text).toMatchObject([
-      { text: { content: "Two", link: { url: href } } },
+      { text: { content: "Two", link: { url: wire } } },
     ])
     expect(plan).toEqual(frozen)
     f.clearCalls()
@@ -476,6 +518,38 @@ test.each([false, true])(
     expect(f.mutations()).toEqual([])
   },
 )
+
+test("a definitive native URL rejection resumes the original input, owner and operation", async () => {
+  const f = automaticLinkWriter(false, true)
+  const markdown = "[Run](skill://router)"
+  const plan = await f.run(
+    prepareCurrentSkillWrite(
+      input({
+        files: [{ path: "SKILL.md", bytes: testBytes(markdown), authority: { kind: "native" } }],
+      }),
+    ),
+  )
+  const frozen = structuredClone(plan)
+  f.rejectCorrectionOnce()
+  await expect(f.run(createCurrentNotionSkill(library, { plan }))).rejects.toMatchObject({
+    code: "NOTION_REQUEST_FAILED",
+  })
+  expect(pending(f)).toHaveLength(1)
+  const original = property(f.json.get(pending(f)[0]!))
+  const created = createdResult(await f.run(createCurrentNotionSkill(library, { plan })))
+  expect(created).toMatchObject({
+    state: "ready",
+    page_id: original.owner_page_id,
+    operation_id: property(original.intent).operation_id,
+    native: { verified: 1 },
+  })
+  expect(plan).toEqual(frozen)
+  expect(pending(f)).toEqual([])
+  expect(f.table("skills")).toHaveLength(1)
+  expect(f.mutations().filter((call) => call.path.includes("/markdown"))).toHaveLength(1)
+  expect(f.mutations().filter((call) => call.path === `v1/blocks/${f.blockId}`)).toHaveLength(2)
+  expect(await body(f, created.page_id)).toBe("[Run](skill://router/entrypoint.md/..)")
+})
 
 for (const kind of ["skill-create", "native-body"] as const)
   test(`create automatically resumes the same input after an accepted ${kind} response is lost`, async () => {

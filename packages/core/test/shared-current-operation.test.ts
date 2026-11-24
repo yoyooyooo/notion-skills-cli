@@ -1562,6 +1562,48 @@ describe("one finite current write", () => {
     expect(f.productRequests()).toBe(1)
     expect(f.values).toEqual(["first", "second"])
   })
+  test("a new native wire spelling cannot replace an unknown original request", async () => {
+    const f = fixture()
+    const original = "skill://router"
+    f.fault({ target: "product", outcome: "visible" })
+    await expect(
+      f.run(f.apply({ values: [original], replay: "idempotent" })),
+    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    const pending = await f.run(readCurrentOperationIntent(library, intent.owner))
+    const calls = f.calls.length
+    await expect(
+      f.run(
+        withCurrentOperation(library, {
+          intent,
+          ownerPageId: ownerId,
+          mode: "resume",
+          run: (session) =>
+            session.dispatch({
+              key: "append:" + original,
+              replay: "idempotent",
+              request: {
+                path: productPath,
+                body: { value: "skill://router/entrypoint.md/.." },
+                options: { method: "POST" },
+              },
+              observe: () => Effect.die("A changed pending request must fail before observation"),
+              acknowledge: () => Effect.die("A changed pending request must never be sent"),
+            }),
+          verify: () => Effect.void,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_CONFLICT" })
+    expect(
+      f.calls.slice(calls).filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+    ).toEqual([])
+    expect(await f.run(readCurrentOperationIntent(library, intent.owner))).toEqual(pending)
+    expect(f.productRequests()).toBe(1)
+    expect(await f.run(f.apply({ mode: "resume", values: [original], replay: "idempotent" }))).toBe(
+      1,
+    )
+    expect(f.productRequests()).toBe(1)
+    expect(f.json.size).toBe(0)
+  })
   test("a failed final scope stays attention and can finish without another append", async () => {
     const f = fixture()
     const first = await f.run(f.apply({ verifyFailure: true }).pipe(Effect.result))

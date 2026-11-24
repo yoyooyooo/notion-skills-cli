@@ -60,7 +60,8 @@ candidate 是项目级检查，不能替代 Pro/Mini 的普通日用入口；候
 - 当前 Source 声明与稀疏阅读投影分开；脚本、测试、二进制和 mode 仍属于完整消费树。
 - 内容 Operation 与独立 projection intent 是两条状态轴。projection pending 不将内容 owner 改为 applying，
   也不能在结束时把另一个 writer 的 unready owner 改回 ready。
-  Native plain-text 校正属于原内容 intent：先绑定完整 Markdown 与实际块、只修正原普通文本新增的链接，再做原严格全文比较。
+  Native inline 校正属于原内容 intent：先绑定完整 Markdown 与实际块，只修正原普通文本新增的链接或精确匹配的有效 Skill 超链接丢失，再做原严格全文比较。
+  Skill 超链接的原生传输只允许可逆的中性路径对；完整 Skill、Library、路径和 snapshot 语义必须相同。默认入口不替换为 SKILL.md，代码/普通文字/图片目标不归一化。
   原输入与 Markdown 请求身份不变；校正 ACK 丢失后须先观察原精确块，不能盲目重放或用中间结构阶段标记 ready。
 
 ## 结果回执
