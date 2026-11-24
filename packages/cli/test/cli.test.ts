@@ -295,7 +295,7 @@ test("current management and export schemas contain no historical compatibility 
   expect(imported.exit).toBe(0)
   expect(imported.onlineCalled).toBe(false)
   const parameters = JSON.parse(imported.stdout).schema.parameters
-  for (const name of ["input", "entry", "skill-id"])
+  for (const name of ["input", "library", "skill-id"])
     expect(
       parameters.find((parameter: { name: string }) => parameter.name === name)?.required,
     ).toBe(true)
@@ -340,7 +340,7 @@ test("members-plan schema and help describe read-only discovery offline", async 
   const parameters = result.schema.parameters
   for (const [name, kind] of [
     ["input", "argument"],
-    ["entry", "flag"],
+    ["library", "flag"],
     ["skill-id", "flag"],
   ])
     expect(parameters).toContainEqual(

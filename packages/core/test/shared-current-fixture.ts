@@ -436,7 +436,7 @@ export function currentSnapshotFixture(
     },
     bodyCalls: () => calls.filter((call) => call.path.includes("/markdown")),
     recordCalls: () =>
-      calls.filter((call) => call.path.includes(currentLibrary.records.data_source_id)),
+      calls.filter((call) => call.path.startsWith(`v1/data_sources/${currentLibrary.records.data_source_id}/query`)),
     semanticWrites: () =>
       calls.filter(
         (call) =>

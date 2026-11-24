@@ -171,7 +171,7 @@ test("an invalid current Skill Kind fails while obsolete tables are never consum
 
 test("an explicit obsolete entry fails current admission without reading its rows", async () => {
   const f = fixture()
-  const error = await f.run(Effect.flip(catalog({ database: f.legacy.database_id, refresh: true })))
+  const error = await f.run(Effect.flip(catalog({ library: f.legacy.database_id, refresh: true })))
   expect(error.code).toBe("CURRENT_SCHEMA_REQUIRED")
   expect(f.calls.some((call) => query(call.path, f.legacy.data_source_id))).toBe(false)
   expect(f.writeCount()).toBe(0)

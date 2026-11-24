@@ -134,6 +134,22 @@ test("completed import verification rejects changed content instead of overwriti
   expect(f.mutations()).toEqual([])
 })
 
+test("an unfinished import stays discoverable when the same root receives a replacement table", async () => {
+  const { f, definition, request } = await fixture()
+  await expect(f.run(withCurrentImportPlan(library, request, Effect.succeed(definition), () =>
+    Effect.fail(fail("TEST_STOP", "Retain the original compiled plan")),
+  ))).rejects.toMatchObject({ code: "TEST_STOP" })
+  const retained = structuredClone([...f.json.entries()])
+  const changed = { ...library, skills: { ...library.skills, data_source_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }
+  f.clearCalls()
+  await expect(f.run(withCurrentImportPlan(changed, { ...request, mode: "resume" },
+    Effect.die("A replacement table must not trigger compilation"),
+    () => Effect.die("A replacement table must not dispatch the old plan"),
+  ))).rejects.toMatchObject({ code: "CURRENT_IMPORT_PLAN_INVALID" })
+  expect(f.calls).toEqual([])
+  expect([...f.json.entries()]).toEqual(retained)
+})
+
 test("frozen progress allows only additive phases and cannot change mapping, bytes or a started intent", async () => {
   const { f, definition, request } = await fixture()
   await expect(

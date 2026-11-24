@@ -22,7 +22,7 @@ async function emptyInitializationFixture(sourceAppears = false) {
   const drive: Parameters<typeof runEmptyLibrary>[0]["drive"] = async (argv) => {
     commands.push(argv)
     const record = `controlled-command-${commands.length}`
-    if (argv.join(" ") === `ctl library init --parent ${library.parent_page_id}`) {
+    if (argv.join(" ") === `ctl library init --parent ${library.library_id}`) {
       const reused = initialized
       initialized = true
       const initializedLibrary = { library, reused } satisfies Effect.Success<
@@ -39,7 +39,7 @@ async function emptyInitializationFixture(sourceAppears = false) {
   const probe: Parameters<typeof runEmptyLibrary>[0]["probe"] = async (request) => {
     if (request.kind === "page") return { id: container, in_trash: false }
     if (request.kind === "parent")
-      return { object: "page", id: library.parent_page_id, parent: { page_id: container } }
+      return { object: "page", id: library.library_id, parent: { page_id: container } }
     if (request.kind === "children")
       return {
         results: initialized

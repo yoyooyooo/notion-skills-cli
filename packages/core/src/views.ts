@@ -226,7 +226,7 @@ export function retrieveView(id: string, database?: string) {
       return yield* Effect.fail(
         fail("VIEW_SCOPE_MISMATCH", "The View does not belong to the selected database.", {
           view_id: id,
-          database_id: source.database_id,
+          database_id: database,
         }),
       )
     return {

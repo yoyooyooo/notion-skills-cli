@@ -246,7 +246,7 @@ test("complete source trees ignore absent, stale and extra projection rows and k
   expect(second.source_fingerprint).toBe(first.source_fingerprint)
   expect(absent.calls).toHaveLength(2)
   expect(absent.objects.size).toBe(0)
-  expect(absent.json.size).toBe(0)
+  expect([...absent.json.keys()]).toEqual(["config.json"])
 })
 
 test("a native main still discovers Source contributions and retains native and resource authority", async () => {

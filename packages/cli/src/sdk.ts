@@ -1,4 +1,5 @@
 import { resolveLibrary as coreResolveLibrary } from "../../core/src/shared-library.ts"
+import { selectedLibraryId } from "../../core/src/library-selection.ts"
 import { resolve } from "node:path"
 import { randomUUID } from "node:crypto"
 import { Cause, Effect, Exit, Option } from "effect"
@@ -37,6 +38,7 @@ import {
 import { localRuntime } from "./runtime.ts"
 import {
   runRuntimeOperation,
+  runLocalRuntimeOperation,
   type OperationOptions,
   type OperationServices,
 } from "./operation-runtime.ts"
@@ -121,6 +123,14 @@ export type {
 } from "../../core/src/resource-read-model.ts"
 
 export interface SdkOptions extends OperationOptions {}
+
+/** Capture the canonical local selection without contacting Notion. */
+export function selectLibrary(options: SdkOptions & { readonly library?: string } = {}): Promise<string> {
+  return runLocalRuntimeOperation(() => {
+    validateSdkOptions(options)
+    return selectedLibraryId(options.library)
+  }, options)
+}
 
 export function resolveLibrary(options: SdkOptions & { readonly library?: string } = {}) {
   return runOperation(() => coreResolveLibrary(options), options)
@@ -388,6 +398,12 @@ function runOperation<A>(
   options: SdkOptions,
 ): Promise<A> {
   return runRuntimeOperation(() => {
+    validateSdkOptions(options)
+    return operation()
+  }, options)
+}
+
+function validateSdkOptions(options: SdkOptions): void {
     if (Object.hasOwn(options, "database") || Object.hasOwn(options, "entry"))
       throw fail("INVALID_ARGUMENT", "SDK v3 selects an exact Library root with library; retired database/entry selectors are not accepted.")
     if (Object.hasOwn(options, "readOnly"))
@@ -395,8 +411,6 @@ function runOperation<A>(
         "INVALID_ARGUMENT",
         "readOnly is not an SDK option. Consumption never writes to Notion.",
       )
-    return operation()
-  }, options)
 }
 
 /** Exact targets only. Resolve current names from listCatalog before this single preparation. */

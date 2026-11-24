@@ -16,6 +16,7 @@ import { LIBRARY_MARKER, type SharedLibrary } from "../src/shared-library-model.
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
 import { currentLibrary } from "./shared-current-fixture.ts"
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 
 const id = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`
 const library: SharedLibrary = {
@@ -149,6 +150,8 @@ function fixture(
           return Effect.succeed({ id: "catalog-user", object: "user" })
         if (url.pathname === `/v1/databases/${library.skills.database_id}`)
           return Effect.succeed(options.databaseValue ?? database())
+        const schema = librarySchemaResponse(path, library)
+        if (schema !== undefined) return Effect.succeed(schema)
         if (url.pathname === "/v1/search")
           return Effect.succeed({
             results: options.searchRepeated
@@ -330,7 +333,7 @@ describe("shared catalog routing", () => {
     const f = fixture({
       configuration: { token: "preserved-fixture-token", default_library: id(88), sources: [] },
     })
-    const registered = await f.run(addSource("team", library.skills.database_id))
+    const registered = await f.run(addSource("team", library.library_id))
     expect(registered).toEqual({
       ...source,
       alias: "team",
@@ -345,7 +348,7 @@ describe("shared catalog routing", () => {
     await f.run(setDefaultLibrary("team"))
     expect(f.saved.get("config.json")).toEqual({
       token: "preserved-fixture-token",
-      default_library: library.skills.database_id,
+      default_library: library.library_id,
       sources: [registered],
     })
     const selected = await f.run(explicitSource("team"))
@@ -368,8 +371,8 @@ describe("shared catalog routing", () => {
       { ...database(), data_sources: [{ id: id(99), name: "Unexpected" }] },
     ]) {
       for (const operation of [
-        addSource("team", library.skills.database_id).pipe(Effect.as(undefined)),
-        setDefaultLibrary(library.skills.database_id).pipe(Effect.as(undefined)),
+        addSource("team", library.library_id).pipe(Effect.as(undefined)),
+        setDefaultLibrary(library.library_id).pipe(Effect.as(undefined)),
       ]) {
         const configuration = {
           token: "preserved-fixture-token",
@@ -393,7 +396,7 @@ describe("shared catalog routing", () => {
 
   test("explicit current selection preserves the descriptor without querying Files or Records", async () => {
     const f = fixture()
-    const result = await f.run(explicitSource(library.skills.database_id))
+    const result = await f.run(explicitSource(library.library_id))
     expect(result.shared_library).toEqual(library)
     expect(result.data_source_ids).toEqual([library.skills.data_source_id])
     expect(f.calls.map((call) => call.path)).toEqual([`v1/databases/${library.skills.database_id}`])
@@ -546,7 +549,7 @@ describe("shared catalog routing", () => {
 
   test("global discovery reads one current descriptor for repeated search entries", async () => {
     const f = fixture({ searchRepeated: true })
-    const result = await f.run(catalog({ refresh: true }))
+    const result = await f.run(catalog({ all: true, refresh: true }))
     expect(result.records[0]?.locator.type).toBe("shared_skill")
     expect(result.coverage.failed_sources).toEqual([])
     expect(result.coverage.search_index_limited).toBe(true)
@@ -560,7 +563,7 @@ describe("shared catalog routing", () => {
 
   test("registered alias selects the same shared library", async () => {
     const f = fixture({ configuration: { sources: [source] } })
-    const result = await f.run(catalog({ database: "shared", refresh: true }))
+    const result = await f.run(catalog({ library: "shared", refresh: true }))
     expect(result.databases[0]?.alias).toBe("shared")
     expect(result.records[0]?.id).toBe(skillIdentity(library.library_id, "skill-1"))
   })

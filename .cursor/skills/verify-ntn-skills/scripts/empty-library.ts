@@ -255,7 +255,7 @@ export async function runEmptyLibrary(input: {
     await save("init-attempt.json", { parent: state.parent, at: new Date().toISOString() })
     const created = await execute("init", ["ctl", "library", "init", "--parent", state.parent])
     const library = Schema.decodeUnknownSync(SharedLibrarySchema)(created.library)
-    assert.equal(library.parent_page_id, state.parent)
+    assert.equal(library.library_id, state.parent)
     state = { ...state, kind: "library_ready", library }
     await save("state.json", state)
   }

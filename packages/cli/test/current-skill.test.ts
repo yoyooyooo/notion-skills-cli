@@ -19,7 +19,7 @@ const parent = await realpath(await mkdtemp(join(tmpdir(), "ntn-native-cli-")))
 afterAll(async () => {
   if (process.platform === "darwin") await Effect.runPromise(trashPath(parent))
 })
-const entry = library.skills.database_id
+const entry = library.library_id
 const metadata = "---\nname: Daily Native\ndescription: Manage a daily native Skill\n---\n"
 const cli = (f: ReturnType<typeof currentWriteFixture>, argv: readonly string[]) =>
   f.run(Command.runWith(currentSkillCommand, { version: "0" })([...argv]))
@@ -36,7 +36,7 @@ test("native management exposes four public commands and no hidden schema or rec
     if (command === undefined) throw new Error("Missing public Skill command: " + name)
     const schema = property(commandSchema(command))
     const parameters = (schema.parameters as unknown[]).map(property)
-    expect(parameters.find((item) => item.name === "entry")).toMatchObject({ required: true })
+    expect(parameters.find((item) => item.name === "library")).toMatchObject({ required: true })
     for (const flag of ["max-requests", "max-bytes", "timeout"])
       expect(parameters.find((item) => item.name === flag)).toMatchObject({
         primitive: "Int",

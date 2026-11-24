@@ -1,4 +1,5 @@
 import { resolveCatalogReference } from "../src/catalog-reference.ts"
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { expect, test } from "bun:test"
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
@@ -79,7 +80,6 @@ function anotherLibrary(): SharedLibrary {
     ...currentLibrary,
     library_id: "45c64249-e1dd-59ab-ad9f-604ff752ddb4",
     operation_id: "library-other",
-    parent_page_id: currentId(20000),
     skills: {
       ...currentLibrary.skills,
       database_id: currentId(20001),
@@ -147,6 +147,7 @@ function fixture() {
                 if (selected)
                   return {
                     id: selected.database_id,
+                    parent: { type: "page_id", page_id: selected.shared_library!.library_id },
                     title: [{ plain_text: selected.title }],
                     database_type: null,
                     description: [
@@ -157,6 +158,10 @@ function fixture() {
                       name: selected.title,
                     })),
                   }
+                for (const source of sources.values()) {
+                  const schema = librarySchemaResponse(path, source.shared_library!)
+                  if (schema !== undefined) return schema
+                }
                 const dataSource = [...rows.keys()].find(
                   (id) => path.split("?")[0] === `v1/data_sources/${id}/query`,
                 )
@@ -225,7 +230,7 @@ test("verified connection identity binds principal, credential and API origin wi
 })
 
 for (const [label, description, code] of [
-  ["absent", "", "CURRENT_SCHEMA_REQUIRED"],
+  ["absent", "", "NOT_SHARED_LIBRARY"],
   ["empty", LIBRARY_MARKER + "{}", "CURRENT_SCHEMA_REQUIRED"],
   [
     "three tables",
@@ -250,7 +255,7 @@ for (const [label, description, code] of [
           : undefined,
       )
       const result = await f.run(
-        explicitSource(currentLibrary.skills.database_id).pipe(Effect.result),
+        explicitSource(currentLibrary.library_id).pipe(Effect.result),
       )
       expect(result._tag === "Failure" && result.failure.code).toBe(code)
       expect(f.calls.map((call) => call.path)).toEqual([
@@ -291,7 +296,7 @@ test("search and projected metadata exhaust their cursors, ignore ordinary sourc
           ])
         : list([page(currentLibrary, 1)], "rows-next")
   })
-  const result = await f.run(catalog({ refresh: true }))
+  const result = await f.run(catalog({ all: true, refresh: true }))
   expect(result.records.map((record) => [record.id, record.name, record.alias])).toEqual([
     [recordId(currentLibrary, 2), "Another Skill", "another-skill"],
     [recordId(currentLibrary, 1), "Sample Skill", "sample-skill"],
@@ -326,7 +331,7 @@ for (const boundary of ["search", "metadata"] as const)
           ? { ...list([]), has_more: true, next_cursor: defect === "missing" ? null : "repeat" }
           : undefined,
       )
-      const result = await f.run(catalog({ refresh: true }).pipe(Effect.result))
+      const result = await f.run(catalog({ all: true, refresh: true }).pipe(Effect.result))
       if (boundary === "search")
         expect(result._tag === "Failure" && result.failure.code).toBe("INVALID_RESPONSE")
       else {
@@ -360,7 +365,7 @@ test("failed data sources remain explicit partial coverage while successful cont
       ? fail("ACCESS_DENIED", "denied")
       : undefined,
   )
-  const result = await f.run(catalog({ refresh: true }))
+  const result = await f.run(catalog({ all: true, refresh: true }))
   expect(result.records.map((record) => record.id)).toEqual([recordId(currentLibrary, 1)])
   expect(result.coverage.exhaustive).toBe(false)
   expect(result.coverage.failed_sources).toEqual([
@@ -382,7 +387,7 @@ test("invalid descriptions preserve valid records and identify the unavailable c
   valid.properties.RenamedDescription = currentRich("description", "x".repeat(1211))
   invalid.properties.RenamedDescription = currentRich("description", "x".repeat(2001))
   f.rows.set(currentLibrary.skills.data_source_id, [valid, invalid])
-  const result = await f.run(catalog({ refresh: true }))
+  const result = await f.run(catalog({ all: true, refresh: true }))
   expect(result.records).toHaveLength(1)
   expect(result.records[0]!.description).toBe("x".repeat(1211))
   expect(result.coverage.failed_sources).toContainEqual(
@@ -394,7 +399,7 @@ test("invalid current Notion titles fail with the selected physical page and exa
   const f = fixture(),
     row = page(currentLibrary, 1, "Sample\u0000Skill")
   f.rows.set(currentLibrary.skills.data_source_id, [row])
-  const result = await f.run(catalog({ refresh: true }).pipe(Effect.result))
+  const result = await f.run(catalog({ all: true, refresh: true }).pipe(Effect.result))
   expect(result._tag === "Failure" && result.failure).toMatchObject({
     code: "INVALID_SKILL_NAME",
     details: { page_id: row.id, name: "Sample\u0000Skill" },
@@ -434,15 +439,15 @@ for (const defect of ["title", "logical-id", "locator", "legacy-locator"] as con
 test("one user's changed credentials isolate cached catalogs and switching back reuses only its own observation", async () => {
   const f = fixture(),
     ds = currentLibrary.skills.data_source_id
-  const first = await f.run(catalog())
+  const first = await f.run(catalog({ all: true }))
   f.credential("catalog-second")
   f.rows.set(ds, [page(currentLibrary, 2)])
-  const second = await f.run(catalog())
+  const second = await f.run(catalog({ all: true }))
   expect(second.records.map((record) => record.id)).toEqual([recordId(currentLibrary, 2)])
   expect(second.scope).not.toBe(first.scope)
   f.credential("catalog-first")
   const before = f.calls.length,
-    restored = await f.run(catalog())
+    restored = await f.run(catalog({ all: true }))
   expect(restored.records).toEqual(first.records)
   expect(restored.scope).toBe(first.scope)
   expect(restored.fetched_at).toBe(first.fetched_at)
@@ -458,12 +463,12 @@ test("same names in independent current libraries require an exact source alias 
   f.add(other, "ops")
   f.sources.set(currentLibrary.skills.database_id, sourceFor(currentLibrary, "frontend"))
   f.json.set("config.json", { sources: [...f.sources.values()] })
-  const merged = await f.run(catalog({ refresh: true }))
+  const merged = await f.run(catalog({ all: true, refresh: true }))
   expect(merged.records.map((record) => record.id).sort()).toEqual(
     [recordId(currentLibrary, 1), recordId(other, 2)].sort(),
   )
   expect(() => resolveCatalogReference("skill://sample-skill", merged)).toThrow()
-  const scoped = await f.run(catalog({ database: "ops", refresh: true }))
+  const scoped = await f.run(catalog({ library: "ops", refresh: true }))
   expect(scoped.databases).toEqual([sourceFor(other, "ops")])
   expect(resolveCatalogReference(recordId(other, 2), scoped).record.id).toBe(recordId(other, 2))
   f.fault((call) =>
@@ -471,7 +476,7 @@ test("same names in independent current libraries require an exact source alias 
       ? fail("ACCESS_DENIED", "denied")
       : undefined,
   )
-  const partial = await f.run(catalog({ refresh: true }))
+  const partial = await f.run(catalog({ all: true, refresh: true }))
   expect(partial.records.map((record) => record.id)).toEqual([recordId(currentLibrary, 1)])
   expect(partial.coverage.failed_sources[0]).toMatchObject({
     database_id: other.skills.database_id,
@@ -588,7 +593,7 @@ for (const defect of ["page", "stable-id"] as const)
       if (defect === "page") second.id = first.id
       else second.properties["Skill ID"] = first.properties["Skill ID"]
       f.rows.set(currentLibrary.skills.data_source_id, [first, second])
-      const result = await f.run(catalog({ refresh: true }).pipe(Effect.result))
+      const result = await f.run(catalog({ all: true, refresh: true }).pipe(Effect.result))
       expect(result._tag === "Failure" && result.failure.code).toBe("SHARED_SKILL_ID_CONFLICT")
     },
   )

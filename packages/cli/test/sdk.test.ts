@@ -51,6 +51,7 @@ function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
 }
 
 describe("Promise SDK boundary", () => {
+
   test("relative identity resolution preserves cancellation, effects and zero-request receipts", async () => {
     const reports: unknown[] = []
     await expect(
@@ -377,7 +378,7 @@ describe("Promise SDK boundary", () => {
     expect(
       compareNativeMarkdown({
         ...wrapped,
-        observed: wrapped.observed.replace("database ENTRY", "database<br>ENTRY"),
+        observed: wrapped.observed.replace("library ENTRY", "library<br>ENTRY"),
       }),
     ).toBe("different")
   })

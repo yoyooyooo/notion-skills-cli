@@ -10,7 +10,7 @@ test.each(["current", "fixed", "resources"] as const)(
     const f = currentSnapshotFixture({ fileCount: 1 })
     const selected = await f.open()
     await f.run(readSkill(fileRef(selected.record.id, selected.entrypoint)))
-    const options = { database: currentId(9999) }
+    const options = { library: currentId(9999) }
     f.clearCalls()
     if (selection === "resources") {
       const resource = selected.files.find((file) => file.path !== selected.entrypoint)
@@ -49,7 +49,7 @@ test("an explicit physical page keeps its database containment error on a warm r
   const f = currentSnapshotFixture({ fileCount: 0 })
   await f.run(readSkill(f.main.id))
   f.clearCalls()
-  await expect(f.run(readSkill(f.main.id, { database: currentId(9999) }))).rejects.toMatchObject({
+  await expect(f.run(readSkill(f.main.id, { library: currentId(9999) }))).rejects.toMatchObject({
     code: "SKILL_NOT_FOUND",
   })
   expect(f.calls).toEqual([])
@@ -62,7 +62,7 @@ test("a fixed reference rejects a foreign Library with the same stable Skill ID 
   f.clearCalls()
   for (const path of ["", "SKILL.md"]) {
     await expect(
-      f.run(readSkill(fileRef("skill://demo?library=testing", path, selected.snapshot_id))),
+      f.run(readSkill(fileRef("skill://demo?library=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", path, selected.snapshot_id))),
     ).rejects.toMatchObject({ code: "SNAPSHOT_CONFLICT" })
   }
   expect(f.calls).toEqual([])

@@ -10,6 +10,7 @@ import { fail, property, SkillsError, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import {
   bindSharedProfile,
   catalogWithProfile,
@@ -96,8 +97,10 @@ const otherLibrary: SharedLibrary = {
   ...library,
   library_id: "45c64249-e1dd-59ab-ad9f-604ff752ddb4",
   operation_id: "library-other-init",
-  parent_page_id: id(10),
   skills: { ...library.skills, database_id: id(12), data_source_id: id(13) },
+  files: { ...library.files, database_id: id(110), data_source_id: id(111) },
+  records: { ...library.records, database_id: id(112), data_source_id: id(113) },
+  sources: { ...library.sources, database_id: id(114), data_source_id: id(115) },
 }
 const source = {
   alias: "library",
@@ -293,6 +296,8 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
             ]),
           )
         for (const descriptor of [library, otherLibrary]) {
+          const schema = librarySchemaResponse(path, descriptor)
+          if (schema !== undefined) return Effect.succeed(schema)
           if (url.pathname === `/v1/databases/${descriptor.skills.database_id}`)
             return Effect.succeed({
               object: "database",
@@ -1061,7 +1066,7 @@ describe("library-owned Profile management", () => {
     )
     f.seed(root)
     await f.run(loadSharedProfileCached(library, "daily"))
-    await f.run(loadSharedProfileEntryCached(library.skills.database_id, "daily"))
+    await f.run(loadSharedProfileEntryCached(library.library_id, "daily"))
     expect(f.cached()).toHaveLength(2)
     f.seed(
       await f.run(
@@ -1120,7 +1125,7 @@ describe("Profile machine binding and default discovery", () => {
         prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
       ),
     )
-    const cold = await f.run(loadSharedProfileEntryCached(library.skills.database_id, "daily"))
+    const cold = await f.run(loadSharedProfileEntryCached(library.library_id, "daily"))
     expect(cold.library).toEqual(library)
     expect(f.queries()).toBe(1)
     expect(
@@ -1129,12 +1134,12 @@ describe("Profile machine binding and default discovery", () => {
     f.clear()
     f.deny(true)
     expect(
-      (await f.run(loadSharedProfileEntryCached(library.skills.database_id, "daily"))).source,
+      (await f.run(loadSharedProfileEntryCached(library.library_id, "daily"))).source,
     ).toBe("local_cache")
     expect(
       (
         await f.run(
-          loadSharedProfileEntryCached(library.skills.database_id, "daily", { offline: true }),
+          loadSharedProfileEntryCached(library.library_id, "daily", { offline: true }),
         )
       ).freshness.policy,
     ).toBe("offline")
@@ -1144,7 +1149,7 @@ describe("Profile machine binding and default discovery", () => {
       (
         await f.run(
           Effect.flip(
-            loadSharedProfileEntryCached(library.skills.database_id, "daily", { offline: true }),
+            loadSharedProfileEntryCached(library.library_id, "daily", { offline: true }),
           ),
         )
       ).code,
@@ -1159,7 +1164,7 @@ describe("Profile machine binding and default discovery", () => {
     )
     f.seed(root)
     await f.run(loadSharedProfileCached(library, "daily"))
-    await f.run(loadSharedProfileEntryCached(library.skills.database_id, "daily"))
+    await f.run(loadSharedProfileEntryCached(library.library_id, "daily"))
     expect(f.cached()).toHaveLength(2)
     await f.run(
       saveSharedProfile(library, {
@@ -1170,7 +1175,7 @@ describe("Profile machine binding and default discovery", () => {
     expect(f.cached()).toHaveLength(0)
     f.clear()
     expect(
-      (await f.run(loadSharedProfileEntryCached(library.skills.database_id, "daily"))).profile.name,
+      (await f.run(loadSharedProfileEntryCached(library.library_id, "daily"))).profile.name,
     ).toBe("Updated rules")
     expect(f.queries()).toBe(1)
     expect(
@@ -1311,12 +1316,12 @@ describe("Profile machine binding and default discovery", () => {
         }),
       ),
     )
-    const selected = await f.run(catalogWithProfile({ database: "library", profile: "daily" }))
+    const selected = await f.run(catalogWithProfile({ library: "library", profile: "daily" }))
     expect("view" in selected && selected.view?.id).toBe(sessionView)
     expect("profile" in selected && selected.profile).toMatchObject({ selection: "first" })
     expect(selected.records.map((record) => record.kind)).toEqual(["skill"])
     f.clear()
-    const unbound = await f.run(catalogWithProfile({ database: "library", defaultView: true }))
+    const unbound = await f.run(catalogWithProfile({ library: "library", defaultView: true }))
     expect("view" in unbound && unbound.view?.id).toBe(sessionView)
     expect(f.queries()).toBe(0)
   })
@@ -1328,7 +1333,7 @@ describe("Profile machine binding and default discovery", () => {
       shared_profile: { library_id: library.library_id, profile_id: "daily" },
     })
     const result = await f.run(
-      catalogWithProfile({ database: otherLibrary.skills.database_id, defaultView: true }),
+      catalogWithProfile({ library: otherLibrary.library_id, defaultView: true }),
     )
     expect("view" in result && result.view?.id).toBe(otherView)
     expect("profile" in result).toBe(false)

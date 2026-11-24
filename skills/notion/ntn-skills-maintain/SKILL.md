@@ -8,7 +8,7 @@ metadata:
 
 # Maintain the current library
 
-Use the task's executable and exact Library/Skill ID. Reads need Read; writes need Insert/Update.
+Use the selected executable and exact Library root/Skill ID. Reads need Read; writes need Insert/Update.
 
 Default to this executable's bundled guidance; it does not authorize writes.
 For an explicitly selected Notion
@@ -18,7 +18,7 @@ adoption. Keep active selections; inspect edited targets.
 
 ## Choose the route
 
-For a basic how-to, explain create/register below from this main.
+For a basic how-to, explain create/register below.
 The CLI handles Notion REST; load an API Skill only for direct API work.
 Open [setup](references/setup.md) only to create/connect a library or resolve a
 reported connection/schema problem. Adding a Skill is not library setup.
@@ -39,8 +39,7 @@ For related local roots, read [batch import](references/operations.md#import-an-
 
 ## Create or edit a native Skill
 
-Supply content and metadata; do not construct those Notion fields
-owned by the CLI: identity, authority, relationships and finite state.
+Supply content and metadata. The CLI owns identity, authority, relationships and finite state.
 
 ```sh
 ntn-skills ctl library skill create INPUT --library LIBRARY_ID --skill-id SKILL_ID
@@ -49,7 +48,7 @@ ntn-skills ctl library skill update TARGET --library LIBRARY_ID --input LOCAL_FI
 
 Create takes complete input: Markdown becomes native; other files stay exact
 resources. Update without --path selects the main.
-For supporting files, supply intended changes; the CLI preserves everything else.
+For supporting files, supply changes; the CLI preserves unmentioned files.
 
 Use --description for discovery text. Omitted metadata and relationships stay
 unchanged. Fix links when removing their targets. Default Context is an author

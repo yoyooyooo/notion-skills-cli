@@ -1262,7 +1262,7 @@ async function main() {
   }
   const raw = property(JSON.parse(await readFile(required("--scope"), "utf8")))
   const library = Schema.decodeUnknownSync(SharedLibrarySchema)(raw.library ?? raw)
-  if (raw.parent !== undefined) assert.equal(raw.parent, library.parent_page_id)
+  if (raw.parent !== undefined) assert.equal(raw.parent, library.library_id)
   if (raw.kind !== undefined) assert.equal(raw.kind, "library_ready")
   const root = required("--output"),
     driver = await installedDriver(required("--cli"), required("--runtime"), root)

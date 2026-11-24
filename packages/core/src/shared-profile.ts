@@ -321,7 +321,7 @@ export function loadSharedProfileEntryCached(
     const entry = pageId(input)
     if (!entry)
       return yield* Effect.fail(
-        fail("INVALID_ARGUMENT", "Use an exact shared library entry ID or Notion URL."),
+        fail("INVALID_ARGUMENT", "Use an exact Library root ID or Notion URL."),
       )
     const selection = yield* profileEntrySelection(entry, profileId)
     return yield* observeProfile(selection, entry, profileId, options)
@@ -463,7 +463,7 @@ function observeProfile(
     let refreshedLibrary: SharedLibrary | undefined
     const observed = yield* Effect.gen(function* () {
       const library = suppliedLibrary ?? (yield* loadSharedLibrary(entry))
-      if (library.skills.database_id !== entry)
+      if (library.library_id !== entry)
         return yield* Effect.fail(
           fail(
             "SHARED_PROFILE_SCOPE",

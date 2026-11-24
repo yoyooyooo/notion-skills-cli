@@ -17,7 +17,7 @@ const pendingPayload = {
   version: 2,
   library: currentLibrary,
   scope,
-  library_id: "4f2a903d-8427-5499-968f-92824f397218",
+  library_id: currentLibrary.library_id,
   record_id: "operation-current-" + "c".repeat(64),
   intent: {
     operation_id: "current-write",

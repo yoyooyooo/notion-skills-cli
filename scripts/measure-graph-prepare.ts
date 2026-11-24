@@ -41,7 +41,7 @@ for (const topology of ["diamond", "wide-101"] as const) {
     const f = nativeGraphFixture(topology === "diamond" ? {} : { width: 100 })
     const roots = topology === "diamond" ? [f.pageIds[0]!, f.pageIds[2]!] : [f.pageIds[0]!]
     const input = { roots, purpose: "use" as const, budget }
-    await f.run(prepareGraph(input, { database: library.skills.database_id }))
+    await f.run(prepareGraph(input, { library: library.library_id }))
     f.json.clear()
     f.objects.clear()
     for (const condition of ["cold", "warm", "metadata_revalidate"] as const) {
@@ -55,7 +55,7 @@ for (const topology of ["diamond", "wide-101"] as const) {
               ? { freshness: { policy: "max_age" as const, max_age_ms: 1 } }
               : {}),
           },
-          { database: library.skills.database_id, metrics: phase === "optimized" },
+          { library: library.library_id, metrics: phase === "optimized" },
         ),
       )
       const elapsed = performance.now() - start

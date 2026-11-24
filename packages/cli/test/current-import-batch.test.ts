@@ -46,7 +46,7 @@ async function fixture(inputs: Record<string, string>) {
       command([
         manifest,
         "--library",
-        library.skills.database_id,
+        library.library_id,
         ...(args.includes("--operation") ? [] : ["--operation", "batch-fixture"]),
         ...args,
       ]),
@@ -162,9 +162,9 @@ test("unlisted siblings, missing files, overlapping roots and symlinks are never
 test("foreign relationships require exact copy authorization and only batch-owned full refs are rebound", async () => {
   const { root, manifest, f } = await fixture({
     a:
-      "[B](skill://b/SKILL.md?library=production)\n[external](skill://outside/SKILL.md?library=production)\n[missing](skill://b/missing.md?library=production)\n[fixed](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=s_" +
+      "[B](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)\n[external](skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)\n[missing](skill://b/missing.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)\n[fixed](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=s_" +
       "a".repeat(64) +
-      ")\n    [example](skill://b/SKILL.md?library=production)\n[use][shared]\n![image][shared]\n\n[shared]: skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+      ")\n    [example](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)\n[use][shared]\n![image][shared]\n\n[shared]: skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec",
     b: "# B",
   })
   const unchanged = await f.run(
@@ -202,7 +202,7 @@ test("foreign relationships require exact copy authorization and only batch-owne
   expect(body).toContain("skill://b/missing.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec")
   expect(body).toContain("skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=s_")
   expect(body).toContain("skill://b/SKILL.md?library=" + library.library_id)
-  expect(body).toContain("    [example](skill://b/SKILL.md?library=production)")
+  expect(body).toContain("    [example](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)")
   expect(body).toContain("[shared]: skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec")
   expect(f.mutations()).toEqual([])
   await writeFile(
@@ -308,7 +308,7 @@ test("portable batch short refs keep origin unless exact current copy mapping is
     expect(text).toContain(
       `[B](skill://b/SKILL.md?library=${authorized ? library.library_id : "production"})`,
     )
-    expect(text).toContain("[Missing](skill://b/missing.md?library=production)")
+    expect(text).toContain("[Missing](skill://b/missing.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)")
     expect(text).toContain(`[Fixed](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=${pin})`)
     expect(item.relations?.members).toEqual(
       authorized ? [`skill://b?library=${library.library_id}`] : undefined,

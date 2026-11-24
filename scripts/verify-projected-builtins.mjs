@@ -5,14 +5,14 @@ import { parseArgs } from "node:util"
 const { values } = parseArgs({
   options: {
     cli: { type: "string", default: "ntn-skills" },
-    entry: { type: "string" },
+    library: { type: "string" },
     help: { type: "boolean" },
   },
 })
 
 if (values.help) {
   process.stdout.write(
-    "Usage: node scripts/verify-projected-builtins.mjs --entry ENTRY [--cli EXECUTABLE_OR_JS]\n" +
+    "Usage: node scripts/verify-projected-builtins.mjs --library LIBRARY_ID [--cli EXECUTABLE_OR_JS]\n" +
       "Compare consumer file bytes, directory paths and discovery descriptions with this CLI package.\n" +
       "This does not verify generated Notion pages or Source ownership, the paired runtime, or model delivery.\n" +
       "No Notion writes. JSON goes to stdout; any missing, partial, changed or unreadable item exits 1.\n",
@@ -81,7 +81,7 @@ function catalog(entry) {
   do {
     const page = command([
       "list",
-      "--database",
+      "--library",
       entry,
       "--limit",
       "500",
@@ -122,7 +122,7 @@ function verifySkill(builtin, records, entry) {
   const selected = matches[0]
   if (selected.enabled !== true || typeof selected.ref !== "string")
     reject("PROJECTED_SKILL_UNAVAILABLE", "The projected Skill is not enabled with an exact ref.")
-  const main = read([selected.ref, "--database", entry, "--refresh"], "SKILL.md")
+  const main = read([selected.ref, "--library", entry, "--refresh"], "SKILL.md")
   if (typeof main.ref !== "string" || typeof main.snapshot_id !== "string")
     reject("SELECTION_INVALID", "The main read did not return its exact local selection.")
   const inventory = command(["files", main.snapshot_id])
@@ -184,7 +184,7 @@ function verifySkill(builtin, records, entry) {
 const report = {
   ok: false,
   cli: values.cli,
-  entry: values.entry,
+  entry: values.library,
   mode: "read-only",
   // Scope describes the checks; only ok:true attests that all comparisons passed.
   proof_scope: {
@@ -198,14 +198,14 @@ const report = {
   skills: [],
 }
 try {
-  if (!values.entry) reject("ENTRY_REQUIRED", "Supply one exact registered library with --entry.")
+  if (!values.library) reject("LIBRARY_CONTEXT_REQUIRED", "Supply one exact registered library with --library.")
   const builtins = command(["ctl", "builtin", "list"])
   if (!Array.isArray(builtins.skills) || builtins.skills.length === 0)
     reject("PACKAGE_CATALOG_INVALID", "The CLI did not expose any packaged Skills.")
-  const records = catalog(values.entry)
+  const records = catalog(values.library)
   for (const builtin of builtins.skills) {
     try {
-      report.skills.push(verifySkill(builtin, records, values.entry))
+      report.skills.push(verifySkill(builtin, records, values.library))
     } catch (error) {
       report.skills.push({ builtin_id: builtin.id, ok: false, error: failure(error) })
     }

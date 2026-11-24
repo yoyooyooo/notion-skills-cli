@@ -239,7 +239,7 @@ export function loadSharedLibrary(root: string) {
     for (const role of ["skills", "files", "records", "sources"] as const)
       if (!children.has(library[role].database_id))
         return yield* Effect.fail(fail("LIBRARY_SCHEMA_CONFLICT", "A registered table is absent from the complete root inventory.", { role }))
-    return yield* inspectLibrary(library)
+    return yield* inspectLibrary(library, children)
   })
 }
 
@@ -292,10 +292,11 @@ export function inspectTable(
   expected: Readonly<Record<string, unknown>>,
   expectedParent: string,
   registered?: TableBinding,
+  observedDatabase?: unknown,
 ) {
   return Effect.gen(function* () {
     const api = yield* Notion
-    const db = property(yield* api.request(`v1/databases/${id}`))
+    const db = property(observedDatabase ?? (yield* api.request(`v1/databases/${id}`)))
     const sources = db.data_sources
     if (
       db.id !== id ||
@@ -372,31 +373,35 @@ export function inspectTable(
   })
 }
 
-function inspectLibrary(library: SharedLibrary) {
+function inspectLibrary(library: SharedLibrary, observedDatabases?: ReadonlyMap<string, unknown>) {
   return Effect.gen(function* () {
     yield* inspectTable(
       library.skills.database_id,
       registeredSkillProperties(library.skills),
       library.library_id,
       library.skills,
+      observedDatabases?.get(library.skills.database_id),
     )
     yield* inspectTable(
       library.files.database_id,
       sharedFileProperties(library.skills.data_source_id),
       library.library_id,
       library.files,
+      observedDatabases?.get(library.files.database_id),
     )
     yield* inspectTable(
       library.records.database_id,
       sharedRecordProperties(library.skills.data_source_id),
       library.library_id,
       library.records,
+      observedDatabases?.get(library.records.database_id),
     )
     yield* inspectTable(
       library.sources.database_id,
       sourceDefinitionLayout(library.skills.data_source_id, library.records.data_source_id),
       library.library_id,
       library.sources,
+      observedDatabases?.get(library.sources.database_id),
     )
     yield* initializeCurrentSourceRelations(library, true)
     return library

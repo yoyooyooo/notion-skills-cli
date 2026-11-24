@@ -245,7 +245,6 @@ function fixture(
     calls,
     state,
     clearFailures: () => {
-      delete failures.root
       failures = {}
     },
     hideTable: (libraryId?: string) => {
@@ -434,7 +433,7 @@ test("attached library rejects a retargeted relation without any repair writes",
 test("malformed library entry cannot be mistaken for a valid shared mapping", () => {
   expect(libraryFromDatabase({ description: [] })).toBeUndefined()
   expect(() =>
-    libraryFromDatabase({ id: parent, description: [{ plain_text: "ntn-skills-library:v1 {}" }] }),
+    libraryFromDatabase({ id: parent, description: [{ plain_text: "ntn-skills-library:v2 {}" }] }),
   ).toThrow()
 })
 
@@ -481,13 +480,12 @@ test("an incomplete registered layout cannot attach or silently adopt unregister
     const db = f.databases.get(library.skills.database_id)
     const source = f.sources.get(library.skills.data_source_id)
     if (!db || !source) throw Error("Fixture missing")
-    db.raw.description = [{ plain_text: `ntn-skills-library:v1 ${JSON.stringify(old)}` }]
+    db.raw.description = [{ plain_text: `ntn-skills-library:v2 ${JSON.stringify(old)}` }]
     if (!keepUnregisteredColumn) delete property(source.properties).Members
     const before = structuredClone(db.raw.description)
     const writes = f.calls.filter((call) => call.write).length
     for (const input of [
       { library: library.library_id },
-      { parent },
       { parent, operation: library.operation_id },
     ]) {
       const result = await f.run(initializeSharedLibrary(input).pipe(Effect.result))
@@ -515,7 +513,7 @@ test("descriptor rejects empty, unsafe and overlapping optional Members identiti
     expect(() =>
       libraryFromDatabase({
         id: library.skills.database_id,
-        description: [{ plain_text: `ntn-skills-library:v1 ${JSON.stringify(descriptor)}` }],
+        description: [{ plain_text: `ntn-skills-library:v2 ${JSON.stringify(descriptor)}` }],
       }),
     ).toThrow()
   }
@@ -532,7 +530,7 @@ test("descriptor rejects empty, unsafe and overlapping optional Members identiti
   expect(() =>
     libraryFromDatabase({
       id: library.skills.database_id,
-      description: [{ plain_text: `ntn-skills-library:v1 ${JSON.stringify(descriptor)}` }],
+      description: [{ plain_text: `ntn-skills-library:v2 ${JSON.stringify(descriptor)}` }],
     }),
   ).toThrow("Members binding")
 })
@@ -614,7 +612,7 @@ test("accepted but unknown Members PATCH retains original operation and never re
   expect(property(first.failure.details).stage).toBe("members")
   const operation = String(property(first.failure.details).operation_id)
   const writes = f.calls.filter((call) => call.write).length
-  expect(writes).toBe(5)
+  expect(writes).toBe(6)
   expect(f.databases.size).toBe(4)
   expect(property(f.sources.get(id(101))?.properties).Members).toBeDefined()
   const recovered = await f.run(initializeSharedLibrary({ parent, operation }).pipe(Effect.result))

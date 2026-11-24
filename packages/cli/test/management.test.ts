@@ -11,9 +11,9 @@ import {
 import { createRequestMetrics } from "../../core/src/request-metrics.ts"
 import { DEFAULT_CURRENT_INVOCATION_BUDGET } from "../../core/src/shared-current-invocation.ts"
 
-const entry = "00000000-0000-4000-8000-000000000002"
+const libraryRoot = "00000000-0000-4000-8000-000000000002"
 const request: SourceSyncInput = {
-  entry,
+  library: libraryRoot,
   source_ids: ["team-skills"],
   manager_id: "fixture",
   execution_id: "a".repeat(64),
@@ -44,8 +44,8 @@ test("invalid management inputs fail before acquiring runtime or credentials", a
   const reports: unknown[] = []
   const options = { env: {}, onRequestMetrics: (value: unknown) => reports.push(value) }
   for (const changed of [
-    { ...request, entry: "" },
-    { ...request, entry: "skill://old/SKILL.md" },
+    { ...request, library: "" },
+    { ...request, library: "skill://old/SKILL.md" },
     { ...request, source_ids: [] },
     { ...request, source_ids: ["snapshot-retired"] },
     { ...request, source_ids: ["invalid:source"] },

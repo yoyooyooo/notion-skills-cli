@@ -16,7 +16,7 @@ const pending = {
   version: 2,
   library: currentLibrary,
   scope: "b".repeat(64),
-  library_id: "4890000a-9086-5795-86a2-af110f6ca723",
+  library_id: currentLibrary.library_id,
   record_id: "operation-current-" + "c".repeat(64),
   intent: {
     operation_id: "current-test-one",
@@ -143,6 +143,7 @@ for(const value of [
  {...source,intent:{...source.intent,source_input:{...source.intent.source_input,resolved_commit:'4'.repeat(40)}}},
  {...source,intent:{...source.intent,source_input:{...source.intent.source_input,affected_skill_ids:['other-target']}}},
  {...source,scope:'5'.repeat(64)},
+ {...source,library:{...source.library,files:{...source.library.files,database_id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}}},
 ]){const result=yield* store.writeJson(key,value).pipe(Effect.result);rejected.push(result._tag==='Failure'?result.failure.code:null);}
 const changedBinding=yield* store.writeJson(childKey,{...child,intent:{...child.intent,source:{...sourceBinding,operation_id:'another-parent'}}}).pipe(Effect.result);
 const reordered={...source,intent:{source_input:{kind:'declaration',affected_skill_ids:['example'],retirements:[],resolved_commit:'2'.repeat(40),configuration_sha256:'1'.repeat(64)},input_sha256:'d'.repeat(64),owner:{id:'provider',kind:'source'},operation_id:'source-op'},lifecycle:{phase:'active',record_page_id:'00000000-0000-4000-8000-000000000004'}};
@@ -151,7 +152,7 @@ console.log(JSON.stringify({rejected,changedBinding:changedBinding._tag==='Failu
     )
     expect(first.exit, first.stderr).toBe(0)
     const initial = JSON.parse(first.stdout)
-    expect(initial.rejected).toEqual(Array.from({ length: 4 }, () => "STATE_CONFLICT"))
+    expect(initial.rejected).toEqual(Array.from({ length: 5 }, () => "STATE_CONFLICT"))
     expect(initial.changedBinding).toBe("STATE_CONFLICT")
     expect(initial.source).toMatchObject({
       intent: {

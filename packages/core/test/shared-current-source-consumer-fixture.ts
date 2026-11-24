@@ -264,7 +264,7 @@ export async function currentSourceConsumerFixture() {
       run(
         targetSnapshot(
           parseTarget(currentSkillPage, path),
-          { database: sourceLibrary.skills.database_id, ...options },
+          { library: sourceLibrary.library_id, ...options },
           access,
         ),
       ),

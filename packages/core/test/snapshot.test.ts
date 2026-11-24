@@ -56,8 +56,8 @@ for (const matches of [0, 1])
   for (const offline of [false, true])
     test(`a bound owner uses its verified cache despite an incomplete catalog with ${matches} matches, offline=${offline}`, async () => {
       const f = await fixture()
-      await f.run(readSkill(page, { database }))
-      await f.run(catalog({ database, refresh: true }))
+      await f.run(readSkill(page, { library: currentLibrary.library_id }))
+      await f.run(catalog({ library: currentLibrary.library_id, refresh: true }))
       const key = [...f.json.keys()].find((value) => value.startsWith("cache/catalogs/"))
       if (key === undefined) throw new Error("Expected a real catalog observation")
       const observed = decode(CatalogSchema, f.json.get(key))
@@ -69,7 +69,7 @@ for (const matches of [0, 1])
       f.clearCalls()
       const result = await f.run(
         readSkill(fileRef(`skill://demo?library=${currentLibrary.library_id}`, "SKILL.md"), {
-          database,
+          library: currentLibrary.library_id,
           offline,
         }).pipe(Effect.result),
       )
@@ -231,24 +231,24 @@ test("physical page reads accept configured aliases and selected database checks
       },
     ],
   })
-  const snapshot = await f.run(openSkill(page, { database: "frontend" }))
+  const snapshot = await f.run(openSkill(page, { library: "frontend" }))
   expect(snapshot.record.locator).toMatchObject({
     type: "shared_skill",
     database_id: database,
     page_id: page,
   })
-  const wrongOnline = await f.run(openSkill(page, { database: "ops" }).pipe(Effect.result))
+  const wrongOnline = await f.run(openSkill(page, { library: "ops" }).pipe(Effect.result))
   expect(wrongOnline._tag === "Failure" && wrongOnline.failure.code).toBe("SKILL_NOT_FOUND")
   f.failRequests(() => fail("ACCESS_DENIED", "Remote access revoked."))
   f.clearCalls()
-  const read = await f.run(readSkill(snapshot.snapshot_id, { database: "frontend" }))
+  const read = await f.run(readSkill(snapshot.snapshot_id, { library: "frontend" }))
   expect("content" in read && read.content).toBe(frontmatter + originalMain)
   for (const [selector, code] of [
     ["ops", "LIBRARY_SCOPE_MISMATCH"],
     ["missing", "DATABASE_NOT_FOUND"],
   ] as const) {
     const result = await f.run(
-      readSkill(snapshot.snapshot_id, { database: selector }).pipe(Effect.result),
+      readSkill(snapshot.snapshot_id, { library: selector }).pipe(Effect.result),
     )
     expect(result._tag === "Failure" && result.failure.code).toBe(code)
   }
@@ -320,7 +320,7 @@ for (const [change, code] of [
         },
       }
     })
-    const result = await f.run(openSkill(page, { database }).pipe(Effect.result))
+    const result = await f.run(openSkill(page, { library: currentLibrary.library_id }).pipe(Effect.result))
     expect(result._tag === "Failure" && result.failure.code).toBe(code)
     expect(f.bodyCalls()).toEqual([])
   })
@@ -336,7 +336,7 @@ test("stable identity resolution rechecks live metadata while preserving indepen
       : response,
   )
   const snapshot = await f.run(
-    openSkill(`skill://demo?library=${currentLibrary.library_id}`, { database }),
+    openSkill(`skill://demo?library=${currentLibrary.library_id}`, { library: currentLibrary.library_id }),
   )
   expect(snapshot.record).toMatchObject({
     name: "Renamed Skill",
@@ -378,7 +378,7 @@ for (const [change, code] of [
       }
     })
     const result = await f.run(
-      openSkill(`skill://demo?library=${currentLibrary.library_id}`, { database }).pipe(
+      openSkill(`skill://demo?library=${currentLibrary.library_id}`, { library: currentLibrary.library_id }).pipe(
         Effect.result,
       ),
     )

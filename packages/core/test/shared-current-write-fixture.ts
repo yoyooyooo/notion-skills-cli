@@ -703,6 +703,7 @@ export function currentWriteFixture(parent: string) {
                 before.version,
                 before.scope,
                 before.library_id,
+                before.library,
                 before.record_id,
                 property(before.intent).owner,
               ]) !==
@@ -710,6 +711,7 @@ export function currentWriteFixture(parent: string) {
                   after.version,
                   after.scope,
                   after.library_id,
+                  after.library,
                   after.record_id,
                   property(after.intent).owner,
                 ])
@@ -724,6 +726,7 @@ export function currentWriteFixture(parent: string) {
                 row.version,
                 row.scope,
                 row.library_id,
+                row.library,
                 row.record_id,
                 row.intent,
                 row.completion,

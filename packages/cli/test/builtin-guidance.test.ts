@@ -259,6 +259,8 @@ test("the published documentation allowlist contains only current guides", () =>
   expect(manifest.files.filter((path) => path.startsWith("docs/"))).toEqual([
     "docs/README.md",
     "docs/current-contract.md",
+    "docs/library-roots.md",
+    "docs/library-root-migration.md",
     "docs/usage.md",
     "docs/notion-mcp.md",
     "docs/source-sync.md",

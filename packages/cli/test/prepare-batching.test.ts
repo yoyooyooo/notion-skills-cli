@@ -123,7 +123,7 @@ test("public Node use batches current HTTPS metadata, persists derived directori
           "use",
           f.pageIds[0]!,
           "--library",
-          library.skills.database_id,
+          library.library_id,
           "--json",
           "--metrics",
           ...extra,

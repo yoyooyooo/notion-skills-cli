@@ -225,6 +225,7 @@ The package exports the Node ESM module `ntn-skills/sdk` and its TypeScript decl
 
 | Export | Result or behavior |
 | --- | --- |
+| `selectLibrary` | Capture the canonical root from the explicit selector or current local `default_library`; no Notion requests |
 | `resolveLibrary` | Read-only resolution of one root and all four actual table bindings, including an empty Library |
 | `listCatalog`, `listSkills` | Directory metadata and bounded list pages |
 | `readSkill`, `listSkill` | Selected file read or complete file directory |

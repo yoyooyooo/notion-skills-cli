@@ -19,7 +19,7 @@ const encode = (text: string) => new TextEncoder().encode(text)
 const member = `skill://target?library=${library.library_id}`
 const canonical = fileRef(member, "SKILL.md")
 const header = "---\nname: Owner\ndescription: Imported owner\n---\n"
-const base = ["--library", library.skills.database_id, "--skill-id", "owner"]
+const base = ["--library", library.library_id, "--skill-id", "owner"]
 async function setup() {
   const root = await realpath(await mkdtemp(join(tmpdir(), "ntn-members-cli-")))
   const input = join(root, "input")

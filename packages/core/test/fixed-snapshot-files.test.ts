@@ -452,7 +452,7 @@ describe("fixed snapshot selected files", () => {
         Effect.flip(
           targetSnapshot(
             selection.target,
-            { offline: true, database: selection.database },
+            { offline: true, library: selection.database },
             "target",
           ),
         ),

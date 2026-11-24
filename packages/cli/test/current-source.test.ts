@@ -144,7 +144,7 @@ test("current Source action routes expose the same bounded finite intent control
   ]) {
     const schema = property(commandSchema(command))
     const parameters = Array.isArray(schema.parameters) ? schema.parameters.map(property) : []
-    expect(parameters.find((parameter) => parameter.name === "entry")).toMatchObject({
+    expect(parameters.find((parameter) => parameter.name === "library")).toMatchObject({
       required: true,
       max_occurrences: 1,
     })
@@ -181,8 +181,8 @@ test("invalid Source command flags and identities fail before every remote handl
     f = currentWriteFixture(directory)
   const file = join(directory, "source.json")
   await writeFile(file, JSON.stringify(declaration))
-  const apply = ["apply", file, "--library", library.skills.database_id]
-  const refresh = ["refresh", "team-skills", "--library", library.skills.database_id]
+  const apply = ["apply", file, "--library", library.library_id]
+  const refresh = ["refresh", "team-skills", "--library", library.library_id]
   for (const base of [
     apply,
     refresh,
@@ -190,7 +190,7 @@ test("invalid Source command flags and identities fail before every remote handl
       name,
       "team-skills",
       "--library",
-      library.skills.database_id,
+      library.library_id,
     ]),
     ...["takeover", "restore-follow"].map((name) => [
       name,
@@ -201,7 +201,7 @@ test("invalid Source command flags and identities fail before every remote handl
       "--file-id",
       "main-alpha",
       "--library",
-      library.skills.database_id,
+      library.library_id,
     ]),
   ])
     for (const flags of [
@@ -225,8 +225,8 @@ test("invalid Source command flags and identities fail before every remote handl
   for (const args of [
     ["apply", file, "--library", "notion_page:old"],
     ["refresh", "team-skills", "--library", "skill://old"],
-    ["refresh", `source-${"a".repeat(64)}`, "--library", library.skills.database_id],
-    ["refresh", "snapshot-old", "--library", library.skills.database_id],
+    ["refresh", `source-${"a".repeat(64)}`, "--library", library.library_id],
+    ["refresh", "snapshot-old", "--library", library.library_id],
   ])
     await expect(
       f.run(Command.runWith(currentSourceCommand, { version: "0" })(args)),
@@ -252,7 +252,7 @@ test("malformed local apply input never enters the real Source coordinator", asy
         "apply",
         file,
         "--library",
-        library.skills.database_id,
+        library.library_id,
         "--dry-run",
       ]),
     ),
@@ -266,7 +266,7 @@ test("Source file commands reject incomplete identities, unsafe paths and unsupp
     f = currentWriteFixture(directory)
   const target = [
     "--library",
-    library.skills.database_id,
+    library.library_id,
     "--skill-id",
     "alpha",
     "--file-id",
@@ -292,7 +292,7 @@ test("Source file commands reject incomplete identities, unsafe paths and unsupp
       "team-skills",
       "skills/alpha/SKILL.md",
       "--library",
-      library.skills.database_id,
+      library.library_id,
       "--skill-id",
       "alpha",
     ],

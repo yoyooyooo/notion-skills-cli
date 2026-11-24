@@ -260,7 +260,7 @@ test("unsupported native structure fails public admission before remote work", a
       Command.runWith(currentImportCommand, { version: "test", renderErrors: false })([
         directory,
         "--library",
-        library.skills.database_id,
+        library.library_id,
         "--skill-id",
         "unsupported-native",
         "--native",
@@ -281,7 +281,7 @@ test("the public parser accepts repeatable native flags and rejects duplicates b
       Command.runWith(currentImportCommand, { version: "test", renderErrors: false })([
         directory,
         "--library",
-        library.skills.database_id,
+        library.library_id,
         "--skill-id",
         "native-skill",
         "--native",
@@ -609,7 +609,7 @@ test("the import machine schema exposes bounded integer HTTP controls and timeou
 test("current import rejects ambiguous supersede identities before input or remote acquisition", async () => {
   const directory = await root(),
     f = currentWriteFixture(directory)
-  const base = ["missing.md", "--library", library.skills.database_id, "--skill-id", "import-target"]
+  const base = ["missing.md", "--library", library.library_id, "--skill-id", "import-target"]
   for (const flags of [
     ["--supersede", "old-intent"],
     ["--supersede", "same-intent", "--operation", "same-intent"],
@@ -686,7 +686,7 @@ test("single portable import preserves origin before omitted explicit-empty and 
     const expected = document
       .replace(
         "[External](skill://outside/SKILL.md)",
-        "[External](skill://outside/SKILL.md?library=production)",
+        "[External](skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)",
       )
       .replace(
         "skill://outside/SKILL.md?snapshot=",

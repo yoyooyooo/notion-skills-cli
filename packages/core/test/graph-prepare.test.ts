@@ -543,9 +543,9 @@ describe("prepare through current shared snapshot transport", () => {
   test("warm logical IDs with shared prefixes retain their own complete observation", async () => {
     const f = nativeFixture({ width: 12 })
     const input = { roots: [skillPage], purpose: "use" as const }
-    const cold = await f.run(prepareGraph(input, { database: graphLibrary.skills.database_id }))
+    const cold = await f.run(prepareGraph(input, { library: graphLibrary.library_id }))
     f.clearCalls()
-    const warm = await f.run(prepareGraph(input, { database: graphLibrary.skills.database_id }))
+    const warm = await f.run(prepareGraph(input, { library: graphLibrary.library_id }))
     expect(warm.graph_lock).toEqual(cold.graph_lock)
     expect(f.calls).toHaveLength(0)
   })
@@ -555,7 +555,7 @@ describe("prepare through current shared snapshot transport", () => {
     const result = await f.run(
       prepareGraph(
         { roots: [skillPage, id(901)], purpose: "use" },
-        { database: graphLibrary.skills.database_id },
+        { library: graphLibrary.library_id },
       ),
     )
     expect(result.status).toBe("ready")
@@ -575,7 +575,7 @@ describe("prepare through current shared snapshot transport", () => {
     const result = await f.run(
       prepareGraph(
         { roots: [skillPage], purpose: "inspect" },
-        { database: graphLibrary.skills.database_id },
+        { library: graphLibrary.library_id },
       ),
     )
     expect(result.usage.prepared_nodes).toBe(1)
@@ -595,7 +595,7 @@ describe("prepare through current shared snapshot transport", () => {
     const result = await f.run(
       prepareGraph(
         { roots: [skillPage], purpose: "inspect" },
-        { database: graphLibrary.skills.database_id },
+        { library: graphLibrary.library_id },
       ),
     )
     const root = result.nodes.find((node) => node.state === "prepared")

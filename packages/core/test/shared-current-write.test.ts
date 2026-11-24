@@ -52,6 +52,30 @@ function input(
 }
 
 const sourcePage = id(90)
+
+test("same-root table replacement cannot hide an unfinished owner behind a new pending address", async () => {
+  const f = currentWriteFixture(parent)
+  const plan = await f.run(prepareCurrentSkillWrite(input()))
+  f.failNext({ kind: "skill-create", outcome: "absent" })
+  await expect(f.run(writeCurrentSkill(library, { plan, operation_id: "binding-frozen" }))).rejects.toBeDefined()
+  const retained = structuredClone([...f.json.entries()].filter(([key]) => key.startsWith("operations/current-write-pending/")))
+  expect(retained).toHaveLength(1)
+  const intent = { operation_id: "binding-frozen", input_sha256: plan.input_sha256, owner: { kind: "skill" as const, id: "example" } }
+  for (const changed of [
+    { ...library, skills: { ...library.skills, data_source_id: id(8000) } },
+    { ...library, files: { ...library.files, database_id: id(8001) } },
+    { ...library, sources: { ...library.sources, property_ids: { ...library.sources.property_ids, Contributions: "replaced" } } },
+  ]) {
+    f.clearCalls()
+    await expect(f.run(withCurrentOperation(changed, {
+      intent, ownerPageId: null, mode: "resume",
+      run: () => Effect.die("A changed Library must not enter the writer"),
+      verify: () => Effect.void,
+    }))).rejects.toMatchObject({ code: "CURRENT_OPERATION_PENDING" })
+    expect(f.calls).toEqual([])
+    expect([...f.json.entries()].filter(([key]) => key.startsWith("operations/current-write-pending/"))).toEqual(retained)
+  }
+})
 const sourceFiles = [
   { path: "SKILL.md", file_id: "source-main", bytes: testBytes("# Source main\n") },
   {
