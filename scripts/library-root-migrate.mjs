@@ -281,7 +281,7 @@ export function collectInventory({ entry, root, stores = [], objects = [] }) {
   for (const page of nativePages) walk(page)
   const roots = [
     ...new Set([
-      ...objects.map(resolve),
+      ...objects.map((directory) => resolve(directory)),
       ...stores.map((store) => join(resolve(store), "objects")),
     ]),
   ]

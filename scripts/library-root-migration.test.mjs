@@ -624,9 +624,25 @@ test("actual CLI inventory, plan and guarded apply preserve existing rows throug
   )
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "library-root-migration-")))
   const bin = join(directory, "bin"),
-    store = join(directory, "store")
+    store = join(directory, "store"),
+    supplementalObjects = join(directory, "supplemental-objects")
   mkdirSync(bin)
   mkdirSync(store)
+  mkdirSync(supplementalObjects)
+  const supplementalBytes = Buffer.from("Verified supplemental content without skill references.\n")
+  const supplementalHash = digest(supplementalBytes)
+  writeFileSync(join(supplementalObjects, supplementalHash), supplementalBytes, { mode: 0o600 })
+  f.inventory.tables.files.rows.push(
+    row(id(32), f.legacy.files.data_source_id, {
+      fid: text("fid", "supplemental-file"),
+      path: text("path", "references/supplemental.md"),
+      content: text(
+        "content",
+        canonical({ kind: "resource", sha256: supplementalHash, bytes: supplementalBytes.length }),
+      ),
+      skill: relation("skill", [f.skillPage]),
+    }),
+  )
   const state = join(directory, "remote.json"),
     calls = join(directory, "calls.jsonl")
   writeFileSync(state, JSON.stringify(f.inventory), { mode: 0o600 })
@@ -673,11 +689,22 @@ test("actual CLI inventory, plan and guarded apply preserve existing rows throug
     f.root,
     "--store",
     store,
+    "--objects-root",
+    supplementalObjects,
     "--output",
     inventoryPath,
   ])
   assert.equal(result.status, 0, result.stderr)
   assert.equal(result.stdout.includes("fake-never-live"), false)
+  const inspected = JSON.parse(readFileSync(inventoryPath, "utf8"))
+  assert.deepEqual(inspected.content_audit, [
+    {
+      sha256: supplementalHash,
+      bytes: supplementalBytes.length,
+      references: [],
+      location: join(supplementalObjects, supplementalHash),
+    },
+  ])
   result = invoke(["plan", "--inventory", inventoryPath, "--output", planPath])
   assert.equal(result.status, 0, result.stderr)
   const plan = JSON.parse(readFileSync(planPath, "utf8"))
