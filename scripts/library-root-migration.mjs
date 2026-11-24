@@ -858,8 +858,21 @@ export function verifyInventoryClosure(original, observed, plan, stage = "start"
       id: patch.id,
     })
     states.push(hash === patch.after_sha256)
-    if (patch.kind === "database") target.description = structuredClone(patch.before.description)
-    else if (patch.kind === "block")
+    if (patch.kind === "database") {
+      // Notion reflects the Skills database description into its registered
+      // data source. Only the originally observed, exact paired mirror is derived.
+      const originalMirror = original.tables.skills.data_source.description
+      const mirror = restored.tables.skills.data_source
+      if (
+        patch.id === plan.descriptor.skills.database_id &&
+        Array.isArray(originalMirror) &&
+        Array.isArray(mirror.description) &&
+        digest({ description: writableRich(originalMirror) }) === patch.before_sha256 &&
+        digest({ description: writableRich(mirror.description) }) === hash
+      )
+        mirror.description = structuredClone(patch.before.description)
+      target.description = structuredClone(patch.before.description)
+    } else if (patch.kind === "block")
       Object.assign(target[target.type], structuredClone(patch.before[target.type]))
     else
       for (const [id, value] of Object.entries(patch.before.properties))

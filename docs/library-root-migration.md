@@ -154,6 +154,11 @@ owner changes fail as `INVENTORY_DRIFT`. Notion's generated timestamps, actor
 metadata, object display URLs and rich-text display fields are excluded from
 this comparison; row parents, archived state and relation schema remain inputs.
 Local snapshot history and object-cache locations are not current identity.
+Notion mirrors the Skills database description into its registered data source.
+The comparison accepts that mirror only when it originally matched the exact
+descriptor before value and now matches the same observed descriptor value.
+Other data-source description edits still fail. The Skills database remains the
+sole descriptor authority.
 
 The tool compares each target's current value with the planned before/after values, records intent
 durably, sends one idempotent PATCH, then reads the result back. It creates no

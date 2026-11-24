@@ -619,6 +619,9 @@ test("descriptor commit requires every earlier patch and never accepts a partial
 
 test("actual CLI inventory, plan and guarded apply preserve existing rows through a fake ntn boundary", () => {
   const f = fixture()
+  f.inventory.tables.skills.data_source.description = structuredClone(
+    f.inventory.tables.skills.database.description,
+  )
   Object.assign(f.inventory.tables.skills.data_source.properties.Origin, {
     type: "relation",
     relation: {
@@ -693,7 +696,7 @@ test("actual CLI inventory, plan and guarded apply preserve existing rows throug
     'for(const t of Object.values(db.tables)){if(path==="/v1/databases/"+t.database.id)result=t.database;if(path==="/v1/data_sources/"+t.data_source.id)result=t.data_source;if(path==="/v1/data_sources/"+t.data_source.id+"/query")result=list(t.rows.filter(r=>matches(r,input.filter)));}\n' +
     'const r=rows.find(r=>path==="/v1/pages/"+r.id);if(r)result=r;\n' +
     'for(const b of db.native_blocks){if(path==="/v1/blocks/"+b.id)result=b;}const children=/^\\/v1\\/blocks\\/([^/]+)\\/children$/.exec(path);if(children&&children[1]!==db.root.id)result=list(db.native_blocks.filter(b=>Object.values(b.parent??{}).includes(children[1])));\n' +
-    'if(method==="PATCH"){if(input.description)result.description=input.description;if(input.properties)for(const [id,p]of Object.entries(input.properties)){const target=value(result,id);Object.assign(target,p);}if(result.type&&input[result.type])Object.assign(result[result.type],input[result.type]);result.last_edited_time="2027-01-01T00:00:00.000Z";if(db.late_native){const target=db.native_blocks.find(b=>b.id===db.late_native.id);target.paragraph.rich_text=db.late_native.rich_text;delete db.late_native;}fs.writeFileSync(state,JSON.stringify(db));}\n' +
+    'if(method==="PATCH"){if(input.description){result.description=input.description;const table=Object.values(db.tables).find(t=>t.database.id===result.id);if(table)table.data_source.description=input.description;}if(input.properties)for(const [id,p]of Object.entries(input.properties)){const target=value(result,id);Object.assign(target,p);}if(result.type&&input[result.type])Object.assign(result[result.type],input[result.type]);result.last_edited_time="2027-01-01T00:00:00.000Z";if(db.late_native){const target=db.native_blocks.find(b=>b.id===db.late_native.id);target.paragraph.rich_text=db.late_native.rich_text;delete db.late_native;}fs.writeFileSync(state,JSON.stringify(db));}\n' +
     "if(!result)process.exit(2);console.log(JSON.stringify(result));\n"
   writeFileSync(join(bin, "ntn"), fixtureSource, { mode: 0o700 })
   execFileSync("python3", [
@@ -798,11 +801,16 @@ test("actual CLI inventory, plan and guarded apply preserve existing rows throug
   lateSchema.tables.skills.data_source.properties.Origin.relation.data_source_id = id(500)
   const lateOwner = structuredClone(pristine)
   lateOwner.tables.files.rows[0].parent.data_source_id = id(501)
+  const earlyMirror = structuredClone(pristine)
+  earlyMirror.tables.skills.data_source.description = structuredClone(
+    plan.patches.at(-1).after.description,
+  )
   for (const { changed, code } of [
     { changed: lateSkill, code: "INVENTORY_DRIFT" },
     { changed: lateNative, code: "INVENTORY_DRIFT" },
     { changed: lateSchema, code: "INVENTORY_DRIFT" },
     { changed: lateOwner, code: "ROW_OWNER_MISMATCH" },
+    { changed: earlyMirror, code: "INVENTORY_DRIFT" },
   ]) {
     writeFileSync(state, JSON.stringify(changed))
     result = invoke([...baseArgs, "--ack-plan", plan.plan_sha256])
@@ -851,6 +859,13 @@ test("actual CLI inventory, plan and guarded apply preserve existing rows throug
     .filter((item) => item.method === "PATCH")
   assert.equal(writes.at(-1).path, "/v1/databases/" + f.legacy.skills.database_id)
   const count = writes.length
+  const unrelatedMirror = structuredClone(actual)
+  unrelatedMirror.tables.skills.data_source.description = rich("An unreviewed description edit.")
+  writeFileSync(state, JSON.stringify(unrelatedMirror))
+  result = invoke([...baseArgs, "--ack-plan", plan.plan_sha256])
+  assert.equal(result.status, 1, result.stdout)
+  assert.match(result.stderr, /INVENTORY_DRIFT/u)
+  writeFileSync(state, JSON.stringify(actual))
   result = invoke([...baseArgs, "--ack-plan", plan.plan_sha256])
   assert.equal(result.status, 0, result.stderr)
   assert.equal(
