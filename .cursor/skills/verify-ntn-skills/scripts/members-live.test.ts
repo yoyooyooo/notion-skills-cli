@@ -210,7 +210,7 @@ test("a public action cannot escape the retained test library", async () => {
   })
   await expect(
     verify.execute("foreign", ["read", ownerId, "--library", currentId(999)]),
-  ).rejects.toThrow("exact library")
+  ).rejects.toThrow("exact Library root")
   expect(calls).toBe(0)
 })
 
