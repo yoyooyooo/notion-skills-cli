@@ -189,7 +189,7 @@ test("foreign relationships require exact copy authorization and only batch-owne
     f.run(compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest)))),
   ).rejects.toMatchObject({ code: "PORTABLE_RELATION_SCOPE" })
   const plan = await f.run(
-    compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest, "production"))),
+    compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest, "884155c9-d3d6-57d3-8d2b-735ef1d41fec"))),
   )
   expect(plan.items[0]?.relations?.members).toEqual([`skill://b?library=${library.library_id}`])
   expect(plan.rewrites.map((entry) => entry.before)).toEqual([
@@ -218,7 +218,7 @@ test("foreign relationships require exact copy authorization and only batch-owne
     f.run(
       compileCurrentImportBatch(
         library,
-        await f.run(loadCurrentImportBatch(manifest, "production")),
+        await f.run(loadCurrentImportBatch(manifest, "884155c9-d3d6-57d3-8d2b-735ef1d41fec")),
       ),
     ),
   ).rejects.toMatchObject({ code: "PORTABLE_RELATION_SCOPE" })
@@ -257,7 +257,7 @@ test("portable origin binds external short refs before batch Members inference",
   const result = await f.run(
     compileCurrentImportBatch(
       library,
-      await f.run(loadCurrentImportBatch(manifest, "production")),
+      await f.run(loadCurrentImportBatch(manifest, "884155c9-d3d6-57d3-8d2b-735ef1d41fec")),
     ).pipe(Effect.result),
   )
   expect(result._tag).toBe("Success")
@@ -297,7 +297,7 @@ test("portable batch short refs keep origin unless exact current copy mapping is
     const result = await f.run(
       compileCurrentImportBatch(
         library,
-        await f.run(loadCurrentImportBatch(manifest, authorized ? "production" : undefined)),
+        await f.run(loadCurrentImportBatch(manifest, authorized ? "884155c9-d3d6-57d3-8d2b-735ef1d41fec" : undefined)),
       ).pipe(Effect.result),
     )
     expect(result._tag).toBe("Success")
@@ -306,7 +306,7 @@ test("portable batch short refs keep origin unless exact current copy mapping is
     const derived = await f.run(thawCurrentImportSkill(item.body))
     const text = new TextDecoder().decode(derived.files[0]!.bytes)
     expect(text).toContain(
-      `[B](skill://b/SKILL.md?library=${authorized ? library.library_id : "production"})`,
+      `[B](skill://b/SKILL.md?library=${authorized ? library.library_id : "884155c9-d3d6-57d3-8d2b-735ef1d41fec"})`,
     )
     expect(text).toContain("[Missing](skill://b/missing.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)")
     expect(text).toContain(`[Fixed](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=${pin})`)
@@ -348,7 +348,7 @@ test("portable batch short refs keep origin unless exact current copy mapping is
   }
   await unlink(metadata)
   const local = await f.run(
-    compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest, "production"))),
+    compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest, "884155c9-d3d6-57d3-8d2b-735ef1d41fec"))),
   )
   const localItem = local.items.find((item) => item.skill_id === "a")!
   const localBody = await f.run(thawCurrentImportSkill(localItem.body))

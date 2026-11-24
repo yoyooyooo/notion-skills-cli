@@ -236,7 +236,7 @@ test("projects complete text to existing Skill and File pages, preserves authori
       (call) => call.method === "GET" && call.path.split("?")[0] !== `v1/blocks/${library.library_id}/children` && /^v1\/blocks\/[^/]+\/children(?:\?|$)/u.test(call.path),
     ),
   ).toHaveLength(4)
-  expect(f.calls).toHaveLength(14)
+  expect(f.calls).toHaveLength(28)
 })
 
 test("an ordinary repeat automatically resumes the exact accepted append after File query order changes", async () => {

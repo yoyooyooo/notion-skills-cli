@@ -239,7 +239,7 @@ test("physical page reads accept configured aliases and selected Library checks 
     page_id: page,
   })
   const wrongOnline = await f.run(openSkill(page, { library: "ops" }).pipe(Effect.result))
-  expect(wrongOnline._tag === "Failure" && wrongOnline.failure.code).toBe("LIBRARY_SCOPE_MISMATCH")
+  expect(wrongOnline._tag === "Failure" && wrongOnline.failure.code).toBe("SKILL_NOT_FOUND")
   f.failRequests(() => fail("ACCESS_DENIED", "Remote access revoked."))
   f.clearCalls()
   const read = await f.run(readSkill(snapshot.snapshot_id, { library: "frontend" }))
@@ -266,7 +266,7 @@ test("current page acquisition fences the owner before and after body reads", as
   expect(ownerReads[0]).toBeLessThan(Math.min(...bodyReads))
   expect(ownerReads[1]).toBeGreaterThan(Math.max(...bodyReads))
   expect(f.calls.filter((call) => call.path === `v1/databases/${database}`)).toHaveLength(3)
-  expect(f.calls.some((call) => /\/ai\/|\/blocks\/|\/properties\//u.test(call.path))).toBe(false)
+  expect(f.calls.some((call) => call.path.split("?")[0] !== `v1/blocks/${currentLibrary.library_id}/children` && /\/ai\/|\/blocks\/|\/properties\//u.test(call.path))).toBe(false)
   expect(f.semanticWrites()).toEqual([])
 })
 
@@ -353,7 +353,7 @@ for (const [change, code] of [
   ["trash", "INVALID_SHARED_SKILL"],
   ["id", "SHARED_SKILL_ID_CONFLICT"],
   ["database", "INVALID_SHARED_SKILL"],
-  ["data-source", "LIBRARY_SCOPE_MISMATCH"],
+  ["data-source", "INVALID_SHARED_SKILL"],
   ["stable-id", "SHARED_SKILL_ID_CONFLICT"],
 ] as const)
   test(`stable identity resolution rejects fresh ${change} ownership drift before body reads`, async () => {

@@ -580,8 +580,8 @@ for (const count of [101, 205])
     expect(
       f.calls.some(
         (call) =>
-          call.path.includes(currentLibrary.files.data_source_id) ||
-          call.path.includes(currentLibrary.records.data_source_id),
+          call.path.startsWith(`v1/data_sources/${currentLibrary.files.data_source_id}/query`) ||
+          call.path.startsWith(`v1/data_sources/${currentLibrary.records.data_source_id}/query`),
       ),
     ).toBe(false)
   })

@@ -209,7 +209,7 @@ test("canonical Skill identities survive SQLite restart and retiring one Library
     expect(rows.fences).toEqual([
       { identity: productionSnapshot.record.id, generation: 2, retired_through: 0 },
       { identity: testSnapshot.record.id, generation: 2, retired_through: 2 },
-    ])
+    ].sort((a, b) => a.identity.localeCompare(b.identity)))
     expect(rows.snapshots).toEqual(persisted.snapshots)
   } finally {
     if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))

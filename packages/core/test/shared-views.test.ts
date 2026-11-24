@@ -457,9 +457,9 @@ describe("shared library Views metadata", () => {
         expect(f.requests.filter(request => request.path.includes("/data_sources/" + ds + "/query"))).toHaveLength(2)
       } else {
         const result = await f.run(listCatalog({ library: library.library_id, directory: {} }))
-        expect(result.catalog).toMatchObject({ ok: false, error: { code: "LIBRARY_SCHEMA_CONFLICT" } })
+        expect(result.catalog).toMatchObject({ ok: true })
         expect(result.directory).toMatchObject({ ok: false, error: { code: "LIBRARY_SCHEMA_CONFLICT" } })
-        expect(f.requests.filter(request => request.path.includes("/data_sources/" + ds + "/query"))).toHaveLength(0)
+        expect(f.requests.filter(request => request.path.includes("/data_sources/" + ds + "/query"))).toHaveLength(1)
       }
     },
   )

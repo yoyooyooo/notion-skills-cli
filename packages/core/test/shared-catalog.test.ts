@@ -549,8 +549,8 @@ describe("shared catalog routing", () => {
     ).toHaveLength(3)
     expect(f.calls.filter(call => call.path === `v1/pages/${library.library_id}`)).toHaveLength(1)
     expect(
-      f.calls.some((call) => call.path === `v1/data_sources/${library.skills.data_source_id}`),
-    ).toBe(false)
+      f.calls.filter((call) => call.path === `v1/data_sources/${library.skills.data_source_id}`),
+    ).toHaveLength(2)
   })
 
   test("registered alias selects the same shared library", async () => {

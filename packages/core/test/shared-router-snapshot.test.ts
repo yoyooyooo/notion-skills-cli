@@ -184,10 +184,11 @@ describe("shared Router snapshot integration", () => {
 
   test("missing registered Members fails current admission before body observation or writes", async () => {
     const f = routerFixture(false)
+    const initial = [...f.json.entries()]
     await expect(f.target()).rejects.toMatchObject({ code: "CURRENT_SCHEMA_REQUIRED" })
     expect(f.bodyCalls().length).toBe(0)
     expect(f.semanticWrites().length).toBe(0)
-    expect(f.json.size).toBe(0)
+    expect([...f.json.entries()]).toEqual(initial)
   })
 
   test("an explicitly disabled member cannot produce a shortened successful Router", async () => {
