@@ -9,8 +9,17 @@ import {
   type ReadPolicyOptions,
 } from "./cache.ts"
 import { fail, property, SkillsError } from "./model.ts"
-import { SharedLibrarySchema, type SharedLibrary } from "./shared-library-model.ts"
-import { libraryFromDatabase, LIBRARY_MARKER, loadSharedLibrary } from "./shared-library.ts"
+import {
+  preservesSharedLibraryBindings,
+  SharedLibrarySchema,
+  type SharedLibrary,
+} from "./shared-library-model.ts"
+import {
+  assertSharedLibraryBinding,
+  libraryFromDatabase,
+  LIBRARY_MARKER,
+  loadSharedLibrary,
+} from "./shared-library.ts"
 import { pageId } from "./ref.ts"
 import { withLocalLocks } from "./local-locks.ts"
 import {
@@ -56,6 +65,7 @@ export const SharedProfilePendingSchema = Schema.Struct({
   version: Schema.Literal(2),
   scope: Schema.String,
   library_id: Schema.String,
+  library: SharedLibrarySchema,
   profile_id: Schema.String,
   target_page_id: Schema.NullOr(Schema.String),
   plan: SharedProfilePlanSchema,
@@ -574,12 +584,25 @@ function pendingProfile(library: SharedLibrary, scope: string, profileId: string
         ),
       )
     const key = `${prefix}pending.json`
-    const saved = yield* store.readJson(key, SharedProfilePendingSchema)
-    if (saved === undefined) return undefined
+    const raw = yield* store.readJson(key, Schema.Unknown)
+    if (raw === undefined) return undefined
+    if (property(raw).library === undefined)
+      return yield* Effect.fail(
+        fail(
+          "STATE_MIGRATION_REQUIRED",
+          "The unfinished Profile write has no frozen Library binding. Retain its journal and reconcile the original operation before continuing.",
+          { profile_id: profileId, pending_journal: key },
+        ),
+      )
+    const saved = yield* Effect.try({
+      try: () => strict(SharedProfilePendingSchema, raw),
+      catch: () => fail("STATE_CORRUPT", "The pending Profile write has an invalid frozen intent."),
+    })
     const plan = yield* validateSharedProfilePlan(library, saved.plan)
     if (
       saved.scope !== scope ||
       saved.library_id !== library.library_id ||
+      saved.library.library_id !== saved.library_id ||
       saved.profile_id !== profileId ||
       plan.payload.profile_id !== profileId ||
       (saved.target_page_id !== null && pageId(saved.target_page_id) !== saved.target_page_id) ||
@@ -589,6 +612,14 @@ function pendingProfile(library: SharedLibrary, scope: string, profileId: string
         fail(
           "STATE_CORRUPT",
           "The pending Profile write has a different scope or target identity.",
+        ),
+      )
+    if (!preservesSharedLibraryBindings(saved.library, library))
+      return yield* Effect.fail(
+        fail(
+          "LIBRARY_BINDING_CHANGED",
+          "The unfinished Profile write belongs to its original Library bindings and cannot reconcile through replacement tables.",
+          { profile_id: profileId, pending_journal: key },
         ),
       )
     return { key, plan, target_page_id: saved.target_page_id }
@@ -677,7 +708,7 @@ export function saveSharedProfile(
     const store = yield* Store
     return yield* withLocalLocks(
       store.root,
-      [`profile:${library.records.data_source_id}:${requested.payload.profile_id}`],
+      [`profile:${library.library_id}:${requested.payload.profile_id}`],
       Effect.gen(function* () {
         const pending = yield* pendingProfile(library, scope, requested.payload.profile_id)
         if (
@@ -692,6 +723,7 @@ export function saveSharedProfile(
             ),
           )
         const plan = pending?.plan ?? requested
+        yield* assertSharedLibraryBinding(library)
         if (pending !== undefined || mode === "reconcile")
           return yield* confirmCurrent(
             library,
@@ -745,6 +777,7 @@ export function saveSharedProfile(
           version: 2,
           scope,
           library_id: library.library_id,
+          library: structuredClone(library),
           profile_id: plan.payload.profile_id,
           target_page_id: targetPageId,
           plan,
