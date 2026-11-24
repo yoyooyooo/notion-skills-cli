@@ -1,3 +1,4 @@
+import { currentLibrary } from "./shared-current-fixture.ts"
 import { expect, test } from "@effect/vitest"
 import { Effect } from "effect"
 import { spawn } from "node:child_process"
@@ -12,7 +13,8 @@ const key = "operations/current-write-pending/" + "a".repeat(64) + "/pending.jso
 const pending = {
   completion: "ready",
   owner_page_id: null,
-  version: 1,
+  version: 2,
+  library: currentLibrary,
   scope: "b".repeat(64),
   library_id: "4890000a-9086-5795-86a2-af110f6ca723",
   record_id: "operation-current-" + "c".repeat(64),

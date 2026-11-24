@@ -16,6 +16,8 @@ You can then open its page in Notion and read the same instructions through the
 CLI. [pi-context-broker](https://github.com/yoyooyooo/pi-context-broker/blob/next/README.md)
 adds optional Pi integration.
 
+[Library roots and selection](docs/library-roots.md) · [Existing Library migration](docs/library-root-migration.md)
+
 ## Install
 
 Use Node.js 22.23.5+ in 22.x, 24.22.3+ in 24.x, or 26.13.1+ in 26.x.
@@ -63,47 +65,61 @@ page. A saved `config.token` takes precedence over the environment.
 To save a token instead, pipe it from a trusted secret source into
 `ctl config set-token --stdin`. See [credential setup](skills/notion/ntn-skills-maintain/references/setup.md#credentials).
 
-### 2. Create the library and keep its entry
+### 2. Create the Library root
 
-Replace the placeholder with that empty page's actual ID or URL:
+Pass an authorized container page ID or URL:
 
 ```sh
 parent_page='PASTE_AUTHORIZED_PARENT_PAGE_ID_OR_URL'
 ntn-skills ctl library init --parent "$parent_page"
 ```
 
-The command creates Skills, Files, Records, and Sources under the parent page.
-Copy `library.skills.database_id` from its JSON result into `library_entry`:
+Init creates a dedicated root page and places Skills, Files, Records, and Sources
+directly beneath it. Copy `library.library_id` and `root_url` from the result.
+The Library ID is that root page's UUID:
 
 ```sh
-library_entry='PASTE_LIBRARY_SKILLS_DATABASE_ID'
-ntn-skills ctl library init --entry "$library_entry"
+library_id='PASTE_LIBRARY_ROOT_PAGE_ID'
+ntn-skills ctl library init --library "$library_id"
 ```
 
-This second command validates the registered tables. Keep using this one Skills
-entry with `--entry` for management and `--database` for reading. You do not need
-to configure the other three table IDs. An existing library can start with
-`init --entry` and skip creation.
+This second command validates the existing root and all four table bindings
+without writing. Use the same `--library` selector for management, import, and
+consumption. The selector accepts a root ID, its Notion URL, or an exact registered
+Library alias. The CLI resolves aliases before binding the operation.
 
-Successful initialization means the library structure is ready. Its `next.argv`
-is a read-only `list`; an empty result is expected before you add your first
-Skill. Init does not copy packaged workflows, create business content, save a
-local default, or configure Pi.
+The root can also contain documentation, ordinary subpages, and unrelated helper
+databases. Rename or move the whole root without changing its identity. Keep the
+four registered tables as direct children; copying the root creates a different
+identity and does not make its copied descriptor valid.
 
-In a new terminal or Agent session, set `library_entry` to this same saved ID
-and pass it to the commands below. An optional `default_database` configuration
-only supplies a consumption default; management still needs explicit `--entry`.
+Successful initialization means the structure is ready. Its `next.argv` is a
+read-only list; an empty result is expected before the first Skill. Init does not
+save a default, seed content, register Sources, or configure Pi. A later fresh
+`init --parent` creates another root. Reuse an existing Library with `--library`.
 
-For import experiments, keep a separate library created with `init`. Pass its
-Skills entry explicitly on every test command. No environment variable selects
-the import target. See [reuse a dedicated test library](docs/shared-authoring.md#reuse-a-dedicated-test-library)
-for isolated local directories and repeatable fixture imports.
+An optional consumption default is shared by the CLI and SDK:
 
-If initialization stops, keep its parent, error, operation ID, and local state.
-First reconcile without remote writes; add `--resume` only to continue that
-original initialization's confirmed unfinished steps. The
-[initialization recovery guide](skills/notion/ntn-skills-maintain/references/setup.md#interrupted-initialization)
-explains both commands and the unknown results that still need reconciliation.
+```sh
+ntn-skills ctl config set default_library "$library_id"
+ntn-skills list --refresh
+```
+
+Writers still require an explicit `--library`. A complete `skill://` reference
+selects its own Library; an explicit conflicting `--library` is rejected. Changing
+the default does not move an already accepted Agent turn or its fixed selections.
+See [Library roots and selection](docs/library-roots.md) for the complete rules.
+
+For experiments, create a separate test Library with init and pass its root on
+every test import. Keep local configuration, cache, state, and request-scheduler
+directories isolated. [The test-library guide](docs/shared-authoring.md#reuse-a-dedicated-test-library)
+covers repeatable fixtures and conservative Members discovery.
+
+If initialization stops, keep the original container, operation ID, and local
+state. Reconcile with `--parent ... --operation ...`; add `--resume` only to
+continue that original operation. Unknown root or table CREATE is never repeated
+because one read cannot find it. [Initialization recovery](skills/notion/ntn-skills-maintain/references/setup.md#interrupted-initialization)
+explains the retained state and exact next command.
 
 ### 3. Create your first Skill
 
@@ -127,7 +143,7 @@ When reviewing a decision:
 SKILL
 
 ntn-skills ctl library skill create "$skill_dir" \
-	--entry "$library_entry" --skill-id decision-review
+	--library "$library_id" --skill-id decision-review
 ```
 
 Successful creation reports `status: "created"` and `state: "ready"`.
@@ -138,7 +154,7 @@ retain their exact resource originals. The CLI supplies the internal fields.
 ### 4. Find and read it
 
 ```sh
-ntn-skills list --database "$library_entry" \
+ntn-skills list --library "$library_id" \
 	--query decision-review --refresh --json
 ```
 
@@ -146,7 +162,7 @@ Find the record in `records` and copy its actual `ref`:
 
 ```sh
 skill_ref='PASTE_REF_FROM_LIST'
-ntn-skills read "$skill_ref" --database "$library_entry" --refresh --json
+ntn-skills read "$skill_ref" --library "$library_id" --refresh --json
 ```
 
 Check that `path` is `SKILL.md` and `content` contains the complete instructions.
@@ -154,7 +170,7 @@ You can edit the native page in Notion and read it again with `--refresh`.
 Native edits need no projection step.
 
 `read` inspects a workflow. When you want an Agent to apply it, use
-`ntn-skills use "$skill_ref" --database "$library_entry" --json` to load its
+`ntn-skills use "$skill_ref" --library "$library_id" --json` to load its
 required workflows too. Ordinary discovery, reading, use, and export make no
 semantic writes to Notion.
 
@@ -179,10 +195,9 @@ See [the library contract](docs/current-contract.md) for fields and ownership.
 
 Use `skill://architect` to refer to a stable Skill ID in the containing document's
 Library. Use `skill://architect/references/design.md` for one file, or add
-`?library=LIBRARY_ID` to name another Library. The Library ID comes from the
-library descriptor returned by `ctl library init` or `inspect`; it is not the
-Skills table's Notion ID. Display names and aliases never select a Skill.
-At a CLI entry, a short ref needs `--database ENTRY` or `default_database`.
+`?library=LIBRARY_ID` to name another Library. The Library ID is the root page UUID returned as `library.library_id` by
+`ctl library init` or `inspect --library ROOT`. Display names and aliases never select a Skill.
+At a CLI entry, a short ref needs `--library LIBRARY_ID` or `default_library`.
 Inside a document, its own Library supplies the context even when the machine's
 default changes. Keep complete refs returned by tools for later reads.
 When copying a portable input to another Library, import qualifies short refs

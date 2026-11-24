@@ -57,7 +57,7 @@ export function prepareCurrentProjectionOptions(input: {
     /^notion_page:/iu.test(input.library) ||
     (/^[a-z][a-z\d+.-]*:\/\//iu.test(input.library) && !/^https?:\/\//iu.test(input.library))
   )
-    throw fail("INVALID_ARGUMENT", "Projection requires a current Skills database entry.")
+    throw fail("INVALID_ARGUMENT", "Projection requires an explicit current Library root.")
   if (input.daily && (input.operation !== undefined || input.resume || input.cancel))
     throw fail(
       "INVALID_ARGUMENT",

@@ -98,7 +98,7 @@ export const currentMembersPlanCommand = defineCommand(
   "members-plan",
   {
     input: Argument.String("input"),
-    library: requiredSingleton("library", "Exact current Skills database entry"),
+    library: requiredSingleton("library", "Exact current Library root page"),
     skillId: requiredSingleton("skill-id", "Exact stable identity of the intended import"),
     bindings: singleton(
       "bindings",

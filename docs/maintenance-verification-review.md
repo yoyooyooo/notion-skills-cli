@@ -190,7 +190,7 @@ or fixture results alone do not mark it passed.
 3. Execute exactly one public product command:
 
    ```sh
-   ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry LIBRARY_ENTRY
+   ntn-skills ctl library projection SKILL_PAGE_ID --restore --library LIBRARY_ID
    ```
 
    Include the original custom filters and required budgets in that same command

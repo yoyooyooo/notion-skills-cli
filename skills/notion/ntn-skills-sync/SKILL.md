@@ -21,7 +21,7 @@ chooses the write target nor authorizes writes.
 
 If the user explicitly selected a Notion workflow, retain its exact source/ref.
 Read inspects; apply it via Pi `notion_use(ref)` or CLI `ntn-skills use REF
---database ENTRY --json` with Requires unless already prepared for this task.
+--library LIBRARY_ID --json` with Requires unless already prepared for this task.
 Report unavailable adoption or failed/incomplete discovery; never substitute a
 package workflow. Inspect the edited target without activating it. Read its
 references with `ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF`.
@@ -37,10 +37,10 @@ Use the complete {version:1,definition,contributions} input in
 [Source input](references/synchronization.md#a-source-management-request):
 
 ```sh
-ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --dry-run
-ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --operation OPERATION_ID
-ntn-skills ctl library source refresh SOURCE_ID --entry ENTRY
-ntn-skills ctl library projection --daily --entry ENTRY
+ntn-skills ctl library source apply INPUT_JSON --library LIBRARY_ID --dry-run
+ntn-skills ctl library source apply INPUT_JSON --library LIBRARY_ID --operation OPERATION_ID
+ntn-skills ctl library source refresh SOURCE_ID --library LIBRARY_ID
+ntn-skills ctl library projection --daily --library LIBRARY_ID
 ```
 
 Use regular Git content from GitHub or a credential-free private HTTP(S) Git
@@ -69,7 +69,7 @@ Projection failure preserves consumption. See
 Keep the declaration outside Notion. Reapply it to rebuild a missing Source or
 Skill; upstream content does not reconstruct human checkbox or relation choices.
 For an existing completed Skill moved to Trash, prefer the original exact page:
-`ctl library projection PAGE_ID --restore --entry ENTRY`. It restores the same
+`ctl library projection PAGE_ID --restore --library LIBRARY_ID`. It restores the same
 owner and current reading projection, preserving identity and human choices.
 The terminal success receipt is scope:skill/status:complete with a complete projection
 and restoration.status restored or unchanged. Use read-only review after completion;
@@ -86,8 +86,8 @@ Notion originals retain native authority and use complete exports as recovery in
 Use one invocation for the explicit Source set:
 
 ```sh
-ntn-skills ctl library source check --entry ENTRY --source SOURCE_A --source SOURCE_B
-ntn-skills ctl library source sync --entry ENTRY --source SOURCE_A --source SOURCE_B --manager MANAGER_ID --execution-id PACKAGE_DIGEST --mode changed --projection none
+ntn-skills ctl library source check --library LIBRARY_ID --source SOURCE_A --source SOURCE_B
+ntn-skills ctl library source sync --library LIBRARY_ID --source SOURCE_A --source SOURCE_B --manager MANAGER_ID --execution-id PACKAGE_DIGEST --mode changed --projection none
 ```
 
 Check observes current declarations and exact refs without publishing. Sync freezes
@@ -106,15 +106,15 @@ Inspect the report before retrying blocked work. See
 
 ## File authority and lifecycle
 
-Inspect `ctl library files PAGE_ID --entry ENTRY` to obtain exact Skill/File IDs.
+Inspect `ctl library files PAGE_ID --library LIBRARY_ID` to obtain exact Skill/File IDs.
 Name the original Source path, including its member root:
 
 ```sh
-ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID --as resource
-ntn-skills ctl library source restore-follow SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID
-ntn-skills ctl library source disable SOURCE_ID --entry ENTRY
-ntn-skills ctl library source enable SOURCE_ID --entry ENTRY
-ntn-skills ctl library source remove SOURCE_ID --entry ENTRY --dry-run
+ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --library LIBRARY_ID --skill-id SKILL_ID --file-id FILE_ID --as resource
+ntn-skills ctl library source restore-follow SOURCE_ID SOURCE_PATH --library LIBRARY_ID --skill-id SKILL_ID --file-id FILE_ID
+ntn-skills ctl library source disable SOURCE_ID --library LIBRARY_ID
+ntn-skills ctl library source enable SOURCE_ID --library LIBRARY_ID
+ntn-skills ctl library source remove SOURCE_ID --library LIBRARY_ID --dry-run
 ```
 
 Takeover preserves File/page/path/mode and adds its exact contribution exclusion.
@@ -161,9 +161,9 @@ separate from these commands.
 A Profile is one current Records rule; a local binding stores its selection.
 
 ```sh
-ntn-skills ctl library profile show PROFILE_ID --entry ENTRY
-ntn-skills ctl library profile set PROFILE_ID --entry ENTRY --name NAME --enabled true --expect new
-ntn-skills ctl views --database ENTRY
+ntn-skills ctl library profile show PROFILE_ID --library LIBRARY_ID
+ntn-skills ctl library profile set PROFILE_ID --library LIBRARY_ID --name NAME --enabled true --expect new
+ntn-skills ctl views --library LIBRARY_ID
 ```
 
 For replacement, use show's fingerprint as --expect and supply the complete desired rule.

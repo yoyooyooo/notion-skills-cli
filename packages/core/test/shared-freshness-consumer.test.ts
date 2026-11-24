@@ -62,7 +62,7 @@ async function consumer(readMaxAge: number) {
     },
   })
   f.json.set("config.json", {
-    shared_profile: { library_id: library.skills.database_id, profile_id: "daily" },
+    shared_profile: { library_id: library.library_id, profile_id: "daily" },
   })
   return f
 }

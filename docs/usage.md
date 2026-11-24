@@ -36,12 +36,12 @@ Inspect configuration and access:
 
 ```bash
 ntn-skills ctl config show
-ntn-skills ctl doctor --database LIBRARY_ENTRY
-ntn-skills ctl library inspect LIBRARY_ENTRY
+ntn-skills ctl doctor --library LIBRARY_ID
+ntn-skills ctl library inspect --library LIBRARY_ID
 ```
 
 Replace `LIBRARY_ENTRY` with the exact Skills database ID.
-`config show` omits the token. `doctor` without `--database` checks authentication only.
+`config show` omits the token. `doctor` without `--library` checks authentication only.
 With a database, it also checks the current library descriptor, complete catalog
 metadata and relation schema. It does not choose or read a Skill body;
 `skill_read.checked` is false. Use an explicit `read` or `use` to verify the content
@@ -70,7 +70,7 @@ result as `LIBRARY_ENTRY`; it contains the bindings for all four tables. Future
 sessions need this one entry and their credential environment:
 
 ```bash
-ntn-skills ctl library init --entry LIBRARY_ENTRY
+ntn-skills ctl library init --library LIBRARY_ID
 ```
 
 Successful init means the structure is ready. Its `next.argv` is a read-only
@@ -81,8 +81,8 @@ full body, and apply its method to a real task to verify first use. Interrupted
 initialization uses the original operation and retained state; follow the setup
 guide's reconciliation and explicit `--resume` steps.
 
-If requested, `ctl config set default_database LIBRARY_ENTRY` saves a consumption
-default. It does not supply a management write target; keep explicit `--entry`.
+If requested, `ctl config set default_library LIBRARY_ENTRY` saves a consumption
+default. It does not supply a management write target; keep explicit `--library`.
 
 ## Product guidance and team workflows
 
@@ -108,15 +108,15 @@ not automatically updated package copies or Source reading projections.
 ## Find and read a Skill
 
 For remote title and body matching, configure the separate MCP connection and use
-`list --database LIBRARY_ENTRY --search-in content --query "keywords"`.
+`list --library LIBRARY_ID --search-in content --query "keywords"`.
 See [Remote content search](notion-mcp.md) for token/OAuth setup, Pi authorization,
 eligibility rules and the limits of remote matching.
 
 Start with a bounded metadata page:
 
 ```bash
-ntn-skills list --database LIBRARY_ENTRY --limit 50
-ntn-skills list --database LIBRARY_ENTRY --query review --limit 50
+ntn-skills list --library LIBRARY_ID --limit 50
+ntn-skills list --library LIBRARY_ID --query review --limit 50
 ```
 
 Use `next_cursor` with the same directory and query to continue a paginated result.
@@ -126,9 +126,9 @@ Check coverage and failures before treating a discovery result as complete.
 Copy the exact returned identity or ref:
 
 ```bash
-ntn-skills read 'REF_FROM_LIST' --database LIBRARY_ENTRY
-ntn-skills use 'REF_FROM_LIST' --database LIBRARY_ENTRY --json
-ntn-skills files 'REF_FROM_LIST' --database LIBRARY_ENTRY
+ntn-skills read 'REF_FROM_LIST' --library LIBRARY_ID
+ntn-skills use 'REF_FROM_LIST' --library LIBRARY_ID --json
+ntn-skills files 'REF_FROM_LIST' --library LIBRARY_ID
 ```
 
 `read` returns one file. `use` prepares the selected instructions and their Requires graph.
@@ -167,11 +167,11 @@ Percent-encode each path segment and each query value separately. Do not encode
 a slash inside a segment to change directory boundaries. Display titles, aliases,
 page IDs and table IDs do not replace stable Skill or Library IDs.
 
-At a CLI entry, bind short refs with `--database ENTRY`, or configure
-`ntn-skills ctl config set default_database ENTRY`. Management always requires
-its explicit `--entry`. In a document, `skill://architect` inherits that document's
+At a CLI entry, bind short refs with `--library LIBRARY_ID`, or configure
+`ntn-skills ctl config set default_library ENTRY`. Management always requires
+its explicit `--library`. In a document, `skill://architect` inherits that document's
 Library, not the current default. Use a `library` parameter for an external owner.
-Read the descriptor's `library_id` from `ctl library inspect ENTRY`.
+Read the descriptor's `library_id` from `ctl library inspect --library LIBRARY_ID`.
 See [the reference contract](skill-reference-redesign.md) for fixed and relative behavior.
 
 ## Create, edit, register or remove a native Skill
@@ -179,12 +179,12 @@ See [the reference contract](skill-reference-redesign.md) for fixed and relative
 Use the current library entry and an exact page ID/URL or stable Skill ID:
 
 ```bash
-ntn-skills ctl library skill create ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill
-ntn-skills ctl library skill update my-skill --entry LIBRARY_ENTRY --input ./SKILL.md
-ntn-skills ctl library skill update my-skill --entry LIBRARY_ENTRY --file references/guide.md=./guide.md
-ntn-skills ctl library skill register SKILL_PAGE_ID --entry LIBRARY_ENTRY
-ntn-skills ctl library skill remove my-skill --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library skill remove my-skill --entry LIBRARY_ENTRY
+ntn-skills ctl library skill create ./my-skill --library LIBRARY_ID --skill-id my-skill
+ntn-skills ctl library skill update my-skill --library LIBRARY_ID --input ./SKILL.md
+ntn-skills ctl library skill update my-skill --library LIBRARY_ID --file references/guide.md=./guide.md
+ntn-skills ctl library skill register SKILL_PAGE_ID --library LIBRARY_ID
+ntn-skills ctl library skill remove my-skill --library LIBRARY_ID --dry-run
+ntn-skills ctl library skill remove my-skill --library LIBRARY_ID
 ```
 
 Create makes Markdown native and other files exact resources. Update changes the
@@ -209,7 +209,7 @@ edits do not need projection. Read with --refresh for immediate verification.
 Use the management index when you need current owners, paths, descriptors, and operation state:
 
 ```bash
-ntn-skills ctl library files SKILL_PAGE_ID --entry LIBRARY_ENTRY
+ntn-skills ctl library files SKILL_PAGE_ID --library LIBRARY_ID
 ```
 
 This command finishes pagination for the selected owner and does not read file bodies.
@@ -221,10 +221,10 @@ A Skill in `applying` or `attention` remains unavailable for ordinary consumptio
 Use explicit management after import or Source refresh:
 
 ```bash
-ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ENTRY
-ntn-skills ctl library projection --daily --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library projection --daily --entry LIBRARY_ENTRY
+ntn-skills ctl library projection SKILL_PAGE_ID --library LIBRARY_ID --dry-run
+ntn-skills ctl library projection SKILL_PAGE_ID --library LIBRARY_ID
+ntn-skills ctl library projection --daily --library LIBRARY_ID --dry-run
+ntn-skills ctl library projection --daily --library LIBRARY_ID
 ```
 
 The main stays on Skills. Source reading rows include Markdown by default and
@@ -261,7 +261,7 @@ read/use/list/export never trigger this management action.
 Use the original exact page ID after a completed Skill was moved to Trash:
 
 ```bash
-ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry LIBRARY_ENTRY
+ntn-skills ctl library projection SKILL_PAGE_ID --restore --library LIBRARY_ID
 ```
 
 The command restores that page, preserving its identity, four policy checkboxes
@@ -284,8 +284,8 @@ pending is also refused without overwriting that pending action. See
 Export a complete file tree before making a local change:
 
 ```bash
-ntn-skills export 'REF_FROM_LIST' --database LIBRARY_ENTRY --output ./my-skill.zip
-ntn-skills export 'REF_FROM_LIST' --database LIBRARY_ENTRY --output ./my-skill
+ntn-skills export 'REF_FROM_LIST' --library LIBRARY_ID --output ./my-skill.zip
+ntn-skills export 'REF_FROM_LIST' --library LIBRARY_ID --output ./my-skill
 ```
 
 Use a new destination. An identical existing export is reused, while differing output is refused.
@@ -307,7 +307,7 @@ version or copy Profiles and Source management configuration.
 Prepare a directory whose root contains `SKILL.md`, then inspect the proposed replacement:
 
 ```bash
-ntn-skills ctl library import ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --dry-run
+ntn-skills ctl library import ./my-skill --library LIBRARY_ID --skill-id my-skill --dry-run
 ```
 
 Review every input path and the returned `remove` list. Import replaces the complete tree;
@@ -316,8 +316,8 @@ existing supporting files omitted from the input are removed.
 Apply and resume use the same command and stable operation ID:
 
 ```bash
-ntn-skills ctl library import ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --operation import-my-skill
-ntn-skills ctl library import ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --operation import-my-skill --resume
+ntn-skills ctl library import ./my-skill --library LIBRARY_ID --skill-id my-skill --operation import-my-skill
+ntn-skills ctl library import ./my-skill --library LIBRARY_ID --skill-id my-skill --operation import-my-skill --resume
 ```
 
 Keep the same complete input and operation ID for a resumed import.
@@ -333,10 +333,10 @@ Profile changes, and interrupted operations.
 Inspect current Profiles before selecting one:
 
 ```bash
-ntn-skills ctl library profile list --entry LIBRARY_ENTRY
-ntn-skills ctl library profile show daily --entry LIBRARY_ENTRY
-ntn-skills ctl library profile bind daily --entry LIBRARY_ENTRY
-ntn-skills list --database LIBRARY_ENTRY --default-view
+ntn-skills ctl library profile list --library LIBRARY_ID
+ntn-skills ctl library profile show daily --library LIBRARY_ID
+ntn-skills ctl library profile bind daily --library LIBRARY_ID
+ntn-skills list --library LIBRARY_ID --default-view
 ```
 
 Bare `list` remains explicit discovery. Use `--profile daily`, `--default-view`,
@@ -368,7 +368,7 @@ Cache clearing does not resolve an unfinished import or clean remote Notion tabl
 
 ## Synchronize upstream Git
 
-Use `ntn-skills ctl library source check --entry LIBRARY_ID --source SOURCE_ID`
+Use `ntn-skills ctl library source check --library LIBRARY_ID --source SOURCE_ID`
 to inspect an explicit current Source without publishing. Use the corresponding
 `source sync` command or `ntn-skills/management` to publish exact newer content
 and resume compatible unfinished work. Scheduling stays with Dagu, cron or the

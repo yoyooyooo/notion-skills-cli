@@ -635,7 +635,6 @@ export function initializeSharedLibrary(input: {
           fail("INVALID_ARGUMENT", "Use --library alone to attach an existing library."),
         )
       const library = yield* loadSharedLibrary(input.library)
-      yield* inspectLibrary(library)
       return { library, reused: true }
     }
     if (input.resume && input.operation === undefined)

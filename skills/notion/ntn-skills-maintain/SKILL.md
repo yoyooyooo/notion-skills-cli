@@ -43,8 +43,8 @@ Supply content and metadata; do not construct those Notion fields
 owned by the CLI: identity, authority, relationships and finite state.
 
 ```sh
-ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID
-ntn-skills ctl library skill update TARGET --entry ENTRY --input LOCAL_FILE
+ntn-skills ctl library skill create INPUT --library LIBRARY_ID --skill-id SKILL_ID
+ntn-skills ctl library skill update TARGET --library LIBRARY_ID --input LOCAL_FILE
 ```
 
 Create takes complete input: Markdown becomes native; other files stay exact
@@ -65,15 +65,15 @@ no projection is needed. See [native management](references/operations.md#manage
 Register a page in the current Skills table without replacing its body:
 
 ```sh
-ntn-skills ctl library skill register PAGE_ID --entry ENTRY
+ntn-skills ctl library skill register PAGE_ID --library LIBRARY_ID
 ```
 
 Supply missing --name or --description. Valid registration is unchanged;
 foreign pages and conflicting ownership are refused.
 
 ```sh
-ntn-skills ctl library skill remove TARGET --entry ENTRY --dry-run
-ntn-skills ctl library skill remove TARGET --entry ENTRY
+ntn-skills ctl library skill remove TARGET --library LIBRARY_ID --dry-run
+ntn-skills ctl library skill remove TARGET --library LIBRARY_ID
 ```
 
 Removal moves the Skill, Files and unused owned resources to Trash and clears
@@ -97,8 +97,8 @@ empty query or running CLI list does not refresh the host directory.
 For CLI readback:
 
 ```sh
-ntn-skills ctl library files PAGE_ID --entry ENTRY
-ntn-skills read PAGE_ID --database ENTRY --refresh --json
+ntn-skills ctl library files PAGE_ID --library LIBRARY_ID
+ntn-skills read PAGE_ID --library LIBRARY_ID --refresh --json
 ```
 
 Use the returned PAGE_ID. Files reads metadata only. Native reads make
@@ -116,7 +116,7 @@ unresolved writes follow [unfinished work](references/operations.md#incomplete-c
 Complete import replaces the tree, removing omitted Notion-owned files:
 
 ```sh
-ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
+ntn-skills ctl library import INPUT --library LIBRARY_ID --skill-id SKILL_ID --dry-run
 ```
 
 First import infers Members only from exact refs; existing sets and `[]` win.

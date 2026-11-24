@@ -23,9 +23,9 @@ Every root is an explicit disjoint directory relative to the manifest root.
 Unknown neighbors and filename similarity do not establish a target.
 
 ```sh
-ntn-skills ctl library import-batch MANIFEST --entry ENTRY --dry-run
-ntn-skills ctl library import-batch MANIFEST --entry ENTRY --operation OPERATION_ID
-ntn-skills ctl library import-batch MANIFEST --entry ENTRY --operation OPERATION_ID --resume
+ntn-skills ctl library import-batch MANIFEST --library LIBRARY_ID --dry-run
+ntn-skills ctl library import-batch MANIFEST --library LIBRARY_ID --operation OPERATION_ID
+ntn-skills ctl library import-batch MANIFEST --library LIBRARY_ID --operation OPERATION_ID --resume
 ```
 
 Read the mapping, rewrites and member discovery before applying. The importer
@@ -56,8 +56,8 @@ do not start a new operation to evade an unknown creation result.
 ## Inspect the complete tree
 
 ```sh
-ntn-skills ctl library files PAGE_ID --entry ENTRY
-ntn-skills read PAGE_ID --database ENTRY --refresh --json
+ntn-skills ctl library files PAGE_ID --library LIBRARY_ID
+ntn-skills read PAGE_ID --library LIBRARY_ID --refresh --json
 ntn-skills files SNAPSHOT_ID
 ntn-skills export SNAPSHOT_ID --output NEW_DIRECTORY
 ```
@@ -76,11 +76,11 @@ Prepare temporary input with the main workflow's
 applies to macOS temporary paths whose parents are system aliases.
 
 ```sh
-ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
-ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID
-ntn-skills ctl library skill update TARGET --entry ENTRY --input LOCAL_FILE
-ntn-skills ctl library skill update TARGET --entry ENTRY --input ./guide.md --path references/guide.md
-ntn-skills ctl library skill update TARGET --entry ENTRY --file references/guide.md=./guide.md --remove-file references/old.md
+ntn-skills ctl library skill create INPUT --library LIBRARY_ID --skill-id SKILL_ID --dry-run
+ntn-skills ctl library skill create INPUT --library LIBRARY_ID --skill-id SKILL_ID
+ntn-skills ctl library skill update TARGET --library LIBRARY_ID --input LOCAL_FILE
+ntn-skills ctl library skill update TARGET --library LIBRARY_ID --input ./guide.md --path references/guide.md
+ntn-skills ctl library skill update TARGET --library LIBRARY_ID --file references/guide.md=./guide.md --remove-file references/old.md
 ```
 
 TARGET is an exact current page ID, page URL or stable Skill ID in this library.
@@ -131,8 +131,8 @@ All skill actions support --dry-run and the shared request/byte/deadline limits.
 ## Register an authored Notion page
 
 ```sh
-ntn-skills ctl library skill register PAGE_ID --entry ENTRY
-ntn-skills ctl library skill register PAGE_ID --entry ENTRY --skill-id SKILL_ID --name 'Name' --description 'What this workflow does'
+ntn-skills ctl library skill register PAGE_ID --library LIBRARY_ID
+ntn-skills ctl library skill register PAGE_ID --library LIBRARY_ID --skill-id SKILL_ID --name 'Name' --description 'What this workflow does'
 ```
 
 Register only an exact page already in this library's Skills data source. It
@@ -158,8 +158,8 @@ paths and unfinished operations fail instead of being repaired speculatively.
 ## Remove a Skill
 
 ```sh
-ntn-skills ctl library skill remove TARGET --entry ENTRY --dry-run
-ntn-skills ctl library skill remove TARGET --entry ENTRY
+ntn-skills ctl library skill remove TARGET --library LIBRARY_ID --dry-run
+ntn-skills ctl library skill remove TARGET --library LIBRARY_ID
 ```
 
 The removal plan includes the exact Skill, supporting Files, unused resources
@@ -189,8 +189,8 @@ certify cleanup after a manual deletion or authorize an orphan sweep.
 ## Import a complete current tree
 
 ```sh
-ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
-ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID
+ntn-skills ctl library import INPUT --library LIBRARY_ID --skill-id SKILL_ID --dry-run
+ntn-skills ctl library import INPUT --library LIBRARY_ID --skill-id SKILL_ID
 ```
 
 Inspect removals and authority changes before applying an authorized complete
@@ -225,9 +225,9 @@ from instruction wording, a link or a name.
 Use the read-only plan for local relative links with known identity bindings:
 
 ```sh
-ntn-skills ctl library members-plan INPUT --entry ENTRY --skill-id SKILL_ID --bindings BINDINGS_JSON
-ntn-skills ctl library members-plan INPUT --entry ENTRY --skill-id SKILL_ID --bindings BINDINGS_JSON --output NEW_PORTABLE_DIRECTORY
-ntn-skills ctl library import NEW_PORTABLE_DIRECTORY --entry ENTRY --skill-id SKILL_ID --dry-run
+ntn-skills ctl library members-plan INPUT --library LIBRARY_ID --skill-id SKILL_ID --bindings BINDINGS_JSON
+ntn-skills ctl library members-plan INPUT --library LIBRARY_ID --skill-id SKILL_ID --bindings BINDINGS_JSON --output NEW_PORTABLE_DIRECTORY
+ntn-skills ctl library import NEW_PORTABLE_DIRECTORY --library LIBRARY_ID --skill-id SKILL_ID --dry-run
 ```
 
 Bindings contain `version:1`, `root` for this Skill's original repository path,
@@ -312,10 +312,10 @@ a fresh invocation budget.
 ## Generate Notion text
 
 ```sh
-ntn-skills ctl library projection PAGE_ID --entry ENTRY --dry-run
-ntn-skills ctl library projection PAGE_ID --entry ENTRY
-ntn-skills ctl library projection --daily --entry ENTRY --dry-run
-ntn-skills ctl library projection --daily --entry ENTRY
+ntn-skills ctl library projection PAGE_ID --library LIBRARY_ID --dry-run
+ntn-skills ctl library projection PAGE_ID --library LIBRARY_ID
+ntn-skills ctl library projection --daily --library LIBRARY_ID --dry-run
+ntn-skills ctl library projection --daily --library LIBRARY_ID
 ```
 
 Run after import or Source refresh. The main stays on Skills. Source supporting
@@ -349,7 +349,7 @@ exact single-Skill recovery command carrying the original policy and requested
 budgets. Keep the original state and credential scope. Explicit recovery uses:
 
 ```sh
-ntn-skills ctl library projection PAGE_ID --entry ENTRY --operation OPERATION_ID --resume
+ntn-skills ctl library projection PAGE_ID --library LIBRARY_ID --operation OPERATION_ID --resume
 ```
 
 Omitted filters use the unfinished intent's frozen policy; supplied filters must
@@ -366,7 +366,7 @@ Unknown append is reconciled, not blindly replayed. Ordinary reads never project
 Restore one completed Skill from Trash using its original exact page ID or URL:
 
 ```sh
-ntn-skills ctl library projection PAGE_ID --restore --entry ENTRY
+ntn-skills ctl library projection PAGE_ID --restore --library LIBRARY_ID
 ```
 
 Use this single command to restore the original owner and run the normal complete
@@ -409,7 +409,7 @@ identify an unfinished content intent; consumers refuse those states before body
 acquisition. Projection intents preserve the real Skill's ready state.
 
 ```sh
-ntn-skills ctl library operation SKILL_ID --kind skill --entry ENTRY
+ntn-skills ctl library operation SKILL_ID --kind skill --library LIBRARY_ID
 ```
 
 Read exact current Record, owner, local lifecycle and in-flight coordinates.
@@ -418,7 +418,7 @@ operation:null means no intent was observable; it does not certify an owner is
 ready, present or retired. Use the original input and returned operation context.
 
 ```sh
-ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --operation OPERATION_ID --resume
+ntn-skills ctl library import INPUT --library LIBRARY_ID --skill-id SKILL_ID --operation OPERATION_ID --resume
 ```
 
 Resupply the same complete input and original --native paths. Keep the original
@@ -430,7 +430,7 @@ remain blocked. Do not clear the operation or change ready by hand.
 To change an unfinished complete import, provide a distinct successor:
 
 ```sh
-ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --supersede OLD_OPERATION_ID --operation NEW_OPERATION_ID
+ntn-skills ctl library import INPUT --library LIBRARY_ID --skill-id SKILL_ID --supersede OLD_OPERATION_ID --operation NEW_OPERATION_ID
 ```
 
 The kernel reconciles the named predecessor before handing its one current owner

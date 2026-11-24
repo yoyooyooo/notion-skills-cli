@@ -92,7 +92,7 @@ test("default selection and explicit constraints differ before any target I/O", 
 test("SDK resolver and default catalog work with an empty Library and never search other roots", async () => {
   const f = currentSnapshotFixture()
   f.json.set("config.json", { default_library: root })
-  f.alter((call, value) => call.path.startsWith(`v1/data_sources/${currentLibrary.skills.data_source_id}/query`) ? { results: [], has_more: false, next_cursor: null } : value)
+  f.alterResponses((call, value) => call.path.startsWith(`v1/data_sources/${currentLibrary.skills.data_source_id}/query`) ? { results: [], has_more: false, next_cursor: null } : value)
   expect(await f.run(resolveLibrary())).toEqual(currentLibrary)
   const listed = await f.run(catalog({ refresh: true }))
   expect(listed.library_id).toBe(root)

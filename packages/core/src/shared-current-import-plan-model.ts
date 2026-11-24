@@ -52,7 +52,14 @@ export const ImportPlanSchema = Schema.Struct({
   definition_sha256: Hash,
   definition: CurrentImportDefinitionSchema,
   steps: Schema.Record(Schema.String, StepSchema),
-})
+}).check(
+  Schema.makeFilter(
+    (value) =>
+      (value.library_id === value.library.library_id &&
+        value.skills_data_source_id === value.library.skills.data_source_id) ||
+      "An import plan must retain one consistent Library binding.",
+  ),
+)
 export type ImportPlan = typeof ImportPlanSchema.Type
 
 /** Dispatch progress is additive. The compiled mapping, content, relation

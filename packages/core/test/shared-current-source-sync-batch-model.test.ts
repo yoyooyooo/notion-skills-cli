@@ -1,3 +1,4 @@
+import { currentLibrary } from "./shared-current-fixture.ts"
 import { expect, test } from "bun:test"
 import { Schema } from "effect"
 import {
@@ -13,10 +14,11 @@ import {
 import type { CurrentSourceSyncItem } from "../src/shared-current-source-sync-model.ts"
 
 const selection = {
+  library: currentLibrary,
   scope: "a".repeat(64),
   batch_id: "00000000-0000-4000-8000-000000000001",
-  library_id: "79f7ff18-edd5-5870-8278-2630acd0211c",
-  sources_data_source_id: "00000000-0000-4000-8000-000000000002",
+  library_id: currentLibrary.library_id,
+  sources_data_source_id: currentLibrary.sources.data_source_id,
   manager_id: "batch-manager",
   execution_id: "batch-generation",
   source_ids: ["alpha", "beta"],
@@ -123,6 +125,8 @@ test("persisted batches reject noncanonical selection, malformed results and unk
   const decode = Schema.decodeUnknownSync(CurrentSourceSyncBatchSchema)
   const initial = makeCurrentSourceSyncBatch(selection)
   for (const value of [
+    { ...initial, library_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+    { ...initial, sources_data_source_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
     { ...initial, source_ids: ["beta", "alpha"] },
     { ...initial, source_ids: ["alpha", "alpha"] },
     { ...initial, source_ids: [] },

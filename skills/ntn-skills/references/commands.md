@@ -7,10 +7,10 @@ The public root is `list/read/use/files/export/schema/ctl`.
 ## Discovery and selection
 
 ```sh
-ntn-skills list --database ENTRY --query TERMS --json
-ntn-skills list --database ENTRY --cursor RETURNED_CURSOR --json
-ntn-skills read EXACT_REF --database ENTRY --json
-ntn-skills use EXACT_REF --database ENTRY
+ntn-skills list --library LIBRARY_ID --query TERMS --json
+ntn-skills list --library LIBRARY_ID --cursor RETURNED_CURSOR --json
+ntn-skills read EXACT_REF --library LIBRARY_ID --json
+ntn-skills use EXACT_REF --library LIBRARY_ID
 ```
 
 Keep the same query and selection when following a cursor. Names and aliases
@@ -59,9 +59,9 @@ A valid current cache hit can use zero HTTP; metadata revalidation and actual
 body reads have their own observable costs.
 
 ```sh
-ntn-skills ctl views --database ENTRY
-ntn-skills list --view VIEW_ID --database ENTRY
-ntn-skills list --profile PROFILE_ID --database ENTRY
+ntn-skills ctl views --library LIBRARY_ID
+ntn-skills list --view VIEW_ID --library LIBRARY_ID
+ntn-skills list --profile PROFILE_ID --library LIBRARY_ID
 ntn-skills list --default-view
 ```
 
@@ -69,14 +69,14 @@ Views retain native API ordering and filters. Explicit View selection wins over
 Profile rules. Profiles and Views do not grant access. For their management,
 default to the same executable's `ctl builtin read notion/ntn-skills-sync`.
 If the user explicitly selected a Notion workflow, inspect its exact source/ref
-and apply it with `use REF --database ENTRY --json` or Pi `notion_use(ref)` to load
+and apply it with `use REF --library LIBRARY_ID --json` or Pi `notion_use(ref)` to load
 Requires unless already prepared. Inspect the edited target without activating it.
 
 ## Library inspection
 
 ```sh
-ntn-skills ctl library inspect ENTRY
-ntn-skills ctl library files PAGE_ID --entry ENTRY
+ntn-skills ctl library inspect --library LIBRARY_ID
+ntn-skills ctl library files PAGE_ID --library LIBRARY_ID
 ```
 
 Inspect reads the descriptor; files reads complete current file metadata, state

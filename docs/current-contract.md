@@ -51,15 +51,32 @@ Notion-authored library leaves Sources empty. Normal discovery, consumption,
 management and initialization reject an incomplete older layout; the independent
 read-only extractor does not admit it into the current runtime.
 
-Successful `ctl library init` establishes or validates this structure. Its
-`library.skills.database_id` is the one entry clients retain; the descriptor
-contains the other table bindings. The returned `next.argv` is a read-only list;
-an empty result is valid before the first Skill is created or imported. Init
-does not seed Builtins or user content, save local defaults, register a Source,
-install Skills or configure a host. First business use additionally requires
-selecting and delivering the user's Skill and applying it to the intended task.
-An optional `default_database` config value affects consumption only; management
-commands still require an explicit `--entry`.
+A Library is identified by its root page's canonical UUID. `ctl library init
+--parent CONTAINER` creates that root and four direct child databases. The sole
+v2 descriptor remains in the Skills database description; it names `library_id`,
+the original `operation_id`, and exact database/data-source/property bindings.
+It does not duplicate the root as `parent_page_id` or create a second registry.
+Resolving a root enumerates all direct children and independently verifies the
+root, each table's actual parent, each data source's owner, and stable fields.
+Ordinary docs, subpages, and helper tables are allowed. A copied descriptor,
+missing table, duplicate role, incomplete pagination, or replaced binding fails.
+
+Clients retain `library.library_id`, use `--library` everywhere, and may set
+`default_library` for unscoped consumption. Bare list reads that selected Library;
+`list --all` explicitly requests discovery with non-exhaustive search coverage.
+Complete refs carry their own root; explicit selector conflicts fail before
+content lookup. Writers require a deliberate target and retain the original
+root, four-table bindings, input and Store across apply/resume. Replacing a table
+under the same root invalidates an old operation; it never changes its target.
+
+Init success means a verified structure at the last observation. Its next argv
+is a read-only list and an empty Library is valid. Init does not seed content,
+save defaults or configure a host. A new init creates a new root; `init --library`
+and `inspect --library` attach read-only. The original operation's marker is part
+of the atomic root CREATE. Unknown creation is reconciled, never inferred from
+a matching title or replayed from absence. Retained root and table identities
+are monotonic. These observations and local locks are not cross-machine CAS.
+See [Library roots and selection](library-roots.md).
 
 The main document lives on the Skills page. Its stable `Main File ID` participates
 in the same file namespace, but Files does not contain another editable main
@@ -533,7 +550,7 @@ check for actual unsupported Notion export nodes; it is not a historical operati
 gate. Acquisition v5 checks current ownership and locators before obtaining missing
 selected resource or Source bytes. Old cached selections require reselection.
 
-The Promise SDK exposes only `SDK_VERSION=2`. Ordinary consumption always rejects
+The Promise SDK exposes only `SDK_VERSION=3`. Ordinary consumption always rejects
 remote writes; the old `readOnly` option is rejected before a runtime starts.
 Broker requires the matching SDK and package manifest. It does not load an older
 SDK or use a CLI consumer fallback. Local ZIP exports follow the portable tree's
@@ -549,7 +566,7 @@ The registered CLI exposes current consumption, library initialization,
 inspection, native daily management, complete current import, Source apply/refresh,
 text projection, Profiles and local configuration.
 
-`ctl library skill create INPUT --entry DB --skill-id ID` creates the complete
+`ctl library skill create INPUT --library LIBRARY_ID --skill-id ID` creates the complete
 input with `.md`/`.markdown` files native and other files resource-backed.
 `skill update TARGET --input LOCAL [--path PATH]` changes the main by default or
 one selected file; repeated `--file PATH=LOCAL` and `--remove-file PATH` declare
@@ -560,7 +577,7 @@ Requires explicitly; omitted fields are retained. A single empty Members/Require
 argument clears the set. TARGET accepts exact page IDs/URLs or stable Skill IDs,
 never a display-title match.
 
-`skill register PAGE_ID --entry DB` only registers an existing page in the exact
+`skill register PAGE_ID --library LIBRARY_ID` only registers an existing page in the exact
 Skills data source. It preserves body text, including any frontmatter-looking
 text in that body. Missing Content becomes native/frontmatter empty/mode 100644;
 valid native Content remains. Missing Kind defaults to skill, while an existing
@@ -574,7 +591,7 @@ need valid explicit paths and exactly one owner. Complete valid native registrat
 is unchanged; foreign pages, ambiguous bindings and resource/Source authority
 conversion are refused.
 
-`skill remove TARGET --entry DB` owns supporting Files, unused owned resources
+`skill remove TARGET --library LIBRARY_ID` owns supporting Files, unused owned resources
 and incoming same-library Members/Requires cleanup before moving the owner to
 Trash. It preserves referencing Skills and all other relation targets. Complete
 relation pagination, operation conflicts and Notion's replacement limit are
@@ -594,7 +611,7 @@ intent or unconfirmed competing writes cannot be discarded. Ready native bodies
 are immediately consumable, with no projection after an ordinary Notion edit.
 
 Complete import is
-`ctl library import INPUT --entry DB --skill-id ID`; `--dry-run` inspects the
+`ctl library import INPUT --library LIBRARY_ID --skill-id ID`; `--dry-run` inspects the
 replacement, and `--operation ID --resume` supplies the same input to its finite
 intent. Default import keeps exact originals as Notion resources without waiting
 for generated text projections. Repeated `--native PATH` selects editable Markdown
@@ -620,8 +637,8 @@ any Source file, including an unchanged exported tree. Coordinated Source writes
 use typed preserved bindings for other current files; preserved body bytes do not
 become part of the frozen Source input or get rewritten during resume.
 
-`ctl library source apply INPUT --entry DB` creates or replaces a complete current
-Source declaration. `source refresh SOURCE_ID --entry DB` reads that declaration
+`ctl library source apply INPUT --library LIBRARY_ID` creates or replaces a complete current
+Source declaration. `source refresh SOURCE_ID --library LIBRARY_ID` reads that declaration
 from Notion and enters the same writer. Both support dry-run and explicit
 same-operation resume. Regular Git content from GitHub or credential-free private
 HTTP(S) origins uses the same current contract and machine authentication. Manual
@@ -643,7 +660,7 @@ silently deleted. Reapplying a saved declaration can recreate a deleted Source o
 Skill. Human policy values cannot be reconstructed from upstream content and must
 be preserved on surviving pages or supplied separately when rebuilding.
 
-`source check --entry DB --source SOURCE_ID` observes the registered declaration
+`source check --library LIBRARY_ID --source SOURCE_ID` observes the registered declaration
 and upstream ref without publishing. `source sync` exposes the same management
 operation through the CLI and `ntn-skills/management`, with an explicit Source
 allowlist, one invocation budget and serial publication. It first recovers an
@@ -696,7 +713,7 @@ consumption. Source manifest resources belong to that Source and are collected
 after the current manifest changes. The full effective tree, native references
 and exact target scope are checked before completion.
 
-`ctl library projection PAGE_ID --entry DB` reconciles the selected Source reading
+`ctl library projection PAGE_ID --library LIBRARY_ID` reconciles the selected Source reading
 rows and complete bodies on one Skill. It creates missing selected Files, updates
 stale Source descriptors and archives excluded or upstream-removed Source rows,
 then renders text. Notion-owned rows are never pruned by this selection. Links to
@@ -747,7 +764,7 @@ share one invocation budget, with the same defaults and limit flags as import.
 
 ### Restore a trashed Skill before projection
 
-`ctl library projection PAGE_ID --restore --entry DB` restores one exact current
+`ctl library projection PAGE_ID --restore --library LIBRARY_ID` restores one exact current
 Skill from Trash, then runs the existing automatic projection. It accepts reading
 filters and budget limits. It rejects `--daily`, `--dry-run`, `--operation`,
 `--resume` and `--cancel` before remote work.
@@ -842,7 +859,7 @@ duplicate identities and changed bindings fail closed; completion proves the
 observed current result. No permanent tombstone or predecessor chain watches for
 unbounded late responses.
 
-`ctl library operation OWNER_ID --kind skill|source --entry DB` reads the exact
+`ctl library operation OWNER_ID --kind skill|source --library LIBRARY_ID` reads the exact
 current intent, local phase, remote Record, owner observation and in-flight action
 without mutations. `status: not_found` with `operation: null` says only that no
 intent was observed; it does not prove the owner is ready or retired. If a parent

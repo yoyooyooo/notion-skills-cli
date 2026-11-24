@@ -146,7 +146,12 @@ export const CurrentWritePendingSchema = Schema.Struct({
     }),
   ]),
   not_dispatched: Schema.optional(ActionSchema),
-})
+}).check(
+  Schema.makeFilter(
+    (value) => value.library_id === value.library.library_id ||
+      "A pending operation must retain one consistent Library binding.",
+  ),
+)
 type LocalPending = typeof CurrentWritePendingSchema.Type
 type RequestOptions = NonNullable<Parameters<Notion["Service"]["request"]>[2]>
 export type CurrentActionObservation<A> =
@@ -219,6 +224,11 @@ function strict<S extends Schema.ConstraintDecoder<unknown>>(schema: S, value: u
 function decodePayload(value: unknown): CurrentPayload {
   const payload = strict(PayloadSchema, value),
     progress = payload.source_progress
+  if (
+    payload.library_id !== payload.library.library_id ||
+    payload.owner_data_source_id !== ownerTable(payload.library, payload.intent.owner).data_source_id
+  )
+    throw invalid("The current Operation has inconsistent Library bindings.")
   if (
     ("projection" in payload.intent || "restore" in payload.intent) &&
     (payload.completion !== "ready" || payload.predecessor !== undefined)

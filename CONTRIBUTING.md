@@ -57,7 +57,7 @@ After updating the authorized Notion Source for the distributed guidance, compar
 the selected installed package with the connected library:
 
 ```sh
-node scripts/verify-projected-builtins.mjs --cli /absolute/ntn-skills --entry ENTRY_DATABASE_ID
+node scripts/verify-projected-builtins.mjs --cli /absolute/ntn-skills --library LIBRARY_ID_DATABASE_ID
 ```
 
 This read-only check requires complete discovery, reads every packaged main and

@@ -7,10 +7,10 @@ The [current library contract](current-contract.md) owns the field definitions a
 
 ## Inspect or initialize a library
 
-Inspect the exact Skills database entry:
+Inspect the exact Library root:
 
 ```bash
-ntn-skills ctl library inspect LIBRARY_ENTRY
+ntn-skills ctl library inspect --library LIBRARY_ID
 ```
 
 To create a new library under an owned parent:
@@ -21,7 +21,7 @@ ntn-skills ctl library init --parent PARENT_PAGE_ID
 
 Use the returned `library.skills.database_id` as the entry.
 Initialization creates the current tables and descriptor. It does not convert an existing library.
-For an existing current entry, `ctl library init --entry LIBRARY_ENTRY` validates that entry.
+For an existing current entry, `ctl library init --library LIBRARY_ID` validates that entry.
 
 If creation stops, retain its exact parent, `operation_id`, and `NTN_SKILLS_HOME`.
 `init --parent PARENT_PAGE_ID --operation OPERATION_ID` only reconciles.
@@ -57,10 +57,10 @@ management and consumption command:
 
 ```sh
 test_entry='PASTE_TEST_SKILLS_DATABASE_ID'
-ntn-skills ctl library init --entry "$test_entry"
-ntn-skills list --database "$test_entry"
-ntn-skills ctl library import ./fixtures/example --entry "$test_entry" --skill-id test-example-001 --dry-run
-ntn-skills ctl library import ./fixtures/example --entry "$test_entry" --skill-id test-example-001
+ntn-skills ctl library init --library "$test_entry"
+ntn-skills list --library "$test_entry"
+ntn-skills ctl library import ./fixtures/example --library "$test_entry" --skill-id test-example-001 --dry-run
+ntn-skills ctl library import ./fixtures/example --library "$test_entry" --skill-id test-example-001
 ```
 
 Check that all four tables are empty before the first fixture import. Repeat
@@ -71,8 +71,8 @@ Skill ID so the test exercises an existing object.
 
 `test_entry` is a shell variable expanded into an explicit argument. The CLI
 does not read a database-target environment variable. Imports require
-`--entry`; a configured consumer `default_database` does not select a write
-target. `init --entry` validates the library without setting a local default.
+`--library`; a configured consumer `default_library` does not select a write
+target. `init --library` validates the library without setting a local default.
 Retain the local state directory if an operation needs reconciliation or resume.
 
 For Members acceptance, import the original upstream files before supplying any
@@ -102,8 +102,8 @@ the selected input and concurrent input changes remain rejected.
 ### Create
 
 ```bash
-ntn-skills ctl library skill create ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --dry-run
-ntn-skills ctl library skill create ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill
+ntn-skills ctl library skill create ./my-skill --library LIBRARY_ID --skill-id my-skill --dry-run
+ntn-skills ctl library skill create ./my-skill --library LIBRARY_ID --skill-id my-skill
 ```
 
 The complete input uses the existing directory/ZIP/single-Markdown admission.
@@ -114,10 +114,10 @@ for direct Notion editing and consumption after successful verification.
 ### Update selected content or metadata
 
 ```bash
-ntn-skills ctl library skill update my-skill --entry LIBRARY_ENTRY --input ./SKILL.md
-ntn-skills ctl library skill update my-skill --entry LIBRARY_ENTRY --input ./guide.md --path references/guide.md
-ntn-skills ctl library skill update my-skill --entry LIBRARY_ENTRY --file references/new.md=./new.md --remove-file references/old.md
-ntn-skills ctl library skill update my-skill --entry LIBRARY_ENTRY --name 'Updated name' --description 'Current purpose' --enabled true --default-context false
+ntn-skills ctl library skill update my-skill --library LIBRARY_ID --input ./SKILL.md
+ntn-skills ctl library skill update my-skill --library LIBRARY_ID --input ./guide.md --path references/guide.md
+ntn-skills ctl library skill update my-skill --library LIBRARY_ID --file references/new.md=./new.md --remove-file references/old.md
+ntn-skills ctl library skill update my-skill --library LIBRARY_ID --name 'Updated name' --description 'Current purpose' --enabled true --default-context false
 ```
 
 TARGET may be an exact page ID, page URL or stable Skill ID in the selected
@@ -138,8 +138,8 @@ custom properties such as 日用 and 期望删除 are preserved.
 ### Register an existing Notion author page
 
 ```bash
-ntn-skills ctl library skill register SKILL_PAGE_ID --entry LIBRARY_ENTRY
-ntn-skills ctl library skill register SKILL_PAGE_ID --entry LIBRARY_ENTRY --name 'Workflow name' --description 'What the workflow does'
+ntn-skills ctl library skill register SKILL_PAGE_ID --library LIBRARY_ID
+ntn-skills ctl library skill register SKILL_PAGE_ID --library LIBRARY_ID --name 'Workflow name' --description 'What the workflow does'
 ```
 
 The page must already belong to the registered Skills data source. Register
@@ -160,8 +160,8 @@ returns unchanged after verification.
 ### Remove with managed cleanup
 
 ```bash
-ntn-skills ctl library skill remove my-skill --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library skill remove my-skill --entry LIBRARY_ENTRY
+ntn-skills ctl library skill remove my-skill --library LIBRARY_ID --dry-run
+ntn-skills ctl library skill remove my-skill --library LIBRARY_ID
 ```
 
 Dry-run reports the owner, supporting Files, unused owned resources and affected
@@ -213,7 +213,7 @@ All four daily actions support --dry-run and invocation budgets. Repeat the same
 command and intent after interruption; preserve original input, local state and
 credential scope. Equal current content makes zero semantic writes. Do not clear
 pending state or hide a competing edit. Direct Notion native edits need no
-projection; use `read PAGE_ID --database LIBRARY_ENTRY --refresh --json` to check
+projection; use `read PAGE_ID --library LIBRARY_ID --refresh --json` to check
 the current body immediately. Source/resource reading projections remain separate.
 
 ## Prepare the entire replacement tree
@@ -274,11 +274,11 @@ Each selected directory must contain a complete Skill tree. Optional per-item
 accepts 1–100 distinct, non-overlapping roots; the entire admitted batch is
 bounded by 10,000 files and 128 MiB. Symlinks, physical aliases and overlapping
 roots fail before writes. The command does not scan directories omitted from
-the manifest. `--entry` selects the destination Library explicitly.
+the manifest. `--library` selects the destination Library explicitly.
 
 ```sh
-ntn-skills ctl library import-batch ./batch.json --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library import-batch ./batch.json --entry LIBRARY_ENTRY --operation review-batch-01
+ntn-skills ctl library import-batch ./batch.json --library LIBRARY_ID --dry-run
+ntn-skills ctl library import-batch ./batch.json --library LIBRARY_ID --operation review-batch-01
 ```
 
 A link from `poteto-mode/SKILL.md` to `../architect/SKILL.md` can identify
@@ -316,8 +316,8 @@ To rebind exact current targets owned by the selected batch, authorize a precise
 copy mapping:
 
 ```sh
-ntn-skills ctl library import-batch ./batch.json --entry TEST_LIBRARY_ENTRY --rebind-from ORIGINAL_LIBRARY_ID --dry-run
-ntn-skills ctl library import-batch ./batch.json --entry TEST_LIBRARY_ENTRY --rebind-from ORIGINAL_LIBRARY_ID --operation test-copy-01
+ntn-skills ctl library import-batch ./batch.json --library TEST_LIBRARY_ENTRY --rebind-from ORIGINAL_LIBRARY_ID --dry-run
+ntn-skills ctl library import-batch ./batch.json --library TEST_LIBRARY_ENTRY --rebind-from ORIGINAL_LIBRARY_ID --operation test-copy-01
 ```
 
 `--rebind-from` rewrites only current refs and relations whose origin identity
@@ -340,7 +340,7 @@ do not become Skill relationships.
 ### Resume the same batch
 
 ```sh
-ntn-skills ctl library import-batch ./batch.json --entry LIBRARY_ENTRY --operation review-batch-01 --resume
+ntn-skills ctl library import-batch ./batch.json --library LIBRARY_ID --operation review-batch-01 --resume
 ```
 
 Keep the manifest, input files, native selections, metadata and copy option
@@ -396,9 +396,9 @@ identify that target. Links in supporting documents resolve from each containing
 document's directory. Bindings declare identity explicitly; they do not search by name.
 
 ```bash
-ntn-skills ctl library members-plan ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --bindings ./members-bindings.json
-ntn-skills ctl library members-plan ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --bindings ./members-bindings.json --output ./my-skill-for-notion
-ntn-skills ctl library import ./my-skill-for-notion --entry LIBRARY_ENTRY --skill-id my-skill --dry-run
+ntn-skills ctl library members-plan ./my-skill --library LIBRARY_ID --skill-id my-skill --bindings ./members-bindings.json
+ntn-skills ctl library members-plan ./my-skill --library LIBRARY_ID --skill-id my-skill --bindings ./members-bindings.json --output ./my-skill-for-notion
+ntn-skills ctl library import ./my-skill-for-notion --library LIBRARY_ID --skill-id my-skill --dry-run
 ```
 
 The plan is read only in Notion. Review its decision and evidence:
@@ -447,7 +447,7 @@ Requires relationship from the same mention.
 Select the exact stable Skill ID within the intended library:
 
 ```bash
-ntn-skills ctl library import ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --dry-run
+ntn-skills ctl library import ./my-skill --library LIBRARY_ID --skill-id my-skill --dry-run
 ```
 
 Review `input_sha256`, `metadata`, `files`, `relations`, `members_discovery`, `remove`, and `budget`.
@@ -479,7 +479,7 @@ A matching metadata summary does not prove an unchanged complete tree.
 Use a stable operation ID that you can retain with the input:
 
 ```bash
-ntn-skills ctl library import ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --operation import-my-skill
+ntn-skills ctl library import ./my-skill --library LIBRARY_ID --skill-id my-skill --operation import-my-skill
 ```
 
 Without `--operation`, the CLI generates an ID for apply.
@@ -490,7 +490,7 @@ The CLI defaults every file to an exact Notion resource. To make selected text
 editable in Notion, repeat `--native` with exact canonical input paths:
 
 ```bash
-ntn-skills ctl library import ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --native SKILL.md --native references/guide.md
+ntn-skills ctl library import ./my-skill --library LIBRARY_ID --skill-id my-skill --native SKILL.md --native references/guide.md
 ```
 
 Native selection is explicit and enters the input fingerprint. Unknown, duplicate
@@ -533,10 +533,10 @@ with a fresh invocation budget; do not create a replacement operation.
 After import or Source apply/refresh, inspect and generate the current text:
 
 ```bash
-ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ENTRY
-ntn-skills ctl library projection --daily --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library projection --daily --entry LIBRARY_ENTRY
+ntn-skills ctl library projection SKILL_PAGE_ID --library LIBRARY_ID --dry-run
+ntn-skills ctl library projection SKILL_PAGE_ID --library LIBRARY_ID
+ntn-skills ctl library projection --daily --library LIBRARY_ID --dry-run
+ntn-skills ctl library projection --daily --library LIBRARY_ID
 ```
 
 Open the resulting Skill page and follow Supporting Files. The main remains on
@@ -601,7 +601,7 @@ then repeat with zero writes once their bodies match.
 Explicit recovery remains available with the returned exact operation:
 
 ```bash
-ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ENTRY --operation PROJECTION_ID --resume
+ntn-skills ctl library projection SKILL_PAGE_ID --library LIBRARY_ID --operation PROJECTION_ID --resume
 ```
 
 Keep its original state and credential scope. Explicit resume of an unfinished
@@ -631,7 +631,7 @@ After a complete Skill has been moved to Trash, restore its original page and
 complete its reading projection with one command:
 
 ```bash
-ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry LIBRARY_ENTRY
+ntn-skills ctl library projection SKILL_PAGE_ID --restore --library LIBRARY_ID
 ```
 
 Select the original exact page ID or Notion URL. The command first validates its
@@ -687,10 +687,10 @@ Export the current content first when those edits belong in the intended input.
 Check the current index and selected bytes:
 
 ```bash
-ntn-skills ctl library files SKILL_PAGE_ID --entry LIBRARY_ENTRY
-ntn-skills read SKILL_PAGE_ID --database LIBRARY_ENTRY --refresh
-ntn-skills files SKILL_PAGE_ID --database LIBRARY_ENTRY
-ntn-skills export SKILL_PAGE_ID --database LIBRARY_ENTRY --output ./verified-skill.zip
+ntn-skills ctl library files SKILL_PAGE_ID --library LIBRARY_ID
+ntn-skills read SKILL_PAGE_ID --library LIBRARY_ID --refresh
+ntn-skills files SKILL_PAGE_ID --library LIBRARY_ID
+ntn-skills export SKILL_PAGE_ID --library LIBRARY_ID --output ./verified-skill.zip
 ```
 
 If the Skill is disabled, inspect its management index first.
@@ -703,7 +703,7 @@ After interruption, retain the input directory, local state, credential selectio
 Resume the exact input and original `--native` selections against the exact library and Skill:
 
 ```bash
-ntn-skills ctl library import ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --operation import-my-skill --resume
+ntn-skills ctl library import ./my-skill --library LIBRARY_ID --skill-id my-skill --operation import-my-skill --resume
 ```
 
 `--resume` requires `--operation` and cannot combine with `--dry-run`.
@@ -747,10 +747,10 @@ transformations, symbolic links and retained-resource mode are rejected. Use
 `manual`, or `pinned` with an exact commit; automatic refresh is not implemented.
 
 ```bash
-ntn-skills ctl library source apply ./source.json --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library source apply ./source.json --entry LIBRARY_ENTRY --operation update-team
-ntn-skills ctl library source refresh team-skills --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library source refresh team-skills --entry LIBRARY_ENTRY
+ntn-skills ctl library source apply ./source.json --library LIBRARY_ID --dry-run
+ntn-skills ctl library source apply ./source.json --library LIBRARY_ID --operation update-team
+ntn-skills ctl library source refresh team-skills --library LIBRARY_ID --dry-run
+ntn-skills ctl library source refresh team-skills --library LIBRARY_ID
 ```
 
 Save the declaration outside Notion. Apply creates, rebuilds or replaces that Source's current configuration and contributions, including when the Source or its Skill pages were deleted.
@@ -795,7 +795,7 @@ publishes Source ready, and removes the finite parent and child records. This is
 not an atomic multi-Skill transaction or a distributed lock.
 
 ```bash
-ntn-skills ctl library source apply ./source.json --entry LIBRARY_ENTRY --operation update-team --resume
+ntn-skills ctl library source apply ./source.json --library LIBRARY_ID --operation update-team --resume
 ```
 
 Retain the original declaration, local state and credential selection. Unknown
@@ -817,13 +817,13 @@ not covered by `--max-requests` and `--max-bytes`.
 Read the current fingerprint:
 
 ```bash
-ntn-skills ctl library profile show daily --entry LIBRARY_ENTRY
+ntn-skills ctl library profile show daily --library LIBRARY_ID
 ```
 
 For a new Profile:
 
 ```bash
-ntn-skills ctl library profile set daily --entry LIBRARY_ENTRY --name Daily --enabled true --expect new
+ntn-skills ctl library profile set daily --library LIBRARY_ID --name Daily --enabled true --expect new
 ```
 
 For an existing Profile, replace `new` with the exact fingerprint returned by `show`.
@@ -832,8 +832,8 @@ Supply the complete intended rules. Omitting `--default-view` or `--freshness-js
 A freshness rule can set Profile defaults and overrides keyed by stable Skill ID:
 
 ```bash
-ntn-skills ctl library profile set daily --entry LIBRARY_ENTRY --name Daily --enabled true --expect CURRENT_FINGERPRINT --freshness-json '{"default":{"read_max_age_ms":300000},"skills":[{"skill_id":"my-skill","read_max_age_ms":60000}]}'
-ntn-skills ctl library profile freshness daily --entry LIBRARY_ENTRY --skill my-skill
+ntn-skills ctl library profile set daily --library LIBRARY_ID --name Daily --enabled true --expect CURRENT_FINGERPRINT --freshness-json '{"default":{"read_max_age_ms":300000},"skills":[{"skill_id":"my-skill","read_max_age_ms":60000}]}'
+ntn-skills ctl library profile freshness daily --library LIBRARY_ID --skill my-skill
 ```
 
 Explicit read age takes precedence over a Skill override, then the Profile default, then the product default.
@@ -847,7 +847,7 @@ The fingerprint detects observed conflicts; it is not a distributed compare-and-
 Bind or remove the machine's selection:
 
 ```bash
-ntn-skills ctl library profile bind daily --entry LIBRARY_ENTRY
+ntn-skills ctl library profile bind daily --library LIBRARY_ID
 ntn-skills ctl library profile unbind
 ```
 

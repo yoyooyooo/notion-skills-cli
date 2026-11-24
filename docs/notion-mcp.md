@@ -2,7 +2,7 @@
 
 Content search uses the hosted Notion MCP service and keeps the existing REST
 consumer. It does not create a local full-text index. Start with the current
-Skills database entry and keep the four library tables shared with your REST
+Library root page and keep the four library tables shared with your REST
 integration.
 
 ## Connect search
@@ -71,8 +71,8 @@ select a profile explicitly.
 ## Search the library
 
 ```sh
-ntn-skills list --database LIBRARY_ENTRY --search-in content --query "release checklist"
-ntn-skills list --database LIBRARY_ENTRY --search-in content --query "中文关键词" --limit 10
+ntn-skills list --library LIBRARY_ID --search-in content --query "release checklist"
+ntn-skills list --library LIBRARY_ID --search-in content --query "中文关键词" --limit 10
 ```
 
 Content search requires a nonempty query and one explicit library entry. It

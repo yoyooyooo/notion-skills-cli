@@ -1,7 +1,7 @@
 # Create or connect a current library
 
 Use the installed executable or the exact command supplied by the host.
-For an existing library, start with `ntn-skills ctl library inspect ENTRY`.
+For an existing library, start with `ntn-skills ctl library inspect --library LIBRARY_ID`.
 For a new library, use a dedicated empty parent page authorized by the task.
 Keep the actual IDs and command results for the steps below.
 
@@ -23,7 +23,7 @@ environment.
 ntn-skills ctl doctor
 ```
 
-Without `--database`, doctor checks authentication only. The parent page must
+Without `--library`, doctor checks authentication only. The parent page must
 also be shared with the connection. `ctl config show` reports the presence of
 a saved token, not whether an environment token is available or valid.
 Keep credentials out of chat, command arguments, and committed files.
@@ -36,35 +36,30 @@ Replace `AUTHORIZED_PARENT_PAGE` with the exact empty parent-page ID or URL:
 ntn-skills ctl library init --parent AUTHORIZED_PARENT_PAGE
 ```
 
-Copy `library.skills.database_id` from the returned JSON and keep it as ENTRY.
-The command creates Skills, Files, Records, and Sources with stable property
-identities and relationships. All four bindings live in the Skills entry.
-You do not need to register the other three IDs with each client.
-
-Use `--entry ENTRY` for management and `--database ENTRY` for consumption.
-Successful initialization establishes the structure, not first business use.
-Its `next.argv` is a read-only `list`; an empty library is a valid result before
-you create or import the first Skill. Initialization does not copy Builtins,
-import content, save a local default, install Skills, register a Source, or
-connect Pi. Use the same executable's Builtin maintenance/sync guidance without
-putting it in Notion. Display titles may change; the descriptor maintains the
-table mappings.
-
-For an existing current library, validate its registered tables:
+Init creates a dedicated root page under the authorized container, then all four
+tables as its direct children. Keep `library.library_id` (the root page UUID) and
+`root_url`. The sole descriptor stays in the Skills table description and carries
+the other exact bindings. Use `--library LIBRARY_ID` for both management and reads.
 
 ```sh
-ntn-skills ctl library init --entry ENTRY
+ntn-skills ctl library init --library LIBRARY_ID
+ntn-skills ctl library inspect --library LIBRARY_ID
 ```
 
-`init --entry` reads and validates the existing layout. It does not register
-local configuration. `inspect ENTRY` reads the descriptor without inspecting
-all table schemas. Neither command fills missing Content descriptors or
-converts an older library schema.
+Both commands verify the root and four-table ownership read-only. They do not
+save a default or repair an older layout. Init success means the structure is
+ready; its next list can be empty. A new `init --parent` creates a new root.
+Use the same executable's Builtin guidance without copying it into Notion.
 
-In a new Agent session, supply the saved ENTRY and the same credential environment.
-If the user requests a consumption default, `ctl config set default_database ENTRY`
-saves one locally. It does not connect a host or supply a management write target;
-management commands still need explicit `--entry`.
+If requested, `ctl config set default_library LIBRARY_ID` saves the consumption
+default used by CLI and SDK. Writers still require an explicit target. A full ref
+selects its own root, a conflicting explicit selector fails, and short references
+inside a document retain that document's Library. Keep already accepted tasks
+and fixed selections bound when changing the next-turn default.
+
+The root may contain human/Agent documentation and helper content. Keep all four
+system tables directly underneath it. Rename or move the whole root freely;
+copies or independently moved tables must not reuse a stale descriptor.
 
 ## Interrupted initialization
 
@@ -83,10 +78,10 @@ To continue the original initialization, add `--resume`:
 ntn-skills ctl library init --parent AUTHORIZED_PARENT_PAGE --operation ORIGINAL_OPERATION_ID --resume
 ```
 
-Continuation preserves known table, data-source and property IDs, creates only
+Continuation preserves the known root, table, data-source and property IDs. It creates only
 tables whose creation was not attempted or was definitively rejected, and
 completes missing relationships and the descriptor. A lost response is
-reconciled first. Unknown table or relation creation that remains invisible
+reconciled first. Unknown root, table or relation creation that remains invisible
 stays unresolved; it is not blindly repeated. The exact descriptor replacement
 is idempotent and can be retried after checking the original marker and
 registered identities. Human edits or conflicting objects stop continuation.
@@ -126,7 +121,7 @@ When reviewing a decision:
 Replace INPUT with the actual directory and SKILL_ID with a stable identity:
 
 ```sh
-ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID
+ntn-skills ctl library skill create INPUT --library LIBRARY_ID --skill-id SKILL_ID
 ```
 
 Add `--dry-run` when a preview is requested. Successful creation reports
@@ -136,7 +131,7 @@ use exact resources. No artificial Source or manually authored descriptor is
 needed. Native content needs no projection step.
 
 Use `skill update` for later partial changes and
-`skill register PAGE_ID --entry ENTRY` for a page already authored in the current
+`skill register PAGE_ID --library LIBRARY_ID` for a page already authored in the current
 Skills table. Complete-tree replacement uses `ctl library import`, which defaults
 to exact resources. See [native management](operations.md#manage-native-skills)
 and [complete import](operations.md#import-a-complete-current-tree).
@@ -144,8 +139,8 @@ and [complete import](operations.md#import-a-complete-current-tree).
 ## Read current content
 
 ```sh
-ntn-skills list --database ENTRY --query SKILL_NAME --refresh --json
-ntn-skills read EXACT_REF --database ENTRY --refresh --json
+ntn-skills list --library LIBRARY_ID --query SKILL_NAME --refresh --json
+ntn-skills read EXACT_REF --library LIBRARY_ID --refresh --json
 ```
 
 Select the actual record from `records` and use its `ref` in the second command.
@@ -156,7 +151,7 @@ establish that a body was read.
 For a selected Skill with supporting files:
 
 ```sh
-ntn-skills ctl library files PAGE_ID --entry ENTRY
+ntn-skills ctl library files PAGE_ID --library LIBRARY_ID
 ntn-skills files SNAPSHOT_ID_FROM_READ
 ntn-skills read RELATIVE_REFERENCE --from PINNED_CONTAINING_FILE_REF
 ```
@@ -180,28 +175,28 @@ Notion identities; they do not establish a Git Source, become reading projection
 or follow future package updates. Copy only the workflows needed. Use a new
 library or choose stable IDs not already owned by different content.
 
-Set `library_entry` to the actual Skills entry. Create only the parent export
+Set `library_id` to the canonical Library root page UUID. Create only the parent export
 directory; each export creates its own new child directory:
 
 ```sh
-library_entry='PASTE_LIBRARY_SKILLS_DATABASE_ID'
+library_id='PASTE_LIBRARY_SKILLS_DATABASE_ID'
 bootstrap_dir=$(mktemp -d "${TMPDIR:-/tmp}/ntn-bootstrap.XXXXXX")
 bootstrap_dir=$(cd "$bootstrap_dir" && pwd -P)
 
 ntn-skills ctl builtin export notion/ntn-skills \
 	--output "$bootstrap_dir/ntn-skills"
 ntn-skills ctl library skill create "$bootstrap_dir/ntn-skills" \
-	--entry "$library_entry" --skill-id ntn-skills
+	--library "$library_id" --skill-id ntn-skills
 
 ntn-skills ctl builtin export notion/ntn-skills-maintain \
 	--output "$bootstrap_dir/ntn-skills-maintain"
 ntn-skills ctl library skill create "$bootstrap_dir/ntn-skills-maintain" \
-	--entry "$library_entry" --skill-id ntn-skills-maintain
+	--library "$library_id" --skill-id ntn-skills-maintain
 
 ntn-skills ctl builtin export notion/ntn-skills-sync \
 	--output "$bootstrap_dir/ntn-skills-sync"
 ntn-skills ctl library skill create "$bootstrap_dir/ntn-skills-sync" \
-	--entry "$library_entry" --skill-id ntn-skills-sync
+	--library "$library_id" --skill-id ntn-skills-sync
 ```
 
 All Markdown main files and references become native. Verify the actual results
@@ -245,7 +240,7 @@ Use the shared
 [isolated development guide](https://github.com/yoyooyooo/pi-context-broker/blob/next/docs/isolated-development.md)
 for development or onboarding checks. It owns the environment commands.
 Choose an absolute task-owned `--root` and an explicit `--build` for each run,
-then select the exact test library with `--entry` or test parent with `--parent`.
+then select the exact test library with `--library` or test parent with `--parent`.
 
 The launcher supplies separate configuration, state, cache, data, temporary,
 and Pi directories while keeping HOME unchanged. Use those explicit application

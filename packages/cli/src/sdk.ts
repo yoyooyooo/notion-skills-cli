@@ -388,6 +388,8 @@ function runOperation<A>(
   options: SdkOptions,
 ): Promise<A> {
   return runRuntimeOperation(() => {
+    if (Object.hasOwn(options, "database") || Object.hasOwn(options, "entry"))
+      throw fail("INVALID_ARGUMENT", "SDK v3 selects an exact Library root with library; retired database/entry selectors are not accepted.")
     if (Object.hasOwn(options, "readOnly"))
       throw fail(
         "INVALID_ARGUMENT",

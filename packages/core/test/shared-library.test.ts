@@ -466,7 +466,7 @@ test("attachment rejects replacement of a registered data source even if its col
   await expect(
     f.run(initializeSharedLibrary({ library: library.library_id })),
   ).rejects.toThrow("registered data source was replaced")
-  await expect(f.run(initializeSharedLibrary({ parent }))).rejects.toThrow(
+  await expect(f.run(initializeSharedLibrary({ library: library.library_id }))).rejects.toThrow(
     "registered data source was replaced",
   )
   expect(f.calls.filter((call) => call.write).length).toBe(writes)
@@ -864,4 +864,54 @@ test("resume validates its operation selector before network or state writes", a
   }
   expect(f.calls).toHaveLength(0)
   expect(f.state.size).toBe(0)
+})
+
+
+test("successful repeated init creates independent roots under one container", async () => {
+  const f = fixture()
+  const first = await f.run(initializeSharedLibrary({ parent }))
+  const second = await f.run(initializeSharedLibrary({ parent }))
+  expect(first.library.library_id).not.toBe(second.library.library_id)
+  expect(f.roots.size).toBe(2)
+  expect(f.databases.size).toBe(8)
+  expect(first.library.operation_id).not.toBe(second.library.operation_id)
+  expect(f.state.size).toBe(0)
+  expect(await f.run(loadSharedLibrary(first.library.library_id))).toEqual(first.library)
+  expect(await f.run(loadSharedLibrary(second.library.library_id))).toEqual(second.library)
+})
+
+test("unknown root CREATE is observed by its atomic marker and never blindly replayed", async () => {
+  for (const outcome of ["accepted", "not_accepted"] as const) {
+    const f = fixture(false, { root: outcome })
+    const first = await f.run(initializeSharedLibrary({ parent }).pipe(Effect.result))
+    if (first._tag !== "Failure") throw Error("Expected unknown root creation")
+    const operation = String(property(first.failure.details).operation_id)
+    expect(f.databases.size).toBe(0)
+    const stored = property([...f.state.values()][0])
+    expect(property(stored.in_flight).action).toBe("create:root")
+    f.clearFailures()
+    if (outcome === "accepted") {
+      const result = await f.run(initializeSharedLibrary({ parent, operation, resume: true }))
+      expect(result.library.library_id).toBe([...f.roots.keys()][0]!)
+      expect(f.state.size).toBe(0)
+    } else {
+      await expect(f.run(initializeSharedLibrary({ parent, operation, resume: true }))).rejects.toThrow("absence")
+      expect(f.databases.size).toBe(0)
+    }
+    expect(f.calls.filter(call => call.path === "v1/pages" && call.method === "POST")).toHaveLength(1)
+  }
+})
+
+test("a known root cannot be replaced after a table-boundary interruption", async () => {
+  const f = fixture(false, { before: "Files" })
+  const first = await f.run(initializeSharedLibrary({ parent }).pipe(Effect.result))
+  if (first._tag !== "Failure") throw Error("Expected budget stop")
+  const operation = String(property(first.failure.details).operation_id)
+  const known = String(property([...f.state.values()][0]).root_page_id)
+  expect(f.roots.has(known)).toBe(true)
+  f.hideRoot(known)
+  f.clearFailures()
+  const writes = f.calls.filter(call => call.write).length
+  await expect(f.run(initializeSharedLibrary({ parent, operation, resume: true }))).rejects.toThrow("known root")
+  expect(f.calls.filter(call => call.write)).toHaveLength(writes)
 })

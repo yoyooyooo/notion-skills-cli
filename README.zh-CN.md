@@ -16,6 +16,8 @@
 [pi-context-broker](https://github.com/yoyooyooo/pi-context-broker/blob/next/README.zh-CN.md)
 提供可选的 Pi 接入。
 
+[Library 根页面与选库规则](docs/library-roots.md) · [已有库迁移](docs/library-root-migration.md)
+
 ## 安装
 
 使用 Node.js 22.x 中的 22.23.5+、24.x 中的 24.22.3+，或 26.x 中的 26.13.1+。
@@ -62,44 +64,52 @@ ntn-skills ctl doctor
 把可信凭据来源的输出通过管道传给 `ctl config set-token --stdin`。
 详见[凭据设置](skills/notion/ntn-skills-maintain/references/setup.md#credentials)。
 
-### 2. 创建四表库并保存入口
+### 2. 创建 Library 根页面
 
-将占位符替换为刚才空页面的实际 ID 或 URL：
+传入已授权的容器页面 ID 或 URL：
 
 ```sh
 parent_page='PASTE_AUTHORIZED_PARENT_PAGE_ID_OR_URL'
 ntn-skills ctl library init --parent "$parent_page"
 ```
 
-命令在父页面下创建 Skills、Files、Records 和 Sources。
-从 JSON 结果复制 `library.skills.database_id`，保存到 `library_entry`：
+Init 会新建一个专属根页面，把 Skills、Files、Records、Sources 四张表直接放在根页面下。
+从结果保存 `library.library_id` 和 `root_url`。Library ID 就是根页面的 UUID：
 
 ```sh
-library_entry='PASTE_LIBRARY_SKILLS_DATABASE_ID'
-ntn-skills ctl library init --entry "$library_entry"
+library_id='PASTE_LIBRARY_ROOT_PAGE_ID'
+ntn-skills ctl library init --library "$library_id"
 ```
 
-第二条命令验证已登记的表结构。后续管理使用 `--entry`，读取使用 `--database`，
-都传这一个 Skills 入口；不需要另外配置其他三张表的 ID。
-已有当前库可以直接从 `init --entry` 开始，跳过创建。
+第二条命令只读核验根页面和四表的实际归属。管理、导入和消费统一使用 `--library`，
+可传根页面 ID、Notion URL 或已登记的精确 Library alias；alias 在操作开始时解析并绑定。
 
-初始化成功表示库结构就绪。返回的 `next.argv` 是只读 `list`；
-还没有添加第一个 Skill 时，空结果是正常状态。Init 不会复制包内工作流、
-创建业务内容、保存本地默认库或配置 Pi。
+根页面下还可以放说明文档、普通子页面和其他辅助数据库。根页面改名或整体移动不改变身份；
+四张系统表必须保持直属于根页面。复制根页面会产生新身份，复制过去的旧描述符不能直接使用。
 
-下一次终端或 Agent 会话中，把 `library_entry` 设为这次保存的同一个 ID，
-再传给下面的命令。可选的 `default_database` 配置只提供消费默认库，
-管理命令仍要求显式传入 `--entry`。
+初始化成功表示结构就绪，返回的 `next.argv` 是只读 list，空库也是合法结果。
+Init 不会保存默认库、复制业务内容、登记 Source 或配置 Pi。
+成功后再次执行新的 `init --parent` 会新建另一套根页面；复用已有库用 `--library`。
 
-导入测试使用单独通过 `init` 创建的专用库，每条测试命令都明确传入该库的
-Skills 入口。目前没有自动选择导入目标库的环境变量。
-[复用专用测试库](docs/shared-authoring.md#reuse-a-dedicated-test-library)
-说明了本地目录隔离和 fixture 导入步骤。
+CLI 和 SDK 共用可选的消费默认库：
 
-如果初始化中断，保留原父页、错误、operation ID 和本地状态。
-先只读对账；加 `--resume` 才继续原初始化中可确认的未完成步骤。
+```sh
+ntn-skills ctl config set default_library "$library_id"
+ntn-skills list --refresh
+```
+
+写入仍要求明确传入 `--library`。完整 `skill://` 引用按自身的 Library 路由；
+显式 `--library` 与引用冲突时会拒绝执行。修改默认库不会改变已经接收的 Agent 任务或固定选择。
+完整规则见 [Library 根页面与选库](docs/library-roots.md)。
+
+导入测试单独通过 init 创建测试库，每条命令明确传入测试根 ID，并隔离本地 config、cache、
+state 和请求调度目录。[专用测试库说明](docs/shared-authoring.md#reuse-a-dedicated-test-library)
+包含 fixture 导入与保守 Members 发现。
+
+初始化中断时保留原容器页面、operation ID 和本地状态。先用 `--parent ... --operation ...`
+只读对账，加 `--resume` 才继续原操作。根页面或表的 CREATE 结果未知时，查询不到不能授权重建。
 [初始化恢复说明](skills/notion/ntn-skills-maintain/references/setup.md#interrupted-initialization)
-列出了两条命令，以及仍需对账的未知结果边界。
+列出了原操作的恢复命令。
 
 ### 3. 创建第一个 Skill
 
@@ -122,7 +132,7 @@ When reviewing a decision:
 SKILL
 
 ntn-skills ctl library skill create "$skill_dir" \
-	--entry "$library_entry" --skill-id decision-review
+	--library "$library_id" --skill-id decision-review
 ```
 
 创建成功会报告 `status: "created"` 和 `state: "ready"`。
@@ -133,7 +143,7 @@ Markdown 会成为 Notion 原生正文，非文本支持文件保留精确资源
 ### 4. 发现并读取它
 
 ```sh
-ntn-skills list --database "$library_entry" \
+ntn-skills list --library "$library_id" \
 	--query decision-review --refresh --json
 ```
 
@@ -141,7 +151,7 @@ ntn-skills list --database "$library_entry" \
 
 ```sh
 skill_ref='PASTE_REF_FROM_LIST'
-ntn-skills read "$skill_ref" --database "$library_entry" --refresh --json
+ntn-skills read "$skill_ref" --library "$library_id" --refresh --json
 ```
 
 检查 `path` 为 `SKILL.md`，`content` 包含完整指令。
@@ -149,7 +159,7 @@ ntn-skills read "$skill_ref" --database "$library_entry" --refresh --json
 原生编辑无需额外生成阅读投影。
 
 `read` 用于查看。需要 Agent 执行工作流时，使用
-`ntn-skills use "$skill_ref" --database "$library_entry" --json`，
+`ntn-skills use "$skill_ref" --library "$library_id" --json`，
 同时加载它依赖的工作流。普通发现、读取、use 和 export 都不会对 Notion
 产生语义写入。
 
@@ -172,9 +182,9 @@ ntn-skills read "$skill_ref" --database "$library_entry" --refresh --json
 
 用 `skill://architect` 引用当前文档所属 Library 中稳定 ID 为 `architect` 的 Skill。
 引用具体文件时写 `skill://architect/references/design.md`；跨 Library 时加上
-`?library=LIBRARY_ID`。Library ID 来自 `ctl library init` 或 `inspect` 返回的描述符，
-不是 Skills 表的 Notion ID。显示名称和 alias 不参与身份解析。
-CLI 入口使用短引用时，需要 `--database ENTRY` 或 `default_database`；
+`?library=LIBRARY_ID`。Library ID 就是 `ctl library init` 或 `inspect --library ROOT` 返回的
+`library.library_id`，即根页面 UUID。显示名称和 alias 不参与身份解析。
+CLI 入口使用短引用时，需要 `--library LIBRARY_ID` 或 `default_library`；
 文档内的短引用始终继承该文档的 Library，不随机器默认库改变。
 后续读取应保留工具返回的完整引用。
 portable 输入复制到另一套 Library 时，导入会先把短引用补全为其声明的原库身份，

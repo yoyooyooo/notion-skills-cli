@@ -23,7 +23,7 @@ export const doctorCommand = defineCommand("doctor", { library: libraryFlag }, (
       })
       return
     }
-    const result = yield* catalog({ database, refresh: true })
+    const result = yield* catalog({ library: database, refresh: true })
     const nativeRelations = yield* Effect.forEach(
       result.databases.flatMap((source) =>
         source.shared_library === undefined ? [] : [source.shared_library],

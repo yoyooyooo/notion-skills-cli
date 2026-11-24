@@ -16,9 +16,9 @@ permission boundary.
 ## Profile rules
 
 ```sh
-ntn-skills ctl library profile list --entry ENTRY
-ntn-skills ctl library profile show PROFILE_ID --entry ENTRY
-ntn-skills ctl library profile set PROFILE_ID --entry ENTRY --name NAME --enabled true --expect CURRENT_FINGERPRINT --default-view VIEW_ID
+ntn-skills ctl library profile list --library LIBRARY_ID
+ntn-skills ctl library profile show PROFILE_ID --library LIBRARY_ID
+ntn-skills ctl library profile set PROFILE_ID --library LIBRARY_ID --name NAME --enabled true --expect CURRENT_FINGERPRINT --default-view VIEW_ID
 ```
 
 Use `--expect new` only when no current record exists for that stable Profile ID.
@@ -50,9 +50,9 @@ A long TTL delays visibility of current edits and does not extend independent
 native-body or eligibility deadlines.
 
 ```sh
-ntn-skills ctl library profile freshness PROFILE_ID --entry ENTRY --skill STABLE_SKILL_ID
-ntn-skills list --profile PROFILE_ID --database ENTRY
-ntn-skills ctl library profile bind PROFILE_ID --entry ENTRY
+ntn-skills ctl library profile freshness PROFILE_ID --library LIBRARY_ID --skill STABLE_SKILL_ID
+ntn-skills list --profile PROFILE_ID --library LIBRARY_ID
+ntn-skills ctl library profile bind PROFILE_ID --library LIBRARY_ID
 ntn-skills list --default-view
 ntn-skills ctl library profile unbind
 ```
@@ -174,10 +174,10 @@ contributions array when no identity overrides are needed:
 ```
 
 ```sh
-ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --dry-run
-ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --operation OPERATION_ID
-ntn-skills ctl library source refresh SOURCE_ID --entry ENTRY --dry-run
-ntn-skills ctl library source refresh SOURCE_ID --entry ENTRY
+ntn-skills ctl library source apply INPUT_JSON --library LIBRARY_ID --dry-run
+ntn-skills ctl library source apply INPUT_JSON --library LIBRARY_ID --operation OPERATION_ID
+ntn-skills ctl library source refresh SOURCE_ID --library LIBRARY_ID --dry-run
+ntn-skills ctl library source refresh SOURCE_ID --library LIBRARY_ID
 ```
 
 Apply replaces that Source's complete configuration and contributions. Refresh
@@ -244,9 +244,9 @@ equal invocation creates no operation and makes no semantic writes.
 After Source apply/refresh, use the same current content to generate readable pages:
 
 ```sh
-ntn-skills ctl library projection --daily --entry ENTRY --dry-run
-ntn-skills ctl library projection --daily --entry ENTRY
-ntn-skills ctl library projection PAGE_ID --entry ENTRY
+ntn-skills ctl library projection --daily --library LIBRARY_ID --dry-run
+ntn-skills ctl library projection --daily --library LIBRARY_ID
+ntn-skills ctl library projection PAGE_ID --library LIBRARY_ID
 ```
 
 Daily combines current Source 日用 members, Skill 日用 and Default Context, using
@@ -275,7 +275,7 @@ completed and remaining targets and an exact single-Skill recovery command with
 the original policy and requested budgets. Explicit recovery uses:
 
 ```sh
-ntn-skills ctl library projection PAGE_ID --entry ENTRY --operation OPERATION_ID --resume
+ntn-skills ctl library projection PAGE_ID --library LIBRARY_ID --operation OPERATION_ID --resume
 ```
 
 Keep the original state/credential scope. Omitted filters use the unfinished
@@ -293,7 +293,7 @@ invocation shares 1000 HTTP attempts, 512 MiB and 600000 ms by default. Use
 For a completed Skill later moved to Trash, use its original exact page ID or URL:
 
 ```sh
-ntn-skills ctl library projection PAGE_ID --restore --entry ENTRY
+ntn-skills ctl library projection PAGE_ID --restore --library LIBRARY_ID
 ```
 
 Restore that owner through a narrow finite intent, then complete ordinary
@@ -328,9 +328,9 @@ and target path. Source paths include the original member root; contribution
 exclusions remain member-relative. Use exactly one current file:
 
 ```sh
-ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID --as resource --dry-run
-ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID --as native --operation OPERATION_ID
-ntn-skills ctl library source restore-follow SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID --operation OPERATION_ID
+ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --library LIBRARY_ID --skill-id SKILL_ID --file-id FILE_ID --as resource --dry-run
+ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --library LIBRARY_ID --skill-id SKILL_ID --file-id FILE_ID --as native --operation OPERATION_ID
+ntn-skills ctl library source restore-follow SOURCE_ID SOURCE_PATH --library LIBRARY_ID --skill-id SKILL_ID --file-id FILE_ID --operation OPERATION_ID
 ```
 
 Takeover reads the selected Source original, keeps File ID, page, target path and
@@ -352,10 +352,10 @@ Other files and Sources remain preserved. A concurrent change of authority or a
 new resource reference blocks overwrite or cleanup until explicitly resolved.
 
 ```sh
-ntn-skills ctl library source disable SOURCE_ID --entry ENTRY --operation OPERATION_ID
-ntn-skills ctl library source enable SOURCE_ID --entry ENTRY --operation OPERATION_ID
-ntn-skills ctl library source remove SOURCE_ID --entry ENTRY --dry-run
-ntn-skills ctl library source remove SOURCE_ID --entry ENTRY --operation OPERATION_ID
+ntn-skills ctl library source disable SOURCE_ID --library LIBRARY_ID --operation OPERATION_ID
+ntn-skills ctl library source enable SOURCE_ID --library LIBRARY_ID --operation OPERATION_ID
+ntn-skills ctl library source remove SOURCE_ID --library LIBRARY_ID --dry-run
+ntn-skills ctl library source remove SOURCE_ID --library LIBRARY_ID --operation OPERATION_ID
 ```
 
 Disable changes consumption eligibility only. It keeps selected content, files and
@@ -383,7 +383,7 @@ Incomplete pagination, permission failure or exhausted limits cannot prove absen
 Inspect the exact parent before changing an unfinished action:
 
 ```sh
-ntn-skills ctl library operation SOURCE_ID --kind source --entry ENTRY
+ntn-skills ctl library operation SOURCE_ID --kind source --library LIBRARY_ID
 ```
 
 This reads the finite Record, owner state, local lifecycle, in-flight action,
@@ -392,9 +392,9 @@ with operation:null does not establish ready, absence of the owner or retirement
 Keep the actual result and its original credential/state scope.
 
 ```sh
-ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --operation OPERATION_ID --resume
-ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --supersede OLD_OPERATION_ID --operation NEW_OPERATION_ID
-ntn-skills ctl library source remove SOURCE_ID --entry ENTRY --operation OPERATION_ID --resume
+ntn-skills ctl library source apply INPUT_JSON --library LIBRARY_ID --operation OPERATION_ID --resume
+ntn-skills ctl library source apply INPUT_JSON --library LIBRARY_ID --supersede OLD_OPERATION_ID --operation NEW_OPERATION_ID
+ntn-skills ctl library source remove SOURCE_ID --library LIBRARY_ID --operation OPERATION_ID --resume
 ```
 
 Keep the original input, local state and credential scope. Empty state or another

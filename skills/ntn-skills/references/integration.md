@@ -28,7 +28,7 @@ Ordinary business Skill discovery remains in the selected Notion library.
 
 If the user explicitly selects a Notion/team workflow, keep that exact
 source/ref. Read inspects; apply it via Pi `notion_use(ref)` or CLI
-`use REF --database ENTRY --json`, loading Requires unless already prepared.
+`use REF --library LIBRARY_ID --json`, loading Requires unless already prepared.
 Report unavailable adoption if neither route exists. When the startup directory
 is pending or its View omits this explicitly requested workflow, query the
 connected library explicitly. Failed or incomplete discovery, pending content
@@ -121,7 +121,7 @@ metadata.
 | --- | --- |
 | Expected workflow absent | Inspect coverage and failed sources; broaden query or select the exact known database. Search absence is not workspace absence. |
 | Just-authored Skill absent from Pi discovery | Refresh the configured source with notion_list refresh:true, then inspect its exact returned ref. Keep existing task pins. Repeating a cached empty query or refreshing only the CLI does not prove host discovery. |
-| Short ref reports LIBRARY_CONTEXT_REQUIRED | Supply the entry database/default or the exact containing-file ref. Never infer a Library from one search result. |
+| Short ref reports LIBRARY_CONTEXT_REQUIRED | Supply the Library root, `default_library`, or the exact containing-file ref. Never infer a Library from one search result. |
 | Same name matches several pages | Select the intended database or exact returned ref; preserve each identity. |
 | Current schema required | Keep the precise error and affected entry. Current descriptor conversion is a management task; another reader must not mask it. |
 | Current operation pending | Inspect its current state and operation ID with library files; do not mark ready by hand. |

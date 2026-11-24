@@ -1110,6 +1110,8 @@ export function garbageCollectCache(
         const snapshot = yield* store.readJson(key, SnapshotSchema)
         if (
           snapshot?.scope === current.scope &&
+          snapshot.record.locator.type === "shared_skill" &&
+          snapshot.record.locator.library_id === current.library_id &&
           !current.records.some((record) => record.id === snapshot.record.id)
         )
           absent.add(snapshot.snapshot_id)

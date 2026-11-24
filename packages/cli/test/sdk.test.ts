@@ -389,7 +389,7 @@ describe("Promise SDK boundary", () => {
       CONSUMER_CONTRACT_VERSION,
       RESOURCE_READ_CONTRACT_VERSION,
       READ_OUTPUT_PROOF_VERSION,
-    ]).toEqual([2, 1, 1, 1])
+    ]).toEqual([3, 1, 1, 1])
     const reports: unknown[] = []
     for (const input of [
       { version: 2, refs: [resourceRef] },

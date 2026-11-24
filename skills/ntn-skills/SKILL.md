@@ -21,7 +21,7 @@ Notion metadata. A remote page cannot claim trusted package identity.
 1. Select from the host's metadata. If it has none, discover without loading bodies:
 
    ```bash
-   ntn-skills list --database ENTRY --query 'TASK_TERMS'
+   ntn-skills list --library LIBRARY_ID --query 'TASK_TERMS'
    ```
 
    Use the connected library's ENTRY; omit it only for intentional cross-library
@@ -98,8 +98,8 @@ prepared, truncated or failed payload does not prove complete model delivery.
 
 ## Select discovery rules
 
-`ctl views --database ENTRY` lists native Views. `list --view VIEW_ID --database
-ENTRY` selects one. `list --profile PROFILE_ID --database ENTRY` selects shared
+`ctl views --library LIBRARY_ID` lists native Views. `list --view VIEW_ID --library
+ENTRY` selects one. `list --profile PROFILE_ID --library LIBRARY_ID` selects shared
 rules; `list --default-view` consults the machine binding. An explicit View wins.
 Bare `list` remains explicit discovery, including Prompts. Views and Profiles
 do not grant access or activate workflows.
@@ -136,7 +136,7 @@ in the selected Notion library.
 
 If the user explicitly selects a Notion/team workflow, retain that source and
 exact ref. Inspect it with ordinary `read`, then use
-`ntn-skills use 'EXACT_WORKFLOW_REF' --database ENTRY --json` or Pi `notion_use(ref)`
+`ntn-skills use 'EXACT_WORKFLOW_REF' --library LIBRARY_ID --json` or Pi `notion_use(ref)`
 to load its Requires before applying it, unless already prepared for this task.
 Read its references with `read --from`. Broaden incomplete discovery within the
 same library; failed or partial discovery, pending content and denied access

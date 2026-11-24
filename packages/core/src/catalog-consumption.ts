@@ -38,7 +38,7 @@ function listSingleCatalog(options: ListCatalogOptions = {}) {
   return catalogWithProfile(options).pipe(
     Effect.map((result) => ({
       scope: result.scope,
-      library_id: result.library_id,
+      ...(result.library_id === undefined ? {} : { library_id: result.library_id }),
       fetched_at: result.fetched_at,
       databases: result.databases,
       records: result.records,

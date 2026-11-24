@@ -62,7 +62,6 @@ const catalog: ListCatalogResult = {
   },
   profile: {
     library_id: "0c64a309-510e-5d37-b23c-3ce2f966c66e",
-    library_id: "00000000-0000-4000-8000-000000000010",
     profile_id: "daily",
     fingerprint: "a".repeat(64),
     selection: "profile",

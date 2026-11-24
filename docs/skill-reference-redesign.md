@@ -30,8 +30,8 @@ is its canonical, current root URI, such as
 the Notion adapter discriminator; it is not an identity string prefix.
 
 The descriptor's `library_id` is a logical identity for the four-table Library.
-`ctl library init` creates it; `ctl library inspect ENTRY` returns it from the
-exact Skills database ID. Consumption's `--database` may use a configured alias
+`ctl library init` creates it; `ctl library inspect --library LIBRARY_ID` returns it from the
+exact Skills database ID. Consumption's `--library` may use a configured alias
 to select a database. Neither an alias nor a database ID becomes the portable
 Library ID. Test and production Libraries should
 have different Library IDs, including when their stable Skill IDs overlap.
@@ -49,8 +49,8 @@ The final row illustrates a tool-produced pin, not a literal runnable example.
 Encode path segments and query values separately. Paths use POSIX separators;
 encoded slashes cannot create a segment boundary. Unknown, repeated or empty
 parameters and fragments fail. Only `library` and `snapshot` are accepted.
-A short reference at a CLI entry needs `--database ENTRY` or a configured
-`default_database`. A fully scoped reference does not inherit that default.
+A short reference at a CLI entry needs `--library LIBRARY_ID` or a configured
+`default_library`. A fully scoped reference does not inherit that default.
 An explicitly supplied incompatible database is a `LIBRARY_SCOPE_MISMATCH` for
 logical refs, including cached current reads, fixed selections and resource
 batches. Cache availability does not change that error contract. Physical page

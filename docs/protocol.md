@@ -61,7 +61,7 @@ capability version, credential priority, result fields and publication fences.
 The complete identity is `{ libraryId, skillId }`. Its public record ID is a
 canonical current root URI, such as `skill://architect?library=library-team`.
 `skill://architect` is contextual: a containing document supplies its Library;
-at a tool entry, explicit `--database` or `default_database` binds it once.
+at a tool entry, explicit `--library` or `default_library` binds it once.
 No containing context means no resolution. Names and aliases are discovery labels.
 The logical Library ID comes from the four-table descriptor, not its database ID.
 A physical page UUID or Notion URL remains a separate adapter input; a UUID in a
@@ -102,7 +102,7 @@ Ordinary reads check Enabled and reject an observed unfinished current operation
 
 ## Current management commands
 
-`ctl library skill create INPUT --entry ENTRY --skill-id ID` selects native
+`ctl library skill create INPUT --library LIBRARY_ID --skill-id ID` selects native
 Markdown and exact resources for other files. `skill update TARGET` changes only
 explicit content, metadata or relations; unmentioned files stay current.
 `skill register PAGE_ID` preserves an authored page in the exact Skills table and
@@ -110,7 +110,7 @@ fills missing registration. `skill remove TARGET` owns supporting/resource
 retirement and incoming same-library Members/Requires cleanup. Every action uses
 exact identities, dry-run and shared request budgets. See [daily authoring](shared-authoring.md#manage-native-skills).
 
-`ctl library import INPUT --entry ENTRY --skill-id ID` admits the complete local input before Notion access.
+`ctl library import INPUT --library LIBRARY_ID --skill-id ID` admits the complete local input before Notion access.
 The accepted input is a directory, ZIP, or explicitly selected Markdown file.
 The input limit is 128 MiB expanded and 10,000 entries. The ZIP wire limit is 138 MiB.
 
@@ -151,7 +151,7 @@ template placeholder or similar filename is insufficient evidence. Actual active
 prose links remain candidates even in prose describing an example. Import and
 dry-run expose this decision through `members_discovery`.
 
-`ctl library members-plan INPUT --entry ENTRY --skill-id ID [--bindings FILE]
+`ctl library members-plan INPUT --library LIBRARY_ID --skill-id ID [--bindings FILE]
 [--output DIR_OR_ZIP]` reports `member_policy`, `confirmed`, `unresolved`, `importable`
 and optional `relations` without Notion mutation. Omitted relations preserve existing
 sets; they are not returned as empty arrays. Each unresolved item has `blocks_import`.
@@ -160,7 +160,7 @@ paths and same-library stable refs. When the plan is importable, optional output
 creates a portable copy and rewrites only confirmed local links to canonical refs.
 Original input is unchanged. See [binding format and examples](shared-authoring.md#discover-members-before-a-local-import).
 
-`ctl library import-batch MANIFEST --entry ENTRY` freezes an explicitly selected
+`ctl library import-batch MANIFEST --library LIBRARY_ID` freezes an explicitly selected
 set of local roots, their admitted files, body replacements and final relations
 before writing. It creates/updates bodies first and applies relations second;
 Members cycles are supported, Requires cycles are rejected. This is not an atomic
@@ -182,8 +182,8 @@ Skill/page identities, input hash, files and relation summary. Brokers use this
 binding to invalidate only the corresponding directory after mutation.
 These commands do not create content versions.
 
-`ctl library source apply INPUT --entry ENTRY` accepts one complete bounded JSON
-`{version:1,definition,contributions}`. `source refresh SOURCE_ID --entry ENTRY`
+`ctl library source apply INPUT --library LIBRARY_ID` accepts one complete bounded JSON
+`{version:1,definition,contributions}`. `source refresh SOURCE_ID --library LIBRARY_ID`
 reads that declaration from the current Source and uses the same coordinator.
 Regular Git files from GitHub or credential-free HTTP(S) Git origins support manual/pinned policy and local machine authentication. All selected discovered members are included; contributions preserve stable identity overrides. New identities are deterministic. Upstream member deletion, including an empty selection, retires pure Source Skills and Files. Provider failures do not authorize deletion. Contribution mapping/exclude uses exact member-relative file paths; Selection filtering chooses members.
 
@@ -196,18 +196,18 @@ finite target cursor, removed with the operation on completion. Desired paths ex
 HTTP budget; Git subprocess HTTP/wire bytes are unmetered, while deadline and
 file limits still apply. See [authoring](shared-authoring.md#apply-or-refresh-a-git-source).
 
-`ctl library projection PAGE_ID --entry ENTRY` reads the current complete tree and
+`ctl library projection PAGE_ID --library LIBRARY_ID` reads the current complete tree and
 verified originals, renders source/resource text with the existing renderer, and
 checks the actual Skills/Files bodies. Native bodies are verified without writing;
 non-text files are explicitly skipped. `--dry-run` inspects without writes. Equal
 complete bodies are a zero-write no-op. Projection keeps the real Skill ready, so
 an unfinished generated-body intent does not block ordinary consumption.
 
-`projection --daily --entry ENTRY` selects Source 日用 current members ∪ Skill 日用
+`projection --daily --library LIBRARY_ID` selects Source 日用 current members ∪ Skill 日用
 ∪ Default Context. Complete checkbox-schema and pagination checks precede target
 writes. Existing Enabled and 期望删除 are reported and preserved. The batch stops
 on the first failure and reports completed/remaining targets plus the exact
-single-Skill operation. Resume it with `projection PAGE_ID --entry ENTRY
+single-Skill operation. Resume it with `projection PAGE_ID --library LIBRARY_ID
 --operation ID --resume`, then rerun daily. Daily rejects `--operation` and
 `--resume`; projection exposes no supersede. One invocation budget covers the
 whole batch. See [text generation](shared-authoring.md#generate-readable-text-in-notion).
@@ -218,13 +218,14 @@ Omitted optional rules are removed.
 `--reconcile` observes an unresolved Profile intent without repeating its mutation.
 Profiles and Views do not bypass access or Enabled checks.
 
-## SDK 2
+## SDK 3
 
 The package exports the Node ESM module `ntn-skills/sdk` and its TypeScript declarations.
-`SDK_VERSION` is 2. Payload contract versions remain separate from the SDK version.
+`SDK_VERSION` is 3. Payload contract versions remain separate from the SDK version.
 
 | Export | Result or behavior |
 | --- | --- |
+| `resolveLibrary` | Read-only resolution of one root and all four actual table bindings, including an empty Library |
 | `listCatalog`, `listSkills` | Directory metadata and bounded list pages |
 | `readSkill`, `listSkill` | Selected file read or complete file directory |
 | `resolveReference` | Version 1 relative-reference identity resolution from a fixed canonical containing File ref |
@@ -263,7 +264,7 @@ import { consume, SDK_VERSION } from "ntn-skills/sdk"
 
 const result = await consume(
 	{ version: 1, targets: ["EXACT_REF_FROM_LIST"], purpose: "use" },
-	{ database: "LIBRARY_ENTRY" },
+	{ library: "LIBRARY_ROOT_UUID" },
 )
 ```
 

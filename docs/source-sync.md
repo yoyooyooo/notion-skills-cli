@@ -13,12 +13,12 @@ them. No scheduler is embedded in the package.
 
 ```bash
 ntn-skills ctl library source check \
-  --entry LIBRARY_ID \
+  --library LIBRARY_ID \
   --source team-skills \
   --source shared-tools
 ```
 
-`--entry` accepts a current Skills database ID, Notion URL or exact registered
+`--library` accepts a current Skills database ID, Notion URL or exact registered
 alias. Repeat `--source` for 1 to 256 stable Source IDs. There is no implicit
 whole-library selection. Both commands emit JSON without `--json`.
 
@@ -43,7 +43,7 @@ names both a branch and a tag is rejected. Use an exact `refs/heads/...` or
 
 ```bash
 ntn-skills ctl library source sync \
-  --entry LIBRARY_ID \
+  --library LIBRARY_ID \
   --source team-skills \
   --source shared-tools \
   --manager scheduled-sync \

@@ -54,7 +54,7 @@ describe("one Skill reference protocol", () => {
   })
 
   test("protocol and storage codecs preserve the complete identity across libraries", () => {
-    for (const libraryId of ["prod", "test", "library:fixture", "Library_A.2"]) {
+    for (const libraryId of [production.libraryId, testing.libraryId, production.libraryId.toUpperCase(), testing.libraryId.replaceAll("-", "")]) {
       for (const skillId of ["architect", "poteto-mode", "a.b_c-1", "1"]) {
         const owner = createSkillKey({ libraryId, skillId })
         const id = formatSkillIdentity(owner)
@@ -131,6 +131,6 @@ describe("one Skill reference protocol", () => {
     }
     const uuid = "11111111-1111-4111-8111-111111111111"
     expect(parseTarget(uuid).kind).toBe("page")
-    expect(parseTarget(`skill://${uuid}?library=prod`).kind).toBe("skill")
+    expect(parseTarget(`skill://${uuid}?library=${production.libraryId}`).kind).toBe("skill")
   })
 })

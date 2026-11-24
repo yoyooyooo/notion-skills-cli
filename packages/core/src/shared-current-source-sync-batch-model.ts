@@ -130,6 +130,12 @@ function validPrefix(value: typeof Batch.Type): boolean {
 /** One unfinished full traversal. It is not a permanent schedule or tick history. */
 export const CurrentSourceSyncBatchSchema = Batch.check(
   Schema.makeFilter(
+    (value) =>
+      (value.library_id === value.library.library_id &&
+        value.sources_data_source_id === value.library.sources.data_source_id) ||
+      "A full batch must retain one consistent Library binding.",
+  ),
+  Schema.makeFilter(
     (value) => validPrefix(value) || "A full batch must retain an exact completed Source prefix.",
   ),
 )

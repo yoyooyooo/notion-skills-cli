@@ -1,3 +1,4 @@
+import { currentLibrary } from "./shared-current-fixture.ts"
 import { expect, test } from "@effect/vitest"
 import { Effect } from "effect"
 import { spawn } from "node:child_process"
@@ -13,7 +14,8 @@ const pendingKey = `operations/current-write-pending/${scope}/pending.json`
 const pendingPayload = {
   completion: "ready",
   owner_page_id: null,
-  version: 1,
+  version: 2,
+  library: currentLibrary,
   scope,
   library_id: "4f2a903d-8427-5499-968f-92824f397218",
   record_id: "operation-current-" + "c".repeat(64),
@@ -31,7 +33,8 @@ const restriction = { version: 1, sha256: restrictedHash, reason: "local_resourc
 
 const syncKey = `operations/current-source-sync/${scope}/pending.json`
 const syncInput = {
-  version: 1,
+  version: 2,
+  library: currentLibrary,
   kind: "current_source_sync",
   scope,
   manager_id: "mini",
