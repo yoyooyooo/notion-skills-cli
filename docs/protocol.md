@@ -1,6 +1,6 @@
 # CLI and SDK reference
 
-This reference describes the current `next` CLI and SDK 2.
+This reference describes the current `next` CLI and SDK 3.
 The [current library contract](current-contract.md) defines table ownership, current descriptors,
 operation states, and the remaining cutover work.
 Use [the usage guide](usage.md) for commands and [the authoring guide](shared-authoring.md) for complete imports.
@@ -59,11 +59,13 @@ The [remote search contract](notion-mcp.md) defines `contentSearch`, its SDK
 capability version, credential priority, result fields and publication fences.
 
 The complete identity is `{ libraryId, skillId }`. Its public record ID is a
-canonical current root URI, such as `skill://architect?library=library-team`.
+canonical current root URI, such as `skill://architect?library=44444444-4444-4444-8444-444444444444`.
 `skill://architect` is contextual: a containing document supplies its Library;
 at a tool entry, explicit `--library` or `default_library` binds it once.
 No containing context means no resolution. Names and aliases are discovery labels.
-The logical Library ID comes from the four-table descriptor, not its database ID.
+The Library ID is the canonical UUID of its dedicated Notion root page. The
+four-table descriptor binds that root to its exact databases and data sources;
+a Skills database ID is not a Library selector.
 A physical page UUID or Notion URL remains a separate adapter input; a UUID in a
 `skill://` authority is still a stable Skill ID.
 
@@ -134,7 +136,7 @@ apply/refresh for its supported mapping and exclusion changes. Takeover and
 Source removal remain separate work. Reading or exporting the target remains available.
 Portable version 2 supports the canonical main path for its content kind.
 Portable relations carry same-library current root refs such as
-`skill://architect?library=library-team`. They have no path or snapshot. Omitted Members
+`skill://architect?library=44444444-4444-4444-8444-444444444444`. They have no path or snapshot. Omitted Members
 or Requires preserves an existing field, `[]` clears it, and an array replaces the full set.
 Prompt inputs reject relations. Both fields require registered single-property
 relations to the same Skills data source. Names, page URLs, foreign libraries,

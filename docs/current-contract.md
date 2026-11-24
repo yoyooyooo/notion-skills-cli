@@ -368,8 +368,8 @@ coordinator or promise atomic publication of an entire multi-Skill Source batch.
 
 ## Consumer and reading projection
 
-One reference protocol identifies a Skill by its logical Library ID and stable
-Skill ID. `ContentRecord.id` is a full current root URI; `locator.type:
+One reference protocol identifies a Skill by its Library root page UUID and
+stable Skill ID. `ContentRecord.id` is a full current root URI; `locator.type:
 "shared_skill"` only identifies the Notion adapter. Short author refs inherit the
 containing Library. Tool entry defaults do not change document-relative scope.
 Fixed refs carry the owner and snapshot, and resolve an exact path in the selected

@@ -40,9 +40,10 @@ ntn-skills ctl doctor --library LIBRARY_ID
 ntn-skills ctl library inspect --library LIBRARY_ID
 ```
 
-Replace `LIBRARY_ENTRY` with the exact Skills database ID.
+Replace `LIBRARY_ID` with the canonical UUID of the Library root page.
 `config show` omits the token. `doctor` without `--library` checks authentication only.
-With a database, it also checks the current library descriptor, complete catalog
+With a Library, it also checks the current root, four direct child databases,
+descriptor, complete catalog
 metadata and relation schema. It does not choose or read a Skill body;
 `skill_read.checked` is false. Use an explicit `read` or `use` to verify the content
 you intend to consume. Enabled metadata alone does not prove content readiness.
@@ -53,7 +54,9 @@ To return to environment-token selection:
 ntn-skills ctl config clear-token
 ```
 
-Share the library's Skills, Files, Sources, and Records with the selected Notion integration.
+Grant the selected Notion integration access to the Library root and its Skills,
+Files, Sources, and Records databases. Root selection does not narrow the token's
+permissions.
 Reading requires content access. Import and Profile changes also require the relevant write access.
 
 ## Initialize or reconnect a library
@@ -65,9 +68,10 @@ ntn-skills ctl builtin read notion/ntn-skills-maintain --path references/setup.m
 ntn-skills ctl library init --parent AUTHORIZED_PARENT_PAGE
 ```
 
-Use an authorized empty parent page. Save `library.skills.database_id` from the
-result as `LIBRARY_ENTRY`; it contains the bindings for all four tables. Future
-sessions need this one entry and their credential environment:
+Use an authorized parent page. Init creates a dedicated Library root below it
+and makes all four databases direct children of that root. Save
+`library.library_id` as `LIBRARY_ID`; it is the root page UUID. Future sessions
+need this root and their credential environment:
 
 ```bash
 ntn-skills ctl library init --library LIBRARY_ID
@@ -81,7 +85,7 @@ full body, and apply its method to a real task to verify first use. Interrupted
 initialization uses the original operation and retained state; follow the setup
 guide's reconciliation and explicit `--resume` steps.
 
-If requested, `ctl config set default_library LIBRARY_ENTRY` saves a consumption
+If requested, `ctl config set default_library LIBRARY_ID` saves a consumption
 default. It does not supply a management write target; keep explicit `--library`.
 
 ## Product guidance and team workflows
@@ -159,16 +163,16 @@ If the selected bytes are no longer available, read the current Skill again.
 | --- | --- |
 | `skill://architect` | The stable ID `architect` in the containing Library; select its declared entrypoint |
 | `skill://architect/references/design.md` | That owner's exact file path |
-| `skill://architect?library=library-team` | The explicitly selected logical Library and stable Skill ID |
-| `skill://architect/SKILL.md?library=library-team&snapshot=s_<64-hex-digits>` | A tool-returned fixed manifest and exact path |
+| `skill://architect?library=44444444-4444-4444-8444-444444444444` | The explicitly selected root Library and stable Skill ID |
+| `skill://architect/SKILL.md?library=44444444-4444-4444-8444-444444444444&snapshot=s_<64-hex-digits>` | A tool-returned fixed manifest and exact path |
 
 The snapshot row illustrates the format; keep the real value returned by a tool.
 Percent-encode each path segment and each query value separately. Do not encode
 a slash inside a segment to change directory boundaries. Display titles, aliases,
-page IDs and table IDs do not replace stable Skill or Library IDs.
+Skill page IDs and table IDs do not replace stable Skill IDs or Library root IDs.
 
 At a CLI entry, bind short refs with `--library LIBRARY_ID`, or configure
-`ntn-skills ctl config set default_library ENTRY`. Management always requires
+`ntn-skills ctl config set default_library LIBRARY_ID`. Management always requires
 its explicit `--library`. In a document, `skill://architect` inherits that document's
 Library, not the current default. Use a `library` parameter for an external owner.
 Read the descriptor's `library_id` from `ctl library inspect --library LIBRARY_ID`.
@@ -176,7 +180,7 @@ See [the reference contract](skill-reference-redesign.md) for fixed and relative
 
 ## Create, edit, register or remove a native Skill
 
-Use the current library entry and an exact page ID/URL or stable Skill ID:
+Use the current Library root and an exact Skill page ID/URL or stable Skill ID:
 
 ```bash
 ntn-skills ctl library skill create ./my-skill --library LIBRARY_ID --skill-id my-skill

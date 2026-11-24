@@ -7,7 +7,7 @@ It supersedes the former `shared_skill:<library>:<skill>` identity encoding.
 
 - Use `skill://architect` for a Skill and its declared entrypoint when read.
 - Use `skill://architect/references/design.md` for an exact file path.
-- Add `?library=<logical-library-id>` for an independently scoped reference.
+- Add `?library=<library-root-uuid>` for an independently scoped reference.
 - The authority is a stable Skill ID, never a display name, alias or page ID.
 - A document's contextual reference inherits that document's Library. Only a
   tool entry without a containing document can use the Library bound at entry.
@@ -21,20 +21,21 @@ It supersedes the former `shared_skill:<library>:<skill>` identity encoding.
   the current product does not provide a permanent global tombstone registry.
   Never lowercase existing
   identities without checking collisions and an explicit migration mapping.
-- Library IDs retain their existing bounded identity grammar. A Library alias
-  in local configuration is not a portable Library ID.
+- Library IDs are canonical lowercase UUIDs of dedicated Notion root pages.
+  Source IDs, names and database IDs cannot stand in for this root identity.
 
 The complete Skill key is `{ libraryId, skillId }`. Public `ContentRecord.id`
 is its canonical, current root URI, such as
-`skill://architect?library=library-test`. `locator.type: "shared_skill"` remains
+`skill://architect?library=44444444-4444-4444-8444-444444444444`. `locator.type: "shared_skill"` remains
 the Notion adapter discriminator; it is not an identity string prefix.
 
-The descriptor's `library_id` is a logical identity for the four-table Library.
-`ctl library init` creates it; `ctl library inspect --library LIBRARY_ID` returns it from the
-exact Skills database ID. Consumption's `--library` may use a configured alias
-to select a database. Neither an alias nor a database ID becomes the portable
-Library ID. Test and production Libraries should
-have different Library IDs, including when their stable Skill IDs overlap.
+The descriptor's `library_id` is the UUID of the dedicated root page.
+`ctl library init --parent OUTER_PAGE` creates that root and its four direct
+child databases. `ctl library inspect --library ROOT_UUID` verifies the root,
+physical placement and complete descriptor bindings. Consumption and management
+select the same root with `--library`; Source names and database IDs are not
+alternate selectors. Test and production Libraries have different roots,
+including when their stable Skill IDs overlap.
 
 ### Reference spelling
 
@@ -42,8 +43,8 @@ have different Library IDs, including when their stable Skill IDs overlap.
 | --- | --- |
 | `skill://architect` | Containing Library, stable ID, declared entrypoint |
 | `skill://architect/references/design.md` | Containing Library and exact file path |
-| `skill://architect?library=library-team` | Explicit owner and current entrypoint |
-| `skill://architect/references/design.md?library=library-team&snapshot=s_<64-hex-digits>` | Explicit owner, immutable selected manifest and exact path |
+| `skill://architect?library=44444444-4444-4444-8444-444444444444` | Explicit owner and current entrypoint |
+| `skill://architect/references/design.md?library=44444444-4444-4444-8444-444444444444&snapshot=s_<64-hex-digits>` | Explicit owner, immutable selected manifest and exact path |
 
 The final row illustrates a tool-produced pin, not a literal runnable example.
 Encode path segments and query values separately. Paths use POSIX separators;
@@ -51,10 +52,10 @@ encoded slashes cannot create a segment boundary. Unknown, repeated or empty
 parameters and fragments fail. Only `library` and `snapshot` are accepted.
 A short reference at a CLI entry needs `--library LIBRARY_ID` or a configured
 `default_library`. A fully scoped reference does not inherit that default.
-An explicitly supplied incompatible database is a `LIBRARY_SCOPE_MISMATCH` for
-logical refs, including cached current reads, fixed selections and resource
+An explicitly supplied incompatible Library is a `LIBRARY_SCOPE_MISMATCH` for
+Skill refs, including cached current reads, fixed selections and resource
 batches. Cache availability does not change that error contract. Physical page
-inputs retain their separate database-containment check.
+inputs retain their separate selected-Library containment check.
 
 For authored content, use ordinary relative paths within one Skill and
 `skill://architect` between Skills. A selected Source may retain an existing cross-root
