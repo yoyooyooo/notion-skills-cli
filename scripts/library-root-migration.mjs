@@ -133,6 +133,14 @@ export function rootDescriptor(legacy, rootId) {
 export const admissionId = (libraryId, sourcePageId, member) =>
   "skill-" + digest(["source-onboarding-v1", libraryId, sourcePageId, member])
 
+/** Scan code as well as prose: inline code often carries real routing identity.
+ * A bare scheme or the exact ellipsis placeholder has no target to migrate. */
+export function referenceTokens(text) {
+  return [...new Set(text.match(/skill:\/\/[^\s<>"'`\])}]+/gu) ?? [])].filter(
+    (value) => value !== "skill://...",
+  )
+}
+
 /** Exact current identities only. A pin is never rebound or weakened to latest. */
 export function rewriteReference(input, mapping, contextLibrary) {
   const match = /^skill:\/\/([^/?#]+)(?:\/([^?#]*))?(?:\?([^#]*))?$/u.exec(input)
@@ -539,37 +547,37 @@ export function preparePlan(inventory) {
       if (content.kind === "native" && content.frontmatter?.includes("skill://"))
         addBlocker("FRONTMATTER_REFERENCES_REQUIRE_REVIEW", { page_id: row.id })
     }
-  const mapRich = (parts, location) =>
+  const mapRich = (parts, location, literal = false) =>
     writableRich(parts).map((part) => {
       if (part.type !== "text") return part
       const url = part.text.link?.url
-      const original =
-        typeof url === "string" && url.startsWith("skill://")
-          ? url
-          : part.annotations?.code !== true &&
-              part.text.content.startsWith("skill://") &&
-              !/\s/u.test(part.text.content)
-            ? part.text.content
-            : undefined
-      if (original === undefined) {
-        if (
-          part.annotations?.code !== true &&
-          part.text.content.includes("skill://") &&
-          (part.text.content.includes(legacy.library_id) ||
-            mapping.skills.some(
-              (item) => item.before !== item.after && part.text.content.includes(item.before),
-            ))
+      const map = (original, write) => {
+        try {
+          const mapped = rewriteReference(original, mapping, legacy.library_id)
+          if (mapped === original) return
+          if (write && !literal) write(mapped)
+          else
+            addBlocker(
+              literal ? "CODE_REFERENCE_REQUIRES_REVIEW" : "EMBEDDED_REFERENCE_REQUIRES_REVIEW",
+              { ...location, reference: original },
+            )
+        } catch (error) {
+          addBlocker(error.code ?? "REFERENCE_INVALID", { ...location, reference: original })
+        }
+      }
+      if (typeof url === "string" && url.startsWith("skill://"))
+        map(url, (mapped) => {
+          part.text.link.url = mapped
+        })
+      for (const reference of referenceTokens(part.text.content))
+        map(
+          reference,
+          reference === part.text.content
+            ? (mapped) => {
+                part.text.content = mapped
+              }
+            : undefined,
         )
-          addBlocker("EMBEDDED_REFERENCE_REQUIRES_REVIEW", location)
-        return part
-      }
-      try {
-        const mapped = rewriteReference(original, mapping, legacy.library_id)
-        if (url === original) part.text.link.url = mapped
-        if (part.text.content === original) part.text.content = mapped
-      } catch (error) {
-        addBlocker(error.code ?? "REFERENCE_INVALID", location)
-      }
       return part
     })
   // Structured identity fields above have separate validators. Only rich text
@@ -620,8 +628,19 @@ export function preparePlan(inventory) {
     for (const key of ["rich_text", "caption"])
       if (Array.isArray(block[block.type]?.[key])) {
         before[key] = writableRich(block[block.type][key])
-        after[key] = mapRich(block[block.type][key], { block_id: block.id })
+        after[key] = mapRich(
+          block[block.type][key],
+          { block_id: block.id, field: key },
+          block.type === "code" && key === "rich_text",
+        )
       }
+    if (block.type === "table_row") {
+      requireValue(Array.isArray(block.table_row?.cells), "INCOMPLETE_TABLE_ROW")
+      before.cells = block.table_row.cells.map(writableRich)
+      after.cells = block.table_row.cells.map((cell, index) =>
+        mapRich(cell, { block_id: block.id, field: "cells", cell: index }),
+      )
+    }
     if (Object.keys(before).length)
       stage(
         "block",

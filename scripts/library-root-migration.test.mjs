@@ -19,6 +19,7 @@ import {
   migratePortableManifest,
   migrateFileLinks,
   applyPlan,
+  referenceTokens,
 } from "./library-root-migration.mjs"
 
 const id = (n) => "00000000-0000-4000-8000-" + String(n).padStart(12, "0")
@@ -548,8 +549,79 @@ test("normalization of Notion default annotations makes readback stable without 
   )
 })
 
+test("inline-code identities and table cells migrate without treating code formatting as an exemption", () => {
+  const f = fixture()
+  const reference = "skill://" + f.skillPage + "/SKILL.md"
+  f.inventory.native_blocks.push({
+    id: id(30),
+    type: "table_row",
+    table_row: { cells: [rich("label"), [{ ...rich(reference)[0], annotations: { code: true } }]] },
+  })
+  const plan = preparePlan(f.inventory)
+  assert.equal(plan.status, "ready")
+  const patch = plan.patches.find((item) => item.id === id(30))
+  assert.equal(
+    patch.after.table_row.cells[1][0].text.content,
+    "skill://" + plan.mapping.skills[0].after + "/SKILL.md",
+  )
+  assert.equal(patch.after.table_row.cells[1][0].annotations.code, true)
+  assert.deepEqual(patch.before.table_row.cells[0], patch.after.table_row.cells[0])
+})
+
+test("embedded and fenced identities stay reviewed while exact placeholders carry no identity", () => {
+  const f = fixture(),
+    reference = "skill://" + f.skillPage + "/SKILL.md"
+  f.inventory.native_blocks.push(
+    { id: id(30), type: "code", code: { rich_text: rich(reference), language: "plain text" } },
+    {
+      id: id(31),
+      type: "paragraph",
+      paragraph: {
+        rich_text: [
+          { ...rich("[owner](" + reference + ")")[0], annotations: { code: true } },
+          ...rich("DB入口：skill://" + id(999) + "/"),
+        ],
+      },
+    },
+    { id: id(32), type: "paragraph", paragraph: { rich_text: rich("Read skill://...") } },
+  )
+  const plan = preparePlan(f.inventory)
+  assert.equal(plan.status, "blocked")
+  assert.ok(plan.blockers.some((item) => item.code === "CODE_REFERENCE_REQUIRES_REVIEW"))
+  assert.ok(plan.blockers.some((item) => item.code === "EMBEDDED_REFERENCE_REQUIRES_REVIEW"))
+  assert.ok(plan.blockers.some((item) => item.code === "UNRESOLVED_REFERENCE_TARGET"))
+  assert.ok(plan.patches.every((item) => ![id(30), id(31), id(32)].includes(item.id)))
+  assert.deepEqual(referenceTokens("`Read skill://...`\n```text\n" + reference + "\n```"), [
+    reference,
+  ])
+  assert.deepEqual(referenceTokens("skill://.../SKILL.md skill://" + id(999)), [
+    "skill://.../SKILL.md",
+    "skill://" + id(999),
+  ])
+})
+
 test("actual CLI inventory, plan and guarded apply preserve existing rows through a fake ntn boundary", () => {
   const f = fixture()
+  f.inventory.tables.skills.rows[0].properties.content = text(
+    "content",
+    canonical({ kind: "native" }),
+  )
+  f.inventory.native_blocks[0].parent = { page_id: f.skillPage }
+  f.inventory.native_blocks.push(
+    {
+      id: id(30),
+      type: "table",
+      parent: { page_id: f.skillPage },
+      has_children: true,
+      table: { table_width: 1 },
+    },
+    {
+      id: id(31),
+      type: "table_row",
+      parent: { block_id: id(30) },
+      table_row: { cells: [rich("skill://" + f.skillPage + "/SKILL.md")] },
+    },
+  )
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "library-root-migration-")))
   const bin = join(directory, "bin"),
     store = join(directory, "store")
@@ -574,7 +646,8 @@ test("actual CLI inventory, plan and guarded apply preserve existing rows throug
     'if(path==="/v1/pages/"+db.root.id)result=db.root;else if(path==="/v1/blocks/"+db.root.id+"/children")result=list(db.root_database_ids.map(id=>({id,type:"child_database"})));\n' +
     'for(const t of Object.values(db.tables)){if(path==="/v1/databases/"+t.database.id)result=t.database;if(path==="/v1/data_sources/"+t.data_source.id)result=t.data_source;if(path==="/v1/data_sources/"+t.data_source.id+"/query")result=list(t.rows.filter(r=>matches(r,input.filter)));}\n' +
     'const r=rows.find(r=>path==="/v1/pages/"+r.id);if(r)result=r;\n' +
-    'if(method==="PATCH"){if(input.description)result.description=input.description;if(input.properties)for(const [id,p]of Object.entries(input.properties)){const target=value(result,id);Object.assign(target,p);}fs.writeFileSync(state,JSON.stringify(db));}\n' +
+    'for(const b of db.native_blocks){if(path==="/v1/blocks/"+b.id)result=b;}const children=/^\\/v1\\/blocks\\/([^/]+)\\/children$/.exec(path);if(children&&children[1]!==db.root.id)result=list(db.native_blocks.filter(b=>Object.values(b.parent??{}).includes(children[1])));\n' +
+    'if(method==="PATCH"){if(input.description)result.description=input.description;if(input.properties)for(const [id,p]of Object.entries(input.properties)){const target=value(result,id);Object.assign(target,p);}if(result.type&&input[result.type])Object.assign(result[result.type],input[result.type]);fs.writeFileSync(state,JSON.stringify(db));}\n' +
     "if(!result)process.exit(2);console.log(JSON.stringify(result));\n"
   writeFileSync(join(bin, "ntn"), fixtureSource, { mode: 0o700 })
   execFileSync("python3", [
@@ -630,6 +703,10 @@ test("actual CLI inventory, plan and guarded apply preserve existing rows throug
   )
   assert.equal(migrated.library_id, f.root)
   assert.equal(actual.tables.skills.rows[0].id, f.skillPage)
+  assert.equal(
+    actual.native_blocks.find((block) => block.id === id(31)).table_row.cells[0][0].text.content,
+    "skill://" + plan.mapping.skills[0].after + "/SKILL.md",
+  )
   assert.deepEqual(
     actual.tables.skills.rows[0].properties.origin,
     f.inventory.tables.skills.rows[0].properties.origin,

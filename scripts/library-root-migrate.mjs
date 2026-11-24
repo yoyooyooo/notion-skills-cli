@@ -30,6 +30,7 @@ import {
   preparePlan,
   migrateConfig,
   migratePortableManifest,
+  referenceTokens,
   rewriteReference,
   applyPlan,
 } from "./library-root-migration.mjs"
@@ -181,11 +182,6 @@ export function inspectStore(path) {
     throw Object.assign(new Error("STORE_INSPECTION_FAILED"), { code: "STORE_INSPECTION_FAILED" })
   }
   return { path: selected, ...result }
-}
-function referenceTokens(text) {
-  // This collector does not edit external bytes. False positives remain a
-  // review blocker, never an automatic source/hash rewrite.
-  return [...new Set(text.match(/skill:\/\/[^\s<>"'`\])}]+/gu) ?? [])]
 }
 export function auditPortableTree(directory, manifestPath, mapping) {
   const root = resolve(directory),
@@ -355,7 +351,10 @@ function selectPatchValue(patch, raw) {
   requireValue(raw.type === type, "BLOCK_TYPE_CHANGED")
   return {
     [type]: Object.fromEntries(
-      Object.keys(patch.before[type]).map((key) => [key, writableRich(raw[type][key])]),
+      Object.keys(patch.before[type]).map((key) => [
+        key,
+        key === "cells" ? raw[type][key].map(writableRich) : writableRich(raw[type][key]),
+      ]),
     ),
   }
 }

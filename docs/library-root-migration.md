@@ -23,7 +23,7 @@ table, automatic old-config handling or a second runtime identity path.
 | Git-only admission IDs | Prove each old `library_id + Source page + member` hash before deriving its new root-scoped ID. Keep the Skill page and its relations. Qualify a proven bare marker with its exact Source page. |
 | Source Contributions | Rebind exact current Skill IDs through that mapping. Keep membership, file mapping, exclusions and pinned content. |
 | Current Profiles | Keep the existing record page and rules; recompute root-scoped Record ID, payload and envelope hash together. |
-| Native links | Rebind exact `skill://` destinations and whole reference text. Preserve labels, formatting and other Library owners. Embedded ambiguous prose is a review blocker. |
+| Native links | Rebind exact `skill://` destinations and whole reference text, including inline-code text and table cells. Preserve labels, formatting and other Library owners. Embedded prose and code-block changes require review. |
 | Legacy `References` index | Parse the complete `file_links` JSON envelope and rewrite only proven `target` identities. Preserve `from`, `href` and fixed external URLs. Duplicate source destinations or an unmapped Library block migration. |
 | Portable metadata | Rebind the declared origin and explicit Members/Requires through exact IDs. Names never authorize a match. |
 | Global config | Create a private candidate using the observed remote descriptor. Preserve token bytes and physical bindings; use `default_library` and `{library_id, profile_id}`. |
@@ -41,6 +41,13 @@ authorities and old page-UUID authorities. The former must name the exact Librar
 being migrated; the latter must match an observed current row when it is not
 already an exact Skill ID. Both become the single current protocol. This does
 not make those spellings valid in the CLI, SDK or Broker after cutover.
+
+Code formatting does not establish that a reference is only an example. The
+audit scans inline code, fenced code and ordinary text. Only the exact
+`skill://...` placeholder and a bare `skill://` scheme carry no identity to map.
+A code block is never edited automatically, and an embedded reference that
+needs rebinding blocks the plan. An unknown authority also blocks the plan;
+the tool cannot guess that a database UUID means a Skill or a normal Notion URL.
 
 For a source-owned file, publishing replacement bytes also requires a new valid
 Source manifest and revision. Creating an object with a new hash and retaining
