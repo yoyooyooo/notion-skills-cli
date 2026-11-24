@@ -8,7 +8,9 @@ const selected = (v) => ["selected", "returned"].includes(v.phase)
 function faults(v) {
   const result = []
   const expectedLibrary =
-    v.scenario === "explicit-library" ? "production" : v.scenario === "no-context" ? "none" : "test"
+    ["explicit-library", "explicit-conflict"].includes(v.scenario) ? "production" : v.scenario === "no-context" ? "none" : "test"
+  if (v.scenario === "explicit-conflict" && ["bound", "selected", "returned"].includes(v.phase))
+    result.push("Complete reference conflicts with explicit call scope")
   if (
     ["bound", "selected", "returned"].includes(v.phase) &&
     (expectedLibrary === "none" || v.boundLibrary !== expectedLibrary)

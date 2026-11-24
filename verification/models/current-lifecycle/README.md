@@ -3,7 +3,8 @@
 本套件由 [resource-lifecycle Skill](../../../.cursor/skills/verify-notion-resource-lifecycle/SKILL.md) 维护。
 CurrentLifecycle 检查 C06/C07b 与 current 读取的有限交错；SourceSync 检查当前 Source 同步的有限协调次序；
 SourceSyncProgress 检查投影和 full 批次的两个有限完成前缀。
-三者不恢复旧 ACK、永久 pin 或历史管理模型。
+LibraryLifecycle 检查独立根页面的初始化、真实物理归属与原操作绑定。
+四者不恢复旧 ACK、永久 pin 或历史管理模型。
 源码行为由实际 reader/operation 测试回放；模型与生产 guard mutation 各有独立结果。
 
 ## 运行
@@ -25,11 +26,60 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 PSTACK_STATECHART_ROOT/TLA2TOOLS 可替代两项工具参数。使用本次新的外部输出目录；错误运行也保留。
 CurrentLifecycle 正例为 content/projection/restore 三个配置；四个反例分别移除读回 fence、projection 分类、unknown 不重放和非内容完成资格。
 SourceSync 有 fresh/resume/projection/foreign 四个正例和七个故意缺陷配置。
-SourceSyncProgress 有 full/resume/hard/completion/foreign-completion 五个正例和八个故意缺陷配置；完整套件共 31 个配置。
+SourceSyncProgress 有 full/resume/hard/completion/foreign-completion 五个正例和八个故意缺陷配置。
+LibraryLifecycle 有一个正例和十三个故意缺陷配置；完整套件共 45 个配置。
 同一模型的每个配置检查同一份完整规则清单，expected_broken 独立维护。
 缺工具、规则遗漏、cut、超时和解析异常都不算通过。
 
-单独检查同步协调或有限进度时使用 `--model SourceSync` 或 `--model SourceSyncProgress`；完整 current-lifecycle 组仍运行三个模型的全部配置。
+单独定位时使用 `--model SourceSync`、`--model SourceSyncProgress` 或 `--model LibraryLifecycle`；
+完整 current-lifecycle 组运行四个模型的全部配置。
+
+## Library 根页面与操作身份
+
+Library 的唯一身份是根页面的 canonical UUID。descriptor v2 的 `library_id`
+直接指向这张根页面；独立 `operation_id` 只表达创建来源。初始化 pending v2
+在 root CREATE 前持久化，`parent_page_id` 是获准的外层容器，`root_page_id`
+从未知变为已知后不再改变。Ready descriptor 不保存另一个冗余 parent 身份。
+
+LibraryLifecycle 有两个根、一个独立 operation、四个角色和十七种输入场景。
+根与 Skills CREATE 分别允许已知成功、已接受但响应丢失且随后可见、
+已接受但当前仍不可见。不可见时保留原意图并 blocked；不能据 absence 重发。
+模型的四表顺序是有限代表，不证明所有表排列，也不证明实际持久化。
+
+描述符声明、真实 DB parent、真实 DS owner 是三份独立输入。
+复制到 B 的 A 描述符不能通过“用描述符 A 作为预期 root，再拿 A 验证 A”自证。
+四个角色需要完整、唯一的 DB/DS 绑定，完整观察才允许 Ready。
+额外普通文档或未注册数据库不属于角色映射，不会靠扫描或名称自动加入。
+
+原 pending 存在与候选 lookup 的结果也分开。根不变而 Skills S1 换成 S2 时，
+把 DS 放进 key 会漏掉原 pending；`pending-table-key` 专门复现这条路径。
+即使读到了原 pending，`rebind-operation` 仍检查不能把冻结物理目标换成 S2。
+改 alias/default、指定新根或看到另一个 root，都不能接管原操作。
+
+| 正反配置 | 独立检查 |
+| --- | --- |
+| candidate | 所有场景遵守完整规则，最后 Ready、rejected 或保留原意图的 blocked |
+| intent-after-root | root CREATE 之前必须已有 durable intent |
+| replay-root / replay-table | 未知非幂等 CREATE 至多派发一次 |
+| trust-descriptor | 请求 root 与实际 DB parent 独立于 descriptor；此例故意同时信任声明身份与声明 parent |
+| ignore-parent / ignore-data-source | DB 直属 root，DS 直属注册 DB |
+| duplicate-role / early-ready | 角色唯一完整，完整 readback 后才 Ready |
+| rebind-operation / ambient-retarget | 原物理表和原 root 不能被新表或新默认值替换 |
+| foreign-pending / overwrite-root | 原意图准入与已知 root 单调性 |
+| pending-table-key | 表变化不能改变原 pending 的寻址并掩盖其存在 |
+
+`InitializationEventuallyExplained` 只在本地动作获执行、外部观察返回、
+调用者按原输入恢复的弱公平假设下成立。blocked/rejected 是解释终点，不是业务成功。
+安全性质与这条条件进展分开，NoDeadlock 不代替它。
+
+模型只有一个协作 owner，沿现有本机锁；它不承诺跨机 CAS。
+readback 和随后远端写入不是原子事务。Ready 记录核验发布时刻，后续人工移动表
+仍需在下一次真实边界重新核对。UUID/URL 规范化、API token 权限、完整分页、
+具体 schema/property ID、原 SQLite Store 与真实 Notion 迁移由实现和 live 回放验收。
+
+本增量先建立设计合同，生产 guard 锚点待 Core v2 绑定逻辑审查后接线。
+`coverage.json` 的 `library_root_design` 标注这一边界；未刷新旧 source hash，
+也不能把新增配置或 view 文件当成已运行的证明。
 
 ## 两条状态轴与有限范围
 

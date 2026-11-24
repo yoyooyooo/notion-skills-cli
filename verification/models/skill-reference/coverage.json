@@ -34,9 +34,9 @@
   },
   "models": {
     "ReferenceSelection": {
-      "bounds": "Two Libraries, two existing stable Skill IDs plus a missing-ID distractor, six fixed selections, three paths, fourteen input scenarios, at most one ambient-default and one live-entrypoint change.",
+      "bounds": "Two Libraries, two existing stable Skill IDs plus a missing-ID distractor, six fixed selections, three paths, fifteen input scenarios, at most one ambient-default and one live-entrypoint change.",
       "assumptions": "Local binding and selection actions eventually return. The immutable manifest and exact Source evidence are boundary facts; the model does not prove parsing, access, acquisition or byte integrity.",
-      "scope": "A short reference binds from its containing Library or explicit tool-entry context. Fixed selection cannot change owner, manifest or selected path. Source-relative lookup requires reliable provenance; ordinary resolution does not write."
+      "scope": "A short reference binds from its containing Library or explicit tool-entry context. Fixed selection cannot change owner, manifest or selected path. Source-relative lookup requires reliable provenance; ordinary resolution does not write. A complete cross-Library reference is valid, but an independently supplied conflicting explicit call scope rejects before selection; an ambient default is not an explicit call constraint."
     },
     "ImportRelations": {
       "bounds": "One explicitly selected Library, a production distractor, two batch objects, nine input scenarios, one original create per object and a deliberate-replay counterexample, one manual Members edit and one repeat.",
@@ -47,7 +47,10 @@
   "implementation_bindings": [
     {
       "name": "authoritative_context",
-      "files": ["packages/core/src/skill-ref.ts", "packages/core/test/skill-ref.test.ts"],
+      "files": [
+        "packages/core/src/skill-ref.ts",
+        "packages/core/test/skill-ref.test.ts"
+      ],
       "scope": "Explicit Library wins over an ambient context; a short reference without context fails. The shared parser and complete key prevent a title/alias string from becoming a second identity namespace. The finite model abstracts parser bytes."
     },
     {
@@ -154,6 +157,7 @@
       "expected_rules": [
         "TypeOK",
         "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
         "StableIdentityIsExact",
         "DuplicateClaimRejected",
         "MissingManifestRejected",
@@ -173,6 +177,7 @@
       "expected_rules": [
         "TypeOK",
         "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
         "StableIdentityIsExact",
         "DuplicateClaimRejected",
         "MissingManifestRejected",
@@ -183,7 +188,9 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["ContextIsAuthoritative"]
+      "expected_broken": [
+        "ContextIsAuthoritative"
+      ]
     },
     {
       "model": "ReferenceSelection",
@@ -192,6 +199,7 @@
       "expected_rules": [
         "TypeOK",
         "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
         "StableIdentityIsExact",
         "DuplicateClaimRejected",
         "MissingManifestRejected",
@@ -202,7 +210,9 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["ContextIsAuthoritative"]
+      "expected_broken": [
+        "ContextIsAuthoritative"
+      ]
     },
     {
       "model": "ReferenceSelection",
@@ -211,6 +221,7 @@
       "expected_rules": [
         "TypeOK",
         "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
         "StableIdentityIsExact",
         "DuplicateClaimRejected",
         "MissingManifestRejected",
@@ -221,7 +232,9 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["StableIdentityIsExact"]
+      "expected_broken": [
+        "StableIdentityIsExact"
+      ]
     },
     {
       "model": "ReferenceSelection",
@@ -230,6 +243,7 @@
       "expected_rules": [
         "TypeOK",
         "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
         "StableIdentityIsExact",
         "DuplicateClaimRejected",
         "MissingManifestRejected",
@@ -240,7 +254,9 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["DuplicateClaimRejected"]
+      "expected_broken": [
+        "DuplicateClaimRejected"
+      ]
     },
     {
       "model": "ReferenceSelection",
@@ -249,6 +265,7 @@
       "expected_rules": [
         "TypeOK",
         "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
         "StableIdentityIsExact",
         "DuplicateClaimRejected",
         "MissingManifestRejected",
@@ -259,7 +276,9 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["StableIdentityIsExact"]
+      "expected_broken": [
+        "StableIdentityIsExact"
+      ]
     },
     {
       "model": "ReferenceSelection",
@@ -268,6 +287,7 @@
       "expected_rules": [
         "TypeOK",
         "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
         "StableIdentityIsExact",
         "DuplicateClaimRejected",
         "MissingManifestRejected",
@@ -278,7 +298,10 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["MissingManifestRejected", "FixedSelectionUsesManifest"]
+      "expected_broken": [
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest"
+      ]
     },
     {
       "model": "ReferenceSelection",
@@ -287,6 +310,7 @@
       "expected_rules": [
         "TypeOK",
         "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
         "StableIdentityIsExact",
         "DuplicateClaimRejected",
         "MissingManifestRejected",
@@ -297,7 +321,9 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["FixedSelectionUsesManifest"]
+      "expected_broken": [
+        "FixedSelectionUsesManifest"
+      ]
     },
     {
       "model": "ReferenceSelection",
@@ -306,6 +332,7 @@
       "expected_rules": [
         "TypeOK",
         "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
         "StableIdentityIsExact",
         "DuplicateClaimRejected",
         "MissingManifestRejected",
@@ -316,7 +343,9 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["FixedSelectionUsesManifest"]
+      "expected_broken": [
+        "FixedSelectionUsesManifest"
+      ]
     },
     {
       "model": "ReferenceSelection",
@@ -325,6 +354,7 @@
       "expected_rules": [
         "TypeOK",
         "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
         "StableIdentityIsExact",
         "DuplicateClaimRejected",
         "MissingManifestRejected",
@@ -335,7 +365,9 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["SourceAuthorityRequired"]
+      "expected_broken": [
+        "SourceAuthorityRequired"
+      ]
     },
     {
       "model": "ReferenceSelection",
@@ -344,6 +376,7 @@
       "expected_rules": [
         "TypeOK",
         "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
         "StableIdentityIsExact",
         "DuplicateClaimRejected",
         "MissingManifestRejected",
@@ -354,7 +387,10 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["StableIdentityIsExact", "CrossSkillSelectionIsTargetOwned"]
+      "expected_broken": [
+        "StableIdentityIsExact",
+        "CrossSkillSelectionIsTargetOwned"
+      ]
     },
     {
       "model": "ReferenceSelection",
@@ -363,6 +399,7 @@
       "expected_rules": [
         "TypeOK",
         "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
         "StableIdentityIsExact",
         "DuplicateClaimRejected",
         "MissingManifestRejected",
@@ -373,7 +410,31 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["ResolutionDoesNotWrite"]
+      "expected_broken": [
+        "ResolutionDoesNotWrite"
+      ]
+    },
+    {
+      "model": "ReferenceSelection",
+      "config": "negative-explicit-conflict.cfg",
+      "kind": "intentional_negative",
+      "expected_rules": [
+        "TypeOK",
+        "ContextIsAuthoritative",
+        "ExplicitScopeConstraint",
+        "StableIdentityIsExact",
+        "DuplicateClaimRejected",
+        "MissingManifestRejected",
+        "FixedSelectionUsesManifest",
+        "SourceAuthorityRequired",
+        "CrossSkillSelectionIsTargetOwned",
+        "ResolutionDoesNotWrite",
+        "ResolutionEventuallyExplained",
+        "NoDeadlock"
+      ],
+      "expected_broken": [
+        "ExplicitScopeConstraint"
+      ]
     },
     {
       "model": "ImportRelations",
@@ -419,7 +480,9 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["ImportScopeRemainsBound"]
+      "expected_broken": [
+        "ImportScopeRemainsBound"
+      ]
     },
     {
       "model": "ImportRelations",
@@ -442,7 +505,9 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["ForeignRelationsBeforeWrites"]
+      "expected_broken": [
+        "ForeignRelationsBeforeWrites"
+      ]
     },
     {
       "model": "ImportRelations",
@@ -465,7 +530,10 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["FrozenMembersIntent", "ExplicitEmptyMembers"]
+      "expected_broken": [
+        "FrozenMembersIntent",
+        "ExplicitEmptyMembers"
+      ]
     },
     {
       "model": "ImportRelations",
@@ -488,7 +556,10 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["FrozenMembersIntent", "ExistingMembersOnOmission"]
+      "expected_broken": [
+        "FrozenMembersIntent",
+        "ExistingMembersOnOmission"
+      ]
     },
     {
       "model": "ImportRelations",
@@ -511,7 +582,9 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["FrozenMembersIntent"]
+      "expected_broken": [
+        "FrozenMembersIntent"
+      ]
     },
     {
       "model": "ImportRelations",
@@ -534,7 +607,9 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["RequiresOnlyExplicit"]
+      "expected_broken": [
+        "RequiresOnlyExplicit"
+      ]
     },
     {
       "model": "ImportRelations",
@@ -557,7 +632,9 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["RelationsAfterObjectCreation"]
+      "expected_broken": [
+        "RelationsAfterObjectCreation"
+      ]
     },
     {
       "model": "ImportRelations",
@@ -580,7 +657,9 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["UnknownCreateNotReplayed"]
+      "expected_broken": [
+        "UnknownCreateNotReplayed"
+      ]
     },
     {
       "model": "ImportRelations",
@@ -603,7 +682,10 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["ManualMembersPreserved", "RepeatHasNoWrites"]
+      "expected_broken": [
+        "ManualMembersPreserved",
+        "RepeatHasNoWrites"
+      ]
     },
     {
       "model": "ImportRelations",
@@ -626,7 +708,13 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": ["CompleteWasVerified"]
+      "expected_broken": [
+        "CompleteWasVerified"
+      ]
     }
-  ]
+  ],
+  "library_scope_design": {
+    "status": "design_contract_pending_implementation_binding",
+    "note": "The explicit call constraint is distinct from ambient/containing context. The new negative configuration does not assert reviewed production guard correspondence or refresh source hashes."
+  }
 }

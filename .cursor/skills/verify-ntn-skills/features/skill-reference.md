@@ -10,7 +10,7 @@
 先读 [引用合同](../../../../docs/skill-reference-redesign.md)。
 沿现有双仓隔离环境选择明确 build，记录 CLI、SDK、Broker 的实际源码与包字节。
 受控检查使用本地 fixture，不需要个人 Notion 凭据。
-真实导入只写本次已授权测试 Library；用显式 entry 选择，不改变日用配置。
+真实导入只写本次已授权测试 Library；用显式 --library root UUID 选择，不改变日用配置。
 
 ## 模型与守卫
 
@@ -32,6 +32,11 @@ ReferenceSelection 与 ImportRelations 的正例、全部预期负例、完整�
 从测试库正文读取短 ref，并把环境默认库设成正式库。核返回的完整 Library 身份、
 物理 owner 与实际字节，不能只核标题或路径。入口缺 Library、稳定 ID 缺失却有同名对象、
 重复身份、显式外库与错误 manifest owner 分别留断言。
+
+完整 ref 与 ambient default 不同时按完整 ref 选择；完整 ref 与独立显式
+--library/call scope 冲突则在任何正文读取或管理写入前拒绝。默认值切换不改变已绑定调用。
+根页面与原 pending 的独立世界事实沿 current-lifecycle/LibraryLifecycle，
+不能只构造自洽 descriptor 作为真实 DB parent 的替身。
 
 固定引用只有 snapshot 与 manifest 中的精确 path。省 path 使用 manifest 的
 entrypoint；改变实时 entrypoint 后仍须如此。缺 manifest、缺 path 或旧字节

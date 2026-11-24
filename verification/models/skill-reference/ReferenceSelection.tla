@@ -8,9 +8,9 @@ CONSTANT Defect
 ASSUME Defect \in {"none", "ambient-library", "missing-context", "name-fallback",
                   "duplicate-claim", "foreign-manifest", "missing-manifest",
                   "live-entrypoint", "missing-path", "source-fallback",
-                  "source-pin", "resolution-write"}
+                  "source-pin", "resolution-write", "explicit-conflict"}
 
-Scenarios == {"document", "entry", "no-context", "explicit-library",
+Scenarios == {"document", "entry", "no-context", "explicit-library", "explicit-conflict",
               "missing-id", "duplicate-id", "fixed-file", "fixed-entry",
               "foreign-manifest", "missing-manifest", "missing-path",
               "source-valid", "source-missing", "source-ambiguous"}
@@ -37,7 +37,7 @@ vars == <<scenario, phase, ambientLibrary, ambientChanged, liveChanged,
 SourceRelative == scenario \in {"source-valid", "source-missing", "source-ambiguous"}
 Fixed == scenario \in {"fixed-file", "fixed-entry", "foreign-manifest",
                        "missing-manifest", "missing-path"}
-ExpectedLibrary == IF scenario = "explicit-library" THEN "production"
+ExpectedLibrary == IF scenario \in {"explicit-library", "explicit-conflict"} THEN "production"
                    ELSE IF scenario = "no-context" THEN "none" ELSE "test"
 RequestedSkill == IF SourceRelative THEN "reviewer"
                   ELSE IF scenario = "missing-id" THEN "missing" ELSE "architect"
@@ -90,17 +90,19 @@ ChangeLiveEntrypoint ==
 
 BindContext ==
   /\ phase = "parsed"
-  /\ LET lib == IF Defect = "ambient-library" /\ scenario = "document"
-                   THEN ambientLibrary
-                ELSE IF Defect = "missing-context" /\ scenario = "no-context"
-                   THEN ambientLibrary
-                ELSE ExpectedLibrary
-     IN IF lib = "none" THEN Reject("LIBRARY_CONTEXT_REQUIRED")
-        ELSE
-          /\ phase' = "bound" /\ boundLibrary' = lib /\ boundSkill' = RequestedSkill
-          /\ UNCHANGED <<scenario, ambientLibrary, ambientChanged, liveChanged,
-                         selectedSnapshot, selectedPath, selectedResource,
-                         reason, semanticWrites>>
+  /\ IF scenario = "explicit-conflict" /\ Defect # "explicit-conflict"
+     THEN Reject("LIBRARY_SCOPE_MISMATCH")
+     ELSE LET lib == IF Defect = "ambient-library" /\ scenario = "document"
+                       THEN ambientLibrary
+                    ELSE IF Defect = "missing-context" /\ scenario = "no-context"
+                       THEN ambientLibrary
+                    ELSE ExpectedLibrary
+          IN IF lib = "none" THEN Reject("LIBRARY_CONTEXT_REQUIRED")
+             ELSE
+               /\ phase' = "bound" /\ boundLibrary' = lib /\ boundSkill' = RequestedSkill
+               /\ UNCHANGED <<scenario, ambientLibrary, ambientChanged, liveChanged,
+                              selectedSnapshot, selectedPath, selectedResource,
+                              reason, semanticWrites>>
 
 SelectCurrent ==
   /\ phase = "bound" /\ ~Fixed /\ ~SourceRelative
@@ -163,6 +165,7 @@ TypeOK ==
   /\ selectedResource \in (Snapshots \cup {"none"}) \X (Paths \cup {""})
   /\ semanticWrites \in 0..1
 ContextIsAuthoritative == Bound => boundLibrary = ExpectedLibrary /\ ExpectedLibrary # "none"
+ExplicitScopeConstraint == scenario = "explicit-conflict" => ~Bound
 StableIdentityIsExact == Selected => Owner(selectedSnapshot) = <<boundLibrary, boundSkill>>
 DuplicateClaimRejected == scenario = "duplicate-id" => ~Selected
 MissingManifestRejected == scenario = "missing-manifest" => ~Selected

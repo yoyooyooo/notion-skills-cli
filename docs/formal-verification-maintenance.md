@@ -8,11 +8,18 @@
 
 原 resource-lifecycle、operation-recovery 模型、专属突变脚本、旧图册和旧维护配方已经退役。它们依赖已取消的 event、永久 pin、ACK/review/completion 和独立接受协议。Git 中的历史足以追溯，不保留可误运行的兼容入口，也不把旧模型通过算作当前实现通过。
 
-当前资源与有限意图由 [资源状态 Skill](../.cursor/skills/verify-notion-resource-lifecycle/SKILL.md) 维护 [current-lifecycle](../verification/models/current-lifecycle/README.md)。CurrentLifecycle 保留七个配置，分开内容 owner Operation 与 projection/restore 的有限意图；覆盖当前读取与 writer 交错、未知写不重放、完成资格，以及声明假设下的进展。SourceSync 的十一个配置另查有限 Source 同步协调：原意图优先、完整 affected owner 的旧投影 fence、冻结 commit、配置参与 no-op、授权恢复，以及 Source 与投影结果分离。SourceSyncProgress 的十三个配置单独检查预算重入后保留投影游标和 full 批次终结前缀、硬失败不丢失，以及 parent 成功项先保存、child 清理只认精确终结资格。[操作恢复 Skill](../.cursor/skills/verify-notion-operation-recovery/SKILL.md) 仍拥有实际 writer/HTTP/SQLite 回放。三个模型共 31 个配置，复用同一 runner，不增加总验证平台。
+当前资源与有限意图由 [资源状态 Skill](../.cursor/skills/verify-notion-resource-lifecycle/SKILL.md) 维护 [current-lifecycle](../verification/models/current-lifecycle/README.md)。CurrentLifecycle 保留七个配置，分开内容 owner Operation 与 projection/restore 的有限意图；覆盖当前读取与 writer 交错、未知写不重放、完成资格，以及声明假设下的进展。SourceSync 的十一个配置另查有限 Source 同步协调：原意图优先、完整 affected owner 的旧投影 fence、冻结 commit、配置参与 no-op、授权恢复，以及 Source 与投影结果分离。SourceSyncProgress 的十三个配置检查预算重入后保留投影游标和 full 批次终结前缀、硬失败不丢失，以及 parent 成功项先保存、child 清理只认精确终结资格。LibraryLifecycle 的十四个配置检查 root CREATE 前的独立意图、canonical root 身份、真实 DB/DS 归属、完整 readback、原 pending 寻址和冻结物理绑定。[操作恢复 Skill](../.cursor/skills/verify-notion-operation-recovery/SKILL.md) 仍拥有实际 writer/HTTP/SQLite 回放。四个模型共 45 个配置，复用同一 runner，不增加总验证平台。
 
 Hosted Notion MCP 的独立凭据由 [消费验证 Skill](../.cursor/skills/verify-notion-consumption/SKILL.md) 维护 [notion-mcp-auth](../verification/models/notion-mcp-auth/README.md)。保留审核后的 AuthAcquisition v5 与 RefreshRotation v7，共 31 个完整配置：8 个候选正例、19 个故意缺陷和 4 个成功可达性见证。源代码对应只绑定已审阅的认证、store 和同机锁守卫；这不是完整实现精化证明，也不借模型的 Enabled/sessionEpoch 输入证明 Broker 接线。
 
 同一消费验证 owner 的 [notion-mcp-search](../verification/models/notion-mcp-search/README.md) 独立拥有 SearchAdmission 的 core 资格判定和 SDK Source/auth fence。它复用同一 runner 与冻结工具，保持独立规则与 mutation 清单；Broker 会话和工具投递仍由 Broker 验收。
+
+[skill-reference](../verification/models/skill-reference/README.md) 由同一资源状态 Skill 维护。
+ReferenceSelection 的十三个配置检查 containing Library、完整 ref、显式 call scope、
+固定 manifest 和 Source authority；ImportRelations 的十一个配置检查冻结批次、
+Members 三态、Requires 显式维护和未知 CREATE。两套 Library 可有相同 Skill ID
+与路径；相对引用不能凭打平缓存猜身份。实际消费、CLI 导入、SQLite 与包验证分别沿
+[引用验证配方](../.cursor/skills/verify-ntn-skills/features/skill-reference.md)。
 
 ## 运行入口
 
@@ -24,10 +31,15 @@ node scripts/verify-formal.mjs --suite request-engine --out /absolute/new-model-
 node scripts/verify-formal.mjs --suite current-lifecycle --out /absolute/new-lifecycle-run
 node scripts/verify-formal.mjs --suite notion-mcp-auth --out /absolute/new-mcp-auth-run
 node scripts/verify-formal.mjs --suite notion-mcp-search --out /absolute/new-mcp-search-run
+node scripts/verify-formal.mjs --suite skill-reference --out /absolute/new-reference-run
 node --test scripts/formal-runner-contract.test.mjs
 ```
 
-`--model SharedProducer`、`--model RequestAdmission`、`--model CurrentLifecycle`、`--model SourceSync`、`--model SourceSyncProgress`、`--model AuthAcquisition`、`--model RefreshRotation` 或 `--model SearchAdmission` 选择该模型的全部正负配置。只接受 request-engine/current-lifecycle/notion-mcp-auth/notion-mcp-search 四个现役 suite，不兼容已退役模型。输出使用本次新的外部空绝对目录；失败保留原结果，下一次使用新目录。
+`--model` 接受 SharedProducer、RequestAdmission、CurrentLifecycle、SourceSync、
+SourceSyncProgress、LibraryLifecycle、AuthAcquisition、RefreshRotation、SearchAdmission、
+ReferenceSelection 或 ImportRelations，选择该模型的全部正负配置。
+五个现役 suite 为 request-engine/current-lifecycle/notion-mcp-auth/notion-mcp-search/skill-reference，
+不兼容已退役模型。输出使用本次新的外部空绝对目录；失败保留原结果，下一次使用新目录。
 
 运行器检查源码对应、工具字节、完整规则清单和每个配置。正例的 broken 集合必须为空；负例必须精确等于声明的集合。未执行的规则、缺失 NoDeadlock、cut、超时、解析失败、额外失败和工具异常都不能算通过。不能从已经删减的配置反向生成较弱规则清单。
 
@@ -40,6 +52,11 @@ node --test scripts/formal-runner-contract.test.mjs
 | 对应实现或测试 | 读实际调用路径和差异，运行相应实现回归，确认受影响真实 guard 的破坏与恢复 |
 
 coverage hash 用于阻止未经审阅的漂移。先核当前行为，再更新准确映射；不批量刷新 hash 来制造通过。删除产品协议时，连同不再适用的模型和调用入口退役，保留仍适用的权限、完整性、预算和取消守卫。
+
+LibraryLifecycle 与 ReferenceSelection 的显式 scope 新增量先保留
+`design_contract_pending_implementation_binding` 标记。实际 Core v2 守卫、调用方、
+反例回归和 mutation 审阅完成后才能更新对应；不能通过旧实现 hash 未变来声称新合同已接线。
+root/DB/DS 的独立事实及原 pending 存在是 oracle，不能直接复用候选 descriptor 的判断结果。
 
 真实 mutation 可以运行在官方 paired run 的无 `.git` 私有源码快照中。
 现役 runner 核对 `PAIRED_CLI_SOURCE` 的实际路径、run/build 的 root 与身份、原始源码清单摘要，

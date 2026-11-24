@@ -18,7 +18,7 @@ PSTACK_STATECHART_ROOT 与 TLA2TOOLS 提供机器上的绝对工具路径，也�
 runner 的 --statechart / --jar 参数。读取每项 pstack /statechart 报告、最短反例、
 原始 TLC 输出和完整规则清单。图只展示检查后的状态，不替代实际源码回放。
 
-ReferenceSelection 有 1 个正配置、11 个故意破坏守卫的配置；
+ReferenceSelection 有 1 个正配置、12 个故意破坏守卫的配置；
 ImportRelations 有 1 个正配置、10 个故意破坏守卫的配置。
 所有配置保留各自模型的同一份完整规则清单，包括 NoDeadlock 和条件进展。
 负例必须精确等于 coverage.json 中独立记录的 expected_broken。
@@ -31,12 +31,13 @@ ReferenceSelection 分开 parsed、bound、selected、returned/rejected。
 模型允许默认 Library 与当前 entrypoint 在绑定、选择之间变化。
 
 有限域包括两个 Library、两个重叠的稳定 Skill ID、一个仅同名的干扰目标、
-六个固定 selection、三个文件路径、十四种输入场景。
+六个固定 selection、三个文件路径、十五种输入场景。
 每种环境变更至多一次。相同 Skill ID 和路径可以同时存在于 test 与 production。
 
 | 规则 | 要阻止的结果 |
 | --- | --- |
 | ContextIsAuthoritative | 测试库正文里的短引用随默认配置跑到正式库，或缺上下文仍被解析 |
+| ExplicitScopeConstraint | 完整 ref 指向 B，调用者却显式限定 A，仍继续选择 B |
 | StableIdentityIsExact | 同名对象或其他 Library 的 manifest 冒充完整稳定身份 |
 | DuplicateClaimRejected | 重复身份被任意选中一条 |
 | MissingManifestRejected | 固定选择缺失后读取 current |
@@ -52,6 +53,12 @@ Notion 阅读投影行，因此模型和实现都不能强求或伪造 File ID�
 模型把 manifest 的完整性、唯一 path 及 Source evidence 作为准入事实。
 实际 parser、物理 owner、完整分页、权限和字节校验仍须独立测试。
 选中 manifest 不代表所有字节已经缓存，也不授予访问权限。
+
+完整 ref 自带 Library 可以覆盖 ambient default；这不等同于忽略显式 call scope。
+`explicit-conflict` 把完整 ref 的 production 与独立显式约束 test 分开，
+要求在 binding 前返回 `LIBRARY_SCOPE_MISMATCH`。它不禁止从 A 正文显式引用 B。
+Library 字符串在本模型中抽象 canonical root UUID；具体 URL/UUID 规范化由 parser
+回归验证，根页面及四表归属沿 current-lifecycle 的 LibraryLifecycle。
 
 ## 导入模型
 

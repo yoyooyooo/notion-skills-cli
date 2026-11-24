@@ -22,6 +22,7 @@ description: "验证当前 Skill/File 身份、Content 权威、有限 readiness
 
 | 当前边界 | 必须保持 |
 | --- | --- |
+| Library root / 原操作 | canonical root 唯一身份；root CREATE 前 durable intent；独立查真实 DB/DS parent；原 pending key 和完整物理绑定不随换表/default 漂移 |
 | Content = native / resource / source | 严格唯一 union，不读 Projection/旧事件，不推断 generated 编辑接管 |
 | ready / applying / attention | ready 无内容 Operation；projection/restore 可有独立 finite intent；普通 current 消费非 ready 不取正文 |
 | File identity/path/owner | 单 owner、stable File ID、完整分页、安全无冲突路径；删除不被 cache 复活 |
@@ -42,6 +43,13 @@ python3 scripts/check-formal-mutations.py --suite current-lifecycle --out /absol
 改变 skill ref 或导入关系时另运行 skill-reference suite 的全部正负配置及其实际 guard。
 缺 Library、跨库重叠、失效 Source、缺 manifest、显式空 Members、人工修改与未知 CREATE
 不能通过名称、缓存路径、current fallback 或重新推断修复。
+
+改变根页面初始化、descriptor、原 pending 查找或完整 Library binding 时，沿
+current-lifecycle 的 LibraryLifecycle 全部正反配置。用独立 world facts 回放复制描述符、
+移动 DB、DS 改属、同 root 换 Skills 表、旧 pending 遇到新 root、root CREATE
+接受丢响应且不可见。完整读回才 Ready；只读检查零语义写。原 pending 寻址与读到后的
+绑定比较要分别验证，不能只测一个 helper。SDK/CLI 和 SQLite 结果沿原领域入口，
+Broker 的 branch/turn/迟到目录沿其 consumer-state 的 LibrarySession。
 
 检查全部正例/预期反例与条件进展；明确外部返回、显式 resume 及公平性假设。NoDeadlock 不等于最终恢复。实际 guard 原件通过、突变行为失败、恢复通过；导入/语法错误不算检出。
 
