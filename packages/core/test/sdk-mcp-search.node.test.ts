@@ -7,7 +7,7 @@ import { expect, test } from "vitest"
 import { contentSearch, mcpLogout } from "../../cli/src/sdk.ts"
 import { property, SkillsError } from "../src/model.ts"
 import { McpCredentialStore } from "../src/notion-mcp-credential-store.ts"
-import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { nativeGraphFixture } from "./graph-prepare-live-fixture.ts"
 import { fixtureToken, json, localServer } from "./notion-http-fixture.ts"
 
@@ -108,7 +108,7 @@ async function controlled<A>(
     readonly rest: { denied: boolean; workspaceId: string; calls: string[] }
     readonly options: {
       env: Record<string, string>
-      database: string
+      library: string
       serverUrl: string
     }
     readonly seedGrant: (workspace?: string) => Promise<void>
@@ -122,14 +122,14 @@ async function controlled<A>(
     {
       notion: {
         library,
-        database: {
-          object: "database",
-          id: library.skills.database_id,
-          database_type: null,
-          title: [{ plain_text: "Owned MCP search fixture" }],
-          description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(library) }],
-          data_sources: [{ id: library.skills.data_source_id, name: "Skills" }],
-        },
+        root: librarySchemaResponse("v1/pages/" + library.library_id, library),
+        root_children: property(librarySchemaResponse("v1/blocks/" + library.library_id + "/children", library)).results,
+        databases: (["skills", "files", "records", "sources"] as const).map((role) =>
+          librarySchemaResponse("v1/databases/" + library[role].database_id, library),
+        ),
+        data_sources: (["skills", "files", "records", "sources"] as const).map((role) =>
+          librarySchemaResponse("v1/data_sources/" + library[role].data_source_id, library),
+        ),
         main: structuredClone(f.pages[0]),
         skills: structuredClone(f.pages),
         files: structuredClone(f.files),

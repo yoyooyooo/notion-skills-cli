@@ -10,7 +10,7 @@ import { cacheStatus, clearCache } from "../src/cache.ts"
 import { property } from "../src/model.ts"
 import { fileRef } from "../src/ref.ts"
 import { skillIdentity } from "../src/shared-content.ts"
-import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { Store } from "../src/store.ts"
 import { nativeGraphFixture } from "./graph-prepare-live-fixture.ts"
 import { currentRich } from "./shared-current-fixture.ts"
@@ -27,14 +27,14 @@ async function controlled(width: number) {
     {
       notion: {
         library,
-        database: {
-          object: "database",
-          id: library.skills.database_id,
-          database_type: null,
-          title: [{ plain_text: "Bounded consumption fixture" }],
-          description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(library) }],
-          data_sources: [{ id: library.skills.data_source_id, name: "Skills" }],
-        },
+        root: librarySchemaResponse("v1/pages/" + library.library_id, library),
+        root_children: property(librarySchemaResponse("v1/blocks/" + library.library_id + "/children", library)).results,
+        databases: (["skills", "files", "records", "sources"] as const).map((role) =>
+          librarySchemaResponse("v1/databases/" + library[role].database_id, library),
+        ),
+        data_sources: (["skills", "files", "records", "sources"] as const).map((role) =>
+          librarySchemaResponse("v1/data_sources/" + library[role].data_source_id, library),
+        ),
         main: structuredClone(f.pages[0]),
         skills: structuredClone(f.pages),
         files: structuredClone(f.files),

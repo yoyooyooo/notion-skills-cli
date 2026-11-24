@@ -19,7 +19,7 @@ import {
 import { nodeRuntime } from "../../cli/src/runtime.ts"
 import { clearCache, locallySelectedScope } from "../src/cache.ts"
 import { property } from "../src/model.ts"
-import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { currentSourceConsumerFixture } from "./shared-current-source-consumer-fixture.ts"
 import {
   currentSnapshotFixture,
@@ -80,14 +80,14 @@ test("public consume binds each complete SDK env to its actual Git executable", 
         records: [],
         sources: structuredClone([...f.sources.values()]),
         bodies: Object.fromEntries(f.bodies),
-        database: {
-          object: "database",
-          id: library.skills.database_id,
-          database_type: null,
-          title: [{ plain_text: "SDK child environment fixture" }],
-          description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(library) }],
-          data_sources: [{ id: library.skills.data_source_id, name: "Skills" }],
-        },
+        root: librarySchemaResponse("v1/pages/" + library.library_id, library),
+        root_children: property(librarySchemaResponse("v1/blocks/" + library.library_id + "/children", library)).results,
+        databases: (["skills", "files", "records", "sources"] as const).map((role) =>
+          librarySchemaResponse("v1/databases/" + library[role].database_id, library),
+        ),
+        data_sources: (["skills", "files", "records", "sources"] as const).map((role) =>
+          librarySchemaResponse("v1/data_sources/" + library[role].data_source_id, library),
+        ),
       },
     },
     join(root, "requests.jsonl"),
@@ -141,7 +141,7 @@ process.exit(args.includes('fetch')?17:0);\n`,
 const input=JSON.parse(await readFile(process.argv[2],'utf8'));const sdk=await import(pathToFileURL(input.sdk));
 const rows=await Promise.all(input.cases.map(async c=>({name:c.name,result:await sdk.consume({version:1,purpose:'use',targets:[input.target]}, {...c.options,signal:AbortSignal.timeout(10000)})})));
 const explicitCalls=(await readFile(input.ledger,'utf8')).trim().split('\\n').length;
-const inherited=await sdk.consume({version:1,purpose:'use',targets:[input.target]}, {database:input.cases[0].options.database,cwd:input.cases[0].options.cwd,signal:AbortSignal.timeout(10000)});
+const inherited=await sdk.consume({version:1,purpose:'use',targets:[input.target]}, {library:input.cases[0].options.library,cwd:input.cases[0].options.cwd,signal:AbortSignal.timeout(10000)});
 await writeFile(process.argv[3],JSON.stringify({rows,explicitCalls,inherited}));\n`,
     )
     const child = spawn(
@@ -233,14 +233,14 @@ async function sample(currentSource?: Record<string, unknown>) {
   return {
     notion: {
       library,
-      database: {
-        object: "database",
-        id: library.skills.database_id,
-        database_type: null,
-        title: [{ plain_text: "Immutable read fixture" }],
-        description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(library) }],
-        data_sources: [{ id: library.skills.data_source_id, name: "Skills" }],
-      },
+      root: librarySchemaResponse("v1/pages/" + library.library_id, library),
+      root_children: property(librarySchemaResponse("v1/blocks/" + library.library_id + "/children", library)).results,
+      databases: (["skills", "files", "records", "sources"] as const).map((role) =>
+        librarySchemaResponse("v1/databases/" + library[role].database_id, library),
+      ),
+      data_sources: (["skills", "files", "records", "sources"] as const).map((role) =>
+        librarySchemaResponse("v1/data_sources/" + library[role].data_source_id, library),
+      ),
       main,
       skills: [structuredClone(main)],
       files: structuredClone(f.files),
