@@ -562,13 +562,18 @@ test.each(["cancel", "deadline"] as const)(
           {
             ...c.options,
             signal: controller.signal,
-            deadline: Date.now() + (mode === "deadline" ? 3000 : 15_000),
+            // Root inventory and all four table schemas are validated before MCP.
+            // Keep enough operation budget to reach the actual in-flight query.
+            deadline: Date.now() + 15_000,
           },
         ),
         [mode === "deadline" ? "MCP_TIMEOUT" : "MCP_CANCELLED"],
       )
       try {
-        await reached.promise
+        await Promise.race([
+          reached.promise,
+          pending.then(() => { throw new Error("Search terminated before reaching the in-flight query gate") }),
+        ])
         if (mode === "cancel") controller.abort()
         await pending
         expect(c.mcp.searches).toBe(1)
