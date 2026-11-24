@@ -343,8 +343,10 @@ ntn-skills ctl library profile bind daily --library LIBRARY_ID
 ntn-skills list --library LIBRARY_ID --default-view
 ```
 
-Bare `list` remains explicit discovery. Use `--profile daily`, `--default-view`,
-or an explicit `--view VIEW_ID` for the intended selection.
+Without a Profile or View option, `list` discovers content within the selected
+Library. The Library comes from `--library` or the local `default_library`.
+Use `--profile daily`, `--default-view`, or an explicit `--view VIEW_ID` to select
+the intended subset within that Library.
 Profiles and Views select content; they do not grant access.
 
 ## Inspect cache behavior
