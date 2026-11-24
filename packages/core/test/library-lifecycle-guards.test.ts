@@ -123,5 +123,5 @@ test("root CREATE sees its independent original intent in the Store before dispa
     version: 2, operation_id: operation, parent_page_id: currentId(901), root_page_id: null,
     in_flight: { action: "create:root" },
   })
-  expect([...f.json.values()]).toEqual(observations[0])
+  expect([...f.json.values()]).toEqual(observations[0]!)
 })
