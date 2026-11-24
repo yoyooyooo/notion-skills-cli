@@ -230,7 +230,7 @@ A multi-file input must already use the canonical entrypoint.
 Current portable manifest version 2 can select a Skill, Router, or Prompt.
 The canonical entrypoints are `SKILL.md`, `ROUTER.md`, and `PROMPT.md`.
 Portable Members/Requires accept current root refs such as
-`skill://review?library=my-library` from the same Library. Contextual root refs
+`skill://review?library=44444444-4444-4444-8444-444444444444` from the same Library. Contextual root refs
 bind to the relation manifest's declared Library before duplicate checks.
 For an existing Skill, an omitted field preserves its current set, `[]` clears it,
 and a list replaces it. A first import can discover omitted Members as described below.
@@ -382,7 +382,7 @@ For a known repository layout, declare exact path-to-Skill bindings in a JSON fi
   "targets": [
     {
       "path": "skills/review/SKILL.md",
-      "ref": "skill://review/SKILL.md?library=my-library"
+      "ref": "skill://review/SKILL.md?library=44444444-4444-4444-8444-444444444444"
     }
   ]
 }
