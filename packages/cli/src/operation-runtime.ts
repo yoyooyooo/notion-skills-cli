@@ -29,10 +29,12 @@ export async function runLocalRuntimeOperation<A>(
   operation: () => Effect.Effect<A, SkillsError, LocalOperationServices>,
   options: OperationOptions,
 ): Promise<A> {
+  let traceRequested = options.metrics === true
   try {
     const env: Record<string, string> = {}
     for (const [key, value] of Object.entries(options.env ?? process.env))
       if (value !== undefined) env[key] = value
+    traceRequested = Number(env.NTN_SKILLS_REQUEST_TRACE_LIMIT ?? (traceRequested ? 10_000 : 0)) > 0
     if (options.signal?.aborted) throw cancelled()
     const effect = operation().pipe(
       Effect.provide(nodeRuntime(resolve(options.cwd ?? "."), env).store),
@@ -44,7 +46,10 @@ export async function runLocalRuntimeOperation<A>(
     if (Exit.isSuccess(result)) return result.value
     throw Option.getOrUndefined(Cause.findErrorOption(result.cause)) ?? Cause.squash(result.cause)
   } finally {
-    options.onRequestMetrics?.(createRequestMetrics().snapshot())
+    // This scope cannot acquire HTTP; retain the requested trace coverage for its zero attempts.
+    options.onRequestMetrics?.(
+      createRequestMetrics({ traceLimit: traceRequested ? 10_000 : 0 }).snapshot(),
+    )
   }
 }
 

@@ -26,7 +26,7 @@ resource-lifecycle 拥有 CLI 当前生命周期模型；operation-recovery 拥�
 ## 场景选择
 
 索引保留审计 T01–T15 的危险时序，并增加 T16 主动采用、T17 查看不采用、T18 连续三轮恢复故障、
-T19 开关四组合、T20 多根共享 Requires、T21 两机持续同步、T22 本地充分负例及 T23 结果失败传播。
+T19 开关四组合、T20 多根共享 Requires、T21 两机持续同步、T22 本地充分负例、T23 结果失败传播及 T24 双库选择、引用与原操作续接。
 每行含前置状态、事件顺序、oracle、owner、入口、最低执行层及是否仍需 live 抽查。
 
 每个入口同时列 command 和 required_inputs。命令里的 `/absolute/owned/` 是待替换的自有路径，
@@ -36,6 +36,8 @@ plan 及 candidate-plan 只准备输入，帮助输出也不是场景成绩。
 candidate 是项目级检查，不能替代 Pro/Mini 的普通日用入口；候选实现模块不能直接作为 CLI 调用。
 
 自然用户旅程由 Broker 的 verify-notion-agent-workflows 负责，复用 candidate-plan/candidate-run。长期语料在 scripts/notion-agent-scenarios.json；本轮对象绑定和原件分别保存，T编号仍归本索引。日常主环境不带 -ns；对照仅关闭默认原生发现，Broker local仍可能存在。两者正式模型均为 magpie/group/worker。有限事件在同进程轮间等待真实写入与读回完成，恢复/分叉/compact使用Pi公开入口。
+
+T24 分别运行双库管理与消费、跨库完整引用、原 Source 操作续接三条旅程。使用同一凭据下两个不同的 Library 根页，保留同名对象、原 Store 和操作身份；各旅程只证明其实际运行的切片。切换默认库不能改写已采用的任务或完整引用，控制端不能替模型恢复写入，也不能用 T22 的本地充分负例替代双库证明。
 
 不要遍历全部笛卡尔积。精确 TTL、24 小时 body 期限、publication/取消等使用受控时钟和 barrier；
 真实 Pi 执行代表性时序并核实际 payload。增加失败缩减后，更新原场景和所属实现回归，不按 bug 新建 Skill。
