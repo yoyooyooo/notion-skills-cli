@@ -77,9 +77,11 @@ readback 和随后远端写入不是原子事务。Ready 记录核验发布时�
 仍需在下一次真实边界重新核对。UUID/URL 规范化、API token 权限、完整分页、
 具体 schema/property ID、原 SQLite Store 与真实 Notion 迁移由实现和 live 回放验收。
 
-本增量先建立设计合同，生产 guard 锚点待 Core v2 绑定逻辑审查后接线。
-`coverage.json` 的 `library_root_design` 标注这一边界；未刷新旧 source hash，
-也不能把新增配置或 view 文件当成已运行的证明。
+`coverage.json` 的 `library_root_design` 记录实际 Core 对应。既有 mutation runner
+新增十二条 Library 守卫回放：派发前意图、未知 root 不重放、已知 root 不替换、
+请求根身份、DB/DS 物理归属、完整 schema 和分页、原 current/import pending 寻址、
+冻结 current binding 与真实 SQLite 不可变身份。独立夹具先固化物理事实，
+不从被测描述符推导期望结果。模型、行为测试与 mutation 各自以实际运行回执为准。
 
 ## 两条状态轴与有限范围
 
@@ -186,7 +188,7 @@ Source 已 ready 但父意图尚未退役时，仍沿原 operation 完成退役�
 | NoFalseSyncCompletion | 完成回执要求原 Source 意图退役、目标完成且无旧投影 | 在所有配置检查，不用 ready 位替代这些事实 |
 
 `shared-current-source-sync-guards.test.ts` 只替换 Git provider 边界，实际运行同步协调、Source writer、投影 writer 和有限 operation 内核。
-统一 mutation runner 增加五条真实回放；连同 CurrentLifecycle 的四条，共九条。
+统一 mutation runner 增加五条真实回放；连同 CurrentLifecycle 的四条为原有九条；再加十二条 Library 守卫，当前共二十一条。
 
 | 真实 mutation | 对应回放 |
 | --- | --- |
