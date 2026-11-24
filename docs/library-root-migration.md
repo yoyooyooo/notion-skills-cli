@@ -83,7 +83,9 @@ rebound under the old descriptor.
 
 ## Build a read-only plan
 
-Use Node 26 and the existing `ntn` command. Supply the approved Notion token only
+Run the following commands from a `notion-skills-cli` repository checkout on
+`next`. These one-time scripts live in the repository. Use Node 26 and the
+existing `ntn` command. Supply the approved Notion token only
 through `NOTION_API_TOKEN` in the process environment. The tool never reads a
 secret manager, evaluates token commands or prints credentials. Keep its
 inventory, plans and journal in a task-owned private directory; they contain
