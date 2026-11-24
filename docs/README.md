@@ -7,6 +7,8 @@ guides for later changes and the reference documents for exact behavior.
 | --- | --- |
 | Install, authenticate, create four tables, and read your first Skill | [English quick start](../README.md#quick-start) or [中文快速开始](../README.zh-CN.md#快速开始) |
 | Set up an existing library, copy packaged workflows, or inspect interrupted initialization | [Setup](../skills/notion/ntn-skills-maintain/references/setup.md) |
+| Select a Library, switch defaults, or isolate test databases | [Library roots and selection](library-roots.md) |
+| Move an existing installation to root-page identity | [Library root migration](library-root-migration.md) |
 | Discover, read, use, and export content | [Usage](usage.md) |
 | Write Skill refs, choose Library context, or copy a local batch | [Reference contract](skill-reference-redesign.md) and [batch import](shared-authoring.md#import-an-explicit-local-batch) |
 | Authorize hosted MCP and search remote Notion content | [Remote content search](notion-mcp.md) |

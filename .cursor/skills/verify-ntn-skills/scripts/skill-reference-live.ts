@@ -729,10 +729,14 @@ export async function runSkillReferenceLive(input: {
           requireZeroNotionWrites(attached)
           const library = Schema.decodeUnknownSync(SharedLibrarySchema)(attached.library)
           assert.deepEqual(library, continued.B)
-          const initialization = property(JSON.parse(await readFile(
-            join(continued.root, "initialization/evidence/empty-library/state.json"),
-            "utf8",
-          )))
+          const initialization = property(
+            JSON.parse(
+              await readFile(
+                join(continued.root, "initialization/evidence/empty-library/state.json"),
+                "utf8",
+              ),
+            ),
+          )
           assert.equal(initialization.kind, "library_ready")
           assert.equal(initialization.container, input.parent)
           assert.deepEqual(initialization.library, library)
