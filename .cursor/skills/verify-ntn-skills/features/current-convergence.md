@@ -189,7 +189,9 @@ AH-1197 配对当前 CLI/SDK/Broker 并核两机 next 的实际加载字节；AH
 不能靠提示里塞命令、手填机器字段或
 外部 Agent 事后补写取得通过。独立安装加载字节和实际 Notion/Pi 回执都须留存。
 
-AH-1198 执行 T01–T23 中必须真实运行的代表旅程：普通固定任务、主动最新、查看不采用、连续故障续聊、开关变化、本地充分负例与两机后续更新。AH-1196 负责自然任务和工具必要性；受控 provider 不充自然模型。无需逐 Skill 重跑全部矩阵。
+按 [当前合同索引](../../../../docs/verification-contracts.md) 选择需要真实运行的旅程。AH-1198 的普通日用代表范围包括固定任务、主动最新、查看不采用、连续故障续聊、开关变化、本地充分负例与两机后续更新。AH-1196 负责自然任务和工具必要性；受控 provider 不充自然模型。无需逐 Skill 重跑全部矩阵。
+
+T24 分别保留双库选择和消费、跨库完整引用、Source 原操作续接三条真实旅程的回执，每条只证明索引声明的切片。首次建库单列 native-onboarding 及其独立 fresh grader；初始化原操作续建沿 [Library 恢复合同](../../../../docs/library-roots.md#interrupted-setup-and-writes) 单列验收，保留原 Store、parent、operation 和实际续建读回。
 
 ## 结果与停止
 

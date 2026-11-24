@@ -5,7 +5,7 @@ description: "定位 ntn-skills 当前实现、公共 CLI 与独立安装的验�
 
 # ntn-skills 验证路由
 
-从 [当前合同索引](../../../docs/verification-contracts.md) 选择 C01–C11/T01–T23，再按 [current-convergence](features/current-convergence.md) 进入已有执行配方。本入口不负责替代管理或消费实现，也不负责用受控测试证明真实 Notion、安装包或 Pi 已完成。
+从 [当前合同索引](../../../docs/verification-contracts.md) 选择当前 C/T 验收项，再按 [current-convergence](features/current-convergence.md) 进入已有执行配方。本入口不负责替代管理或消费实现，也不负责用受控测试证明真实 Notion、安装包或 Pi 已完成。
 
 当前合同是 Notion 长期 SSOT、最新内容、普通消费远端 0 写。git-only、mixed、native 共用严格 Content 描述符；保留当前 revision/hash、权限、完整树、请求预算及必要在途状态。
 

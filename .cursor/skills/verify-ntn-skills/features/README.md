@@ -1,6 +1,6 @@
 # 当前验证入口
 
-先读 [当前合同索引](../../../../docs/verification-contracts.md)，按 C01–C11 与 T01–T23 选择领域。执行配方复用 [current-convergence](current-convergence.md)。AH-1188 为当前主线；本目录不存运行成绩。
+先读 [当前合同索引](../../../../docs/verification-contracts.md)，按其中的 C/T 验收项选择领域。执行配方复用 [current-convergence](current-convergence.md)。AH-1188 为当前主线；本目录不存运行成绩。
 
 | 改变的行为 | 领域入口 | 当前切片 |
 | --- | --- | --- |
