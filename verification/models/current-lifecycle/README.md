@@ -89,6 +89,17 @@ DS 的 parent 同时由 `inspectTable` 与最终 Sources relations readback 的
 parent 检查，保留 ID、Trash、schema 和关系检查；运行器逐文件保留原件、突变件、
 hash 与恢复核对，必须由独立 foreign-parent 的 Ready 拒绝断言检出。
 
+Profile 写入同样冻结完整 Library。其 pending 保持 root/Profile 寻址，local fence 也使用
+root/Profile，不能因 Records 表更换而开启另一个 owner。真实 Store 的独立 Node 进程
+先保留未知 CREATE，再让替换表拥有相同 fingerprint；它必须拒绝新表确认并保留原意图。
+原调用绑定未变但远端完整绑定漂移时，锁内 readback 同样拒绝。恢复原表后仍允许现有的
+“当前规则相同”确认语义，不增加 Profile 业务版本或原执行证明。无 frozen Library 的旧
+pending 明确报告 STATE_MIGRATION_REQUIRED，不能清掉后重试。认证范围仍由实际
+GET /users/me 确定；拒绝换表后不得发起 Library/Record 请求或语义写入。
+三条对应实际 mutation 分别移除 pending binding、跳过真实 readback、让 lock 随 Records
+DS 漂移。local fence 是模型单协作 owner 的具体前提；模型不枚举 Profile fingerprint、
+SQLite 编码或操作系统锁，也不证明跨机器排斥。
+
 导入计划还必须穿过实际 SQLite Store。`shared-current-import-plan.node.test.ts`
 在四个独立进程中保存计划、拒绝重复 apply 与同根换表、恢复原 child 并完成退役，
 且禁止所有 Notion 请求。`library-import-sqlite-address` 将 SQLite 校验恢复为旧的
@@ -200,7 +211,7 @@ Source 已 ready 但父意图尚未退役时，仍沿原 operation 完成退役�
 | NoFalseSyncCompletion | 完成回执要求原 Source 意图退役、目标完成且无旧投影 | 在所有配置检查，不用 ready 位替代这些事实 |
 
 `shared-current-source-sync-guards.test.ts` 只替换 Git provider 边界，实际运行同步协调、Source writer、投影 writer 和有限 operation 内核。
-统一 mutation runner 增加五条真实回放；连同 CurrentLifecycle 的四条为原有九条；再加十三条 Library 守卫，当前共二十二条。
+统一 mutation runner 增加五条真实回放；连同 CurrentLifecycle 的四条为原有九条；再加十三条 Library 守卫和三条 Profile binding/fence 回放，当前共二十五条。
 
 | 真实 mutation | 对应回放 |
 | --- | --- |

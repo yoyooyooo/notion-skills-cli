@@ -46,7 +46,11 @@
     "packages/core/test/shared-current-import-plan.test.ts": "07d683662216ed09e8cb274cdb8f7cf4cbaf8afa048fb140d3bfe5ebc86b1730",
     "packages/core/test/shared-current-operation.node.test.ts": "5a1344e8eb7a052660f8d32a7654c765573b5a64251136d03b58496182e1f47c",
     "packages/core/test/shared-current-import-plan.node.test.ts": "6063bf7ba7fedd705d79f717d971971dc045464fe9fda760038d19c483654a23",
-    "packages/core/src/shared-sources-library.ts": "4dceacdb4a2be5f5ddc797f5298ecb75086a9700ec003d39e4df872d80189b42"
+    "packages/core/src/shared-sources-library.ts": "4dceacdb4a2be5f5ddc797f5298ecb75086a9700ec003d39e4df872d80189b42",
+    "packages/core/src/shared-profile.ts": "9af2c66f2a698863e3163d3d6c0fee532704cefd54a1036094751d52738f4e6b",
+    "packages/core/src/local-locks.ts": "ac59a06cc15204f66feecde04e2fab60c7bc4e353ad6a75ee0fbca6851f58857",
+    "packages/core/test/shared-profile-binding.node.test.ts": "879e90d8d252edb239c0b04bc581335878c77f9037984de920654987023bec8a",
+    "packages/core/test/shared-profile.test.ts": "86c5ede3096eeb041c4cb56c79d725589518c95fbe8c251a2b72d90ec7df4779"
   },
   "models": {
     "CurrentLifecycle": {
@@ -1095,6 +1099,19 @@
         "packages/core/test/shared-current-import-plan.node.test.ts"
       ],
       "scope": "The coordinator and SQLite use currentImportPlanAddressInput over scope/root/operation. An actual real-Store subprocess test first saves the frozen plan, restarts to reject duplicate apply and same-root Files DB/Skills DS replacements without new Notion I/O, resumes the original child and retires the completed plan. The library-import-sqlite-address mutation restores the former DS-dependent SQLite validation while leaving the coordinator unchanged; the first durable save must fail the independent TEST_PAUSE expectation with STATE_CONFLICT. This is the concrete storage-address premise behind PendingLookupIsStable; the finite model does not prove SQLite code or a database engine."
+    },
+    {
+      "name": "profile_original_library_binding_and_cooperating_fence",
+      "files": [
+        "packages/core/src/shared-profile.ts",
+        "packages/core/src/local-locks.ts",
+        "packages/core/test/shared-profile-binding.node.test.ts",
+        "packages/core/test/shared-profile.test.ts",
+        "packages/core/src/shared-library.ts",
+        "packages/core/src/shared-library-model.ts",
+        "packages/core/src/sqlite-state.ts"
+      ],
+      "scope": "Profile pending persists the full Library and remains addressed by root/Profile. The same root with replacement Records DB/DS, Files DB or a registered Sources property cannot consume the original unknown CREATE even when the replacement contains identical current rules. Actual SQLite child processes retain the immutable payload across restart; a raw payload rewrite is rejected. Inside the stable root/Profile local fence, actual root/four-table readback also rejects remote binding drift before original current rules can be confirmed. Restoring the original binding preserves current_matches without adding business versions or original-execution evidence. Missing frozen Library in old pending fails closed with STATE_MIGRATION_REQUIRED. Independent credential authentication still performs GET users/me; binding rejection permits that exact authentication read but no Library/Record request or semantic write. The three actual mutations bypass pending binding, skip physical readback, and restore the former Records-DS lock. The lock is a concrete premise of the single cooperating owner assumption, not an additional modeled OS-lock state or a cross-machine CAS guarantee."
     }
   ],
   "unmodeled_bindings": [
@@ -1244,7 +1261,7 @@
     "contract": "Descriptor v2: library_id is canonical direct-root UUID; operation_id is independent provenance. Pending v2 persists before root CREATE and retains authorized outer parent plus monotonic root_page_id.",
     "independent_oracle": "Actual requested root, DB parents, DS owners, first physical binding and original pending existence are not read back from the descriptor or from the candidate lookup key.",
     "reviewed_against": "5a3f36f",
-    "guard_replay": "Thirteen Library cases in the existing current-lifecycle mutation runner; baseline/mutant/restored results are separate run evidence. Nine prior current/Source cases remain, for twenty-two total.",
+    "guard_replay": "Sixteen Library/Profile cases in the existing current-lifecycle mutation runner; baseline/mutant/restored results are separate run evidence. Nine prior current/Source cases remain, for twenty-five total.",
     "limitations": "One cooperating owner/local lock; complete readback is an observation and no Notion cross-table CAS or power-loss guarantee is claimed.",
     "reviewed_through": "3361718496e3b0f4a3886764cb28ef88079703c4",
     "data_source_parent_mutation": "Explicit two-file invariant-level mutation: initial inspectTable parent guard plus final relation dataSource parent guard. Single-guard survival is retained as evidence of redundant enforcement, not counted as a killed mutant."
@@ -1254,6 +1271,11 @@
     "reviewed_through": "3361718496e3b0f4a3886764cb28ef88079703c4",
     "scope": "Canonical root UUID selection, SDK3 library options, independently declared physical root/four-DB/four-DS fixtures, complete root readback and full frozen Library bindings. Reviewed the actual 9f9a641 restart checks, 419123f metadata classification, 53240db projection receipts, 53fe6b7 shared durable import address and the subsequent formatting-only changes.",
     "preserved": "No existing finite model, candidate/defect/witness configuration, independent expected_rules or expected_broken inventory is weakened. Request admission, current-read final fences, MCP connection/grant epochs and cancellation remain the original owner contracts.",
-    "evidence_boundary": "Source hashes bind reviewed bytes; they are not passing run receipts, remote CAS, cross-machine exclusion, Notion indexing proof or implementation refinement. Real root children stay actual Notion body observations; metadata regressions allow only the exact root page/children and declared schema reads, while Skill/File body reads remain distinct."
+    "evidence_boundary": "Source hashes bind reviewed bytes; they are not passing run receipts, remote CAS, cross-machine exclusion, Notion indexing proof or implementation refinement. Real root children stay actual Notion body observations; metadata regressions allow only the exact root page/children and declared schema reads, while Skill/File body reads remain distinct.",
+    "profile_binding_review": {
+      "reviewed_base": "a539add50fe839ced3084ff41a27f1e923f3b68d",
+      "reviewed_through": "151cb1c7b1649ac68b009ba7d581c897d18fafa6",
+      "scope": "Read the minimal Profile pending/lock/readback diff and its independent real-Store process assertions. Existing current-rule fingerprint, no-predecessor confirmation, no-replay behavior and metadata cache semantics remain. Finite LibraryLifecycle properties already abstract frozen complete table bindings; Profile fields, SQLite persistence and cooperative filesystem fencing remain concrete implementation obligations. Source pins are not test outcomes."
+    }
   }
 }
