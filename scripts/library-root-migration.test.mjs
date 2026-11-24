@@ -11,6 +11,7 @@ import {
   canonical,
   digest,
   rich,
+  richText,
   decodeLegacy,
   admissionId,
   preparePlan,
@@ -20,6 +21,7 @@ import {
   migrateFileLinks,
   applyPlan,
   referenceTokens,
+  verifyInventoryClosure,
 } from "./library-root-migration.mjs"
 
 const id = (n) => "00000000-0000-4000-8000-" + String(n).padStart(12, "0")
@@ -600,8 +602,30 @@ test("embedded and fenced identities stay reviewed while exact placeholders carr
   ])
 })
 
+test("descriptor commit requires every earlier patch and never accepts a partially reverted commit", () => {
+  const f = fixture(),
+    plan = preparePlan(f.inventory)
+  assert.throws(() => verifyInventoryClosure(f.inventory, f.inventory, plan, "descriptor_commit"), {
+    code: "MIGRATION_PATCH_INCOMPLETE",
+  })
+  const committed = structuredClone(f.inventory)
+  committed.tables.skills.database.description = structuredClone(
+    plan.patches.at(-1).after.description,
+  )
+  assert.throws(() => verifyInventoryClosure(f.inventory, committed, plan), {
+    code: "DESCRIPTOR_COMMIT_INCOMPLETE",
+  })
+})
+
 test("actual CLI inventory, plan and guarded apply preserve existing rows through a fake ntn boundary", () => {
   const f = fixture()
+  Object.assign(f.inventory.tables.skills.data_source.properties.Origin, {
+    type: "relation",
+    relation: {
+      database_id: f.legacy.sources.database_id,
+      data_source_id: f.legacy.sources.data_source_id,
+    },
+  })
   f.inventory.tables.skills.rows[0].properties.content = text(
     "content",
     canonical({ kind: "native" }),
@@ -620,6 +644,12 @@ test("actual CLI inventory, plan and guarded apply preserve existing rows throug
       type: "table_row",
       parent: { block_id: id(30) },
       table_row: { cells: [rich("skill://" + f.skillPage + "/SKILL.md")] },
+    },
+    {
+      id: id(33),
+      type: "paragraph",
+      parent: { page_id: f.skillPage },
+      paragraph: { rich_text: rich("Unchanged author note.") },
     },
   )
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "library-root-migration-")))
@@ -663,7 +693,7 @@ test("actual CLI inventory, plan and guarded apply preserve existing rows throug
     'for(const t of Object.values(db.tables)){if(path==="/v1/databases/"+t.database.id)result=t.database;if(path==="/v1/data_sources/"+t.data_source.id)result=t.data_source;if(path==="/v1/data_sources/"+t.data_source.id+"/query")result=list(t.rows.filter(r=>matches(r,input.filter)));}\n' +
     'const r=rows.find(r=>path==="/v1/pages/"+r.id);if(r)result=r;\n' +
     'for(const b of db.native_blocks){if(path==="/v1/blocks/"+b.id)result=b;}const children=/^\\/v1\\/blocks\\/([^/]+)\\/children$/.exec(path);if(children&&children[1]!==db.root.id)result=list(db.native_blocks.filter(b=>Object.values(b.parent??{}).includes(children[1])));\n' +
-    'if(method==="PATCH"){if(input.description)result.description=input.description;if(input.properties)for(const [id,p]of Object.entries(input.properties)){const target=value(result,id);Object.assign(target,p);}if(result.type&&input[result.type])Object.assign(result[result.type],input[result.type]);fs.writeFileSync(state,JSON.stringify(db));}\n' +
+    'if(method==="PATCH"){if(input.description)result.description=input.description;if(input.properties)for(const [id,p]of Object.entries(input.properties)){const target=value(result,id);Object.assign(target,p);}if(result.type&&input[result.type])Object.assign(result[result.type],input[result.type]);result.last_edited_time="2027-01-01T00:00:00.000Z";if(db.late_native){const target=db.native_blocks.find(b=>b.id===db.late_native.id);target.paragraph.rich_text=db.late_native.rich_text;delete db.late_native;}fs.writeFileSync(state,JSON.stringify(db));}\n' +
     "if(!result)process.exit(2);console.log(JSON.stringify(result));\n"
   writeFileSync(join(bin, "ntn"), fixtureSource, { mode: 0o700 })
   execFileSync("python3", [
@@ -722,6 +752,82 @@ test("actual CLI inventory, plan and guarded apply preserve existing rows throug
   result = invoke([...baseArgs, "--ack-plan", "wrong"])
   assert.equal(result.status, 1)
   assert.equal(readFileSync(calls, "utf8").includes('"PATCH"'), false)
+  execFileSync("python3", [
+    "-c",
+    'import sqlite3,sys\nc=sqlite3.connect(sys.argv[1]);c.execute("insert into shared_local_records values(?,?,?,0)",("operations/shared-profile-pending/original/profile/pending.json","cache","{}"));c.commit()',
+    join(store, "state.sqlite"),
+  ])
+  result = invoke([...baseArgs, "--ack-plan", plan.plan_sha256])
+  assert.equal(result.status, 1, result.stdout)
+  assert.match(result.stderr, /LOCAL_OPERATION_PENDING/u)
+  assert.equal(readFileSync(calls, "utf8").includes('"PATCH"'), false)
+  execFileSync("python3", [
+    "-c",
+    'import sqlite3,sys\nc=sqlite3.connect(sys.argv[1]);c.execute("update shared_local_records set retired=1");c.commit()',
+    join(store, "state.sqlite"),
+  ])
+  const pristine = JSON.parse(readFileSync(state, "utf8"))
+  const lateSkill = structuredClone(pristine)
+  const lateSourcePage = id(40),
+    lateSkillPage = id(41),
+    lateMember = "skills/late-author-entry",
+    lateSkillId = admissionId(old, lateSourcePage, lateMember)
+  const source = structuredClone(lateSkill.tables.sources.rows[0])
+  source.id = lateSourcePage
+  source.properties.sid = text("sid", "late-source")
+  source.properties.contributions = text(
+    "contributions",
+    canonical([
+      { member_key: lateMember, skill_id: lateSkillId, mount_path: "", mapping: {}, exclude: [] },
+    ]),
+  )
+  const skill = structuredClone(lateSkill.tables.skills.rows[0])
+  skill.id = lateSkillPage
+  skill.properties.sid = text("sid", lateSkillId)
+  skill.properties.origin = relation("origin", [lateSourcePage])
+  skill.properties.member = text("member", lateMember)
+  skill.properties.content = text("content", "")
+  skill.properties.description = text("description", "")
+  lateSkill.tables.sources.rows.push(source)
+  lateSkill.tables.skills.rows.push(skill)
+  const lateNative = structuredClone(pristine)
+  lateNative.native_blocks.find((block) => block.id === id(33)).paragraph.rich_text = rich(
+    "skill://" + f.skillId,
+  )
+  const lateSchema = structuredClone(pristine)
+  lateSchema.tables.skills.data_source.properties.Origin.relation.data_source_id = id(500)
+  const lateOwner = structuredClone(pristine)
+  lateOwner.tables.files.rows[0].parent.data_source_id = id(501)
+  for (const { changed, code } of [
+    { changed: lateSkill, code: "INVENTORY_DRIFT" },
+    { changed: lateNative, code: "INVENTORY_DRIFT" },
+    { changed: lateSchema, code: "INVENTORY_DRIFT" },
+    { changed: lateOwner, code: "ROW_OWNER_MISMATCH" },
+  ]) {
+    writeFileSync(state, JSON.stringify(changed))
+    result = invoke([...baseArgs, "--ack-plan", plan.plan_sha256])
+    assert.equal(result.status, 1, result.stdout)
+    assert.equal(JSON.parse(result.stderr).error.code, code)
+    assert.equal(readFileSync(calls, "utf8").includes('"PATCH"'), false)
+  }
+  writeFileSync(
+    state,
+    JSON.stringify({
+      ...pristine,
+      late_native: { id: id(33), rich_text: rich("skill://" + f.skillId) },
+    }),
+  )
+  result = invoke([...baseArgs, "--ack-plan", plan.plan_sha256])
+  assert.equal(result.status, 1, result.stdout)
+  assert.match(result.stderr, /INVENTORY_DRIFT/u)
+  const interrupted = JSON.parse(readFileSync(state, "utf8"))
+  assert.equal(
+    richText(interrupted.tables.skills.database.description).startsWith(OLD_MARKER),
+    true,
+  )
+  interrupted.native_blocks.find((block) => block.id === id(33)).paragraph.rich_text =
+    rich("Unchanged author note.")
+  writeFileSync(state, JSON.stringify(interrupted))
   result = invoke([...baseArgs, "--ack-plan", plan.plan_sha256])
   assert.equal(result.status, 0, result.stderr)
   const actual = JSON.parse(readFileSync(state, "utf8"))

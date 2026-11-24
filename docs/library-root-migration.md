@@ -65,7 +65,8 @@ Trash is a stale selection, not permission to recreate or revive a Library.
 
 Suspend scheduled admission and account for queued and active attempts. A stopped
 process may have a remote write in flight. Read the original Store dispatch
-records and the remote `operation-current-*` Records. A clean Store on one
+records, every nonretired `operations/shared-profile-pending/` key regardless
+of its category, and remote current operation/Profile Records. A clean Store on one
 machine does not prove another machine or task Store is clean.
 
 Reconcile original work under its accepted complete generation and credential.
@@ -143,13 +144,30 @@ node scripts/library-root-migrate.mjs apply \
   --writers-quiesced
 ```
 
-The tool rereads original local dispatch state, remote current operations,
-owner operation pointers and actual table ownership before writing. It compares
-each target's current value with the planned before/after values, records intent
+The tool rereads original local pending state, remote current operations,
+owner operation pointers and actual table ownership before writing. It also
+enumerates the complete original four-table input and native body collection
+at the start of every apply/resume and again before the descriptor commits.
+Only the listed PATCH fields may equal their exact planned before or after
+values. Added or removed rows/blocks, changed unlisted properties, schema or
+owner changes fail as `INVENTORY_DRIFT`. Notion's generated timestamps, actor
+metadata, object display URLs and rich-text display fields are excluded from
+this comparison; row parents, archived state and relation schema remain inputs.
+Local snapshot history and object-cache locations are not current identity.
+
+The tool compares each target's current value with the planned before/after values, records intent
 durably, sends one idempotent PATCH, then reads the result back. It creates no
 Notion object and writes no historical record.
 
-The descriptor PATCH is last. If an acknowledgement is lost, retain the same
+The descriptor PATCH is last and requires every earlier PATCH to be observed
+at its exact after value. A committed descriptor with an earlier PATCH still
+at its before value is rejected. Resume always reads the original inventory's
+fixed tables, including after the descriptor has changed; it never follows a
+new resolver binding. These repeated reads do not provide a remote transaction
+or prevent an external writer from changing data after a read. Keep the
+maintenance window active throughout.
+
+If an acknowledgement is lost, retain the same
 inventory, plan and journal and rerun the same command while the maintenance
 window remains active. A target already equal to the exact planned result is
 observed as applied. A target with another value fails as drift. An uncertain

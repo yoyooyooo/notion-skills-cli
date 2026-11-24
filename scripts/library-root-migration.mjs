@@ -737,14 +737,160 @@ export function verifyPlan(plan) {
   return plan
 }
 
+export function selectPatchValue(patch, raw) {
+  if (patch.kind === "database") return { description: writableRich(raw.description) }
+  if (patch.kind === "page") {
+    const properties = {}
+    for (const [id, wanted] of Object.entries(patch.before.properties)) {
+      const values = Object.values(raw.properties).filter((value) => value.id === id)
+      requireValue(values.length === 1 && !values[0].has_more, "PATCH_PROPERTY_INCOMPLETE")
+      const type = Object.keys(wanted)[0]
+      requireValue(values[0].type === type, "PATCH_PROPERTY_TYPE_CHANGED")
+      properties[id] = { [type]: writableRich(values[0][type]) }
+    }
+    return { properties }
+  }
+  const type = Object.keys(patch.before)[0]
+  requireValue(raw.type === type, "BLOCK_TYPE_CHANGED")
+  return {
+    [type]: Object.fromEntries(
+      Object.keys(patch.before[type]).map((key) => [
+        key,
+        key === "cells" ? raw[type][key].map(writableRich) : writableRich(raw[type][key]),
+      ]),
+    ),
+  }
+}
+
+const automaticEntityFields = new Set([
+  "created_time",
+  "last_edited_time",
+  "created_by",
+  "last_edited_by",
+  "request_id",
+  "url",
+  "public_url",
+])
+const automaticPropertyTypes = new Set([
+  "created_time",
+  "last_edited_time",
+  "created_by",
+  "last_edited_by",
+])
+function inputValue(value) {
+  if (Array.isArray(value)) return value.map(inputValue)
+  if (!value || typeof value !== "object") return value
+  if (!value.id && !value.object && ["text", "mention", "equation"].includes(value.type))
+    return writableRich([value])[0]
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(
+        ([key]) => !(value.id && automaticPropertyTypes.has(value.type) && key === value.type),
+      )
+      .map(([key, item]) => [key, inputValue(item)]),
+  )
+}
+const entityInput = (value) =>
+  inputValue(
+    Object.fromEntries(Object.entries(value).filter(([key]) => !automaticEntityFields.has(key))),
+  )
+function inventoryInput(inventory) {
+  const byId = (rows) => rows.map(entityInput).sort((a, b) => a.id.localeCompare(b.id))
+  const nativeOrder = {}
+  for (const block of inventory.native_blocks) {
+    const parent = canonical(block.parent ?? null)
+    ;(nativeOrder[parent] ??= []).push(block.id)
+  }
+  return {
+    root: entityInput(inventory.root),
+    root_children_complete: inventory.root_children_complete,
+    root_database_ids: [...inventory.root_database_ids].sort(),
+    other_descriptors: [...inventory.other_descriptors].sort(),
+    tables: Object.fromEntries(
+      ROLES.map((role) => {
+        const table = inventory.tables[role]
+        return [
+          role,
+          {
+            complete: table.complete,
+            database: entityInput(table.database),
+            data_source: entityInput(table.data_source),
+            rows: byId(table.rows),
+          },
+        ]
+      }),
+    ),
+    stores: inventory.stores.map((store) => store.path).sort(),
+    native_bodies_complete: inventory.native_bodies_complete,
+    native_body_failures: inventory.native_body_failures ?? [],
+    native_page_ids: [...(inventory.native_page_ids ?? [])].sort(),
+    native_blocks: byId(inventory.native_blocks),
+    native_order: nativeOrder,
+    required_content: [...inventory.required_content].sort((a, b) =>
+      canonical(a).localeCompare(canonical(b)),
+    ),
+    content_audit: inventory.content_audit
+      .map(({ sha256, bytes, references }) => ({ sha256, bytes, references }))
+      .sort((a, b) => a.sha256.localeCompare(b.sha256)),
+  }
+}
+
+/** Rebind only the reviewed before/after values, then compare every input.
+ * This observes a quiesced library; it is not a remote compare-and-swap. */
+export function verifyInventoryClosure(original, observed, plan, stage = "start") {
+  const legacy = decodeLegacy(original.tables.skills.database.description)
+  assertTopology(observed, legacy)
+  const restored = structuredClone(observed)
+  const states = []
+  for (const patch of plan.patches) {
+    const candidates =
+      patch.kind === "block"
+        ? restored.native_blocks
+        : patch.kind === "database"
+          ? ROLES.map((role) => restored.tables[role].database)
+          : ROLES.flatMap((role) => restored.tables[role].rows)
+    const matches = candidates.filter((value) => value.id === patch.id)
+    requireValue(matches.length === 1, "INVENTORY_DRIFT", { kind: patch.kind, id: patch.id })
+    const target = matches[0]
+    const hash = digest(selectPatchValue(patch, target))
+    requireValue([patch.before_sha256, patch.after_sha256].includes(hash), "REMOTE_DRIFT", {
+      kind: patch.kind,
+      id: patch.id,
+    })
+    states.push(hash === patch.after_sha256)
+    if (patch.kind === "database") target.description = structuredClone(patch.before.description)
+    else if (patch.kind === "block")
+      Object.assign(target[target.type], structuredClone(patch.before[target.type]))
+    else
+      for (const [id, value] of Object.entries(patch.before.properties))
+        Object.assign(
+          Object.values(target.properties).find((property) => property.id === id),
+          structuredClone(value),
+        )
+  }
+  const expected = digest(inventoryInput(original)),
+    actual = digest(inventoryInput(restored))
+  requireValue(actual === expected, "INVENTORY_DRIFT", {
+    expected_sha256: expected,
+    actual_sha256: actual,
+  })
+  if (stage === "descriptor_commit")
+    requireValue(states.slice(0, -1).every(Boolean), "MIGRATION_PATCH_INCOMPLETE")
+  if (states.at(-1)) requireValue(states.every(Boolean), "DESCRIPTOR_COMMIT_INCOMPLETE")
+}
+
 /** Resume always observes actual bytes. All writes are idempotent PATCHes to
  * existing identities; no CREATE, owner reassignment or history rewrite exists. */
 export async function applyPlan(plan, io) {
   verifyPlan(plan)
-  await io.preflight(plan)
+  await io.preflight(plan, "start")
   const results = []
   for (const patch of plan.patches) {
-    const actual = await io.read(patch)
+    let actual = await io.read(patch)
+    if (patch.kind === "database" && digest(actual) !== patch.after_sha256) {
+      await io.preflight(plan, "descriptor_commit")
+      actual = await io.read(patch)
+    }
     if (digest(actual) === patch.after_sha256) {
       results.push({ sequence: patch.sequence, status: "observed_applied" })
       continue

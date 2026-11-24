@@ -33,6 +33,8 @@ import {
   referenceTokens,
   rewriteReference,
   applyPlan,
+  selectPatchValue,
+  verifyInventoryClosure,
 } from "./library-root-migration.mjs"
 
 const HELP =
@@ -168,7 +170,7 @@ export function inspectStore(path) {
     "ORIGINAL_STORE_REQUIRED",
   )
   const code =
-    'import sqlite3,json,sys,hashlib,pathlib\np=pathlib.Path(sys.argv[1]);c=sqlite3.connect(p.as_uri()+"?mode=ro",uri=True);c.execute("pragma query_only=on")\nrows=c.execute("select key,payload from shared_local_records where category=\'dispatch\' and retired=0 order by key").fetchall()\nprint(json.dumps({"dispatch":[{"key":k,"payload_sha256":hashlib.sha256(v.encode()).hexdigest()} for k,v in rows],"snapshots":c.execute("select count(*) from snapshots").fetchone()[0]}))'
+    'import sqlite3,json,sys,hashlib,pathlib\np=pathlib.Path(sys.argv[1]);c=sqlite3.connect(p.as_uri()+"?mode=ro",uri=True);c.execute("pragma query_only=on")\nrows=c.execute("select key,payload from shared_local_records where retired=0 and (category=\'dispatch\' or key like \'operations/shared-profile-pending/%\') order by key").fetchall()\nprint(json.dumps({"dispatch":[{"key":k,"payload_sha256":hashlib.sha256(v.encode()).hexdigest()} for k,v in rows],"snapshots":c.execute("select count(*) from snapshots").fetchone()[0]}))'
   let result
   try {
     result = JSON.parse(
@@ -214,9 +216,9 @@ export function auditPortableTree(directory, manifestPath, mapping) {
   }
   visit(root)
 }
-export function collectInventory({ entry, root, stores = [], objects = [] }) {
+export function collectInventory({ entry, root, stores = [], objects = [], fixedLibrary }) {
   const database = api("/v1/databases/" + entry)
-  const legacy = decodeLegacy(database.description)
+  const legacy = fixedLibrary ?? decodeLegacy(database.description)
   requireValue(legacy.skills.database_id === entry, "ENTRY_DESCRIPTOR_MISMATCH")
   const rootPage = api("/v1/pages/" + root)
   const children = enumerate("/v1/blocks/" + root + "/children")
@@ -334,31 +336,7 @@ function patchEndpoint(patch) {
     "/v1/" + { page: "pages", block: "blocks", database: "databases" }[patch.kind] + "/" + patch.id
   )
 }
-function selectPatchValue(patch, raw) {
-  if (patch.kind === "database") return { description: writableRich(raw.description) }
-  if (patch.kind === "page") {
-    const properties = {}
-    for (const [id, wanted] of Object.entries(patch.before.properties)) {
-      const values = Object.values(raw.properties).filter((value) => value.id === id)
-      requireValue(values.length === 1 && !values[0].has_more, "PATCH_PROPERTY_INCOMPLETE")
-      const type = Object.keys(wanted)[0]
-      requireValue(values[0].type === type, "PATCH_PROPERTY_TYPE_CHANGED")
-      properties[id] = { [type]: writableRich(values[0][type]) }
-    }
-    return { properties }
-  }
-  const type = Object.keys(patch.before)[0]
-  requireValue(raw.type === type, "BLOCK_TYPE_CHANGED")
-  return {
-    [type]: Object.fromEntries(
-      Object.keys(patch.before[type]).map((key) => [
-        key,
-        key === "cells" ? raw[type][key].map(writableRich) : writableRich(raw[type][key]),
-      ]),
-    ),
-  }
-}
-function freshPreflight(plan) {
+function freshPreflight(plan, inventory, stage) {
   for (const path of plan.stores)
     requireValue(inspectStore(path).dispatch.length === 0, "LOCAL_OPERATION_PENDING", {
       store: path,
@@ -426,8 +404,16 @@ function freshPreflight(plan) {
       }).length === 0,
       "OWNER_OPERATION_PENDING",
     )
+  const current = collectInventory({
+    entry: plan.mapping.old_entry,
+    root: plan.mapping.root_id,
+    stores: plan.stores,
+    objects: [...new Set(inventory.content_audit.map((item) => dirname(item.location)))],
+    fixedLibrary: decodeLegacy(inventory.tables.skills.database.description),
+  })
+  verifyInventoryClosure(inventory, current, plan, stage)
 }
-function journalIO(plan, path) {
+function journalIO(plan, path, inventory) {
   const directory = resolve(path)
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   requireValue(realpathSync(directory) === directory, "CANONICAL_JOURNAL_REQUIRED")
@@ -437,7 +423,7 @@ function journalIO(plan, path) {
   else saveNew(manifest, plan)
   const events = join(directory, "events.jsonl")
   return {
-    preflight: async (selected) => freshPreflight(selected),
+    preflight: async (selected, stage) => freshPreflight(selected, inventory, stage),
     read: async (patch) => selectPatchValue(patch, api(patchEndpoint(patch))),
     patch: async (patch) => {
       api(patchEndpoint(patch), { method: "PATCH", body: patch.after })
@@ -532,15 +518,13 @@ export async function main(argv) {
         : migratePortableManifest(original, plan.mapping)
   } else if (command === "apply") {
     const plan = readJson(required("--plan"))
+    const inventory = readJson(required("--inventory"))
     requireValue(
       options["--writers-quiesced"] === true && required("--ack-plan") === plan.plan_sha256,
       "EXACT_PLAN_AND_QUIESCENCE_REQUIRED",
     )
-    requireValue(
-      preparePlan(readJson(required("--inventory"))).plan_sha256 === plan.plan_sha256,
-      "INVENTORY_PLAN_MISMATCH",
-    )
-    result = await applyPlan(plan, journalIO(plan, required("--journal")))
+    requireValue(preparePlan(inventory).plan_sha256 === plan.plan_sha256, "INVENTORY_PLAN_MISMATCH")
+    result = await applyPlan(plan, journalIO(plan, required("--journal"), inventory))
     console.log(JSON.stringify(result))
     return
   } else requireValue(false, "USAGE")
