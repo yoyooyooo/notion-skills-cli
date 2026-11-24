@@ -120,6 +120,9 @@ explicit successful selection. The host does not quietly keep using the previous
 Library. A selected root without a matching enabled Source is unavailable; the
 Broker does not create or enable Sources automatically. Complete refs can route
 to other explicitly enabled Sources without changing the branch default.
+An explicit `$name@source` selects that configured Source and retains its actual
+Library in the resulting reference. An unqualified name searches only the
+current default Library, even when the same input also names another Source.
 
 ## Interrupted setup and writes
 
