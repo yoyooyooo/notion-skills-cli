@@ -3,7 +3,9 @@ import { Effect } from "effect"
 import { fail, property, type SkillsError } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { loadSharedLibrary, LIBRARY_MARKER } from "../src/shared-library.ts"
+import { withLibraryInitialization } from "../src/shared-library-initialization.ts"
 import { currentId, currentLibrary } from "./shared-current-fixture.ts"
+import { currentWriteFixture } from "./shared-current-write-fixture.ts"
 import { librarySchemaResponse } from "./library-schema-fixture.ts"
 
 const roles = ["skills", "files", "records", "sources"] as const
@@ -96,4 +98,30 @@ test("Library discovery checks later root pages before admitting a unique descri
   await expect(f.read()).rejects.toMatchObject({ code: "LIBRARY_AMBIGUOUS" })
   expect(f.calls.some((call) => call.path.endsWith("&start_cursor=second-page"))).toBe(true)
   expect(f.calls.every((call) => call.method === "GET")).toBe(true)
+})
+
+test("root CREATE sees its independent original intent in the Store before dispatch", async () => {
+  const f = currentWriteFixture(currentId(901)), observations: unknown[][] = []
+  const api: Notion["Service"] = {
+    version: Effect.succeed("controlled"),
+    credentialIdentity: Effect.succeed("controlled"),
+    request: () => Effect.suspend(() => {
+      observations.push(structuredClone([...f.json.values()]))
+      return Effect.fail(fail("WRITE_OUTCOME_UNKNOWN", "The CREATE may have reached the service."))
+    }),
+  }
+  const operation = "library-before-root"
+  const result = await f.run(withLibraryInitialization(currentId(901), operation, "create", (session) =>
+    session.perform("create:root", "never", Effect.gen(function* () {
+      return yield* (yield* Notion).request("v1/pages", { parent: { page_id: currentId(901) } })
+    })),
+  ).pipe(Effect.provideService(Notion, api), Effect.result))
+  expect(result).toMatchObject({ _tag: "Failure", failure: { code: "WRITE_OUTCOME_UNKNOWN" } })
+  expect(observations).toHaveLength(1)
+  expect(observations[0]).toHaveLength(1)
+  expect(observations[0]![0]).toMatchObject({
+    version: 2, operation_id: operation, parent_page_id: currentId(901), root_page_id: null,
+    in_flight: { action: "create:root" },
+  })
+  expect([...f.json.values()]).toEqual(observations[0])
 })
