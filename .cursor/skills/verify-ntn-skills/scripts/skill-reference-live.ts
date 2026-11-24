@@ -17,7 +17,7 @@ import {
   SharedLibrarySchema,
   type SharedLibrary,
 } from "../../../../packages/core/src/shared-library-model.ts"
-import { probeEmptyLibrary, runEmptyLibrary } from "./empty-library.ts"
+import { probeEmptyLibrary, runEmptyLibrary, verifyLibraryPlacement } from "./empty-library.ts"
 import {
   installedDriver,
   observeSkillRelations,
@@ -111,7 +111,6 @@ async function completedUpstream(
   selected: {
     readonly prefix: string
     readonly parent: string
-    readonly entry: string
     readonly library: string
     readonly corpus_sha256: string
     readonly cli_sha256: unknown
@@ -138,7 +137,6 @@ async function completedUpstream(
   const A = Schema.decodeUnknownSync(SharedLibrarySchema)(property(report.libraries).A)
   const B = Schema.decodeUnknownSync(SharedLibrarySchema)(property(report.libraries).B)
   assert.equal(A.library_id, selected.library)
-  assert.equal(A.skills.database_id, selected.entry)
   const originalRun = dirname(dirname(root))
   const receipt = await readJson(join(originalRun, "result.json"))
   assert.equal(receipt.timed_out, false)
@@ -169,7 +167,7 @@ async function completedUpstream(
   assert.equal(applied.status, "applied")
   assert.equal(applied.operation_id, selected.prefix + "-upstream")
   assert.equal(command.argv[3], join(root, "fixtures/upstream/batch.json"))
-  assert.equal(command.argv[command.argv.indexOf("--entry") + 1], B.skills.database_id)
+  assert.equal(command.argv[command.argv.indexOf("--library") + 1], B.library_id)
   for (const later of commands.slice(commands.indexOf(command) + 1))
     requireZeroNotionWrites(later.value.output)
   const database = join(originalRun, "state/cli/state.sqlite")
@@ -194,6 +192,7 @@ async function completedUpstream(
     assert.equal(row.retired, 1)
     assert.equal(typeof row.payload, "string")
     const plan = Schema.decodeUnknownSync(ImportPlanSchema)(JSON.parse(String(row.payload)))
+    assert.deepEqual(plan.library, B)
     assert.equal(plan.library_id, B.library_id)
     assert.equal(plan.skills_data_source_id, B.skills.data_source_id)
     assert.equal(plan.definition.kind, "batch")
@@ -262,12 +261,11 @@ async function completedNativeRecovery(
   const A = Schema.decodeUnknownSync(SharedLibrarySchema)(property(previous.libraries).A)
   const B = Schema.decodeUnknownSync(SharedLibrarySchema)(property(previous.libraries).B)
   assert.equal(A.library_id, selected.library)
-  assert.equal(A.skills.database_id, selected.entry)
   const original = await readJson(String(handoff.original_command))
   assert.equal(dirname(String(handoff.original_command)), join(root, "commands"))
   const originalArgv = Schema.decodeUnknownSync(Schema.Array(Schema.String))(original.argv)
   assert.equal(originalArgv[3], join(root, "fixtures/cycles/batch.json"))
-  assert.equal(originalArgv[originalArgv.indexOf("--entry") + 1], B.skills.database_id)
+  assert.equal(originalArgv[originalArgv.indexOf("--library") + 1], B.library_id)
   assert.equal(originalArgv[originalArgv.indexOf("--operation") + 1], selected.prefix + "-cycles")
   const failure = property(property(original.output).error)
   assert.equal(failure.code, "WRITE_OUTCOME_UNKNOWN")
@@ -282,7 +280,7 @@ async function completedNativeRecovery(
   assert.equal(applied.operation_id, selected.prefix + "-cycles")
   const argv = Schema.decodeUnknownSync(Schema.Array(Schema.String))(resumed.argv)
   assert.equal(argv[3], join(root, "fixtures/cycles/batch.json"))
-  assert.equal(argv[argv.indexOf("--entry") + 1], B.skills.database_id)
+  assert.equal(argv[argv.indexOf("--library") + 1], B.library_id)
   assert.equal(argv[argv.indexOf("--operation") + 1], selected.prefix + "-cycles")
   assert.ok(argv.includes("--resume"))
   assert.deepEqual(
@@ -317,6 +315,7 @@ async function completedNativeRecovery(
     assert.equal(row.retired, 1)
     assert.equal(typeof row.payload, "string")
     const plan = Schema.decodeUnknownSync(ImportPlanSchema)(JSON.parse(String(row.payload)))
+    assert.deepEqual(plan.library, B)
     assert.equal(plan.library_id, B.library_id)
     assert.equal(plan.skills_data_source_id, B.skills.data_source_id)
     assert.deepEqual(plan.definition.mapping, applied.mapping)
@@ -377,7 +376,6 @@ export async function runSkillReferenceLive(input: {
   readonly prefix: string
   readonly corpus: string
   readonly parent: string
-  readonly existing_entry: string
   readonly existing_library: string
   readonly completed_upstream?: string
   readonly completed_native_recovery?: string
@@ -387,7 +385,7 @@ export async function runSkillReferenceLive(input: {
   assert.ok(isAbsolute(input.root))
   assert.match(input.prefix, /^[a-z0-9][a-z0-9-]{0,60}$/u)
   assert.equal(pageId(input.parent), input.parent)
-  assert.equal(pageId(input.existing_entry), input.existing_entry)
+  assert.equal(pageId(input.existing_library), input.existing_library)
   const corpus = await verifyMembersCorpus(input.corpus)
   assert.ok(
     input.completed_upstream === undefined || input.completed_native_recovery === undefined,
@@ -396,7 +394,6 @@ export async function runSkillReferenceLive(input: {
   const selection = {
     prefix: input.prefix,
     parent: input.parent,
-    entry: input.existing_entry,
     library: input.existing_library,
     corpus_sha256: corpus.corpus_sha256,
     cli_sha256: input.execution.cli_sha256,
@@ -493,6 +490,17 @@ export async function runSkillReferenceLive(input: {
     return { code, notion_writes: 0, command: result.record }
   }
   const id = (suffix: string) => input.prefix + "-" + suffix
+  const verifyPlacement = async (label: string, library: SharedLibrary) => {
+    const facts = await verifyLibraryPlacement({
+      library,
+      parent: input.parent,
+      probe: async (request) =>
+        Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(
+          await probeEmptyLibrary(request),
+        ),
+    })
+    await record(label + "-physical-library-placement", facts)
+  }
   const observe = async (
     label: string,
     library: SharedLibrary,
@@ -548,8 +556,8 @@ export async function runSkillReferenceLive(input: {
     "library",
     "import-batch",
     path,
-    "--entry",
-    library.skills.database_id,
+    "--library",
+    library.library_id,
     "--operation",
     id(label),
     "--max-requests",
@@ -613,8 +621,8 @@ export async function runSkillReferenceLive(input: {
       "library",
       "import",
       path,
-      "--entry",
-      library.skills.database_id,
+      "--library",
+      library.library_id,
       "--skill-id",
       skill_id,
       "--operation",
@@ -645,8 +653,8 @@ export async function runSkillReferenceLive(input: {
     const output = await execute(label + "-export", [
       "export",
       owner.page_id,
-      "--database",
-      library.skills.database_id,
+      "--library",
+      library.library_id,
       "--refresh",
       "--output",
       destination,
@@ -694,13 +702,13 @@ export async function runSkillReferenceLive(input: {
         "ctl",
         "library",
         "init",
-        "--entry",
-        input.existing_entry,
+        "--library",
+        input.existing_library,
       ])
       requireZeroNotionWrites(output)
       const library = Schema.decodeUnknownSync(SharedLibrarySchema)(output.library)
       assert.equal(library.library_id, input.existing_library)
-      assert.equal(library.skills.database_id, input.existing_entry)
+      await verifyPlacement("existing-a", library)
       if (continued !== undefined) assert.deepEqual(library, continued.A)
       report.libraries.A = library
       return library
@@ -715,12 +723,13 @@ export async function runSkillReferenceLive(input: {
             "ctl",
             "library",
             "init",
-            "--entry",
-            continued.B.skills.database_id,
+            "--library",
+            continued.B.library_id,
           ])
           requireZeroNotionWrites(attached)
           const library = Schema.decodeUnknownSync(SharedLibrarySchema)(attached.library)
           assert.deepEqual(library, continued.B)
+          await verifyPlacement("continued-b", library)
           report.libraries.B = library
           return library
         }
@@ -736,7 +745,11 @@ export async function runSkillReferenceLive(input: {
         })
         const library = Schema.decodeUnknownSync(SharedLibrarySchema)(property(result).library)
         assert.notEqual(library.library_id, A.library_id)
-        assert.notEqual(library.skills.database_id, A.skills.database_id)
+        assert.notEqual(library.library_id, input.parent)
+        for (const role of ["skills", "files", "records", "sources"] as const) {
+          assert.notEqual(library[role].database_id, A[role].database_id)
+          assert.notEqual(library[role].data_source_id, A[role].data_source_id)
+        }
         report.libraries.B = library
         return library
       },
@@ -880,8 +893,8 @@ export async function runSkillReferenceLive(input: {
         const exportedTree = await exported("poteto-explicit", B, result.owner)
         assert.equal(exportedTree.files, 41)
         const content = await read("poteto-read", fileRef(poteto.identity, "SKILL.md"), poteto, [
-          "--database",
-          B.skills.database_id,
+          "--library",
+          B.library_id,
           "--refresh",
         ])
         assert.equal(digest(String(content.content)), source.main_sha256)
@@ -944,8 +957,8 @@ export async function runSkillReferenceLive(input: {
         "skill",
         "update",
         a.page_id,
-        "--entry",
-        B.skills.database_id,
+        "--library",
+        B.library_id,
         "--members",
         "",
       ])
@@ -1082,13 +1095,13 @@ export async function runSkillReferenceLive(input: {
         await observe("overlap-a", A, a)
         await observe("overlap-b", B, b)
         const aRead = await read("same-id-a", "skill://" + shared + "/SKILL.md", a, [
-          "--database",
-          A.skills.database_id,
+          "--library",
+          A.library_id,
           "--refresh",
         ])
         const bRead = await read("same-id-b", "skill://" + shared + "/SKILL.md", b, [
-          "--database",
-          B.skills.database_id,
+          "--library",
+          B.library_id,
           "--refresh",
         ])
         assert.equal(aRead.content, aText)
@@ -1101,8 +1114,8 @@ export async function runSkillReferenceLive(input: {
           "ctl",
           "config",
           "set",
-          "default_database",
-          B.skills.database_id,
+          "default_library",
+          B.library_id,
         ])
         requireZeroNotionWrites(configured)
         assert.equal(
@@ -1134,13 +1147,7 @@ export async function runSkillReferenceLive(input: {
         )
         await reject(
           "explicit-conflicting-library",
-          [
-            "read",
-            fileRef(a.identity, "SKILL.md"),
-            "--database",
-            B.skills.database_id,
-            "--metrics",
-          ],
+          ["read", fileRef(a.identity, "SKILL.md"), "--library", B.library_id, "--metrics"],
           ["LIBRARY_SCOPE_MISMATCH"],
         )
         await reject(
@@ -1148,8 +1155,8 @@ export async function runSkillReferenceLive(input: {
           [
             "read",
             fileRef(b.identity, "SKILL.md", String(aRead.snapshot_id)),
-            "--database",
-            B.skills.database_id,
+            "--library",
+            B.library_id,
             "--offline",
             "--metrics",
           ],
@@ -1170,8 +1177,8 @@ export async function runSkillReferenceLive(input: {
         assert.equal(
           (
             await read("current-b-after-change", fileRef(b.identity, "SKILL.md"), b, [
-              "--database",
-              B.skills.database_id,
+              "--library",
+              B.library_id,
               "--refresh",
             ])
           ).content,
@@ -1213,7 +1220,7 @@ export async function runSkillReferenceLive(input: {
               "origin-short-preserves-a",
               fileRef(originImported.owner.identity, "SKILL.md"),
               originImported.owner,
-              ["--database", B.skills.database_id, "--refresh"],
+              ["--library", B.library_id, "--refresh"],
             )
           ).content,
           originExpected,
@@ -1259,8 +1266,8 @@ export async function runSkillReferenceLive(input: {
         assert.equal(
           (
             await read("no-rebind-keeps-a", fileRef(owner.identity, "SKILL.md"), owner, [
-              "--database",
-              B.skills.database_id,
+              "--library",
+              B.library_id,
               "--refresh",
             ])
           ).content,
@@ -1288,8 +1295,8 @@ export async function runSkillReferenceLive(input: {
         await observe("rebound-relations-b", B, owner, [overlap.b], [overlap.b])
         const expected = body.replace("[Current](" + targetA + ")", "[Current](" + targetB + ")")
         const readBack = await read("rebound-body", fileRef(owner.identity, "SKILL.md"), owner, [
-          "--database",
-          B.skills.database_id,
+          "--library",
+          B.library_id,
           "--refresh",
         ])
         assert.equal(readBack.content, expected)
@@ -1373,7 +1380,6 @@ async function mainCommand() {
     "--corpus",
     "--prefix",
     "--parent",
-    "--existing-entry",
     "--existing-library",
     "--completed-upstream",
     "--completed-native-recovery",
@@ -1407,7 +1413,6 @@ async function mainCommand() {
     root,
     corpus: required("--corpus"),
     parent: required("--parent"),
-    existing_entry: required("--existing-entry"),
     existing_library: required("--existing-library"),
     ...(previousRoot === undefined ? {} : { completed_upstream: previousRoot }),
     ...(recoveredPath === undefined ? {} : { completed_native_recovery: recoveredPath }),
@@ -1425,7 +1430,7 @@ async function mainCommand() {
       libraries: Object.fromEntries(
         Object.entries(report.libraries).map(([name, library]) => [
           name,
-          { library_id: library.library_id, entry: library.skills.database_id },
+          { library_id: library.library_id },
         ]),
       ),
       cases: report.cases.map(({ name, status }) => ({ name, status })),
