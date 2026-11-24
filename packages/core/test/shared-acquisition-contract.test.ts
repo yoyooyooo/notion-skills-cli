@@ -228,7 +228,8 @@ function fixture(input: { beforeProvider?: () => Effect.Effect<void> } = {}) {
     request: (request, body, options) =>
       Effect.gen(function* () {
         calls.push(request)
-        const schema = (options?.method ?? "GET") === "GET" ? librarySchemaResponse(request, library) : undefined
+        const schema =
+          (options?.method ?? "GET") === "GET" ? librarySchemaResponse(request, library) : undefined
         if (schema !== undefined) return schema
         if (request === `v1/databases/${library.skills.database_id}` && body === undefined)
           return {
@@ -455,7 +456,10 @@ describe("current acquisition contract", () => {
     for (const changed of [
       { ...acquisition, files: [route, route] },
       { ...acquisition, files: [{ ...route, path: "absent.md" }] },
-      { ...acquisition, library: { ...library, library_id: "45c64249-e1dd-59ab-ad9f-604ff752ddb4" } },
+      {
+        ...acquisition,
+        library: { ...library, library_id: "45c64249-e1dd-59ab-ad9f-604ff752ddb4" },
+      },
       {
         ...acquisition,
         files: [
@@ -518,7 +522,9 @@ describe("current acquisition contract", () => {
     expect(files).toEqual([{ path, bytes: new TextEncoder().encode("body") }])
     expect(f.providerRequests).toEqual([f.url])
     expect(f.calls).toHaveLength(18)
-    expect(f.calls.some((request) => request.includes(`${library.records.data_source_id}/query`))).toBe(false)
+    expect(
+      f.calls.some((request) => request.includes(`${library.records.data_source_id}/query`)),
+    ).toBe(false)
   })
 
   for (const changedBytes of [false, true])
@@ -567,9 +573,9 @@ describe("current acquisition contract", () => {
         expect(next.code).toBe("SOURCE_DISABLED")
       }
       expect(f.providerRequests).toEqual([f.url])
-      expect(f.calls.some((request) => request.includes(`${library.records.data_source_id}/query`))).toBe(
-        false,
-      )
+      expect(
+        f.calls.some((request) => request.includes(`${library.records.data_source_id}/query`)),
+      ).toBe(false)
     })
 
   test("delayed local source acquisition keeps exact bytes and durable local restrictions", async () => {
@@ -695,8 +701,15 @@ describe("current acquisition contract", () => {
       target: f.snapshot.record.id,
       paths: [path],
     })
-    expect(f.calls.filter(request => request.startsWith("v1/pages/") && request !== `v1/pages/${library.library_id}`)).toEqual([`v1/pages/${skillPage}`])
-    expect(f.calls.some(request => request.includes("/query") || request.includes("/markdown"))).toBe(false)
+    expect(
+      f.calls.filter(
+        (request) =>
+          request.startsWith("v1/pages/") && request !== `v1/pages/${library.library_id}`,
+      ),
+    ).toEqual([`v1/pages/${skillPage}`])
+    expect(
+      f.calls.some((request) => request.includes("/query") || request.includes("/markdown")),
+    ).toBe(false)
   })
 
   test.each(["resource", "native", "identity", "path"])(
@@ -727,9 +740,9 @@ describe("current acquisition contract", () => {
       expect(error.code).toBe("SHARED_ACQUISITION_CHANGED")
       expect(error.details).toMatchObject({ next: "reselect_current", path })
       expect(f.calls).toHaveLength(17)
-      expect(f.calls.some((request) => request.includes(`${library.records.data_source_id}/query`))).toBe(
-        false,
-      )
+      expect(
+        f.calls.some((request) => request.includes(`${library.records.data_source_id}/query`)),
+      ).toBe(false)
     },
   )
 

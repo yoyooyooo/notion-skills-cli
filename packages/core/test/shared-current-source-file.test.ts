@@ -381,9 +381,7 @@ test("supporting executable and binary takeovers keep originals and disabled Sou
   })
   expect(
     await f.run(
-      http.use(
-        readSkill(page, { library: library.library_id, path: "run.sh", refresh: true }),
-      ),
+      http.use(readSkill(page, { library: library.library_id, path: "run.sh", refresh: true })),
     ),
   ).toMatchObject({ content: "#!/bin/sh\necho one\n" })
   const source = (await f.run(queryCurrentSourceManagement(library, "file-source")))!
@@ -718,9 +716,7 @@ test.each(["source-ready", "source-retirement"] as const)(
       ),
     ).toEqual([])
     expect(
-      await f.run(
-        http.use(readSkill(page, { library: library.library_id, refresh: true })),
-      ),
+      await f.run(http.use(readSkill(page, { library: library.library_id, refresh: true }))),
     ).toMatchObject({ content: expect.stringContaining(human) })
     await ready(f)
   },

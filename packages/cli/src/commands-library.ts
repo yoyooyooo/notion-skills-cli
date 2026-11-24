@@ -30,7 +30,10 @@ const initialize = defineCommand(
     Effect.gen(function* () {
       const result = yield* initializeSharedLibrary({
         parent: Option.getOrUndefined(options.parent),
-        library: Option.getOrUndefined(options.library) === undefined ? undefined : yield* libraryId(Option.getOrUndefined(options.library)!),
+        library:
+          Option.getOrUndefined(options.library) === undefined
+            ? undefined
+            : yield* libraryId(Option.getOrUndefined(options.library)!),
         operation: Option.getOrUndefined(options.operation),
         resume: options.resume,
       })
@@ -56,10 +59,16 @@ const initialize = defineCommand(
   ),
 )
 
-const inspect = defineCommand("inspect", { library: requiredSingleton("library", "Exact Library root page ID, URL or alias") }, ({ library }) =>
-  Effect.gen(function* () {
-    yield* emit({ library: yield* loadSharedLibrary(yield* libraryId(library)), contract: "current" })
-  }),
+const inspect = defineCommand(
+  "inspect",
+  { library: requiredSingleton("library", "Exact Library root page ID, URL or alias") },
+  ({ library }) =>
+    Effect.gen(function* () {
+      yield* emit({
+        library: yield* loadSharedLibrary(yield* libraryId(library)),
+        contract: "current",
+      })
+    }),
 ).pipe(
   Command.withDescription(
     "Read the current library descriptor by its exact Library root page ID. This does not read bodies or change schema.",

@@ -321,7 +321,14 @@ describe("fixed resource batch", () => {
       [
         {
           version: 1,
-          refs: [a, fileRef("skill://owner?library=00000000-0000-4000-8000-000000000112", "empty.txt", f.snapshot.snapshot_id)],
+          refs: [
+            a,
+            fileRef(
+              "skill://owner?library=00000000-0000-4000-8000-000000000112",
+              "empty.txt",
+              f.snapshot.snapshot_id,
+            ),
+          ],
         },
         "RESOURCE_SELECTION_CONFLICT",
       ],

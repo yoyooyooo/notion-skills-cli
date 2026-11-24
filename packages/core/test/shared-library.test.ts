@@ -90,26 +90,55 @@ function fixture(
         const method = options?.method ?? (body === undefined ? "GET" : "POST")
         calls.push({ path, write: method !== "GET", method, body })
         const value = property(body)
-        if (path === `v1/pages/${parent}`) return Effect.succeed({ object: "page", id: parent, in_trash: false, properties: {} })
+        if (path === `v1/pages/${parent}`)
+          return Effect.succeed({ object: "page", id: parent, in_trash: false, properties: {} })
         if (path === "v1/pages" && method === "POST") {
           const rootId = id(10000 + ++rootCounter)
-          const raw = { object: "page", id: rootId, parent: value.parent, properties: value.properties, in_trash: false }
-          if (failures.root !== "not_accepted") roots.set(rootId, { raw, marker: property((value.children as unknown[])[0]) })
-          if (failures.root !== undefined) return Effect.fail(fail("WRITE_OUTCOME_UNKNOWN", "Root CREATE response was lost."))
+          const raw = {
+            object: "page",
+            id: rootId,
+            parent: value.parent,
+            properties: value.properties,
+            in_trash: false,
+          }
+          if (failures.root !== "not_accepted")
+            roots.set(rootId, { raw, marker: property((value.children as unknown[])[0]) })
+          if (failures.root !== undefined)
+            return Effect.fail(fail("WRITE_OUTCOME_UNKNOWN", "Root CREATE response was lost."))
           return Effect.succeed(raw)
         }
         const rootRead = roots.get(path.replace("v1/pages/", ""))
         if (rootRead && method === "GET") return Effect.succeed(structuredClone(rootRead.raw))
         if (path === `v1/blocks/${parent}/children?page_size=100`)
-          return Effect.succeed({ results: [...roots.keys()].filter(root => root !== hiddenRoot).map(root => ({ id: root, type: "child_page" })), has_more: false, next_cursor: null })
+          return Effect.succeed({
+            results: [...roots.keys()]
+              .filter((root) => root !== hiddenRoot)
+              .map((root) => ({ id: root, type: "child_page" })),
+            has_more: false,
+            next_cursor: null,
+          })
         const rootChildren = /^v1\/blocks\/([^/]+)\/children\?page_size=100$/u.exec(path)
         if (rootChildren && roots.has(rootChildren[1]!)) {
           const rootId = rootChildren[1]!
           return Effect.succeed({
             results: [
-              { ...property(roots.get(rootId)!.marker), id: id(20000 + [...roots.keys()].indexOf(rootId)) },
-              ...[...databases].filter(([databaseId, db]) => databaseId !== hiddenTable && property(db.raw.parent).page_id === rootId).map(([databaseId, db]) => ({ id: databaseId, type: "child_database", child_database: { title: db.name } })),
-            ], has_more: false, next_cursor: null,
+              {
+                ...property(roots.get(rootId)!.marker),
+                id: id(20000 + [...roots.keys()].indexOf(rootId)),
+              },
+              ...[...databases]
+                .filter(
+                  ([databaseId, db]) =>
+                    databaseId !== hiddenTable && property(db.raw.parent).page_id === rootId,
+                )
+                .map(([databaseId, db]) => ({
+                  id: databaseId,
+                  type: "child_database",
+                  child_database: { title: db.name },
+                })),
+            ],
+            has_more: false,
+            next_cursor: null,
           })
         }
         if (path === "v1/databases" && method === "POST") {
@@ -239,7 +268,9 @@ function fixture(
     )
   return {
     roots,
-    hideRoot: (root: string | undefined) => { hiddenRoot = root },
+    hideRoot: (root: string | undefined) => {
+      hiddenRoot = root
+    },
     databases,
     sources,
     calls,
@@ -305,7 +336,9 @@ test("one operation creates a root and four tables; explicit reconciliation and 
     },
   })
   const writes = f.calls.filter((call) => call.write).length
-  const second = await f.run(initializeSharedLibrary({ parent, operation: first.library.operation_id }))
+  const second = await f.run(
+    initializeSharedLibrary({ parent, operation: first.library.operation_id }),
+  )
   expect(second).toEqual({ ...first, reused: true })
   expect(f.calls.filter((call) => call.write).length).toBe(writes)
   expect(f.calls.some((call) => call.path.includes("/markdown"))).toBe(false)
@@ -346,7 +379,10 @@ test("completed library discovery and original-operation recovery ignore all dis
     table.raw.title = [{ text: { content: table.name } }]
   }
   const writes = f.calls.filter((call) => call.write).length
-  expect(await f.run(initializeSharedLibrary({ library: first.library.library_id }))).toEqual({ ...first, reused: true })
+  expect(await f.run(initializeSharedLibrary({ library: first.library.library_id }))).toEqual({
+    ...first,
+    reused: true,
+  })
   expect(
     await f.run(initializeSharedLibrary({ parent, operation: first.library.operation_id })),
   ).toEqual({ ...first, reused: true })
@@ -424,9 +460,9 @@ test("attached library rejects a retargeted relation without any repair writes",
     single_property: {},
   }
   const writes = f.calls.filter((call) => call.write).length
-  await expect(
-    f.run(initializeSharedLibrary({ library: library.library_id })),
-  ).rejects.toThrow("different Skills table")
+  await expect(f.run(initializeSharedLibrary({ library: library.library_id }))).rejects.toThrow(
+    "different Skills table",
+  )
   expect(f.calls.filter((call) => call.write).length).toBe(writes)
 })
 
@@ -448,10 +484,12 @@ test("attachment follows stable property IDs after a user renames columns", asyn
       ]),
     )
   const writes = f.calls.filter((call) => call.write).length
-  expect(
-    (await f.run(initializeSharedLibrary({ library: library.library_id }))).library,
-  ).toEqual(library)
-  expect((await f.run(initializeSharedLibrary({ library: library.library_id }))).library).toEqual(library)
+  expect((await f.run(initializeSharedLibrary({ library: library.library_id }))).library).toEqual(
+    library,
+  )
+  expect((await f.run(initializeSharedLibrary({ library: library.library_id }))).library).toEqual(
+    library,
+  )
   expect(f.calls.filter((call) => call.write).length).toBe(writes)
 })
 
@@ -462,9 +500,9 @@ test("attachment rejects replacement of a registered data source even if its col
   if (!db) throw Error("Fixture database missing")
   db.raw.data_sources = [{ id: id(999) }]
   const writes = f.calls.filter((call) => call.write).length
-  await expect(
-    f.run(initializeSharedLibrary({ library: library.library_id })),
-  ).rejects.toThrow("registered data source was replaced")
+  await expect(f.run(initializeSharedLibrary({ library: library.library_id }))).rejects.toThrow(
+    "registered data source was replaced",
+  )
   await expect(f.run(initializeSharedLibrary({ library: library.library_id }))).rejects.toThrow(
     "registered data source was replaced",
   )
@@ -553,9 +591,9 @@ test("attachment rejects deleted or replaced Members without binding by its unch
     if (replacement === undefined) delete property(source.properties).Members
     else property(source.properties).Members = replacement
     const writes = f.calls.filter((call) => call.write).length
-    await expect(
-      f.run(initializeSharedLibrary({ library: library.library_id })),
-    ).rejects.toThrow("missing or duplicated")
+    await expect(f.run(initializeSharedLibrary({ library: library.library_id }))).rejects.toThrow(
+      "missing or duplicated",
+    )
     expect(f.calls.filter((call) => call.write).length).toBe(writes)
   }
 })
@@ -808,7 +846,8 @@ test("original initialization refuses an edited library identity after descripto
     db.raw.description = [
       {
         plain_text:
-          LIBRARY_MARKER + JSON.stringify({ ...registered, library_id: "959eb0f3-b440-57dc-b2b2-431f370508bd" }),
+          LIBRARY_MARKER +
+          JSON.stringify({ ...registered, library_id: "959eb0f3-b440-57dc-b2b2-431f370508bd" }),
       },
     ]
     const writes = f.calls.filter((call) => call.write).length
@@ -866,7 +905,6 @@ test("resume validates its operation selector before network or state writes", a
   expect(f.state.size).toBe(0)
 })
 
-
 test("successful repeated init creates independent roots under one container", async () => {
   const f = fixture()
   const first = await f.run(initializeSharedLibrary({ parent }))
@@ -895,10 +933,14 @@ test("unknown root CREATE is observed by its atomic marker and never blindly rep
       expect(result.library.library_id).toBe([...f.roots.keys()][0]!)
       expect(f.state.size).toBe(0)
     } else {
-      await expect(f.run(initializeSharedLibrary({ parent, operation, resume: true }))).rejects.toThrow("absence")
+      await expect(
+        f.run(initializeSharedLibrary({ parent, operation, resume: true })),
+      ).rejects.toThrow("absence")
       expect(f.databases.size).toBe(0)
     }
-    expect(f.calls.filter(call => call.path === "v1/pages" && call.method === "POST")).toHaveLength(1)
+    expect(
+      f.calls.filter((call) => call.path === "v1/pages" && call.method === "POST"),
+    ).toHaveLength(1)
   }
 })
 
@@ -911,7 +953,9 @@ test("a known root cannot be replaced after a table-boundary interruption", asyn
   expect(f.roots.has(known)).toBe(true)
   f.hideRoot(known)
   f.clearFailures()
-  const writes = f.calls.filter(call => call.write).length
-  await expect(f.run(initializeSharedLibrary({ parent, operation, resume: true }))).rejects.toThrow("known root")
-  expect(f.calls.filter(call => call.write)).toHaveLength(writes)
+  const writes = f.calls.filter((call) => call.write).length
+  await expect(f.run(initializeSharedLibrary({ parent, operation, resume: true }))).rejects.toThrow(
+    "known root",
+  )
+  expect(f.calls.filter((call) => call.write)).toHaveLength(writes)
 })

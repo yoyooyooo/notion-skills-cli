@@ -28,7 +28,9 @@ async function controlled(width: number) {
       notion: {
         library,
         root: librarySchemaResponse("v1/pages/" + library.library_id, library),
-        root_children: property(librarySchemaResponse("v1/blocks/" + library.library_id + "/children", library)).results,
+        root_children: property(
+          librarySchemaResponse("v1/blocks/" + library.library_id + "/children", library),
+        ).results,
         databases: (["skills", "files", "records", "sources"] as const).map((role) =>
           librarySchemaResponse("v1/databases/" + library[role].database_id, library),
         ),

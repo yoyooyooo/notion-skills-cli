@@ -409,7 +409,12 @@ test("explicit identity reads and valid freshness policies reach online validati
     ["list", "--library", "cc029b5c-680e-576d-a381-a069d3f9f26e"],
     ["read", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
     ["files", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
-    ["export", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e", "--output", "output.zip"],
+    [
+      "export",
+      "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e",
+      "--output",
+      "output.zip",
+    ],
   ]) {
     for (const flags of [
       [],
@@ -427,7 +432,12 @@ test("offline policy fails explicitly without a safe cached identity", async () 
     ["list", "--library", "cc029b5c-680e-576d-a381-a069d3f9f26e"],
     ["read", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
     ["files", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
-    ["export", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e", "--output", "output.zip"],
+    [
+      "export",
+      "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e",
+      "--output",
+      "output.zip",
+    ],
   ]) {
     const result = await invoke([...command, "--offline"], {
       traceOnline: true,
@@ -672,7 +682,11 @@ test("consumer catalog identity follows remote scope without local configuration
   const first = await identity(database)
   expect((await identity("shared")).identity).toBe(first.identity)
   expect((await identity(database.replaceAll("-", "").toUpperCase())).identity).toBe(first.identity)
-  jsonFailure(await invoke(["ctl", "cache", "identity"], { root, traceOnline: true }), "LIBRARY_CONTEXT_REQUIRED", 1)
+  jsonFailure(
+    await invoke(["ctl", "cache", "identity"], { root, traceOnline: true }),
+    "LIBRARY_CONTEXT_REQUIRED",
+    1,
+  )
   const localPreferences = {
     ...original,
     default_library: otherDatabase,

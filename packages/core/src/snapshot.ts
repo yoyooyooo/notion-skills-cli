@@ -79,11 +79,14 @@ function openSnapshot(
       )
     selector = target.selector
     const startedAt = yield* Clock.currentTimeMillis
-    const selectedLibrary = options.library === undefined ? undefined : yield* resolveLibraryId(options.library)
+    const selectedLibrary =
+      options.library === undefined ? undefined : yield* resolveLibraryId(options.library)
     const graphTarget = yield* sharedGraphTarget(selector)
     if (graphTarget !== undefined) {
       if (selectedLibrary !== undefined && graphTarget.library.library_id !== selectedLibrary)
-        return yield* Effect.fail(fail("LIBRARY_SCOPE_MISMATCH", "The target conflicts with the selected Library."))
+        return yield* Effect.fail(
+          fail("LIBRARY_SCOPE_MISMATCH", "The target conflicts with the selected Library."),
+        )
       return yield* openSharedConsumer({
         ...graphTarget,
         target: String(property(graphTarget.rawPage).id),
@@ -116,12 +119,17 @@ function openSnapshot(
         return yield* Effect.fail(
           fail("NOT_SKILL", "The page must belong to an accessible current Skill library."),
         )
-      const source = selectedLibrary === undefined
-        ? yield* sourceForSkillsDatabase(parent.database_id)
-        : yield* explicitSource(selectedLibrary)
-      if (parent.database_id !== source.database_id ||
-          parent.data_source_id !== source.shared_library.skills.data_source_id)
-        return yield* Effect.fail(fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected Library."))
+      const source =
+        selectedLibrary === undefined
+          ? yield* sourceForSkillsDatabase(parent.database_id)
+          : yield* explicitSource(selectedLibrary)
+      if (
+        parent.database_id !== source.database_id ||
+        parent.data_source_id !== source.shared_library.skills.data_source_id
+      )
+        return yield* Effect.fail(
+          fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected Library."),
+        )
       return yield* openSharedConsumer({
         library: source.shared_library,
         target: id,
@@ -133,7 +141,10 @@ function openSnapshot(
         ...selectedFiles,
       })
     }
-    const identity = yield* Effect.try({ try: () => parseSkillIdentity(selector), catch: (error) => error as SkillsError })
+    const identity = yield* Effect.try({
+      try: () => parseSkillIdentity(selector),
+      catch: (error) => error as SkillsError,
+    })
     const scope = yield* authScope
     const source = yield* explicitSource(identity.libraryId)
     const library = source.shared_library

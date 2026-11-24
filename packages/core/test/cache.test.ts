@@ -443,10 +443,14 @@ for (const target of [page, logicalId])
       f.time(1_000_100)
       f.deny(code, code === "AUTH_REQUIRED" ? "v1/users/me" : `v1/pages/${page}/markdown`)
       const refresh = await f.run(
-        readSkill(target, { library: currentLibrary.library_id, refresh: true }).pipe(Effect.result),
+        readSkill(target, { library: currentLibrary.library_id, refresh: true }).pipe(
+          Effect.result,
+        ),
       )
       expect(refresh._tag === "Failure" && refresh.failure.code).toBe(code)
-      const current = await f.run(readSkill(target, { library: currentLibrary.library_id }).pipe(Effect.result))
+      const current = await f.run(
+        readSkill(target, { library: currentLibrary.library_id }).pipe(Effect.result),
+      )
       expect(current._tag === "Failure" && current.failure.code).toBe(code)
       if (code === "ACCESS_DENIED" || code === "AUTH_REQUIRED") {
         const fixed = await f.run(readSkill(first.ref).pipe(Effect.result))
@@ -458,7 +462,9 @@ for (const target of [page, logicalId])
       }
       const before = f.requests.length
       if (code === "NOT_FOUND") {
-        const offline = await f.run(readSkill(target, { library: currentLibrary.library_id, offline: true }))
+        const offline = await f.run(
+          readSkill(target, { library: currentLibrary.library_id, offline: true }),
+        )
         expect(offline.snapshot_id).toBe(first.snapshot_id)
         expect(offline.freshness).toMatchObject({
           policy: "offline",
@@ -472,7 +478,9 @@ for (const target of [page, logicalId])
         expect(pinned.freshness?.stale).toBeUndefined()
       } else {
         for (const input of [target, first.ref])
-          await expect(f.run(readSkill(input, { library: currentLibrary.library_id, offline: true }))).rejects.toMatchObject({
+          await expect(
+            f.run(readSkill(input, { library: currentLibrary.library_id, offline: true })),
+          ).rejects.toMatchObject({
             code,
           })
         await expect(
@@ -487,7 +495,9 @@ for (const target of [page, logicalId])
       expect(recovered.freshness).toMatchObject({ stale: false, age_ms: 0 })
       const after = f.requests.length
       expect(after).toBeGreaterThan(before)
-      expect((await f.run(readSkill(target, { library: currentLibrary.library_id }))).source).toBe("local_cache")
+      expect((await f.run(readSkill(target, { library: currentLibrary.library_id }))).source).toBe(
+        "local_cache",
+      )
       expect(f.requests.length).toBe(after)
     })
 
@@ -511,13 +521,17 @@ for (const entry of ["current", "catalog", "current-body"] as const)
     )
     expect(denied._tag === "Failure" && denied.failure.code).toBe("AUTH_REQUIRED")
     if (entry === "current-body") f.deny("AUTH_REQUIRED", "v1/users/me")
-    const unrelated = await f.run(readSkill(other, { library: currentLibrary.library_id }).pipe(Effect.result))
+    const unrelated = await f.run(
+      readSkill(other, { library: currentLibrary.library_id }).pipe(Effect.result),
+    )
     expect(unrelated._tag === "Failure" && unrelated.failure.code).toBe("AUTH_REQUIRED")
     const listed = await f.run(catalog({ library: currentLibrary.library_id }).pipe(Effect.result))
     expect(listed._tag === "Failure" && listed.failure.code).toBe("AUTH_REQUIRED")
     const before = f.requests.length
     for (const target of ["other-skill", first.ref, second.ref])
-      await expect(f.run(readSkill(target, { library: currentLibrary.library_id, offline: true }))).rejects.toMatchObject({
+      await expect(
+        f.run(readSkill(target, { library: currentLibrary.library_id, offline: true })),
+      ).rejects.toMatchObject({
         code: "AUTH_REQUIRED",
       })
     const oldDirectory = await f.run(catalog({ library: currentLibrary.library_id, offline: true }))
@@ -525,17 +539,21 @@ for (const entry of ["current", "catalog", "current-body"] as const)
     expect(oldDirectory.freshness.stale).toBe(true)
     expect(f.requests.length).toBe(before)
     f.credential("credential-two")
-    expect((await f.run(readSkill(other, { library: currentLibrary.library_id }))).snapshot_id).toBe(
-      otherCredential.snapshot_id,
-    )
+    expect(
+      (await f.run(readSkill(other, { library: currentLibrary.library_id }))).snapshot_id,
+    ).toBe(otherCredential.snapshot_id)
     expect((await f.run(readSkill(otherCredential.ref, { offline: true }))).snapshot_id).toBe(
       otherCredential.snapshot_id,
     )
     expect(f.requests.length).toBe(before)
     f.credential("credential-one")
     f.allow()
-    expect((await f.run(readSkill(other, { library: currentLibrary.library_id }))).source).toBe("notion")
-    expect((await f.run(readSkill(page, { library: currentLibrary.library_id }))).source).toBe("notion")
+    expect((await f.run(readSkill(other, { library: currentLibrary.library_id }))).source).toBe(
+      "notion",
+    )
+    expect((await f.run(readSkill(page, { library: currentLibrary.library_id }))).source).toBe(
+      "notion",
+    )
   })
 
 for (const code of ["ACCESS_DENIED", "NOT_FOUND"] as const)
@@ -545,7 +563,9 @@ for (const code of ["ACCESS_DENIED", "NOT_FOUND"] as const)
     await f.run(readSkill(page, { library: currentLibrary.library_id }))
     const second = await f.run(readSkill(other, { library: currentLibrary.library_id }))
     f.deny(code, `v1/pages/${page}/markdown`)
-    const denied = await f.run(readSkill(page, { library: currentLibrary.library_id, refresh: true }).pipe(Effect.result))
+    const denied = await f.run(
+      readSkill(page, { library: currentLibrary.library_id, refresh: true }).pipe(Effect.result),
+    )
     expect(denied._tag === "Failure" && denied.failure.code).toBe(code)
     const before = f.requests.length
     const unaffected = await f.run(readSkill(other, { library: currentLibrary.library_id }))
@@ -570,7 +590,9 @@ test("SC12 scope rejection reaches an old pin with no current observation", asyn
     )
       f.json.delete(key)
   f.deny("AUTH_REQUIRED", "v1/users/me")
-  await f.run(readSkill(page, { library: currentLibrary.library_id, refresh: true }).pipe(Effect.result))
+  await f.run(
+    readSkill(page, { library: currentLibrary.library_id, refresh: true }).pipe(Effect.result),
+  )
   const denied = await f.run(readSkill(old.ref).pipe(Effect.result))
   expect(denied._tag === "Failure" && denied.failure.code).toBe("AUTH_REQUIRED")
   const before = f.requests.length
@@ -624,12 +646,15 @@ test("C9 a duplicate display name cannot redirect a selected stable owner", asyn
   const f = fixture()
   await f.run(readSkill(logicalId, { library: currentLibrary.library_id }))
   const before = f.requests.length
-  expect((await f.run(readSkill(logicalId, { library: currentLibrary.library_id, offline: true }))).source).toBe(
-    "local_cache",
-  )
+  expect(
+    (await f.run(readSkill(logicalId, { library: currentLibrary.library_id, offline: true })))
+      .source,
+  ).toBe("local_cache")
   expect(f.requests.length).toBe(before)
   f.duplicate()
-  const result = await f.run(readSkill(logicalId, { library: currentLibrary.library_id, refresh: true }).pipe(Effect.result))
+  const result = await f.run(
+    readSkill(logicalId, { library: currentLibrary.library_id, refresh: true }).pipe(Effect.result),
+  )
   expect(result._tag === "Success" && result.success.record.id).toBe(logicalId)
   expect((await f.run(readSkill(page, { refresh: true }))).record.id).toBe(logicalId)
 })

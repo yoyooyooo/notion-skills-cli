@@ -90,7 +90,10 @@ test("canonical Skill identities survive SQLite restart and retiring one Library
   const directory = await mkdtemp(join(tmpdir(), "ntn-sqlite-library-identity-"))
   const root = join(directory, "state")
   const scope = "same-connection-scope"
-  const snapshots = ["6b823b9d-a768-5a28-82cb-771cd72a8746", "8fd04dc2-3275-55d6-be9e-37cd996baca1"].map((libraryId, index) => {
+  const snapshots = [
+    "6b823b9d-a768-5a28-82cb-771cd72a8746",
+    "8fd04dc2-3275-55d6-be9e-37cd996baca1",
+  ].map((libraryId, index) => {
     const current = currentRecord({ libraryId, skillId: "architect", name: "Architect" })
     const record = {
       ...current,
@@ -206,10 +209,12 @@ test("canonical Skill identities survive SQLite restart and retiring one Library
         snapshot_id: productionSnapshot.snapshot_id,
       },
     ])
-    expect(rows.fences).toEqual([
-      { identity: productionSnapshot.record.id, generation: 2, retired_through: 0 },
-      { identity: testSnapshot.record.id, generation: 2, retired_through: 2 },
-    ].sort((a, b) => a.identity.localeCompare(b.identity)))
+    expect(rows.fences).toEqual(
+      [
+        { identity: productionSnapshot.record.id, generation: 2, retired_through: 0 },
+        { identity: testSnapshot.record.id, generation: 2, retired_through: 2 },
+      ].sort((a, b) => a.identity.localeCompare(b.identity)),
+    )
     expect(rows.snapshots).toEqual(persisted.snapshots)
   } finally {
     if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))

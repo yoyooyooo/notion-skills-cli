@@ -921,7 +921,13 @@ function cachedTarget(target: string, database?: string) {
         )
       return { page: observed?.snapshot.record.id ?? id, scope: scope! }
     }
-    const directory = yield* catalog({ library: parsed.kind === "skill" && parsed.reference.scope.kind === "library" ? parsed.reference.scope.libraryId : database, offline: true })
+    const directory = yield* catalog({
+      library:
+        parsed.kind === "skill" && parsed.reference.scope.kind === "library"
+          ? parsed.reference.scope.libraryId
+          : database,
+      offline: true,
+    })
     if (directory.scope !== scope || directory.coverage.failed_sources.length)
       return yield* Effect.fail(
         fail("CACHE_MISSING", "A complete catalog for this scope is required."),
@@ -936,8 +942,7 @@ function cachedTarget(target: string, database?: string) {
 export function cacheStatus(target?: string, options: { library?: string } = {}) {
   return Effect.gen(function* () {
     const store = yield* Store
-    const selected =
-      target === undefined ? undefined : yield* cachedTarget(target, options.library)
+    const selected = target === undefined ? undefined : yield* cachedTarget(target, options.library)
     const keys = yield* store.listKeys("cache")
     const pairs = new Map<string, { page: string; scope: string }>()
     for (const key of keys) {

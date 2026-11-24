@@ -144,7 +144,11 @@ test("members-plan preserves portable origin instead of selecting a destination 
       name: "Owner",
       description: "Owner",
       main: "SKILL.md",
-      relations: { version: 1, ownership: "notion", library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec" },
+      relations: {
+        version: 1,
+        ownership: "notion",
+        library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+      },
     }),
   )
   const output = join(root, "origin-preserved")
@@ -164,7 +168,10 @@ test("members-plan preserves portable origin instead of selecting a destination 
     ),
   ).toEqual([])
   expect(await readFile(join(output, "SKILL.md"), "utf8")).toBe(
-    original.replace("skill://target/SKILL.md", "skill://target/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec"),
+    original.replace(
+      "skill://target/SKILL.md",
+      "skill://target/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+    ),
   )
   const prepared = await f.run(prepareCurrentImport(output, { skillId: "owner" }))
   expect(prepared.plan.relations?.members).toBeUndefined()

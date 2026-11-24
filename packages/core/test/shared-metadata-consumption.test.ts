@@ -227,7 +227,11 @@ function fixture(count = 2, relations = false) {
                   const update = controls.beforeSelectedGet
                   controls.beforeSelectedGet = undefined
                   update?.()
-                } else if (method === "GET" && url.pathname !== "/v1/pages/" + library.library_id && /^\/v1\/pages\/[^/]+$/u.test(url.pathname)) {
+                } else if (
+                  method === "GET" &&
+                  url.pathname !== "/v1/pages/" + library.library_id &&
+                  /^\/v1\/pages\/[^/]+$/u.test(url.pathname)
+                ) {
                   const row = rows.find((row) => url.pathname === "/v1/pages/" + row.id)
                   return row === undefined
                     ? Effect.fail(
@@ -611,7 +615,9 @@ describe("scalar current metadata consumption", () => {
       property(f.base.main.properties)["Skill ID"] = rich("skill-id", "replacement-identity")
     }
     const result = await f.run(readSkill(skillPage, options))
-    expect(result.record.id).toBe("skill://replacement-identity?library=00000000-0000-4000-8000-000000000002")
+    expect(result.record.id).toBe(
+      "skill://replacement-identity?library=00000000-0000-4000-8000-000000000002",
+    )
     expect(rootGets(f)).toHaveLength(2)
   })
 

@@ -59,7 +59,9 @@ const view = (id: string) => ({
 type Override = (path: string, body: unknown) => unknown
 function fixture(override: Override = () => undefined) {
   const requests: { path: string; body: unknown }[] = []
-  const state = new Map<string, unknown>([["config.json", { default_library: library.library_id, sources: [source] }]])
+  const state = new Map<string, unknown>([
+    ["config.json", { default_library: library.library_id, sources: [source] }],
+  ])
   let generation = 0
   const storage = Layer.succeed(Store, {
     root: "/unused",
@@ -158,10 +160,20 @@ test("API order selects first View regardless of name and ignores checkbox as an
   expect(result.records.map((x) => x.name)).toEqual(["Alpha"])
   expect(result.records[0]?.default_context).toBe(false)
   expect(result.coverage.exhaustive).toBe(true)
-  expect(f.requests.some((x) => /markdown|blocks|export|upstream/.test(x.path) && !x.path.startsWith(`v1/blocks/${library.library_id}/children`))).toBe(false)
+  expect(
+    f.requests.some(
+      (x) =>
+        /markdown|blocks|export|upstream/.test(x.path) &&
+        !x.path.startsWith(`v1/blocks/${library.library_id}/children`),
+    ),
+  ).toBe(false)
   expect(f.requests.find((x) => x.path.endsWith("/queries"))?.body).toEqual({ page_size: 100 })
   expect(f.requests.filter((x) => x.path.startsWith(`v1/data_sources/${ds}/query`))).toHaveLength(1)
-  expect(f.requests.some((x) => x.path.startsWith("v1/pages/") && x.path !== `v1/pages/${library.library_id}`)).toBe(false)
+  expect(
+    f.requests.some(
+      (x) => x.path.startsWith("v1/pages/") && x.path !== `v1/pages/${library.library_id}`,
+    ),
+  ).toBe(false)
 })
 
 test("default operation identity validates once per fresh read and reuses the warm observation", async () => {
@@ -173,7 +185,9 @@ test("default operation identity validates once per fresh read and reuses the wa
   expect(fresh.source).toBe("notion")
   expect(authCalls()).toHaveLength(1)
   const calls = f.requests.length
-  const warm = await Effect.runPromise(viewCatalog({ library: library.library_id }).pipe(Effect.provide(f.layer)))
+  const warm = await Effect.runPromise(
+    viewCatalog({ library: library.library_id }).pipe(Effect.provide(f.layer)),
+  )
   expect(warm.source).toBe("local_cache")
   expect(warm.scope).toBe(fresh.scope)
   expect(warm.records).toEqual(fresh.records)
@@ -204,7 +218,10 @@ for (const code of ["AUTH_REQUIRED", "ACCESS_DENIED"] as const)
       denied = true
       f.requests.length = 0
       const rejected = await Effect.runPromise(
-        viewCatalog({ library: library.library_id, refresh: true }).pipe(Effect.result, Effect.provide(f.layer)),
+        viewCatalog({ library: library.library_id, refresh: true }).pipe(
+          Effect.result,
+          Effect.provide(f.layer),
+        ),
       )
       expect(rejected._tag === "Failure" && rejected.failure.code).toBe(code)
       expect(f.requests.map((request) => request.path)).toEqual(["v1/users/me"])
@@ -222,12 +239,17 @@ test("default first-detail selection does not populate or overwrite the public c
     f.requests.filter((request) => [a, b].some((id) => request.path === "v1/views/" + id))
   expect(details().map((request) => request.path)).toEqual(["v1/views/" + a])
   const calls = f.requests.length
-  const warm = await Effect.runPromise(viewCatalog({ library: library.library_id }).pipe(Effect.provide(f.layer)))
+  const warm = await Effect.runPromise(
+    viewCatalog({ library: library.library_id }).pipe(Effect.provide(f.layer)),
+  )
   expect(warm.source).toBe("local_cache")
   expect(warm.view).toEqual(selected.view)
   expect(f.requests).toHaveLength(calls)
   const absentList = await Effect.runPromise(
-    listViews({ library: library.library_id, offline: true }).pipe(Effect.result, Effect.provide(f.layer)),
+    listViews({ library: library.library_id, offline: true }).pipe(
+      Effect.result,
+      Effect.provide(f.layer),
+    ),
   )
   expect(absentList._tag === "Failure" && absentList.failure.code).toBe("CACHE_MISSING")
   expect(f.requests).toHaveLength(calls)
@@ -474,7 +496,10 @@ test("explicit wrong-database View fails instead of picking another View", async
       : undefined,
   )
   const result = await Effect.runPromise(
-    viewCatalog({ view: a, library: library.library_id }).pipe(Effect.result, Effect.provide(f.layer)),
+    viewCatalog({ view: a, library: library.library_id }).pipe(
+      Effect.result,
+      Effect.provide(f.layer),
+    ),
   )
   expect(result._tag === "Failure" && result.failure.code).toBe("VIEW_SCOPE_MISMATCH")
   expect(f.requests.some((x) => x.path.startsWith("v1/views?"))).toBe(false)

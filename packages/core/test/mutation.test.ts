@@ -17,7 +17,11 @@ const libraryFor = (id: string) => {
     ...structuredClone(currentLibrary),
     library_id: id,
     operation_id: `library-${id}`,
-    skills: { ...currentLibrary.skills, database_id: currentId(offset + 7), data_source_id: currentId(offset) },
+    skills: {
+      ...currentLibrary.skills,
+      database_id: currentId(offset + 7),
+      data_source_id: currentId(offset),
+    },
     files: {
       ...currentLibrary.files,
       database_id: currentId(offset + 1),
@@ -135,9 +139,7 @@ test("registered aliases select Library roots exactly and defaults persist canon
 test("an ambiguous or inaccessible alias never redirects to another Library", async () => {
   const denied = setup(
     {
-      sources: [
-        { ...source(first), alias: "frontend", title: "Frontend Skills" },
-      ],
+      sources: [{ ...source(first), alias: "frontend", title: "Frontend Skills" }],
       default_library: second,
     },
     [second],
@@ -146,7 +148,6 @@ test("an ambiguous or inaccessible alias never redirects to another Library", as
   const result = await denied.run(explicitSource("frontend").pipe(Effect.result))
   expect(result._tag === "Failure" && result.failure).toMatchObject({
     code: "ACCESS_DENIED",
-
   })
   const duplicate = setup(
     {

@@ -151,7 +151,6 @@ function check<A>(f: () => A) {
   })
 }
 
-
 /** Complete observations are cached separately from the full explicit Skill catalog. */
 function observe<S extends Schema.ConstraintDecoder<unknown>, R>(
   selection: unknown,
@@ -442,7 +441,10 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
               ),
             )
           const source = listing?.database ?? (yield* explicitSource(library))
-          const view = explicit !== undefined ? yield* retrieveView(explicit, source.database_id) : listing?.view
+          const view =
+            explicit !== undefined
+              ? yield* retrieveView(explicit, source.database_id)
+              : listing?.view
           if (view && !source.data_source_ids.includes(view.data_source_id))
             return yield* Effect.fail(
               fail("VIEW_SCOPE_MISMATCH", "View references another data source."),

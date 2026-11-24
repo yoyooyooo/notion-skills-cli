@@ -140,7 +140,9 @@ export function currentSnapshotFixture(
   ])
   const records = new Map<string, unknown>()
   const sources = new Map<string, unknown>()
-  const json = new Map<string, unknown>([["config.json", { default_library: currentLibrary.library_id }]])
+  const json = new Map<string, unknown>([
+    ["config.json", { default_library: currentLibrary.library_id }],
+  ])
   const objects = new Map<string, Uint8Array>()
   const calls: CurrentFixtureCall[] = []
   let metrics = createRequestMetrics()
@@ -278,7 +280,8 @@ export function currentSnapshotFixture(
           const error = failure?.(call)
           if (error !== undefined) return Effect.fail(error)
           let result: unknown
-          const schema = call.method === "GET" ? librarySchemaResponse(path, currentLibrary) : undefined
+          const schema =
+            call.method === "GET" ? librarySchemaResponse(path, currentLibrary) : undefined
           if (schema !== undefined) result = schema
           else if (call.method === "GET" && path === `v1/pages/${main.id}`)
             result = structuredClone(main)
@@ -436,7 +439,9 @@ export function currentSnapshotFixture(
     },
     bodyCalls: () => calls.filter((call) => call.path.includes("/markdown")),
     recordCalls: () =>
-      calls.filter((call) => call.path.startsWith(`v1/data_sources/${currentLibrary.records.data_source_id}/query`)),
+      calls.filter((call) =>
+        call.path.startsWith(`v1/data_sources/${currentLibrary.records.data_source_id}/query`),
+      ),
     semanticWrites: () =>
       calls.filter(
         (call) =>

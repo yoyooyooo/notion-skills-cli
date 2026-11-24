@@ -255,14 +255,14 @@ for (const [label, description, code] of [
             }
           : undefined,
       )
-      const result = await f.run(
-        explicitSource(currentLibrary.library_id).pipe(Effect.result),
-      )
+      const result = await f.run(explicitSource(currentLibrary.library_id).pipe(Effect.result))
       expect(result._tag === "Failure" && result.failure.code).toBe(code)
       expect(f.calls.map((call) => call.path)).toEqual([
         `v1/pages/${currentLibrary.library_id}`,
         `v1/blocks/${currentLibrary.library_id}/children?page_size=100`,
-        ...(["skills", "files", "records", "sources"] as const).map(role => `v1/databases/${currentLibrary[role].database_id}`),
+        ...(["skills", "files", "records", "sources"] as const).map(
+          (role) => `v1/databases/${currentLibrary[role].database_id}`,
+        ),
       ])
     },
   )
@@ -317,7 +317,14 @@ test("search and projected metadata exhaust their cursors, ignore ordinary sourc
   expect(
     new URL("https://fixture/" + queries[0]!.path).searchParams.getAll("filter_properties").sort(),
   ).toEqual(["default", "description", "enabled", "kind", "skill-id", "title"])
-  expect(f.calls.some((call) => /pages\/|markdown|blocks\//u.test(call.path) && call.path !== `v1/pages/${currentLibrary.library_id}` && !call.path.startsWith(`v1/blocks/${currentLibrary.library_id}/children`))).toBe(false)
+  expect(
+    f.calls.some(
+      (call) =>
+        /pages\/|markdown|blocks\//u.test(call.path) &&
+        call.path !== `v1/pages/${currentLibrary.library_id}` &&
+        !call.path.startsWith(`v1/blocks/${currentLibrary.library_id}/children`),
+    ),
+  ).toBe(false)
 })
 
 for (const boundary of ["search", "metadata"] as const)
@@ -418,7 +425,8 @@ for (const defect of ["title", "logical-id", "locator", "legacy-locator"] as con
         const cached = JSON.parse(JSON.stringify(value)),
           record = cached.records[0]
         if (defect === "title") record.name = "资源\u0000治理"
-        if (defect === "logical-id") record.id = "skill://other?library=00000000-0000-4000-8000-000000000002"
+        if (defect === "logical-id")
+          record.id = "skill://other?library=00000000-0000-4000-8000-000000000002"
         if (defect === "locator") record.locator.data_source_id = currentId(999)
         if (defect === "legacy-locator")
           record.locator = {
@@ -566,17 +574,20 @@ for (const count of [101, 205])
       ds,
       Array.from({ length: count }, (_, index) => page(currentLibrary, index, "Skill " + index)),
     )
-    const result = await f.run(
-      catalog({ library: currentLibrary.library_id, refresh: true }),
-    )
+    const result = await f.run(catalog({ library: currentLibrary.library_id, refresh: true }))
     expect(result.records).toHaveLength(count)
     expect(result.coverage.exhaustive).toBe(true)
     expect(
       f.calls.filter((call) => call.path.startsWith(`v1/data_sources/${ds}/query`)),
     ).toHaveLength(Math.ceil(count / 100))
-    expect(f.calls.some((call) => /v1\/pages\/|markdown|blocks|export/u.test(call.path) && call.path !== `v1/pages/${currentLibrary.library_id}` && !call.path.startsWith(`v1/blocks/${currentLibrary.library_id}/children`))).toBe(
-      false,
-    )
+    expect(
+      f.calls.some(
+        (call) =>
+          /v1\/pages\/|markdown|blocks|export/u.test(call.path) &&
+          call.path !== `v1/pages/${currentLibrary.library_id}` &&
+          !call.path.startsWith(`v1/blocks/${currentLibrary.library_id}/children`),
+      ),
+    ).toBe(false)
     expect(
       f.calls.some(
         (call) =>

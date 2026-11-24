@@ -96,15 +96,23 @@ export async function verifyLibraryPlacement(input: {
     assert.equal(property(root.parent).type, "page_id")
     assert.equal(property(root.parent).page_id, input.parent, "The actual root has another parent")
   }
-  const children: unknown[] = [], seen = new Set<string>()
+  const children: unknown[] = [],
+    seen = new Set<string>()
   let cursor: string | undefined
   do {
-    const response = Schema.decodeUnknownSync(ListResponse)(await input.probe({
-      kind: "children", id: library.library_id, ...(cursor ? { cursor } : {}),
-    }))
+    const response = Schema.decodeUnknownSync(ListResponse)(
+      await input.probe({
+        kind: "children",
+        id: library.library_id,
+        ...(cursor ? { cursor } : {}),
+      }),
+    )
     children.push(...response.results)
     if (response.has_more) {
-      assert.ok(response.next_cursor && !seen.has(response.next_cursor), "Missing or repeated root cursor")
+      assert.ok(
+        response.next_cursor && !seen.has(response.next_cursor),
+        "Missing or repeated root cursor",
+      )
       cursor = response.next_cursor
       seen.add(cursor)
     } else {
@@ -112,25 +120,38 @@ export async function verifyLibraryPlacement(input: {
       cursor = undefined
     }
   } while (cursor)
-  const databases: Record<string, unknown> = {}, data_sources: Record<string, unknown> = {}
+  const databases: Record<string, unknown> = {},
+    data_sources: Record<string, unknown> = {}
   for (const role of roles) {
     const binding = library[role]
     const registered = children.filter((raw) => {
       const child = property(raw)
       return child.type === "child_database" && child.id === binding.database_id
     })
-    assert.equal(registered.length, 1, "The complete root inventory must contain each registered DB once")
+    assert.equal(
+      registered.length,
+      1,
+      "The complete root inventory must contain each registered DB once",
+    )
     const database = await input.probe({ kind: "database", id: binding.database_id })
     live(database, "database", binding.database_id)
     assert.equal(property(database.parent).type, "page_id")
-    assert.equal(property(database.parent).page_id, library.library_id, "A DB is not directly under its root")
+    assert.equal(
+      property(database.parent).page_id,
+      library.library_id,
+      "A DB is not directly under its root",
+    )
     assert.ok(Array.isArray(database.data_sources))
     assert.equal(database.data_sources.length, 1)
     assert.equal(property(database.data_sources[0]).id, binding.data_source_id)
     const dataSource = await input.probe({ kind: "data-source", id: binding.data_source_id })
     live(dataSource, "data_source", binding.data_source_id)
     assert.equal(property(dataSource.parent).type, "database_id")
-    assert.equal(property(dataSource.parent).database_id, binding.database_id, "A DS belongs to another DB")
+    assert.equal(
+      property(dataSource.parent).database_id,
+      binding.database_id,
+      "A DS belongs to another DB",
+    )
     databases[role] = database
     data_sources[role] = dataSource
   }
@@ -325,7 +346,11 @@ export async function runEmptyLibrary(input: {
     await save("init-attempt.json", { parent: state.parent, at: new Date().toISOString() })
     const created = await execute("init", ["ctl", "library", "init", "--parent", state.parent])
     const library = Schema.decodeUnknownSync(SharedLibrarySchema)(created.library)
-    assert.notEqual(library.library_id, state.parent, "Initialization must allocate a dedicated root")
+    assert.notEqual(
+      library.library_id,
+      state.parent,
+      "Initialization must allocate a dedicated root",
+    )
     assert.equal(pageId(String(created.root_url)), library.library_id)
     state = { ...state, kind: "library_ready", library }
     await save("state.json", state)
@@ -333,7 +358,11 @@ export async function runEmptyLibrary(input: {
   const ready = state
   assert.equal(ready.kind, "library_ready")
   if (ready.kind !== "library_ready") throw new Error("Library not ready")
-  const placement = await verifyLibraryPlacement({ library: ready.library, parent: ready.parent, probe: input.probe })
+  const placement = await verifyLibraryPlacement({
+    library: ready.library,
+    parent: ready.parent,
+    probe: input.probe,
+  })
   await save("library-placement.json", placement)
   const before = await census(ready.library, "empty-before-repeat")
   for (const role of roles)
@@ -342,7 +371,13 @@ export async function runEmptyLibrary(input: {
       0,
       "First slice must precede any business content",
     )
-  const repeat = await execute("init-repeat", ["ctl", "library", "init", "--library", ready.library.library_id])
+  const repeat = await execute("init-repeat", [
+    "ctl",
+    "library",
+    "init",
+    "--library",
+    ready.library.library_id,
+  ])
   assert.equal(repeat.reused, true)
   assert.deepEqual(repeat.library, ready.library)
   const attached = await execute("inspect", [
@@ -401,7 +436,11 @@ const Probe = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("page"), id: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("database"), id: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("data-source"), id: Schema.String }),
-  Schema.Struct({ kind: Schema.Literal("children"), id: Schema.String, cursor: Schema.optional(Schema.String) }),
+  Schema.Struct({
+    kind: Schema.Literal("children"),
+    id: Schema.String,
+    cursor: Schema.optional(Schema.String),
+  }),
   Schema.Struct({
     kind: Schema.Literal("parent"),
     container: Schema.String,
@@ -550,13 +589,21 @@ export async function probeEmptyLibrary(value: unknown) {
   }
   return await run(
     Effect.gen(function* () {
-      if (request.kind === "page" || request.kind === "database" || request.kind === "data-source" || request.kind === "children") {
+      if (
+        request.kind === "page" ||
+        request.kind === "database" ||
+        request.kind === "data-source" ||
+        request.kind === "children"
+      ) {
         assert.equal(pageId(request.id), request.id)
         return yield* (yield* Notion).request(
-          request.kind === "page" ? `v1/pages/${request.id}`
-            : request.kind === "database" ? `v1/databases/${request.id}`
-            : request.kind === "data-source" ? `v1/data_sources/${request.id}`
-            : `v1/blocks/${request.id}/children?${new URLSearchParams({ page_size: "100", ...("cursor" in request && request.cursor ? { start_cursor: request.cursor } : {}) })}`,
+          request.kind === "page"
+            ? `v1/pages/${request.id}`
+            : request.kind === "database"
+              ? `v1/databases/${request.id}`
+              : request.kind === "data-source"
+                ? `v1/data_sources/${request.id}`
+                : `v1/blocks/${request.id}/children?${new URLSearchParams({ page_size: "100", ...("cursor" in request && request.cursor ? { start_cursor: request.cursor } : {}) })}`,
         )
       }
       const library = request.library

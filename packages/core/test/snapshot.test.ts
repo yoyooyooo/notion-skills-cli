@@ -266,7 +266,13 @@ test("current page acquisition fences the owner before and after body reads", as
   expect(ownerReads[0]).toBeLessThan(Math.min(...bodyReads))
   expect(ownerReads[1]).toBeGreaterThan(Math.max(...bodyReads))
   expect(f.calls.filter((call) => call.path === `v1/databases/${database}`)).toHaveLength(3)
-  expect(f.calls.some((call) => call.path.split("?")[0] !== `v1/blocks/${currentLibrary.library_id}/children` && /\/ai\/|\/blocks\/|\/properties\//u.test(call.path))).toBe(false)
+  expect(
+    f.calls.some(
+      (call) =>
+        call.path.split("?")[0] !== `v1/blocks/${currentLibrary.library_id}/children` &&
+        /\/ai\/|\/blocks\/|\/properties\//u.test(call.path),
+    ),
+  ).toBe(false)
   expect(f.semanticWrites()).toEqual([])
 })
 
@@ -321,10 +327,18 @@ for (const [change, code] of [
         },
       }
     })
-    const result = await f.run(openSkill(page, { library: currentLibrary.library_id }).pipe(Effect.result))
+    const result = await f.run(
+      openSkill(page, { library: currentLibrary.library_id }).pipe(Effect.result),
+    )
     expect(result._tag === "Failure" && result.failure.code).toBe(code)
     expect(f.bodyCalls()).toEqual([])
-    expect(f.calls.some(call => call.path === `v1/databases/${currentId(99)}` || call.path === `v1/data_sources/${currentId(99)}`)).toBe(false)
+    expect(
+      f.calls.some(
+        (call) =>
+          call.path === `v1/databases/${currentId(99)}` ||
+          call.path === `v1/data_sources/${currentId(99)}`,
+      ),
+    ).toBe(false)
   })
 
 test("stable identity resolution rechecks live metadata while preserving independently authored frontmatter", async () => {
@@ -338,7 +352,9 @@ test("stable identity resolution rechecks live metadata while preserving indepen
       : response,
   )
   const snapshot = await f.run(
-    openSkill(`skill://demo?library=${currentLibrary.library_id}`, { library: currentLibrary.library_id }),
+    openSkill(`skill://demo?library=${currentLibrary.library_id}`, {
+      library: currentLibrary.library_id,
+    }),
   )
   expect(snapshot.record).toMatchObject({
     name: "Renamed Skill",
@@ -380,13 +396,19 @@ for (const [change, code] of [
       }
     })
     const result = await f.run(
-      openSkill(`skill://demo?library=${currentLibrary.library_id}`, { library: currentLibrary.library_id }).pipe(
-        Effect.result,
-      ),
+      openSkill(`skill://demo?library=${currentLibrary.library_id}`, {
+        library: currentLibrary.library_id,
+      }).pipe(Effect.result),
     )
     expect(result._tag === "Failure" && result.failure.code).toBe(code)
     expect(f.bodyCalls()).toEqual([])
-    expect(f.calls.some(call => call.path === `v1/databases/${currentId(99)}` || call.path === `v1/data_sources/${currentId(99)}`)).toBe(false)
+    expect(
+      f.calls.some(
+        (call) =>
+          call.path === `v1/databases/${currentId(99)}` ||
+          call.path === `v1/data_sources/${currentId(99)}`,
+      ),
+    ).toBe(false)
   })
 
 for (const [change, code] of [

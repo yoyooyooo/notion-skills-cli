@@ -327,7 +327,11 @@ export function currentWriteFixture(parent: string) {
           uri = new URL("https://api.notion.test/" + path),
           route = uri.pathname.slice(1)
         calls.push({ path, body: clone(body), method })
-        if (method === "GET" && (route === `v1/pages/${library.library_id}` || route === `v1/blocks/${library.library_id}/children`))
+        if (
+          method === "GET" &&
+          (route === `v1/pages/${library.library_id}` ||
+            route === `v1/blocks/${library.library_id}/children`)
+        )
           return Effect.succeed(response(path, property(librarySchemaResponse(path, library))))
         const schemaRole = roles.find(
           (role) => route === `v1/data_sources/${library[role].data_source_id}`,

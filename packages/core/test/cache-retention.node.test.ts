@@ -171,7 +171,10 @@ test.skipIf(process.platform !== "darwin")(
       expect(preview.objects[0]).toMatchObject({
         bytes: 8,
         snapshots: snapshots.map((snapshot) => snapshot.snapshot_id).sort(),
-        owners: ["skill://one?library=00000000-0000-4000-8000-000000000002", "skill://two?library=00000000-0000-4000-8000-000000000002"],
+        owners: [
+          "skill://one?library=00000000-0000-4000-8000-000000000002",
+          "skill://two?library=00000000-0000-4000-8000-000000000002",
+        ],
       })
       expect(preview.objects[0]?.protected_by).toContain("shared_object")
       expect(preview.database.length).toBeGreaterThan(0)

@@ -130,14 +130,22 @@ try {
   // inherit the selected build's commit merely because its directory is paired.
   const identityFile = path.join(repository, "scripts/formal_source_identity.py")
   const identityFiles = { ...coverage.files }
-  for (const file of [coverageFile, import.meta.filename,
+  for (const file of [
+    coverageFile,
+    import.meta.filename,
     fileURLToPath(new URL("./formal-result-contract.mjs", import.meta.url)),
-    identityFile, path.join(repository, lockFile),
-    ...coverage.cases.flatMap(c => [path.join(root, c.model + ".tla"),
-      path.join(root, c.model + ".view.mjs"), path.join(root, c.model + "." + c.config)])])
+    identityFile,
+    path.join(repository, lockFile),
+    ...coverage.cases.flatMap((c) => [
+      path.join(root, c.model + ".tla"),
+      path.join(root, c.model + ".view.mjs"),
+      path.join(root, c.model + "." + c.config),
+    ]),
+  ])
     identityFiles[path.relative(repository, file)] = hash(fs.readFileSync(file))
   const identity = spawnSync("python3", ["-B", identityFile, "--repository", repository], {
-    encoding: "utf8", input: JSON.stringify(identityFiles),
+    encoding: "utf8",
+    input: JSON.stringify(identityFiles),
   })
   assert.equal(identity.status, 0, identity.stderr || "Unable to establish formal source identity")
   Object.assign(summary, JSON.parse(identity.stdout))

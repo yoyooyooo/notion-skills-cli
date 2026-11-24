@@ -133,9 +133,7 @@ const set = defineCommand(
 
 const bind = defineCommand("bind", { profile, library: libraryFlag }, (options) =>
   Effect.gen(function* () {
-    yield* emit(
-      yield* bindSharedProfile({ library: options.library, profileId: options.profile }),
-    )
+    yield* emit(yield* bindSharedProfile({ library: options.library, profileId: options.profile }))
   }),
 ).pipe(
   Command.withDescription(

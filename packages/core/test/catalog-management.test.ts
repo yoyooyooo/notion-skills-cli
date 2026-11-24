@@ -110,7 +110,14 @@ function fixture(
                 (table) => endpoint === `v1/data_sources/${table.data_source_id}`,
               )
               if (ordinarySchema && ordinarySchema.data_source_id !== legacy.data_source_id)
-                return api.request(path, body, requestOptions).pipe(Effect.map(raw => ({ ...property(raw), properties: { ...references, ...property(property(raw).properties) } })))
+                return api
+                  .request(path, body, requestOptions)
+                  .pipe(
+                    Effect.map((raw) => ({
+                      ...property(raw),
+                      properties: { ...references, ...property(property(raw).properties) },
+                    })),
+                  )
               if (ordinarySchema) {
                 f.calls.push({ path, body, method: requestOptions?.method ?? "GET" })
                 return Effect.succeed({ id: ordinarySchema.data_source_id, properties: references })

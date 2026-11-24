@@ -53,10 +53,7 @@
   "implementation_bindings": [
     {
       "name": "authoritative_context",
-      "files": [
-        "packages/core/src/skill-ref.ts",
-        "packages/core/test/skill-ref.test.ts"
-      ],
+      "files": ["packages/core/src/skill-ref.ts", "packages/core/test/skill-ref.test.ts"],
       "scope": "Explicit Library wins over an ambient context; a short reference without context fails. The shared parser and complete key prevent a title/alias string from becoming a second identity namespace. The finite model abstracts parser bytes."
     },
     {
@@ -205,9 +202,7 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "ContextIsAuthoritative"
-      ]
+      "expected_broken": ["ContextIsAuthoritative"]
     },
     {
       "model": "ReferenceSelection",
@@ -227,9 +222,7 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "ContextIsAuthoritative"
-      ]
+      "expected_broken": ["ContextIsAuthoritative"]
     },
     {
       "model": "ReferenceSelection",
@@ -249,9 +242,7 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "StableIdentityIsExact"
-      ]
+      "expected_broken": ["StableIdentityIsExact"]
     },
     {
       "model": "ReferenceSelection",
@@ -271,9 +262,7 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "DuplicateClaimRejected"
-      ]
+      "expected_broken": ["DuplicateClaimRejected"]
     },
     {
       "model": "ReferenceSelection",
@@ -293,9 +282,7 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "StableIdentityIsExact"
-      ]
+      "expected_broken": ["StableIdentityIsExact"]
     },
     {
       "model": "ReferenceSelection",
@@ -315,10 +302,7 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "MissingManifestRejected",
-        "FixedSelectionUsesManifest"
-      ]
+      "expected_broken": ["MissingManifestRejected", "FixedSelectionUsesManifest"]
     },
     {
       "model": "ReferenceSelection",
@@ -338,9 +322,7 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "FixedSelectionUsesManifest"
-      ]
+      "expected_broken": ["FixedSelectionUsesManifest"]
     },
     {
       "model": "ReferenceSelection",
@@ -360,9 +342,7 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "FixedSelectionUsesManifest"
-      ]
+      "expected_broken": ["FixedSelectionUsesManifest"]
     },
     {
       "model": "ReferenceSelection",
@@ -382,9 +362,7 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "SourceAuthorityRequired"
-      ]
+      "expected_broken": ["SourceAuthorityRequired"]
     },
     {
       "model": "ReferenceSelection",
@@ -404,10 +382,7 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "StableIdentityIsExact",
-        "CrossSkillSelectionIsTargetOwned"
-      ]
+      "expected_broken": ["StableIdentityIsExact", "CrossSkillSelectionIsTargetOwned"]
     },
     {
       "model": "ReferenceSelection",
@@ -427,9 +402,7 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "ResolutionDoesNotWrite"
-      ]
+      "expected_broken": ["ResolutionDoesNotWrite"]
     },
     {
       "model": "ReferenceSelection",
@@ -449,9 +422,7 @@
         "ResolutionEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "ExplicitScopeConstraint"
-      ]
+      "expected_broken": ["ExplicitScopeConstraint"]
     },
     {
       "model": "ImportRelations",
@@ -497,9 +468,7 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "ImportScopeRemainsBound"
-      ]
+      "expected_broken": ["ImportScopeRemainsBound"]
     },
     {
       "model": "ImportRelations",
@@ -522,9 +491,7 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "ForeignRelationsBeforeWrites"
-      ]
+      "expected_broken": ["ForeignRelationsBeforeWrites"]
     },
     {
       "model": "ImportRelations",
@@ -547,10 +514,7 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "FrozenMembersIntent",
-        "ExplicitEmptyMembers"
-      ]
+      "expected_broken": ["FrozenMembersIntent", "ExplicitEmptyMembers"]
     },
     {
       "model": "ImportRelations",
@@ -573,10 +537,7 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "FrozenMembersIntent",
-        "ExistingMembersOnOmission"
-      ]
+      "expected_broken": ["FrozenMembersIntent", "ExistingMembersOnOmission"]
     },
     {
       "model": "ImportRelations",
@@ -599,9 +560,7 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "FrozenMembersIntent"
-      ]
+      "expected_broken": ["FrozenMembersIntent"]
     },
     {
       "model": "ImportRelations",
@@ -624,9 +583,7 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "RequiresOnlyExplicit"
-      ]
+      "expected_broken": ["RequiresOnlyExplicit"]
     },
     {
       "model": "ImportRelations",
@@ -649,9 +606,7 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "RelationsAfterObjectCreation"
-      ]
+      "expected_broken": ["RelationsAfterObjectCreation"]
     },
     {
       "model": "ImportRelations",
@@ -674,9 +629,7 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "UnknownCreateNotReplayed"
-      ]
+      "expected_broken": ["UnknownCreateNotReplayed"]
     },
     {
       "model": "ImportRelations",
@@ -699,10 +652,7 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "ManualMembersPreserved",
-        "RepeatHasNoWrites"
-      ]
+      "expected_broken": ["ManualMembersPreserved", "RepeatHasNoWrites"]
     },
     {
       "model": "ImportRelations",
@@ -725,9 +675,7 @@
         "RepeatEventuallyExplained",
         "NoDeadlock"
       ],
-      "expected_broken": [
-        "CompleteWasVerified"
-      ]
+      "expected_broken": ["CompleteWasVerified"]
     }
   ],
   "library_scope_design": {

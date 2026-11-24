@@ -196,14 +196,19 @@ test("same display names stay independent and duplicate stable identities are re
     ],
   }
   expect(resolveCatalogReference("skill://first", two, library.library_id).record.id).toBe(first.id)
-  expect(resolveCatalogReference("skill://first", two, foreignLibrary.library_id).record.id).toBe(foreign.id)
+  expect(resolveCatalogReference("skill://first", two, foreignLibrary.library_id).record.id).toBe(
+    foreign.id,
+  )
   expect(() => resolveCatalogReference("skill://first", two)).toThrow()
   expect(() =>
     resolveCatalogReference(first.id, {
       ...two,
       databases: two.databases.map((source) => ({
         ...source,
-        shared_library: { ...source.shared_library, library_id: "0c64a309-510e-5d37-b23c-3ce2f966c66e" },
+        shared_library: {
+          ...source.shared_library,
+          library_id: "0c64a309-510e-5d37-b23c-3ce2f966c66e",
+        },
       })),
     }),
   ).toThrow(expect.objectContaining({ code: "LIBRARY_ID_CONFLICT" }))
@@ -250,21 +255,31 @@ test("Views, Profiles, queried or paged lists cannot prove ordinary identity cov
     { ...ordinary, query: "first" },
     { ...ordinary, count: 1 },
   ])
-    expect(() => resolveCatalogReference("skill://first?library=0c64a309-510e-5d37-b23c-3ce2f966c66e", projected)).toThrow(
-      expect.objectContaining({ code: "CATALOG_INCOMPLETE" }),
-    )
+    expect(() =>
+      resolveCatalogReference(
+        "skill://first?library=0c64a309-510e-5d37-b23c-3ce2f966c66e",
+        projected,
+      ),
+    ).toThrow(expect.objectContaining({ code: "CATALOG_INCOMPLETE" }))
 })
 
 test("fixed references use their manifest and malformed or failed catalogs remain errors", () => {
   const ordinary = ordinaryCatalog()
   expect(() =>
     resolveCatalogReference(
-      fileRef("skill://first?library=0c64a309-510e-5d37-b23c-3ce2f966c66e", "SKILL.md", `s_${"a".repeat(64)}`),
+      fileRef(
+        "skill://first?library=0c64a309-510e-5d37-b23c-3ce2f966c66e",
+        "SKILL.md",
+        `s_${"a".repeat(64)}`,
+      ),
       ordinary,
     ),
   ).toThrow(expect.objectContaining({ code: "INVALID_ARGUMENT" }))
   for (const invalid of [null, {}, { ...ordinary, ok: false }, { ...ordinary, records: null }])
-    expect(() => resolveCatalogReference("skill://first?library=0c64a309-510e-5d37-b23c-3ce2f966c66e", invalid)).toThrow(
-      expect.objectContaining({ code: "INVALID_RESPONSE" }),
-    )
+    expect(() =>
+      resolveCatalogReference(
+        "skill://first?library=0c64a309-510e-5d37-b23c-3ce2f966c66e",
+        invalid,
+      ),
+    ).toThrow(expect.objectContaining({ code: "INVALID_RESPONSE" }))
 })

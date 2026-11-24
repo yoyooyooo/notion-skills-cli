@@ -374,9 +374,7 @@ test("mixed CLI import writes editable native bodies, reads and exports exact fi
   )
   f.clearCalls()
   expect(
-    await f.run(
-      readSkill(written.page_id, { library: library.library_id, refresh: true }),
-    ),
+    await f.run(readSkill(written.page_id, { library: library.library_id, refresh: true })),
   ).toMatchObject({ content: nativeHeader + humanBody })
   expect(f.mutations()).toEqual([])
   expect(
@@ -388,9 +386,7 @@ test("mixed CLI import writes editable native bodies, reads and exports exact fi
     f.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/markdown")),
   ).toHaveLength(1)
   expect(
-    await f.run(
-      readSkill(written.page_id, { library: library.library_id, refresh: true }),
-    ),
+    await f.run(readSkill(written.page_id, { library: library.library_id, refresh: true })),
   ).toMatchObject({ content: nativeHeader + nativeBody })
 })
 
@@ -559,7 +555,12 @@ test("current portable relations survive local admission and invalid selections 
     { requires: ["Display name"] },
     { requires: ["skill://target?library=563e49fa-4378-5493-a5ff-8c96321f9ffd"] },
     { requires: ["skill://portable?library=0c64a309-510e-5d37-b23c-3ce2f966c66e"] },
-    { requires: ["skill://target?library=0c64a309-510e-5d37-b23c-3ce2f966c66e", "skill://target?library=0c64a309-510e-5d37-b23c-3ce2f966c66e"] },
+    {
+      requires: [
+        "skill://target?library=0c64a309-510e-5d37-b23c-3ce2f966c66e",
+        "skill://target?library=0c64a309-510e-5d37-b23c-3ce2f966c66e",
+      ],
+    },
     { future_relation: [] },
   ]) {
     await writeFile(
@@ -651,7 +652,12 @@ test("single portable import preserves origin before omitted explicit-empty and 
       name: "Origin",
       description: "Context fixture",
       main: "SKILL.md",
-      relations: { version: 1, ownership: "notion", library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec", ...fields },
+      relations: {
+        version: 1,
+        ownership: "notion",
+        library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+        ...fields,
+      },
     })
   const seed = async (skill_id: string) => {
     const plan = await f.run(

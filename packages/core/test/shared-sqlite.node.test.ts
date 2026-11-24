@@ -218,7 +218,8 @@ test("a newer native observation can follow a rebuilt page without changing logi
     expect(sameGeneration.exit).not.toBe(0)
     expect(sameGeneration.stderr).toContain("different content")
     for (const field of ["scope", "library_id", "skill_id"] as const) {
-      const value = field === "library_id" ? "77e861a8-6432-51ac-a09e-90a2ab20a36c" : "foreign-owner"
+      const value =
+        field === "library_id" ? "77e861a8-6432-51ac-a09e-90a2ab20a36c" : "foreign-owner"
       const foreign = await child(root, write({ ...rebuilt, [field]: value }, 4))
       expect(foreign.exit).not.toBe(0)
       expect(foreign.stderr).toContain("cannot change its owner")

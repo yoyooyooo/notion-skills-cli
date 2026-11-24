@@ -160,11 +160,7 @@ export function withCurrentImportPlan<A, E, R, CE, CR>(
       ]),
     )
     const address = yield* sha256(
-      canonicalSharedJson([
-        scope,
-        library.library_id,
-        request.operation_id,
-      ]),
+      canonicalSharedJson([scope, library.library_id, request.operation_id]),
     )
     const key = `operations/import-plan/${address}/plan.json`
     return yield* withLocalLocks(

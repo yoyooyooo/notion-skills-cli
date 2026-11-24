@@ -264,14 +264,7 @@ test("malformed local apply input never enters the real Source coordinator", asy
 test("Source file commands reject incomplete identities, unsafe paths and unsupported authority before remote work", async () => {
   const directory = await root(),
     f = currentWriteFixture(directory)
-  const target = [
-    "--library",
-    library.library_id,
-    "--skill-id",
-    "alpha",
-    "--file-id",
-    "main-alpha",
-  ]
+  const target = ["--library", library.library_id, "--skill-id", "alpha", "--file-id", "main-alpha"]
   for (const args of [
     ["takeover", "team-skills", "skills/alpha/SKILL.md", ...target, "--as", "source"],
     [

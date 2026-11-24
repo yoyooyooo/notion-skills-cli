@@ -211,9 +211,16 @@ describe("once consume contract", () => {
     expect(listed.files).toEqual(snapshot.files.map((file) => ({ ...file, ref: f.ref("a") })))
     expect(() => fileRef(snapshot.record.name, "", snapshot.snapshot_id)).toThrow()
     const wrong = await f.run(
-      listSkill(fileRef("skill://current-replacement?library=0c64a309-510e-5d37-b23c-3ce2f966c66e", "", snapshot.snapshot_id), {
-        offline: true,
-      }).pipe(Effect.result),
+      listSkill(
+        fileRef(
+          "skill://current-replacement?library=0c64a309-510e-5d37-b23c-3ce2f966c66e",
+          "",
+          snapshot.snapshot_id,
+        ),
+        {
+          offline: true,
+        },
+      ).pipe(Effect.result),
     )
     expect(wrong._tag === "Failure" && wrong.failure.code).toBe("SNAPSHOT_CONFLICT")
     expect(f.readBytes.size).toBe(0)
@@ -252,7 +259,9 @@ describe("once consume contract", () => {
     const result = await f.run(consume(input))
     expect(result.status).toBe("ready")
     if (result.status !== "ready") throw new Error(JSON.stringify(result))
-    expect(result.entries[0]?.manifest.record.id).toBe(skillIdentity("00000000-0000-4000-8000-000000000114", "guide-v1"))
+    expect(result.entries[0]?.manifest.record.id).toBe(
+      skillIdentity("00000000-0000-4000-8000-000000000114", "guide-v1"),
+    )
     expect(await f.run(decodeConsumeResult(result, input))).toEqual(result)
     expect(f.calls).toHaveLength(0)
   })

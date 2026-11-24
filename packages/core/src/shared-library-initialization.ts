@@ -102,7 +102,9 @@ export function withLibraryInitialization<A, R>(
         const rememberRoot = (root: string) =>
           Effect.gen(function* () {
             if (current.root_page_id !== null && current.root_page_id !== root)
-              return yield* Effect.fail(fail("LIBRARY_INIT_CONFLICT", "The known initialization root was replaced."))
+              return yield* Effect.fail(
+                fail("LIBRARY_INIT_CONFLICT", "The known initialization root was replaced."),
+              )
             if (mode === "reconcile") return
             const next = {
               ...current,

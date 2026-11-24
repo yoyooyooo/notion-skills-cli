@@ -175,7 +175,9 @@ try {
       const short = protocol.parseSkillRef("skill://architect/references/a%20b.md")
       assert.throws(() => protocol.bindSkillRef(short), { code: "LIBRARY_CONTEXT_REQUIRED" })
       assert.equal(
-        protocol.formatSkillRef(protocol.bindSkillRef(short, "11111111-1111-4111-8111-111111111111")),
+        protocol.formatSkillRef(
+          protocol.bindSkillRef(short, "11111111-1111-4111-8111-111111111111"),
+        ),
         "skill://architect/references/a%20b.md?library=11111111-1111-4111-8111-111111111111",
       )
       assert.notDeepEqual(
@@ -183,11 +185,17 @@ try {
         protocol.bindSkillRef(short, "22222222-2222-4222-8222-222222222222").owner,
       )
       assert.throws(
-        () => protocol.parseSkillRef("skill://shared_skill%3A11111111-1111-4111-8111-111111111111%3Aarchitect/SKILL.md"),
+        () =>
+          protocol.parseSkillRef(
+            "skill://shared_skill%3A11111111-1111-4111-8111-111111111111%3Aarchitect/SKILL.md",
+          ),
         { code: "INVALID_REF" },
       )
       assert.throws(
-        () => protocol.parseSkillRef("skill://architect/SKILL.md?library=11111111-1111-4111-8111-111111111111&file_id=old"),
+        () =>
+          protocol.parseSkillRef(
+            "skill://architect/SKILL.md?library=11111111-1111-4111-8111-111111111111&file_id=old",
+          ),
         { code: "INVALID_REF" },
       )
     }
@@ -295,7 +303,13 @@ try {
     assert.equal(await sdk.selectLibrary(selection), fixture.library_id)
     await writeFile(configPath, JSON.stringify({ default_library: alternate }))
     assert.equal(await sdk.selectLibrary(selection), alternate)
-    assert.equal(await sdk.selectLibrary({ ...selection, library: "https://www.notion.so/" + fixture.library_id.replaceAll("-", "") }), fixture.library_id)
+    assert.equal(
+      await sdk.selectLibrary({
+        ...selection,
+        library: "https://www.notion.so/" + fixture.library_id.replaceAll("-", ""),
+      }),
+      fixture.library_id,
+    )
     assert.equal(source.requests.length, before, "Local selection must not perform Notion I/O")
     return { ambient_changes_observed: true, explicit_root_canonicalized: true, notion_requests: 0 }
   })
@@ -361,7 +375,16 @@ try {
     }
     const usage = JSON.parse(
       await command(
-        [process.execPath, cli, "ctl", "library", "source", "check", "--library", fixture.library_id],
+        [
+          process.execPath,
+          cli,
+          "ctl",
+          "library",
+          "source",
+          "check",
+          "--library",
+          fixture.library_id,
+        ],
         { cwd: shared.cwd, env: cliEnv, expectedExit: 2 },
       ),
     )

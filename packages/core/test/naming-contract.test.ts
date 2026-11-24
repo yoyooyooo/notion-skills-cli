@@ -94,7 +94,10 @@ describe("human names and callable aliases", () => {
     const directory = catalog([first, second])
     expect(() => resolveCatalogReference("agent-skill", directory)).toThrow()
     expect(() =>
-      resolveCatalogReference("skill://agent-skill?library=00000000-0000-4000-8000-000000000002", directory),
+      resolveCatalogReference(
+        "skill://agent-skill?library=00000000-0000-4000-8000-000000000002",
+        directory,
+      ),
     ).toThrow()
     expect(resolveCatalogReference(first.id, directory).record.id).toBe(first.id)
     const identityShadow = record(first.id, other)

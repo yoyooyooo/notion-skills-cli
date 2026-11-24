@@ -20,7 +20,11 @@ afterAll(async () => {
 })
 
 test("portable relationship context binds once, preserves omission and rejects duplicate or foreign complete identities", () => {
-  const base = { version: 1 as const, ownership: "notion" as const, library_id: "cc029b5c-680e-576d-a381-a069d3f9f26e" }
+  const base = {
+    version: 1 as const,
+    ownership: "notion" as const,
+    library_id: "cc029b5c-680e-576d-a381-a069d3f9f26e",
+  }
   expect(validatePortableRelations({ ...base, members: ["skill://architect"] })).toEqual({
     ...base,
     members: ["skill://architect?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],

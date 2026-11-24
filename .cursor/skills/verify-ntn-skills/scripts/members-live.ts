@@ -669,12 +669,20 @@ export async function runMembersLive(input: {
         library,
         parent: input.parent,
         probe: async (request) => {
-          const path = request.kind === "page" ? "v1/pages/" + request.id
-            : request.kind === "database" ? "v1/databases/" + request.id
-            : request.kind === "data-source" ? "v1/data_sources/" + request.id
-            : "v1/blocks/" + request.id + "/children?" + new URLSearchParams({
-              page_size: "100", ...(request.cursor ? { start_cursor: request.cursor } : {}),
-            })
+          const path =
+            request.kind === "page"
+              ? "v1/pages/" + request.id
+              : request.kind === "database"
+                ? "v1/databases/" + request.id
+                : request.kind === "data-source"
+                  ? "v1/data_sources/" + request.id
+                  : "v1/blocks/" +
+                    request.id +
+                    "/children?" +
+                    new URLSearchParams({
+                      page_size: "100",
+                      ...(request.cursor ? { start_cursor: request.cursor } : {}),
+                    })
           const result = await input.drive(["ctl", "api", path])
           await record("library-placement-response", result)
           assert.equal(result.exit, 0)
@@ -1286,7 +1294,8 @@ async function main() {
   }
   const raw = property(JSON.parse(await readFile(required("--scope"), "utf8")))
   const library = Schema.decodeUnknownSync(SharedLibrarySchema)(raw.library ?? raw)
-  if (raw.parent !== undefined) assert.ok(pageId(String(raw.parent)), "Retain the actual authorized outer parent")
+  if (raw.parent !== undefined)
+    assert.ok(pageId(String(raw.parent)), "Retain the actual authorized outer parent")
   if (raw.kind !== undefined) assert.equal(raw.kind, "library_ready")
   const root = required("--output"),
     driver = await installedDriver(required("--cli"), required("--runtime"), root)

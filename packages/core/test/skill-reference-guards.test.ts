@@ -62,7 +62,15 @@ test("a fixed reference rejects a foreign Library with the same stable Skill ID 
   f.clearCalls()
   for (const path of ["", "SKILL.md"]) {
     await expect(
-      f.run(readSkill(fileRef("skill://demo?library=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", path, selected.snapshot_id))),
+      f.run(
+        readSkill(
+          fileRef(
+            "skill://demo?library=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            path,
+            selected.snapshot_id,
+          ),
+        ),
+      ),
     ).rejects.toMatchObject({ code: "SNAPSHOT_CONFLICT" })
   }
   expect(f.calls).toEqual([])

@@ -350,13 +350,7 @@ test.each(["include", "exclude", "both"] as const)(
     let failure: unknown
     try {
       await f.run(
-        projectionCLI([
-          written.page_id,
-          "--restore",
-          "--library",
-          library.library_id,
-          ...flags,
-        ]),
+        projectionCLI([written.page_id, "--restore", "--library", library.library_id, ...flags]),
       )
     } catch (error) {
       failure = error

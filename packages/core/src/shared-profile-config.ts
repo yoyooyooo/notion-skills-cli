@@ -36,10 +36,7 @@ function rawConfiguration() {
 }
 
 /** Validate shared metadata, then persist only the selected library and Profile IDs. */
-export function bindSharedProfile(input: {
-  readonly library: string
-  readonly profileId: string
-}) {
+export function bindSharedProfile(input: { readonly library: string; readonly profileId: string }) {
   return Effect.gen(function* () {
     const entry = yield* libraryId(input.library)
     const selected = yield* loadSharedProfileEntryCached(entry, input.profileId, { refresh: true })
@@ -87,7 +84,10 @@ export interface ProfileCatalogOptions extends ReadPolicyOptions {
  */
 export function catalogWithProfile(options: ProfileCatalogOptions = {}) {
   return Effect.gen(function* () {
-    if (options.all && (options.view !== undefined || options.defaultView || options.profile !== undefined))
+    if (
+      options.all &&
+      (options.view !== undefined || options.defaultView || options.profile !== undefined)
+    )
       return yield* Effect.fail(fail("INVALID_ARGUMENT", "--all cannot select a View or Profile."))
     if (options.view !== undefined && options.defaultView)
       return yield* Effect.fail(
@@ -115,11 +115,7 @@ export function catalogWithProfile(options: ProfileCatalogOptions = {}) {
     } else {
       const selected = yield* selectedLibraryId(options.library)
       const configured = (yield* configuration).shared_profile
-      if (
-        configured !== undefined &&
-        selected === configured.library_id
-      )
-        binding = configured
+      if (configured !== undefined && selected === configured.library_id) binding = configured
     }
     const observed =
       binding === undefined

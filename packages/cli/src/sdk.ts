@@ -125,7 +125,9 @@ export type {
 export interface SdkOptions extends OperationOptions {}
 
 /** Capture the canonical local selection without contacting Notion. */
-export function selectLibrary(options: SdkOptions & { readonly library?: string } = {}): Promise<string> {
+export function selectLibrary(
+  options: SdkOptions & { readonly library?: string } = {},
+): Promise<string> {
   return runLocalRuntimeOperation(() => {
     validateSdkOptions(options)
     return selectedLibraryId(options.library)
@@ -404,13 +406,16 @@ function runOperation<A>(
 }
 
 function validateSdkOptions(options: SdkOptions): void {
-    if (Object.hasOwn(options, "database") || Object.hasOwn(options, "entry"))
-      throw fail("INVALID_ARGUMENT", "SDK v3 selects an exact Library root with library; retired database/entry selectors are not accepted.")
-    if (Object.hasOwn(options, "readOnly"))
-      throw fail(
-        "INVALID_ARGUMENT",
-        "readOnly is not an SDK option. Consumption never writes to Notion.",
-      )
+  if (Object.hasOwn(options, "database") || Object.hasOwn(options, "entry"))
+    throw fail(
+      "INVALID_ARGUMENT",
+      "SDK v3 selects an exact Library root with library; retired database/entry selectors are not accepted.",
+    )
+  if (Object.hasOwn(options, "readOnly"))
+    throw fail(
+      "INVALID_ARGUMENT",
+      "readOnly is not an SDK option. Consumption never writes to Notion.",
+    )
 }
 
 /** Exact targets only. Resolve current names from listCatalog before this single preparation. */

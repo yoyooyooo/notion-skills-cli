@@ -110,7 +110,8 @@ function manage<A extends object, R>(
     const limits = yield* checked(() => {
       if (
         /^notion_page:/iu.test(options.library) ||
-        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.library) && !/^https?:\/\//iu.test(options.library))
+        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.library) &&
+          !/^https?:\/\//iu.test(options.library))
       )
         throw fail(
           "INVALID_ARGUMENT",

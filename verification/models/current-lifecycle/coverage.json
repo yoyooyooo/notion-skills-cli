@@ -157,9 +157,7 @@
     {
       "model": "CurrentLifecycle",
       "config": "read-fence.cfg",
-      "expected_broken": [
-        "NoMixedCurrentPublication"
-      ],
+      "expected_broken": ["NoMixedCurrentPublication"],
       "expected_rules": [
         "TypeOK",
         "ReadyHasNoContentOperation",
@@ -177,9 +175,7 @@
     {
       "model": "CurrentLifecycle",
       "config": "projection-owner.cfg",
-      "expected_broken": [
-        "NonContentPreservesReadiness"
-      ],
+      "expected_broken": ["NonContentPreservesReadiness"],
       "expected_rules": [
         "TypeOK",
         "ReadyHasNoContentOperation",
@@ -197,9 +193,7 @@
     {
       "model": "CurrentLifecycle",
       "config": "unknown-replay.cfg",
-      "expected_broken": [
-        "UnknownNonIdempotentNeverRepeated"
-      ],
+      "expected_broken": ["UnknownNonIdempotentNeverRepeated"],
       "expected_rules": [
         "TypeOK",
         "ReadyHasNoContentOperation",
@@ -217,9 +211,7 @@
     {
       "model": "CurrentLifecycle",
       "config": "completion-owner.cfg",
-      "expected_broken": [
-        "NonContentCompletionQualified"
-      ],
+      "expected_broken": ["NonContentCompletionQualified"],
       "expected_rules": [
         "TypeOK",
         "ReadyHasNoContentOperation",
@@ -305,9 +297,7 @@
     {
       "model": "SourceSync",
       "config": "pending.cfg",
-      "expected_broken": [
-        "PendingResolvedBeforeDecision"
-      ],
+      "expected_broken": ["PendingResolvedBeforeDecision"],
       "expected_rules": [
         "TypeOK",
         "PendingResolvedBeforeDecision",
@@ -324,9 +314,7 @@
     {
       "model": "SourceSync",
       "config": "projection-scope.cfg",
-      "expected_broken": [
-        "AllAffectedProjectionsSettledBeforeSourceWrite"
-      ],
+      "expected_broken": ["AllAffectedProjectionsSettledBeforeSourceWrite"],
       "expected_rules": [
         "TypeOK",
         "PendingResolvedBeforeDecision",
@@ -343,9 +331,7 @@
     {
       "model": "SourceSync",
       "config": "moving-ref.cfg",
-      "expected_broken": [
-        "FrozenCommitPreserved"
-      ],
+      "expected_broken": ["FrozenCommitPreserved"],
       "expected_rules": [
         "TypeOK",
         "PendingResolvedBeforeDecision",
@@ -362,9 +348,7 @@
     {
       "model": "SourceSync",
       "config": "configuration.cfg",
-      "expected_broken": [
-        "ConfigurationBoundToNoop"
-      ],
+      "expected_broken": ["ConfigurationBoundToNoop"],
       "expected_rules": [
         "TypeOK",
         "PendingResolvedBeforeDecision",
@@ -381,9 +365,7 @@
     {
       "model": "SourceSync",
       "config": "source-owner.cfg",
-      "expected_broken": [
-        "OnlyAuthorizedIntentResumed"
-      ],
+      "expected_broken": ["OnlyAuthorizedIntentResumed"],
       "expected_rules": [
         "TypeOK",
         "PendingResolvedBeforeDecision",
@@ -400,9 +382,7 @@
     {
       "model": "SourceSync",
       "config": "projection-owner.cfg",
-      "expected_broken": [
-        "OnlyAuthorizedIntentResumed"
-      ],
+      "expected_broken": ["OnlyAuthorizedIntentResumed"],
       "expected_rules": [
         "TypeOK",
         "PendingResolvedBeforeDecision",
@@ -419,9 +399,7 @@
     {
       "model": "SourceSync",
       "config": "projection-readiness.cfg",
-      "expected_broken": [
-        "ProjectionFailurePreservesSourceReady"
-      ],
+      "expected_broken": ["ProjectionFailurePreservesSourceReady"],
       "expected_rules": [
         "TypeOK",
         "PendingResolvedBeforeDecision",
@@ -523,9 +501,7 @@
     {
       "model": "SourceSyncProgress",
       "config": "skip-target.cfg",
-      "expected_broken": [
-        "ProjectionCursorVerified"
-      ],
+      "expected_broken": ["ProjectionCursorVerified"],
       "expected_rules": [
         "TypeOK",
         "ProjectionCursorVerified",
@@ -542,9 +518,7 @@
     {
       "model": "SourceSyncProgress",
       "config": "rebind-input.cfg",
-      "expected_broken": [
-        "CursorBoundToFrozenInput"
-      ],
+      "expected_broken": ["CursorBoundToFrozenInput"],
       "expected_rules": [
         "TypeOK",
         "ProjectionCursorVerified",
@@ -561,9 +535,7 @@
     {
       "model": "SourceSyncProgress",
       "config": "repeat-target.cfg",
-      "expected_broken": [
-        "CommittedTargetNotReentered"
-      ],
+      "expected_broken": ["CommittedTargetNotReentered"],
       "expected_rules": [
         "TypeOK",
         "ProjectionCursorVerified",
@@ -580,9 +552,7 @@
     {
       "model": "SourceSyncProgress",
       "config": "drop-batch-prefix.cfg",
-      "expected_broken": [
-        "CommittedSourceNotReentered"
-      ],
+      "expected_broken": ["CommittedSourceNotReentered"],
       "expected_rules": [
         "TypeOK",
         "ProjectionCursorVerified",
@@ -599,9 +569,7 @@
     {
       "model": "SourceSyncProgress",
       "config": "advance-retry.cfg",
-      "expected_broken": [
-        "OnlyTerminalSourceResults"
-      ],
+      "expected_broken": ["OnlyTerminalSourceResults"],
       "expected_rules": [
         "TypeOK",
         "ProjectionCursorVerified",
@@ -618,9 +586,7 @@
     {
       "model": "SourceSyncProgress",
       "config": "forget-hard-failure.cfg",
-      "expected_broken": [
-        "HardFailureRetained"
-      ],
+      "expected_broken": ["HardFailureRetained"],
       "expected_rules": [
         "TypeOK",
         "ProjectionCursorVerified",
@@ -637,9 +603,7 @@
     {
       "model": "SourceSyncProgress",
       "config": "foreign-parent-proof.cfg",
-      "expected_broken": [
-        "ParentCompletionBeforeChildRetirement"
-      ],
+      "expected_broken": ["ParentCompletionBeforeChildRetirement"],
       "expected_rules": [
         "TypeOK",
         "ProjectionCursorVerified",
@@ -656,9 +620,7 @@
     {
       "model": "SourceSyncProgress",
       "config": "early-child-retirement.cfg",
-      "expected_broken": [
-        "ParentCompletionBeforeChildRetirement"
-      ],
+      "expected_broken": ["ParentCompletionBeforeChildRetirement"],
       "expected_rules": [
         "TypeOK",
         "ProjectionCursorVerified",
@@ -698,9 +660,7 @@
     {
       "model": "LibraryLifecycle",
       "config": "intent-after-root.cfg",
-      "expected_broken": [
-        "IntentBeforeRootCreate"
-      ],
+      "expected_broken": ["IntentBeforeRootCreate"],
       "expected_rules": [
         "TypeOK",
         "IntentBeforeRootCreate",
@@ -723,9 +683,7 @@
     {
       "model": "LibraryLifecycle",
       "config": "replay-root.cfg",
-      "expected_broken": [
-        "UnknownCreateNeverReplayed"
-      ],
+      "expected_broken": ["UnknownCreateNeverReplayed"],
       "expected_rules": [
         "TypeOK",
         "IntentBeforeRootCreate",
@@ -748,9 +706,7 @@
     {
       "model": "LibraryLifecycle",
       "config": "replay-table.cfg",
-      "expected_broken": [
-        "UnknownCreateNeverReplayed"
-      ],
+      "expected_broken": ["UnknownCreateNeverReplayed"],
       "expected_rules": [
         "TypeOK",
         "IntentBeforeRootCreate",
@@ -773,10 +729,7 @@
     {
       "model": "LibraryLifecycle",
       "config": "trust-descriptor.cfg",
-      "expected_broken": [
-        "ReadyIdentityIsRequestedRoot",
-        "ReadyTablesHaveDirectRoot"
-      ],
+      "expected_broken": ["ReadyIdentityIsRequestedRoot", "ReadyTablesHaveDirectRoot"],
       "expected_rules": [
         "TypeOK",
         "IntentBeforeRootCreate",
@@ -799,9 +752,7 @@
     {
       "model": "LibraryLifecycle",
       "config": "ignore-parent.cfg",
-      "expected_broken": [
-        "ReadyTablesHaveDirectRoot"
-      ],
+      "expected_broken": ["ReadyTablesHaveDirectRoot"],
       "expected_rules": [
         "TypeOK",
         "IntentBeforeRootCreate",
@@ -824,9 +775,7 @@
     {
       "model": "LibraryLifecycle",
       "config": "ignore-data-source.cfg",
-      "expected_broken": [
-        "ReadyDataSourcesBelongToTables"
-      ],
+      "expected_broken": ["ReadyDataSourcesBelongToTables"],
       "expected_rules": [
         "TypeOK",
         "IntentBeforeRootCreate",
@@ -849,9 +798,7 @@
     {
       "model": "LibraryLifecycle",
       "config": "duplicate-role.cfg",
-      "expected_broken": [
-        "ReadyRolesAreCompleteUnique"
-      ],
+      "expected_broken": ["ReadyRolesAreCompleteUnique"],
       "expected_rules": [
         "TypeOK",
         "IntentBeforeRootCreate",
@@ -874,9 +821,7 @@
     {
       "model": "LibraryLifecycle",
       "config": "early-ready.cfg",
-      "expected_broken": [
-        "ReadyHasCompleteReadback"
-      ],
+      "expected_broken": ["ReadyHasCompleteReadback"],
       "expected_rules": [
         "TypeOK",
         "IntentBeforeRootCreate",
@@ -899,9 +844,7 @@
     {
       "model": "LibraryLifecycle",
       "config": "rebind-operation.cfg",
-      "expected_broken": [
-        "FrozenOperationTarget"
-      ],
+      "expected_broken": ["FrozenOperationTarget"],
       "expected_rules": [
         "TypeOK",
         "IntentBeforeRootCreate",
@@ -924,9 +867,7 @@
     {
       "model": "LibraryLifecycle",
       "config": "ambient-retarget.cfg",
-      "expected_broken": [
-        "FrozenOperationTarget"
-      ],
+      "expected_broken": ["FrozenOperationTarget"],
       "expected_rules": [
         "TypeOK",
         "IntentBeforeRootCreate",
@@ -949,9 +890,7 @@
     {
       "model": "LibraryLifecycle",
       "config": "foreign-pending.cfg",
-      "expected_broken": [
-        "OriginalIntentRequired"
-      ],
+      "expected_broken": ["OriginalIntentRequired"],
       "expected_rules": [
         "TypeOK",
         "IntentBeforeRootCreate",
@@ -974,9 +913,7 @@
     {
       "model": "LibraryLifecycle",
       "config": "overwrite-root.cfg",
-      "expected_broken": [
-        "KnownBindingsNeverRebound"
-      ],
+      "expected_broken": ["KnownBindingsNeverRebound"],
       "expected_rules": [
         "TypeOK",
         "IntentBeforeRootCreate",

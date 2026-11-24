@@ -410,11 +410,7 @@ describe("fixed snapshot selected files", () => {
     f.objects.set("objects/" + f.file("references/2.md").sha256, encode("corrupt unselected"))
     const error = await f.run(
       Effect.flip(
-        targetSnapshot(
-          parseTarget(f.ref()),
-          { library: library.library_id },
-          "entrypoint",
-        ),
+        targetSnapshot(parseTarget(f.ref()), { library: library.library_id }, "entrypoint"),
       ),
     )
     expect(error.code).toBe("SNAPSHOT_MISSING")
@@ -437,7 +433,11 @@ describe("fixed snapshot selected files", () => {
     const invalid = [
       {
         target: parseTarget(
-          fileRef("skill://owner?library=00000000-0000-4000-8000-000000000112", "SKILL.md", f.snapshot.snapshot_id),
+          fileRef(
+            "skill://owner?library=00000000-0000-4000-8000-000000000112",
+            "SKILL.md",
+            f.snapshot.snapshot_id,
+          ),
         ),
         code: "SNAPSHOT_CONFLICT",
       },

@@ -589,9 +589,7 @@ test("one Source writes two current Skills, preserves native authorship and reso
   ).toEqual([])
   const alphaMain = observed.members[0]!.portable.files[0]!.bytes
   expect(
-    await f.run(
-      http.use(readSkill(alphaPage, { library: library.library_id, refresh: true })),
-    ),
+    await f.run(http.use(readSkill(alphaPage, { library: library.library_id, refresh: true }))),
   ).toMatchObject({ content: new TextDecoder().decode(alphaMain) })
   expect(
     await f.run(
@@ -619,9 +617,7 @@ test("one Source writes two current Skills, preserves native authorship and reso
   expect(f.calls.filter((call) => call.path.startsWith("v1/file_uploads"))).toEqual([])
   const output = join(f.root, "exported-alpha")
   await f.run(
-    http.use(
-      exportSkill(alphaPage, { library: library.library_id, output, format: "directory" }),
-    ),
+    http.use(exportSkill(alphaPage, { library: library.library_id, output, format: "directory" })),
   )
   for (const file of observed.members[0]!.portable.files) {
     expect(new Uint8Array(readFileSync(join(output, file.path)))).toEqual(
@@ -666,9 +662,7 @@ test("one Source writes two current Skills, preserves native authorship and reso
   ).toMatchObject({ content: nativeHeader + humanBody })
   expect(
     await f.run(
-      http.use(
-        readSkill(native.page_id, { library: library.library_id, path: "local.json" }),
-      ),
+      http.use(readSkill(native.page_id, { library: library.library_id, path: "local.json" })),
     ),
   ).toMatchObject({ content: new TextDecoder().decode(localBytes) })
   const renamedDeclaration = {
@@ -1596,9 +1590,7 @@ test.each(["skill", "source-and-skills"] as const)(
     for (const page of oldFiles) expect(f.pages.get(page)?.in_trash).toBe(true)
     expect(f.table("files").some((row) => oldFiles.has(String(row.id)))).toBe(false)
     expect(
-      await f.run(
-        http.use(readSkill(rebuiltPage, { library: library.library_id, refresh: true })),
-      ),
+      await f.run(http.use(readSkill(rebuiltPage, { library: library.library_id, refresh: true }))),
     ).toMatchObject({
       content: new TextDecoder().decode(observed.members[0]!.portable.files[0]!.bytes),
     })

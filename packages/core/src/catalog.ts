@@ -132,12 +132,28 @@ export function explicitSource(input: string, sources?: readonly Source[]) {
 export function sourceForSkillsDatabase(database: string, sources?: readonly Source[]) {
   return Effect.gen(function* () {
     const raw = yield* (yield* Notion).request(`v1/databases/${database}`)
-    const library = yield* Effect.try({ try: () => libraryFromDatabase(raw), catch: (error) => error instanceof SkillsError ? error : fail("LIBRARY_INVALID", "Invalid Library descriptor.") })
+    const library = yield* Effect.try({
+      try: () => libraryFromDatabase(raw),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("LIBRARY_INVALID", "Invalid Library descriptor."),
+    })
     if (library === undefined)
-      return yield* Effect.fail(fail("CURRENT_SCHEMA_REQUIRED", "This database is not the Skills table of a current Library."))
+      return yield* Effect.fail(
+        fail(
+          "CURRENT_SCHEMA_REQUIRED",
+          "This database is not the Skills table of a current Library.",
+        ),
+      )
     const source = yield* explicitSource(library.library_id, sources)
     if (source.database_id !== database)
-      return yield* Effect.fail(fail("LIBRARY_SCHEMA_CONFLICT", "The physical Skills table differs from the resolved root binding."))
+      return yield* Effect.fail(
+        fail(
+          "LIBRARY_SCHEMA_CONFLICT",
+          "The physical Skills table differs from the resolved root binding.",
+        ),
+      )
     return source
   })
 }
@@ -147,17 +163,25 @@ export function discoverLibraries() {
   return Effect.gen(function* () {
     const configured = yield* configuredSources
     const candidates = new Map<string, { alias: string; title: string }>()
-    const found = yield* paginate("v1/search", DataSourceSchema, { filter: { property: "object", value: "data_source" } })
+    const found = yield* paginate("v1/search", DataSourceSchema, {
+      filter: { property: "object", value: "data_source" },
+    })
     for (const source of found) {
       if (source.in_trash) continue
       const props = property(source.properties)
-      if (property(props["Skill ID"]).type !== "rich_text" || property(props["Main File ID"]).type !== "rich_text") continue
+      if (
+        property(props["Skill ID"]).type !== "rich_text" ||
+        property(props["Main File ID"]).type !== "rich_text"
+      )
+        continue
       const id = source.parent.database_id
       const registered = configured.find((entry) => entry.database_id === id)
       candidates.set(id, { alias: registered?.alias ?? id, title: text(source.title) })
     }
-    for (const source of configured) candidates.set(source.database_id, { alias: source.alias, title: source.title })
-    const databases: Source[] = [], failures: SourceFailure[] = []
+    for (const source of configured)
+      candidates.set(source.database_id, { alias: source.alias, title: source.title })
+    const databases: Source[] = [],
+      failures: SourceFailure[] = []
     for (const [id, candidate] of candidates) {
       const result = yield* sourceForSkillsDatabase(id, configured).pipe(Effect.result)
       if (result._tag === "Success") databases.push(result.success)
@@ -172,7 +196,10 @@ export function setDefaultLibrary(database?: string) {
     const config = yield* configuration
     const source = database === undefined ? undefined : yield* explicitSource(database, undefined)
     const { default_library: _previous, ...rest } = config
-    const next = { ...rest, ...(source ? { default_library: source.shared_library.library_id } : {}) }
+    const next = {
+      ...rest,
+      ...(source ? { default_library: source.shared_library.library_id } : {}),
+    }
     const store = yield* Store
     yield* store.writeJson("config.json", next)
     return next
@@ -191,11 +218,19 @@ export function bindEntryTarget(target: SkillTarget, options: CatalogOptions = {
     const scope = target.reference.scope
     if (scope.kind === "library") {
       if (options.library !== undefined && (yield* libraryId(options.library)) !== scope.libraryId)
-        return yield* Effect.fail(fail("LIBRARY_SCOPE_MISMATCH", "The full reference conflicts with the explicitly selected Library."))
+        return yield* Effect.fail(
+          fail(
+            "LIBRARY_SCOPE_MISMATCH",
+            "The full reference conflicts with the explicitly selected Library.",
+          ),
+        )
       return target
     }
     const root = yield* selectedLibraryId(options.library)
-    return yield* Effect.try({ try: () => bindTarget(target, root), catch: (error) => error as SkillsError })
+    return yield* Effect.try({
+      try: () => bindTarget(target, root),
+      catch: (error) => error as SkillsError,
+    })
   })
 }
 
@@ -228,7 +263,9 @@ function readCatalog(
       catch: (error) => error as SkillsError,
     })
     if (options.all && options.library !== undefined)
-      return yield* Effect.fail(fail("INVALID_ARGUMENT", "--all and --library are mutually exclusive."))
+      return yield* Effect.fail(
+        fail("INVALID_ARGUMENT", "--all and --library are mutually exclusive."),
+      )
     const selected = options.all ? undefined : yield* selectedLibraryId(options.library)
     const selectedScope = !options.refresh
       ? yield* locallySelectedScope(Boolean(options.offline))
@@ -510,7 +547,9 @@ export function addSource(alias: string, input: string) {
       return yield* Effect.fail(
         fail("SOURCE_AMBIGUOUS", "This alias already names another database.", { alias }),
       )
-    const sources = configured.filter((s) => s.shared_library?.library_id !== source.shared_library.library_id)
+    const sources = configured.filter(
+      (s) => s.shared_library?.library_id !== source.shared_library.library_id,
+    )
     sources.push(source)
     const store = yield* Store
     yield* store.writeJson("config.json", { ...config, sources })

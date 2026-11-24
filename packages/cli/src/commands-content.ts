@@ -47,7 +47,10 @@ export const listCommand = defineCommand(
   "list",
   {
     library: libraryFlag,
-    all: switchFlag("all", "Explicitly discover all accessible current Libraries; search coverage may be incomplete"),
+    all: switchFlag(
+      "all",
+      "Explicitly discover all accessible current Libraries; search coverage may be incomplete",
+    ),
     view: singleton(
       "view",
       "Select an exact Notion View ID or URL; cannot be combined with --default-view",

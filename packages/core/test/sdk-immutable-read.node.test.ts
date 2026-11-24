@@ -81,7 +81,9 @@ test("public consume binds each complete SDK env to its actual Git executable", 
         sources: structuredClone([...f.sources.values()]),
         bodies: Object.fromEntries(f.bodies),
         root: librarySchemaResponse("v1/pages/" + library.library_id, library),
-        root_children: property(librarySchemaResponse("v1/blocks/" + library.library_id + "/children", library)).results,
+        root_children: property(
+          librarySchemaResponse("v1/blocks/" + library.library_id + "/children", library),
+        ).results,
         databases: (["skills", "files", "records", "sources"] as const).map((role) =>
           librarySchemaResponse("v1/databases/" + library[role].database_id, library),
         ),
@@ -234,7 +236,9 @@ async function sample(currentSource?: Record<string, unknown>) {
     notion: {
       library,
       root: librarySchemaResponse("v1/pages/" + library.library_id, library),
-      root_children: property(librarySchemaResponse("v1/blocks/" + library.library_id + "/children", library)).results,
+      root_children: property(
+        librarySchemaResponse("v1/blocks/" + library.library_id + "/children", library),
+      ).results,
       databases: (["skills", "files", "records", "sources"] as const).map((role) =>
         librarySchemaResponse("v1/databases/" + library[role].database_id, library),
       ),

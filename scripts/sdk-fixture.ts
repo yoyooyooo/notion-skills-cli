@@ -109,9 +109,13 @@ const rootChildren = property(
 const schemas = roles.map((role) => {
   const binding = currentLibrary[role]
   return {
-    database: property(librarySchemaResponse("v1/databases/" + binding.database_id, currentLibrary)),
+    database: property(
+      librarySchemaResponse("v1/databases/" + binding.database_id, currentLibrary),
+    ),
     dataSource: {
-      ...property(librarySchemaResponse("v1/data_sources/" + binding.data_source_id, currentLibrary)),
+      ...property(
+        librarySchemaResponse("v1/data_sources/" + binding.data_source_id, currentLibrary),
+      ),
       parent: { type: "database_id", database_id: binding.database_id },
     },
   }

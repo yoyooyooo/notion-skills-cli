@@ -31,7 +31,9 @@ import { nodeRuntime } from "../src/runtime.ts"
 
 const input = { version: 1, targets: ["00000000-0000-4000-8000-000000000001"], purpose: "use" }
 const resourceRef =
-  "skill://skill/references/a.txt?library=0c64a309-510e-5d37-b23c-3ce2f966c66e&snapshot=s_" + "a".repeat(64) + ""
+  "skill://skill/references/a.txt?library=0c64a309-510e-5d37-b23c-3ce2f966c66e&snapshot=s_" +
+  "a".repeat(64) +
+  ""
 
 function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
   expect(reports).toHaveLength(count)
@@ -51,7 +53,6 @@ function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
 }
 
 describe("Promise SDK boundary", () => {
-
   test("relative identity resolution preserves cancellation, effects and zero-request receipts", async () => {
     const reports: unknown[] = []
     await expect(
@@ -69,19 +70,22 @@ describe("Promise SDK boundary", () => {
   })
   test("exact identity resolution is pure and manifest listing preserves the SDK cancellation boundary", async () => {
     expect(() =>
-      resolveCatalogReference("skill://missing/SKILL.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e", {
-        scope: "a".repeat(64),
-        fetched_at: 1000,
-        databases: [],
-        records: [],
-        coverage: {
-          method: "search_and_registered",
-          exhaustive: false,
-          queried_data_sources: [],
-          failed_sources: [],
-          search_index_limited: true,
+      resolveCatalogReference(
+        "skill://missing/SKILL.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e",
+        {
+          scope: "a".repeat(64),
+          fetched_at: 1000,
+          databases: [],
+          records: [],
+          coverage: {
+            method: "search_and_registered",
+            exhaustive: false,
+            queried_data_sources: [],
+            failed_sources: [],
+            search_index_limited: true,
+          },
         },
-      }),
+      ),
     ).toThrow(expect.objectContaining({ code: "CATALOG_INCOMPLETE" }))
     const controller = new AbortController()
     controller.abort()

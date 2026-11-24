@@ -121,7 +121,11 @@ async function fixture(options: { main?: string } = {}) {
     required: [
       {
         id: "skill://missing?library=bca052c3-72f0-5d5c-a168-ba971a4b33ba",
-        ref: fileRef("skill://missing?library=bca052c3-72f0-5d5c-a168-ba971a4b33ba", "SKILL.md", `s_${"f".repeat(64)}`),
+        ref: fileRef(
+          "skill://missing?library=bca052c3-72f0-5d5c-a168-ba971a4b33ba",
+          "SKILL.md",
+          `s_${"f".repeat(64)}`,
+        ),
         metadata: { name: "missing", kind: "skill", description: "Missing controlled dependency" },
       },
     ],

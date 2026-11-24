@@ -58,7 +58,12 @@ test("operation local admission refuses invalid kinds, identities, entries and b
   ])
     await expect(
       f.run(
-        inspectCurrentLibraryOperation({ ownerId: owner.id, kind: owner.kind, library: libraryRoot, ...changed }),
+        inspectCurrentLibraryOperation({
+          ownerId: owner.id,
+          kind: owner.kind,
+          library: libraryRoot,
+          ...changed,
+        }),
       ),
     ).rejects.toThrow()
   for (const args of [
@@ -79,7 +84,12 @@ test("no observable Skill or Source intent does not certify an owner is present,
   for (const kind of ["skill", "source"] as const) {
     f.clearCalls()
     const value = await f.run(
-      inspectCurrentLibraryOperation({ ownerId: "not-created", kind, library: libraryRoot, maxRequests: 37 }),
+      inspectCurrentLibraryOperation({
+        ownerId: "not-created",
+        kind,
+        library: libraryRoot,
+        maxRequests: 37,
+      }),
     )
     expect(value).toMatchObject({
       version: 1,
@@ -95,7 +105,12 @@ test("no observable Skill or Source intent does not certify an owner is present,
       budget: { limits: { requests: 37 } },
     })
     expect("state" in value).toBe(false)
-    expect(f.calls.some((call) => call.path.startsWith("v1/pages/") && call.path !== `v1/pages/${library.library_id}`)).toBe(false)
+    expect(
+      f.calls.some(
+        (call) =>
+          call.path.startsWith("v1/pages/") && call.path !== `v1/pages/${library.library_id}`,
+      ),
+    ).toBe(false)
     expect(f.calls.some((call) => call.path.includes("/query"))).toBe(true)
     expect(f.mutations()).toEqual([])
   }
@@ -143,7 +158,12 @@ test("the public operation reader reports a real unknown CREATE without replay o
   expect(value.operation?.record_page_id).toMatch(/^[a-f0-9-]{36}$/)
   expect(value.operation?.local_lifecycle?.phase).toBe("active")
   expect(
-    f.calls.some((call) => call.path.includes("/markdown") || (call.path.includes("/children") && call.path.split("?")[0] !== `v1/blocks/${libraryRoot}/children`)),
+    f.calls.some(
+      (call) =>
+        call.path.includes("/markdown") ||
+        (call.path.includes("/children") &&
+          call.path.split("?")[0] !== `v1/blocks/${libraryRoot}/children`),
+    ),
   ).toBe(false)
   expect(f.mutations()).toEqual([])
   expect(JSON.stringify([...f.pages])).toBe(pages)

@@ -144,7 +144,12 @@ test("unlisted siblings, missing files, overlapping roots and symlinks are never
   await expect(f.run(loadCurrentImportBatch(manifest))).rejects.toMatchObject({
     code: "CURRENT_IMPORT_BATCH_INVALID",
   })
-  for (const skill_id of ["UPPER", "a?library=1fed9b5e-352d-53b8-811b-d62ae58344f8", "a/SKILL.md", "shared_skill:a"]) {
+  for (const skill_id of [
+    "UPPER",
+    "a?library=1fed9b5e-352d-53b8-811b-d62ae58344f8",
+    "a/SKILL.md",
+    "shared_skill:a",
+  ]) {
     await writeFile(manifest, JSON.stringify({ version: 1, skills: [{ root: "a", skill_id }] }))
     await expect(f.run(loadCurrentImportBatch(manifest))).rejects.toMatchObject({
       code: "CURRENT_IMPORT_BATCH_INVALID",
@@ -189,7 +194,10 @@ test("foreign relationships require exact copy authorization and only batch-owne
     f.run(compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest)))),
   ).rejects.toMatchObject({ code: "PORTABLE_RELATION_SCOPE" })
   const plan = await f.run(
-    compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest, "884155c9-d3d6-57d3-8d2b-735ef1d41fec"))),
+    compileCurrentImportBatch(
+      library,
+      await f.run(loadCurrentImportBatch(manifest, "884155c9-d3d6-57d3-8d2b-735ef1d41fec")),
+    ),
   )
   expect(plan.items[0]?.relations?.members).toEqual([`skill://b?library=${library.library_id}`])
   expect(plan.rewrites.map((entry) => entry.before)).toEqual([
@@ -200,10 +208,16 @@ test("foreign relationships require exact copy authorization and only batch-owne
   const body = new TextDecoder().decode(derived.files[0]!.bytes)
   expect(body).toContain("skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec")
   expect(body).toContain("skill://b/missing.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec")
-  expect(body).toContain("skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=s_")
+  expect(body).toContain(
+    "skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=s_",
+  )
   expect(body).toContain("skill://b/SKILL.md?library=" + library.library_id)
-  expect(body).toContain("    [example](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)")
-  expect(body).toContain("[shared]: skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec")
+  expect(body).toContain(
+    "    [example](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)",
+  )
+  expect(body).toContain(
+    "[shared]: skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+  )
   expect(f.mutations()).toEqual([])
   await writeFile(
     join(root, "a", ".ntn-skills.json"),
@@ -267,7 +281,10 @@ test("portable origin binds external short refs before batch Members inference",
   expect(item.relations?.requires).toBeUndefined()
   const derived = await f.run(thawCurrentImportSkill(item.body))
   expect(new TextDecoder().decode(derived.files[0]!.bytes)).toBe(
-    original.replace("skill://outside/SKILL.md", "skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec"),
+    original.replace(
+      "skill://outside/SKILL.md",
+      "skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+    ),
   )
   expect(result.success.rewrites).toContainEqual({
     skill_id: "a",
@@ -292,12 +309,24 @@ test("portable batch short refs keep origin unless exact current copy mapping is
   })
   const original = await readFile(join(root, "a", "SKILL.md"), "utf8")
   const metadata = join(root, "a", ".ntn-skills.json")
-  await writeFile(metadata, portable({ version: 1, ownership: "notion", library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec" }))
+  await writeFile(
+    metadata,
+    portable({
+      version: 1,
+      ownership: "notion",
+      library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+    }),
+  )
   for (const authorized of [false, true]) {
     const result = await f.run(
       compileCurrentImportBatch(
         library,
-        await f.run(loadCurrentImportBatch(manifest, authorized ? "884155c9-d3d6-57d3-8d2b-735ef1d41fec" : undefined)),
+        await f.run(
+          loadCurrentImportBatch(
+            manifest,
+            authorized ? "884155c9-d3d6-57d3-8d2b-735ef1d41fec" : undefined,
+          ),
+        ),
       ).pipe(Effect.result),
     )
     expect(result._tag).toBe("Success")
@@ -308,8 +337,12 @@ test("portable batch short refs keep origin unless exact current copy mapping is
     expect(text).toContain(
       `[B](skill://b/SKILL.md?library=${authorized ? library.library_id : "884155c9-d3d6-57d3-8d2b-735ef1d41fec"})`,
     )
-    expect(text).toContain("[Missing](skill://b/missing.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)")
-    expect(text).toContain(`[Fixed](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=${pin})`)
+    expect(text).toContain(
+      "[Missing](skill://b/missing.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)",
+    )
+    expect(text).toContain(
+      `[Fixed](skill://b/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=${pin})`,
+    )
     expect(item.relations?.members).toEqual(
       authorized ? [`skill://b?library=${library.library_id}`] : undefined,
     )
@@ -348,7 +381,10 @@ test("portable batch short refs keep origin unless exact current copy mapping is
   }
   await unlink(metadata)
   const local = await f.run(
-    compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest, "884155c9-d3d6-57d3-8d2b-735ef1d41fec"))),
+    compileCurrentImportBatch(
+      library,
+      await f.run(loadCurrentImportBatch(manifest, "884155c9-d3d6-57d3-8d2b-735ef1d41fec")),
+    ),
   )
   const localItem = local.items.find((item) => item.skill_id === "a")!
   const localBody = await f.run(thawCurrentImportSkill(localItem.body))
@@ -365,7 +401,11 @@ test("portable origin blocks active shared image destinations but leaves inert m
   })
   await writeFile(
     join(root, "a", ".ntn-skills.json"),
-    portable({ version: 1, ownership: "notion", library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec" }),
+    portable({
+      version: 1,
+      ownership: "notion",
+      library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+    }),
   )
   await expect(
     f.run(compileCurrentImportBatch(library, await f.run(loadCurrentImportBatch(manifest)))),

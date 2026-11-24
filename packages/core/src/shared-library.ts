@@ -139,16 +139,14 @@ export function libraryFromDatabase(raw: unknown): SharedLibrary | undefined {
     )
   const library = decode(SharedLibrarySchema, descriptor)
   if (value.in_trash === true || value.id !== library.skills.database_id)
-    throw fail(
-      "LIBRARY_INVALID",
-      "The descriptor does not match its registered Skills database.",
-    )
+    throw fail("LIBRARY_INVALID", "The descriptor does not match its registered Skills database.")
   exactId(library.library_id)
   if (property(value.parent).page_id !== library.library_id)
-    throw fail("LIBRARY_SCHEMA_CONFLICT", "The Skills table is not a direct child of its Library root.")
-  if (
-    !/^library-[a-zA-Z0-9-]{1,80}$/.test(library.operation_id)
-  )
+    throw fail(
+      "LIBRARY_SCHEMA_CONFLICT",
+      "The Skills table is not a direct child of its Library root.",
+    )
+  if (!/^library-[a-zA-Z0-9-]{1,80}$/.test(library.operation_id))
     throw fail("LIBRARY_INVALID", "The library has an invalid initialization identity.")
   for (const [table, expected] of [
     [library.skills, registeredSkillProperties(library.skills)],
@@ -227,18 +225,36 @@ export function loadSharedLibrary(root: string) {
     for (const raw of children.values()) {
       const description = text(property(raw).description)
       if (description.startsWith("ntn-skills-library:") && !description.startsWith(LIBRARY_MARKER))
-        return yield* Effect.fail(fail("CURRENT_SCHEMA_REQUIRED", "Migrate this Library to the root identity contract before use."))
+        return yield* Effect.fail(
+          fail(
+            "CURRENT_SCHEMA_REQUIRED",
+            "Migrate this Library to the root identity contract before use.",
+          ),
+        )
       const library = yield* checked(() => libraryFromDatabase(raw))
       if (library !== undefined) libraries.push(library)
     }
     if (libraries.length !== 1)
-      return yield* Effect.fail(fail(libraries.length ? "LIBRARY_AMBIGUOUS" : "NOT_SHARED_LIBRARY", "The root must contain exactly one registered current Library descriptor."))
+      return yield* Effect.fail(
+        fail(
+          libraries.length ? "LIBRARY_AMBIGUOUS" : "NOT_SHARED_LIBRARY",
+          "The root must contain exactly one registered current Library descriptor.",
+        ),
+      )
     const library = libraries[0]!
     if (library.library_id !== id)
-      return yield* Effect.fail(fail("LIBRARY_SCHEMA_CONFLICT", "The descriptor belongs to a different Library root."))
+      return yield* Effect.fail(
+        fail("LIBRARY_SCHEMA_CONFLICT", "The descriptor belongs to a different Library root."),
+      )
     for (const role of ["skills", "files", "records", "sources"] as const)
       if (!children.has(library[role].database_id))
-        return yield* Effect.fail(fail("LIBRARY_SCHEMA_CONFLICT", "A registered table is absent from the complete root inventory.", { role }))
+        return yield* Effect.fail(
+          fail(
+            "LIBRARY_SCHEMA_CONFLICT",
+            "A registered table is absent from the complete root inventory.",
+            { role },
+          ),
+        )
     return yield* inspectLibrary(library, children)
   })
 }
@@ -252,16 +268,30 @@ export function assertSharedLibraryBinding(original: SharedLibrary) {
   return Effect.gen(function* () {
     const current = yield* loadSharedLibrary(original.library_id)
     if (!preservesSharedLibraryBindings(original, current))
-      return yield* Effect.fail(fail("LIBRARY_BINDING_CHANGED", "The Library's registered physical bindings changed; the original operation cannot retarget."))
+      return yield* Effect.fail(
+        fail(
+          "LIBRARY_BINDING_CHANGED",
+          "The Library's registered physical bindings changed; the original operation cannot retarget.",
+        ),
+      )
   })
 }
 
 function inspectRoot(id: string, parent?: string) {
   return Effect.gen(function* () {
     const root = property(yield* (yield* Notion).request(`v1/pages/${id}`))
-    if (root.id !== id || root.in_trash === true || root.archived === true ||
-      (parent !== undefined && property(root.parent).page_id !== parent))
-      return yield* Effect.fail(fail("LIBRARY_SCHEMA_CONFLICT", "The exact Library root is unavailable or has a different initialization parent."))
+    if (
+      root.id !== id ||
+      root.in_trash === true ||
+      root.archived === true ||
+      (parent !== undefined && property(root.parent).page_id !== parent)
+    )
+      return yield* Effect.fail(
+        fail(
+          "LIBRARY_SCHEMA_CONFLICT",
+          "The exact Library root is unavailable or has a different initialization parent.",
+        ),
+      )
     return root
   })
 }
@@ -553,24 +583,37 @@ function initializeMembers(
 
 const ROOT_MARKER = "ntn-skills-library-init:v2 "
 function rootMarker(operation: string, parent: string) {
-  return ROOT_MARKER + JSON.stringify({ version: 2, operation_id: operation, parent_page_id: parent })
+  return (
+    ROOT_MARKER + JSON.stringify({ version: 2, operation_id: operation, parent_page_id: parent })
+  )
 }
 function directChildren(parent: string) {
   return Effect.gen(function* () {
-    const api = yield* Notion, found = new Map<string, Record<string, unknown>>(), cursors = new Set<string>()
+    const api = yield* Notion,
+      found = new Map<string, Record<string, unknown>>(),
+      cursors = new Set<string>()
     let cursor: string | undefined
     while (true) {
-      const raw = yield* api.request(`v1/blocks/${parent}/children?page_size=100${cursor ? `&start_cursor=${encodeURIComponent(cursor)}` : ""}`)
+      const raw = yield* api.request(
+        `v1/blocks/${parent}/children?page_size=100${cursor ? `&start_cursor=${encodeURIComponent(cursor)}` : ""}`,
+      )
       const page = yield* checked(() => decode(listSchema(Schema.Unknown), raw))
       for (const item of page.results) {
         const row = property(item)
         if (typeof row.id !== "string" || found.has(row.id))
-          return yield* Effect.fail(fail("LIBRARY_DISCOVERY_INCOMPLETE", "Direct-child enumeration omitted or repeated an identity."))
+          return yield* Effect.fail(
+            fail(
+              "LIBRARY_DISCOVERY_INCOMPLETE",
+              "Direct-child enumeration omitted or repeated an identity.",
+            ),
+          )
         found.set(row.id, row)
       }
       if (!page.has_more) return found
       if (!page.next_cursor || cursors.has(page.next_cursor))
-        return yield* Effect.fail(fail("LIBRARY_DISCOVERY_INCOMPLETE", "Missing or repeating direct-child cursor."))
+        return yield* Effect.fail(
+          fail("LIBRARY_DISCOVERY_INCOMPLETE", "Missing or repeating direct-child cursor."),
+        )
       cursor = page.next_cursor
       cursors.add(cursor)
     }
@@ -578,7 +621,8 @@ function directChildren(parent: string) {
 }
 function ownedTables(parent: string) {
   return Effect.gen(function* () {
-    const api = yield* Notion, found = new Map<string, unknown>()
+    const api = yield* Notion,
+      found = new Map<string, unknown>()
     for (const [id, child] of yield* directChildren(parent))
       if (child.type === "child_database" && child.in_trash !== true && child.archived !== true)
         found.set(id, yield* api.request(`v1/databases/${id}`))
@@ -591,16 +635,28 @@ function initializationRoots(parent: string, operation: string) {
     const matches: string[] = []
     const expected = rootMarker(operation, parent)
     for (const [id, child] of yield* directChildren(parent)) {
-      if (child.type !== "child_page" || child.in_trash === true || child.archived === true) continue
+      if (child.type !== "child_page" || child.in_trash === true || child.archived === true)
+        continue
       let count = 0
       for (const block of (yield* directChildren(id)).values()) {
-        if (block.type === "paragraph" && text(property(block.paragraph).rich_text) === expected) count++
+        if (block.type === "paragraph" && text(property(block.paragraph).rich_text) === expected)
+          count++
       }
-      if (count > 1) return yield* Effect.fail(fail("LIBRARY_INIT_CONFLICT", "An initialization root repeats its operation marker."))
-      if (count === 1) { yield* inspectRoot(id, parent); matches.push(id) }
+      if (count > 1)
+        return yield* Effect.fail(
+          fail("LIBRARY_INIT_CONFLICT", "An initialization root repeats its operation marker."),
+        )
+      if (count === 1) {
+        yield* inspectRoot(id, parent)
+        matches.push(id)
+      }
     }
     if (matches.length > 1)
-      return yield* Effect.fail(fail("LIBRARY_INIT_CONFLICT", "Several roots claim this initialization operation.", { root_page_ids: matches }))
+      return yield* Effect.fail(
+        fail("LIBRARY_INIT_CONFLICT", "Several roots claim this initialization operation.", {
+          root_page_ids: matches,
+        }),
+      )
     return matches[0]
   })
 }
@@ -673,24 +729,54 @@ export function initializeSharedLibrary(input: {
           let parent = yield* initializationRoots(container, operation)
           const knownRoot = session.pending().root_page_id
           if (knownRoot !== null && parent !== knownRoot)
-            return yield* Effect.fail(fail("LIBRARY_INIT_CONFLICT", "The known root is missing or its exact operation marker changed.", { root_page_id: knownRoot }))
+            return yield* Effect.fail(
+              fail(
+                "LIBRARY_INIT_CONFLICT",
+                "The known root is missing or its exact operation marker changed.",
+                { root_page_id: knownRoot },
+              ),
+            )
           if (parent === undefined) {
             if (reconcile)
-              return yield* Effect.fail(fail("LIBRARY_INIT_INCOMPLETE", "The original root creation is not visible; reconciliation never repeats CREATE."))
+              return yield* Effect.fail(
+                fail(
+                  "LIBRARY_INIT_INCOMPLETE",
+                  "The original root creation is not visible; reconciliation never repeats CREATE.",
+                ),
+              )
             yield* session.requireResumeState()
-            const created = property(yield* session.perform("create:root", "never", write("v1/pages", {
-              parent: { type: "page_id", page_id: container },
-              properties: { title: { type: "title", title: title("Skill Library") } },
-              children: [{ object: "block", type: "paragraph", paragraph: { rich_text: title(rootMarker(operation, container)) } }],
-            })))
+            const created = property(
+              yield* session.perform(
+                "create:root",
+                "never",
+                write("v1/pages", {
+                  parent: { type: "page_id", page_id: container },
+                  properties: { title: { type: "title", title: title("Skill Library") } },
+                  children: [
+                    {
+                      object: "block",
+                      type: "paragraph",
+                      paragraph: { rich_text: title(rootMarker(operation, container)) },
+                    },
+                  ],
+                }),
+              ),
+            )
             if (typeof created.id !== "string" || pageId(created.id) !== created.id)
-              return yield* Effect.fail(fail("LIBRARY_INIT_UNKNOWN", "Root creation returned no confirmed identity."))
+              return yield* Effect.fail(
+                fail("LIBRARY_INIT_UNKNOWN", "Root creation returned no confirmed identity."),
+              )
             parent = created.id
             yield* session.rememberRoot(parent)
             yield* inspectRoot(parent, container)
             const observed = yield* initializationRoots(container, operation)
             if (observed !== parent)
-              return yield* Effect.fail(fail("LIBRARY_INIT_UNKNOWN", "The created root and its atomic operation marker are not yet confirmed."))
+              return yield* Effect.fail(
+                fail(
+                  "LIBRARY_INIT_UNKNOWN",
+                  "The created root and its atomic operation marker are not yet confirmed.",
+                ),
+              )
           }
           yield* session.rememberRoot(parent)
           const children = yield* ownedTables(parent)
@@ -724,8 +810,7 @@ export function initializeSharedLibrary(input: {
           if (existing) {
             if (
               existing.library_id !== parent ||
-              (input.operation !== undefined &&
-                existing.operation_id !== operation)
+              (input.operation !== undefined && existing.operation_id !== operation)
             )
               return yield* Effect.fail(
                 fail(

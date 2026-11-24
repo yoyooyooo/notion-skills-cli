@@ -523,7 +523,9 @@ function processSource(
       )
     if (pending !== undefined) {
       if (!preservesSharedLibraryBindings(pending.library, library))
-        return yield* Effect.fail(conflict("The Source synchronization retains different physical Library bindings."))
+        return yield* Effect.fail(
+          conflict("The Source synchronization retains different physical Library bindings."),
+        )
       progress.operation_id = pending.input.operation_id
       progress.content = {
         status: pending.phase === "projection" ? "published" : "observed",
@@ -748,7 +750,9 @@ function executeBatch(library: SharedLibrary, command: CurrentSourceSyncCommand)
             record !== undefined &&
             record.library_id === library.library_id &&
             record.manager_id === command.manager_id &&
-            (record.scope !== scope || record.execution_id !== command.execution_id || !preservesSharedLibraryBindings(record.library, library))
+            (record.scope !== scope ||
+              record.execution_id !== command.execution_id ||
+              !preservesSharedLibraryBindings(record.library, library))
           )
             return yield* Effect.fail(
               conflict(

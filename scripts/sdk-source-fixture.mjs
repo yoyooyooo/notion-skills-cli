@@ -44,12 +44,23 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     fs.writeFileSync(path, "", { flag: "wx", mode: 0o600 })
 
   const notion = structuredClone(sample.notion)
-  assert.equal(notion.library.version, 2, "The controlled service requires the current Library descriptor")
+  assert.equal(
+    notion.library.version,
+    2,
+    "The controlled service requires the current Library descriptor",
+  )
   assert.equal(notion.root?.object, "page", "Declare the actual root page independently")
   assert.ok(Array.isArray(notion.root_children), "Declare the actual root children independently")
-  assert.ok(Array.isArray(notion.databases), "Declare actual databases independently of the descriptor")
-  assert.ok(Array.isArray(notion.data_sources), "Declare actual data sources independently of the descriptor")
-  const skillsDataSource = () => notion.data_sources.find((source) => source.id === notion.library.skills.data_source_id)
+  assert.ok(
+    Array.isArray(notion.databases),
+    "Declare actual databases independently of the descriptor",
+  )
+  assert.ok(
+    Array.isArray(notion.data_sources),
+    "Declare actual data sources independently of the descriptor",
+  )
+  const skillsDataSource = () =>
+    notion.data_sources.find((source) => source.id === notion.library.skills.data_source_id)
   notion.blocks ??= {}
   let nextPage = 900000,
     edit = 0
@@ -298,14 +309,25 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       value = { object: "user", id: "00000000-0000-4000-8000-000000000099" }
     else if (request.method === "GET" && url.pathname === "/v1/pages/" + notion.root.id)
       value = notion.root
-    else if (request.method === "GET" && url.pathname === "/v1/blocks/" + notion.root.id + "/children")
+    else if (
+      request.method === "GET" &&
+      url.pathname === "/v1/blocks/" + notion.root.id + "/children"
+    )
       value = page(notion.root_children, {
         page_size: 100,
-        ...(url.searchParams.has("start_cursor") ? { start_cursor: url.searchParams.get("start_cursor") } : {}),
+        ...(url.searchParams.has("start_cursor")
+          ? { start_cursor: url.searchParams.get("start_cursor") }
+          : {}),
       })
-    else if (request.method === "GET" && notion.databases.some((row) => url.pathname === "/v1/databases/" + row.id))
+    else if (
+      request.method === "GET" &&
+      notion.databases.some((row) => url.pathname === "/v1/databases/" + row.id)
+    )
       value = notion.databases.find((row) => url.pathname === "/v1/databases/" + row.id)
-    else if (request.method === "GET" && notion.data_sources.some((row) => url.pathname === "/v1/data_sources/" + row.id))
+    else if (
+      request.method === "GET" &&
+      notion.data_sources.some((row) => url.pathname === "/v1/data_sources/" + row.id)
+    )
       value = notion.data_sources.find((row) => url.pathname === "/v1/data_sources/" + row.id)
     else if (
       allowCurrentWrites &&

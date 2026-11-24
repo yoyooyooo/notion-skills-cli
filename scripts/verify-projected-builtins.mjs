@@ -198,7 +198,8 @@ const report = {
   skills: [],
 }
 try {
-  if (!values.library) reject("LIBRARY_CONTEXT_REQUIRED", "Supply one exact registered library with --library.")
+  if (!values.library)
+    reject("LIBRARY_CONTEXT_REQUIRED", "Supply one exact registered library with --library.")
   const builtins = command(["ctl", "builtin", "list"])
   if (!Array.isArray(builtins.skills) || builtins.skills.length === 0)
     reject("PACKAGE_CATALOG_INVALID", "The CLI did not expose any packaged Skills.")

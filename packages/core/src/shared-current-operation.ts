@@ -22,7 +22,11 @@ import { CurrentProjectionPolicySchema } from "./shared-current-projection-polic
 import { CurrentSkillRegistrationInputSchema } from "./shared-current-skill-register-input.ts"
 import { CurrentSkillRemovalInputSchema } from "./shared-current-skill-remove-input.ts"
 import { CurrentSkillPatchScopeSchema } from "./shared-current-skill-patch-input.ts"
-import { SharedLibrarySchema, preservesSharedLibraryBindings, type SharedLibrary } from "./shared-library-model.ts"
+import {
+  SharedLibrarySchema,
+  preservesSharedLibraryBindings,
+  type SharedLibrary,
+} from "./shared-library-model.ts"
 import { assertSharedLibraryBinding } from "./shared-library.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
@@ -148,7 +152,8 @@ export const CurrentWritePendingSchema = Schema.Struct({
   not_dispatched: Schema.optional(ActionSchema),
 }).check(
   Schema.makeFilter(
-    (value) => value.library_id === value.library.library_id ||
+    (value) =>
+      value.library_id === value.library.library_id ||
       "A pending operation must retain one consistent Library binding.",
   ),
 )
@@ -226,7 +231,8 @@ function decodePayload(value: unknown): CurrentPayload {
     progress = payload.source_progress
   if (
     payload.library_id !== payload.library.library_id ||
-    payload.owner_data_source_id !== ownerTable(payload.library, payload.intent.owner).data_source_id
+    payload.owner_data_source_id !==
+      ownerTable(payload.library, payload.intent.owner).data_source_id
   )
     throw invalid("The current Operation has inconsistent Library bindings.")
   if (
@@ -960,7 +966,7 @@ function runCurrentOperation<A, R>(
           pending !== undefined &&
           (pending.scope !== scope ||
             pending.library_id !== library.library_id ||
-        !preservesSharedLibraryBindings(pending.library, library) ||
+            !preservesSharedLibraryBindings(pending.library, library) ||
             pending.record_id !== recordId)
         )
           return yield* Effect.fail(
@@ -1463,7 +1469,7 @@ function runCurrentOperation<A, R>(
           payload = yield* checked(() => decodePayload(found.payload))
           if (
             payload.library_id !== library.library_id ||
-        !preservesSharedLibraryBindings(payload.library, library) ||
+            !preservesSharedLibraryBindings(payload.library, library) ||
             payload.owner_data_source_id !==
               uuid(ownerTable(library, intent.owner).data_source_id) ||
             !sameIntent(payload.intent, intent) ||

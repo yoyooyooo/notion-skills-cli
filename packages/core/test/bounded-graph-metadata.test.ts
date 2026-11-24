@@ -184,10 +184,7 @@ describe("selected graph metadata stays bounded by requested identities", () => 
     }
     const root = fileRef(skillIdentity(f.descriptor.library_id, "a"), "SKILL.md")
     const result = await f.run(
-      prepareGraph(
-        { roots: [root], purpose: "use" },
-        { library: f.descriptor.library_id },
-      ),
+      prepareGraph({ roots: [root], purpose: "use" }, { library: f.descriptor.library_id }),
     )
     expect(result.usage.prepared_nodes).toBe(1)
     expect(f.responses.filter((row) => !row.filtered)).toEqual([])

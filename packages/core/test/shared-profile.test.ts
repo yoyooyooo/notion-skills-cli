@@ -1133,24 +1133,19 @@ describe("Profile machine binding and default discovery", () => {
     ).toHaveLength(1)
     f.clear()
     f.deny(true)
+    expect((await f.run(loadSharedProfileEntryCached(library.library_id, "daily"))).source).toBe(
+      "local_cache",
+    )
     expect(
-      (await f.run(loadSharedProfileEntryCached(library.library_id, "daily"))).source,
-    ).toBe("local_cache")
-    expect(
-      (
-        await f.run(
-          loadSharedProfileEntryCached(library.library_id, "daily", { offline: true }),
-        )
-      ).freshness.policy,
+      (await f.run(loadSharedProfileEntryCached(library.library_id, "daily", { offline: true })))
+        .freshness.policy,
     ).toBe("offline")
     expect(f.calls).toHaveLength(0)
     f.credential("different-profile-credential")
     expect(
       (
         await f.run(
-          Effect.flip(
-            loadSharedProfileEntryCached(library.library_id, "daily", { offline: true }),
-          ),
+          Effect.flip(loadSharedProfileEntryCached(library.library_id, "daily", { offline: true })),
         )
       ).code,
     ).toBe("CACHE_SCOPE_UNAVAILABLE")
@@ -1230,9 +1225,14 @@ describe("Profile machine binding and default discovery", () => {
     expect("profile" in result).toBe(false)
     expect(f.queries()).toBe(0)
     expect(f.calls.some((call) => call.path.startsWith("v1/views"))).toBe(false)
-    expect(f.calls.some((call) => /\/markdown|\/blocks|\/export|\/pages\//u.test(call.path) && call.path !== `v1/pages/${library.library_id}` && !call.path.startsWith(`v1/blocks/${library.library_id}/children`))).toBe(
-      false,
-    )
+    expect(
+      f.calls.some(
+        (call) =>
+          /\/markdown|\/blocks|\/export|\/pages\//u.test(call.path) &&
+          call.path !== `v1/pages/${library.library_id}` &&
+          !call.path.startsWith(`v1/blocks/${library.library_id}/children`),
+      ),
+    ).toBe(false)
   })
 
   test("bound default selects shared rules, excludes Prompts, and a second startup has no descriptor GET", async () => {
@@ -1262,9 +1262,14 @@ describe("Profile machine binding and default discovery", () => {
         call.path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`),
       ),
     ).toHaveLength(1)
-    expect(f.calls.some((call) => /\/pages\/|\/markdown|\/blocks|\/export/u.test(call.path) && call.path !== `v1/pages/${library.library_id}` && !call.path.startsWith(`v1/blocks/${library.library_id}/children`))).toBe(
-      false,
-    )
+    expect(
+      f.calls.some(
+        (call) =>
+          /\/pages\/|\/markdown|\/blocks|\/export/u.test(call.path) &&
+          call.path !== `v1/pages/${library.library_id}` &&
+          !call.path.startsWith(`v1/blocks/${library.library_id}/children`),
+      ),
+    ).toBe(false)
     expect(f.calls.every((call) => call.content === undefined)).toBe(true)
     expect(f.writes()).toBe(0)
     f.clear()

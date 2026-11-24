@@ -116,7 +116,9 @@ test("maintenance routes daily native management through public commands and kee
   expect(root).toContain("read PAGE_ID --library LIBRARY_ID --refresh --json")
   expect(root).toContain("CURRENT_SCHEMA_REQUIRED")
   expect(root).toContain("CURRENT_OPERATION_PENDING")
-  expect(root).toContain("ctl library import INPUT --library LIBRARY_ID --skill-id SKILL_ID --dry-run")
+  expect(root).toContain(
+    "ctl library import INPUT --library LIBRARY_ID --skill-id SKILL_ID --dry-run",
+  )
   for (const action of ["create INPUT", "update TARGET", "register PAGE_ID", "remove TARGET"])
     expect(root).toContain(`ctl library skill ${action} --library LIBRARY_ID`)
   expect(root).toContain("preserves unmentioned files")
