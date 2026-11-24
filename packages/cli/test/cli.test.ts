@@ -1,3 +1,4 @@
+import { currentLibrary } from "../../core/test/shared-current-fixture.ts"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { createHttpProbe } from "./http-probe.ts"
 import {
@@ -649,9 +650,10 @@ test("consumer catalog identity follows remote scope without local configuration
   const otherDatabase = "22222222-2222-4222-8222-222222222222"
   const source = {
     alias: "shared",
-    database_id: database,
+    database_id: currentLibrary.skills.database_id,
     title: "Shared",
-    data_source_ids: [],
+    data_source_ids: [currentLibrary.skills.data_source_id],
+    shared_library: { ...currentLibrary, library_id: database },
   }
   const original = { token: "offline-fixture-token", sources: [source] }
   const save = (value: unknown) =>

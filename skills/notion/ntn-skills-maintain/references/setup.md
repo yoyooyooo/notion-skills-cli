@@ -50,6 +50,7 @@ Both commands verify the root and four-table ownership read-only. They do not
 save a default or repair an older layout. Init success means the structure is
 ready; its next list can be empty. A new `init --parent` creates a new root.
 Use the same executable's Builtin guidance without copying it into Notion.
+Existing libraries require the explicit migration in [the migration guide](https://github.com/yoyooyooo/notion-skills-cli/blob/next/docs/library-root-migration.md).
 
 If requested, `ctl config set default_library LIBRARY_ID` saves the consumption
 default used by CLI and SDK. Writers still require an explicit target. A full ref
@@ -219,10 +220,10 @@ and generate its reading projection. Choose that authority before writing.
 Pi integration is optional. The
 [Broker](https://github.com/yoyooyooo/pi-context-broker/blob/next/README.md)
 owns connection configuration. In a paired Pi installation, preview one named
-source and exact entry in the chosen config:
+source and exact Library root in the chosen config:
 
 ```text
-/context-broker connect SOURCE ENTRY --config /absolute/config.json
+/context-broker connect SOURCE LIBRARY_ID --config /absolute/config.json
 ```
 
 When that configuration change is already authorized, use the exact apply

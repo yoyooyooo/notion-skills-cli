@@ -143,7 +143,7 @@ test("the public operation reader reports a real unknown CREATE without replay o
   expect(value.operation?.record_page_id).toMatch(/^[a-f0-9-]{36}$/)
   expect(value.operation?.local_lifecycle?.phase).toBe("active")
   expect(
-    f.calls.some((call) => call.path.includes("/markdown") || call.path.includes("/children")),
+    f.calls.some((call) => call.path.includes("/markdown") || (call.path.includes("/children") && call.path.split("?")[0] !== `v1/blocks/${libraryRoot}/children`)),
   ).toBe(false)
   expect(f.mutations()).toEqual([])
   expect(JSON.stringify([...f.pages])).toBe(pages)

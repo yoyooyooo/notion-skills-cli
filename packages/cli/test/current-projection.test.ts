@@ -62,7 +62,7 @@ test("projection recovery names the observed pending intent and never resumes an
         projection_policy: { include: ["references/**/*.md"], exclude: ["**/tests/**"] },
       },
       target,
-      library.skills.database_id,
+      library.library_id,
       { requests: 7000, bytes: 900000, duration_ms: 3600000 },
     ),
   ).toMatchObject({
@@ -97,7 +97,7 @@ test("projection recovery names the observed pending intent and never resumes an
         owner: { kind: "skill", id: "owned-skill" },
       },
       target,
-      library.skills.database_id,
+      library.library_id,
     ),
   ).toMatchObject({
     argv: [
@@ -120,7 +120,7 @@ test("projection recovery names the observed pending intent and never resumes an
     currentProjectionRecoveryNext(
       { projection: true, operation_id: "missing-frozen-policy" },
       target,
-      library.skills.database_id,
+      library.library_id,
     ),
   ).toBeUndefined()
 })
@@ -136,7 +136,7 @@ test("restore recovery uses one public command across both phases with the origi
         projection_policy: policy,
       },
       target,
-      library.skills.database_id,
+      library.library_id,
       { requests: 1234, bytes: 5678, duration_ms: 9000 },
       true,
     )
@@ -171,7 +171,7 @@ test("restore recovery uses one public command across both phases with the origi
         projection_policy: policy,
       },
       target,
-      library.skills.database_id,
+      library.library_id,
       {},
       true,
     ),
@@ -229,7 +229,7 @@ test("projection scope is explicit and a batch cannot reinterpret one Skill's re
     { ...base, target: "https://example.com/41b5636c236e81d3ba0fc5fa3f735808" },
     { ...base, target: "statechart" },
     { ...base, operation: "invalid operation" },
-    { ...base, entry: "notion_page:" + target },
+    { ...base, library: "notion_page:" + target },
     { ...base, maxRequests: 0 },
     { ...base, maxBytes: -1 },
     { ...base, timeout: 1.5 },

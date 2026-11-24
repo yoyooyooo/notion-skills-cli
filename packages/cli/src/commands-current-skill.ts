@@ -30,7 +30,7 @@ const budgetFlag = (name: string, description: string) =>
     Flag.withDescription(description),
   )
 const common = () => ({
-  library: requiredSingleton("library", "Current Skills database ID, URL or exact registered alias"),
+  library: requiredSingleton("library", "Library root page ID, URL or exact registered alias"),
   dryRun: switchFlag(
     "dry-run",
     "Read the complete selected scope and report the plan without writing",

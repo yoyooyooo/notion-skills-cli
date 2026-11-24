@@ -198,7 +198,7 @@ export const currentProjectionCommand = defineCommand(
       Argument.optional,
       Argument.withDescription("Exact Skill page ID or Notion URL; omitted only with --daily"),
     ),
-    library: requiredSingleton("library", "Current Skills database ID, URL or exact registered alias"),
+    library: requiredSingleton("library", "Library root page ID, URL or exact registered alias"),
     daily: switchFlag(
       "daily",
       "Select Source 日用 current members, Skill 日用 and Default Context from complete current metadata",

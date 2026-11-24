@@ -59,6 +59,10 @@ for hosts, including for empty Libraries. SDK v3 uses `library`; retired
 `database` and `entry` options are rejected. It does not introduce an SDK writer.
 Existing authentication selection remains independent of Library selection.
 
+`selectLibrary` in SDK 3 reads the current local selection without Notion requests.
+Hosts call it when admitting a new input, then use `resolveLibrary` to validate a
+new root. A running input retains its captured root when the local default changes.
+
 | Input | Selected Library |
 | --- | --- |
 | Bare list or a short ref at a CLI entry | Explicit `--library`, otherwise `default_library`; missing context is an error |
@@ -163,7 +167,3 @@ destinations, returned content and the untouched Library. Permission denial alon
 does not prove correct routing. Keep test config/state/cache/scheduler roots
 separate and record exact root IDs; no new implicit import-target environment
 variable is required.
-
-`selectLibrary` in SDK 3 reads the current local selection without Notion requests.
-Hosts call it when admitting a new input, then use `resolveLibrary` to validate a
-new root. A running input retains its captured root when the local default changes.

@@ -24,7 +24,7 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts --help
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts doctor --run "$RUN"
 ~~~
 
-离线 Doctor 检查实际 CLI 的 version/help 和入口，记录隔离范围。ready 只说明可启动，不证明线上内容、权限、投影或清理。需要实际认证检查时显式加 --live；--database 使用任务选定的入口。检查实际结果，不把缺前置记成通过。
+离线 Doctor 检查实际 CLI 的 version/help 和入口，记录隔离范围。ready 只说明可启动，不证明线上内容、权限、投影或清理。需要实际认证检查时显式加 --live；--library 使用任务选定的入口。检查实际结果，不把缺前置记成通过。
 
 ## Drive
 
@@ -50,8 +50,8 @@ wrapper 返回产品的 exit 和输出。预期错误也须检查实际 exit/cod
 消费沿 [当前消费](../../verify-notion-consumption/SKILL.md) 和 [current-convergence](../features/current-convergence.md) 的 read/files/export。完整导入沿 [管理](../../verify-notion-management/SKILL.md)：
 
 ~~~bash
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library import "$SKILL_DIR" --entry "$ENTRY" --skill-id "$SKILL_ID" --dry-run
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library import "$SKILL_DIR" --entry "$ENTRY" --skill-id "$SKILL_ID"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library import "$SKILL_DIR" --library "$LIBRARY_ID" --skill-id "$SKILL_ID" --dry-run
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library import "$SKILL_DIR" --library "$LIBRARY_ID" --skill-id "$SKILL_ID"
 ~~~
 
 上述对象与完整输入由任务确定。dry-run 是当前观察，不授予写权限，也不冻结远端状态。unknown/partial 沿 [当前操作恢复](../../verify-notion-operation-recovery/SKILL.md) 核对原意图，保留仍需的 scratch，不重建旧 plan 或盲目重放。
@@ -85,14 +85,13 @@ SELECTED_NODE .cursor/skills/verify-ntn-skills/scripts/skill-reference-live.ts \
   --output ABSOLUTE_NEW_RUN_OUTPUT \
   --corpus ABSOLUTE_FIXED_CORPUS_JSON \
   --parent AUTHORIZED_TEST_PARENT_UUID \
-  --existing-entry EXISTING_TEST_SKILLS_DATABASE_UUID \
-  --existing-library EXISTING_LOGICAL_LIBRARY_ID
+  --existing-library EXISTING_TEST_LIBRARY_ROOT_UUID
 ~~~
 
 选定 CLI 路径来自同一 paired build；应用根、XDG 根和输出都属于当前 run。
-只按名称继承已授权的 NOTION_API_TOKEN，不打印或复制 token。existing-entry 是已授权
-测试 Library A 的物理 Skills 表；existing-library 是该四表 Library 的逻辑身份。
-脚本核对两者，再在精确 parent 下创建一个新测试子页，通过产品 init 建立 Library B。
+只按名称继承已授权的 NOTION_API_TOKEN，不打印或复制 token。existing-library 是已授权
+测试 Library A 的根页面 UUID。脚本完整读取根、全部直接子对象、四张 database 和各自
+数据源，核实际父子关系，再在精确 parent 下创建测试容器，通过产品 init 建立独立 Library B。
 初始化的重复调用、挂接和四张空表 census 必须在导入业务内容前完成。
 
 corpus 使用现役 members-live 的固定 Git 输入清单，逐一核对 commit、文件路径、

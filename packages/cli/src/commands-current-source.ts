@@ -119,7 +119,7 @@ const budgetFlag = (name: string, description: string) =>
     Flag.withDescription(description),
   )
 const flags = {
-  library: requiredSingleton("library", "Current Skills database ID, URL or exact registered alias"),
+  library: requiredSingleton("library", "Library root page ID, URL or exact registered alias"),
   operation: singleton(
     "operation",
     "Current Source intent identity; required with --resume or --supersede OLD",

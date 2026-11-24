@@ -16,6 +16,7 @@ import {
   formatSkillIdentity,
   formatSkillRef,
   parseSkillRef,
+  validateSkillId,
 } from "../../core/src/skill-ref.ts"
 import { readCurrentSkillMetadata } from "../../core/src/shared-current-index.ts"
 import {
@@ -94,7 +95,7 @@ export function loadCurrentImportBatch(manifestPath: string, rebindFrom?: string
       const roots = new Set<string>(),
         ids = new Set<string>()
       for (const entry of value.skills) {
-        formatSkillIdentity({ libraryId: "batch-admission", skillId: entry.skill_id })
+        validateSkillId(entry.skill_id)
         if (
           !entry.root ||
           normalizePath(entry.root) !== entry.root ||
@@ -520,7 +521,7 @@ export const currentImportBatchCommand = defineCommand(
   "import-batch",
   {
     manifest: Argument.String("manifest"),
-    library: requiredSingleton("library", "Current Skills database ID, URL or exact registered alias"),
+    library: requiredSingleton("library", "Library root page ID, URL or exact registered alias"),
     operation: singleton("operation", "Exact batch identity; required with --resume"),
     resume: switchFlag(
       "resume",

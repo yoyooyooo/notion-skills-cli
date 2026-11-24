@@ -246,13 +246,13 @@ describe("once consume contract", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("encoded stable shared identities remain valid through fixed consume and its decoder", async () => {
-    const f = await fixture({ "guide:v1": { library: "00000000-0000-4000-8000-000000000114" } })
-    const input = f.input([f.ref("guide:v1")])
+  test("canonical stable identities remain valid through fixed consume and its decoder", async () => {
+    const f = await fixture({ "guide-v1": { library: "00000000-0000-4000-8000-000000000114" } })
+    const input = f.input([f.ref("guide-v1")])
     const result = await f.run(consume(input))
     expect(result.status).toBe("ready")
     if (result.status !== "ready") throw new Error(JSON.stringify(result))
-    expect(result.entries[0]?.manifest.record.id).toBe(skillIdentity("00000000-0000-4000-8000-000000000114", "guide:v1"))
+    expect(result.entries[0]?.manifest.record.id).toBe(skillIdentity("00000000-0000-4000-8000-000000000114", "guide-v1"))
     expect(await f.run(decodeConsumeResult(result, input))).toEqual(result)
     expect(f.calls).toHaveLength(0)
   })

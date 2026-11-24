@@ -44,7 +44,7 @@ bun test ./.cursor/skills/verify-ntn-skills/scripts/members-live.test.ts
 这是 core 验收全部通过后的后置旅程；实际 adapter 放在 E2E 的私有 run 中，复用同一安装包、测试库、driver 和证据目录约定。不要把它加入已冻结的 core helper，也不要把下面的步骤当成已经执行的结果。重跑时保留上次实际目标 ID 和完整选择集合，先读回，再决定是否还需要补充样本。
 
 1. 从 core 报告取得实际创建的 enabled、ready Skill targets，逐项核对仍属于这个测试库，排除 explicit-poteto owner、自身重复 ID 和 disabled target。仅为不足的数量创建简单叶子 Skill，最终选择 26 个唯一 Members。可将真实 unslop 包含在这 26 个候选中，明确记录是否选入。
-2. 读取并记录 explicit-poteto 当前 Requires 恰为真实 unslop。使用公开 `ctl library skill update OWNER --entry ENTRY`，重复 26 个 `--members TARGET` 显式替换 Members，省略 `--requires`。保存完整 argv 和第一次写入结果；本步骤验证显式关系维护，不计为自动 Members 发现。
+2. 读取并记录 explicit-poteto 当前 Requires 恰为真实 unslop。使用公开 `ctl library skill update OWNER --library LIBRARY_ID`，重复 26 个 `--members TARGET` 显式替换 Members，省略 `--requires`。保存完整 argv 和第一次写入结果；本步骤验证显式关系维护，不计为自动 Members 发现。
 3. 独立读取 owner 的 raw Notion page，按 library descriptor 注册的 Members property ID 找到关系属性，确认 `has_more: true` 并记录 inline 返回数量。然后由独立只读 probe 按该 property ID 读取 page-property endpoint，显式使用 `page_size=25`，沿 `next_cursor` 读到 `has_more: false`。保留每页响应，核对最终正好 26 个唯一页面 UUID，并与显式选择集合精确相等。单独核对 Requires 仍只有原 unslop；不能用 import/update 的成功回执代替这些读回。
 4. 对 exact owner ref 执行 `read --refresh --metrics`、`ctl prepare --purpose inspect --refresh --metrics` 和 `use --refresh --json --metrics`，每次显式选择测试库。read 的 Members 与 inspect 的 root candidates 都必须完整包含同一组 26 个目标；inspect 仅准备 owner。use 只准备 owner 与明确 Requires 的 unslop。如果 unslop 同时在 Members 中，它应是同一个 prepared node；其余 Members 仍为 known，不加载它们的正文或依赖。核对全部消费命令的实际 `request_metrics.requests.notion_write` 为 0。
 5. 原样重放第 2 步的公开 update，要求实际 Notion 写请求为 0，再独立核对 Members 和 Requires 的完整集合。任何不确定结果都保留原 operation/state，沿既有恢复流程处理，不换 operation 盲重试。
@@ -58,7 +58,7 @@ bun test ./.cursor/skills/verify-ntn-skills/scripts/members-live.test.ts
 拒绝 symlink，包括父目录别名；先用真实物理路径。完整上限为 10,000 文件、128 MiB，单个原件 64 MiB。保留 executable mode，拒绝读取过程中变化的完整输入。
 
 ~~~sh
-ntn-skills ctl library import "$INPUT" --entry "$CURRENT_ENTRY" --skill-id "$SKILL_ID" --dry-run
+ntn-skills ctl library import "$INPUT" --library "$CURRENT_LIBRARY" --skill-id "$SKILL_ID" --dry-run
 ~~~
 
 检查将移除的 Files 和权威变化。dry-run 不创建 operation，也不宣称正文已核验。portable 的 Members/Requires 以同库 stable ref 表示；省略保持、[] 清空、数组完整替换。Prompt 关系、旧 projection/materialization 和未知字段必须拒绝。
@@ -66,17 +66,17 @@ ntn-skills ctl library import "$INPUT" --entry "$CURRENT_ENTRY" --skill-id "$SKI
 ## 写入、读回与 no-op
 
 ~~~sh
-ntn-skills ctl library import "$INPUT" --entry "$CURRENT_ENTRY" --skill-id "$SKILL_ID"
-ntn-skills ctl library files "$PAGE_ID" --entry "$CURRENT_ENTRY"
-ntn-skills read "$PAGE_ID" --database "$CURRENT_ENTRY" --refresh --metrics
-ntn-skills files "$PAGE_ID" --database "$CURRENT_ENTRY" --refresh
-ntn-skills export "$PAGE_ID" --database "$CURRENT_ENTRY" --output "$EXPORT_DIR"
-ntn-skills ctl library import "$INPUT" --entry "$CURRENT_ENTRY" --skill-id "$SKILL_ID"
+ntn-skills ctl library import "$INPUT" --library "$CURRENT_LIBRARY" --skill-id "$SKILL_ID"
+ntn-skills ctl library files "$PAGE_ID" --library "$CURRENT_LIBRARY"
+ntn-skills read "$PAGE_ID" --library "$CURRENT_LIBRARY" --refresh --metrics
+ntn-skills files "$PAGE_ID" --library "$CURRENT_LIBRARY" --refresh
+ntn-skills export "$PAGE_ID" --library "$CURRENT_LIBRARY" --output "$EXPORT_DIR"
+ntn-skills ctl library import "$INPUT" --library "$CURRENT_LIBRARY" --skill-id "$SKILL_ID"
 ~~~
 
 使用实际返回的 PAGE_ID 和后续文件 refs。Source/resource 比对导出路径、bytes、hash、mode；native 比对完整读回的内容结构及实际当前正文+frontmatter/mode，不把格式规范化说成原字节保真。从 Skills→Files 检查全文和下载。第二次写入即使使用新的 operation，也应语义 0 写，active Operation 为零。
 
-本地完整导入默认 resource authority，原件保存在当前 Records；不支持直接上传的类型使用只含该原件的 ZIP。导入后显式运行 `ctl library projection PAGE_ID --entry DB`，验证 main 与全部文本 Files 的实际全文，再重复核零写。Native 正文只读验证，非文本报告 skipped；不得把 import 成功代称投影已完成。
+本地完整导入默认 resource authority，原件保存在当前 Records；不支持直接上传的类型使用只含该原件的 ZIP。导入后显式运行 `ctl library projection PAGE_ID --library LIBRARY_ID`，验证 main 与全部文本 Files 的实际全文，再重复核零写。Native 正文只读验证，非文本报告 skipped；不得把 import 成功代称投影已完成。
 
 ## 覆盖与清理
 
@@ -85,7 +85,7 @@ ntn-skills ctl library import "$INPUT" --entry "$CURRENT_ENTRY" --skill-id "$SKI
 ## 恢复
 
 ~~~sh
-ntn-skills ctl library import "$INPUT" --entry "$CURRENT_ENTRY" --skill-id "$SKILL_ID" --operation "$OPERATION_ID" --resume
+ntn-skills ctl library import "$INPUT" --library "$CURRENT_LIBRARY" --skill-id "$SKILL_ID" --operation "$OPERATION_ID" --resume
 ~~~
 
 重传原输入并核同一指纹。覆盖 CREATE 响应丢失、完整 append 响应丢失和已归档行退出查询。不得重发未知非幂等请求，不得暂时改 ready。部分 append 未能收敛时保留 pending，明确记录这个限制。

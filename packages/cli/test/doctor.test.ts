@@ -121,7 +121,7 @@ test("doctor inspects catalog and schema without probing an arbitrary enabled Sk
   expect(
     f.calls.some((call) => call.path === `v1/data_sources/${library.skills.data_source_id}`),
   ).toBe(true)
-  expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
+  expect(f.calls.some((call) => call.path.startsWith("v1/pages/") && call.path !== `v1/pages/${library.library_id}`)).toBe(false)
   expect(f.downloads).toEqual([])
   expect(f.objects.size).toBe(0)
   expect([...f.json.keys()].some((key) => key.startsWith("snapshots/"))).toBe(false)
@@ -138,7 +138,7 @@ test("doctor reports an empty catalog without claiming a content probe", async (
     skill_read: { checked: false },
     coverage: { exhaustive: true, failed_sources: [] },
   })
-  expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
+  expect(f.calls.some((call) => call.path.startsWith("v1/pages/") && call.path !== `v1/pages/${library.library_id}`)).toBe(false)
 })
 
 test("doctor preserves authentication and selected schema failures", async () => {
@@ -170,5 +170,5 @@ test("doctor preserves incomplete catalog coverage instead of certifying missing
     skill_read: { checked: false },
     coverage: { exhaustive: false, failed_sources: [{ code: "INVALID_RESPONSE" }] },
   })
-  expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
+  expect(f.calls.some((call) => call.path.startsWith("v1/pages/") && call.path !== `v1/pages/${library.library_id}`)).toBe(false)
 })

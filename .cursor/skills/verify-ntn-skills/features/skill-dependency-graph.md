@@ -7,8 +7,8 @@
 ~~~sh
 ntn-skills schema use
 ntn-skills schema ctl prepare
-ntn-skills use "$PAGE_ID" --database "$ENTRY" --json --metrics
-ntn-skills ctl prepare "$PAGE_ID" --database "$ENTRY" --purpose inspect --metrics
+ntn-skills use "$PAGE_ID" --library "$LIBRARY_ID" --json --metrics
+ntn-skills ctl prepare "$PAGE_ID" --library "$LIBRARY_ID" --purpose inspect --metrics
 ntn-skills files "$RETURNED_REF"
 ~~~
 

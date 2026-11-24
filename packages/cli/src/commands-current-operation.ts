@@ -96,7 +96,7 @@ export const currentOperationCommand = defineCommand(
       Argument.withDescription("Exact stable Skill or Source ID"),
     ),
     kind: requiredSingleton("kind", "Current owner kind: skill or source"),
-    library: requiredSingleton("library", "Current Skills database ID, URL or exact registered alias"),
+    library: requiredSingleton("library", "Library root page ID, URL or exact registered alias"),
     maxRequests: budgetFlag(
       "max-requests",
       "Positive maximum HTTP attempts including library lookup; default 1000",
