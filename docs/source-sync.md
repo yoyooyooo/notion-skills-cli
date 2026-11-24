@@ -18,8 +18,9 @@ ntn-skills ctl library source check \
   --source shared-tools
 ```
 
-`--library` accepts a current Skills database ID, Notion URL or exact registered
-alias. Repeat `--source` for 1 to 256 stable Source IDs. There is no implicit
+`--library` accepts a Library root page ID, Notion URL or exact registered
+alias. The root identifies the complete Library; a Skills database ID is not
+a Library selector. Repeat `--source` for 1 to 256 stable Source IDs. There is no implicit
 whole-library selection. Both commands emit JSON without `--json`.
 
 Check reads current declarations and complete pending-owner information, then

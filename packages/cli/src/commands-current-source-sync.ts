@@ -24,7 +24,7 @@ const budgetFlag = (name: string, description: string) =>
 const flags = {
   library: requiredSingleton(
     "library",
-    "Current Skills database ID, Notion URL or exact registered alias",
+    "Library root page ID, Notion URL or exact registered alias",
   ),
   sources: Flag.String("source").pipe(
     Flag.between(1, 256),
