@@ -13,7 +13,7 @@ import {
   SharedLibrarySchema,
   type SharedLibrary,
 } from "../../../../packages/core/src/shared-library-model.ts"
-import { requireTestCommand } from "./empty-library.ts"
+import { requireTestCommand, verifyLibraryPlacement } from "./empty-library.ts"
 
 type Drive = (argv: string[]) => Promise<{ output: unknown; exit: number; record: string }>
 type Probe = (id: string) => Promise<unknown>
@@ -272,8 +272,8 @@ export function membersVerifier(input: {
       "library",
       "import",
       path,
-      "--entry",
-      library.skills.database_id,
+      "--library",
+      library.library_id,
       "--skill-id",
       skillId,
     ]
@@ -309,8 +309,8 @@ export function membersVerifier(input: {
       "library",
       "import",
       owner.input,
-      "--entry",
-      library.skills.database_id,
+      "--library",
+      library.library_id,
       "--skill-id",
       owner.skillId,
     ])
@@ -441,6 +441,7 @@ export async function verifyMembersCorpus(path: string) {
 export async function runMembersLive(input: {
   readonly root: string
   readonly library: SharedLibrary
+  readonly parent?: string
   readonly corpus: string
   readonly prefix: string
   readonly drive: Drive
@@ -543,8 +544,8 @@ export async function runMembersLive(input: {
     const output = await verify.execute(`${label}-export`, [
       "export",
       owner.pageId,
-      "--database",
-      library.skills.database_id,
+      "--library",
+      library.library_id,
       "--refresh",
       "--output",
       destination,
@@ -570,8 +571,8 @@ export async function runMembersLive(input: {
       "library",
       "members-plan",
       path,
-      "--entry",
-      library.skills.database_id,
+      "--library",
+      library.library_id,
       "--skill-id",
       id,
       "--output",
@@ -647,8 +648,8 @@ export async function runMembersLive(input: {
       "skill",
       "update",
       owner.pageId,
-      "--entry",
-      library.skills.database_id,
+      "--library",
+      library.library_id,
     ]
     for (const member of members.length ? members : [""]) args.push("--members", member)
     if (requires !== undefined)
@@ -663,6 +664,29 @@ export async function runMembersLive(input: {
   }
 
   try {
+    await stage("library-placement", "independent_notion_metadata", async () => {
+      const facts = await verifyLibraryPlacement({
+        library,
+        parent: input.parent,
+        probe: async (request) => {
+          const path = request.kind === "page" ? "v1/pages/" + request.id
+            : request.kind === "database" ? "v1/databases/" + request.id
+            : request.kind === "data-source" ? "v1/data_sources/" + request.id
+            : "v1/blocks/" + request.id + "/children?" + new URLSearchParams({
+              page_size: "100", ...(request.cursor ? { start_cursor: request.cursor } : {}),
+            })
+          const result = await input.drive(["ctl", "api", path])
+          await record("library-placement-response", result)
+          assert.equal(result.exit, 0)
+          const output = property(result.output)
+          assert.equal(output.ok, true)
+          requireZeroNotionWrites(output)
+          return property(output.response)
+        },
+      })
+      await record("library-placement", facts)
+      return facts
+    })
     const targets = await stage("synthetic-targets", "synthetic", async () => {
       const owners: Owner[] = []
       for (const suffix of ["target-a", "target-b", "target-disabled"]) {
@@ -679,8 +703,8 @@ export async function runMembersLive(input: {
         "skill",
         "update",
         disabled.pageId,
-        "--entry",
-        library.skills.database_id,
+        "--library",
+        library.library_id,
         "--enabled",
         "false",
       ])
@@ -816,8 +840,8 @@ export async function runMembersLive(input: {
           "library",
           "files",
           owner.pageId,
-          "--entry",
-          library.skills.database_id,
+          "--library",
+          library.library_id,
         ])
         const updatedPath = await copyTree(bound.output, join(fixtures, "relative-updated"), [
           MANIFEST,
@@ -842,8 +866,8 @@ export async function runMembersLive(input: {
           "library",
           "files",
           owner.pageId,
-          "--entry",
-          library.skills.database_id,
+          "--library",
+          library.library_id,
         ])
         const previousEvidence = currentFileEvidence(beforeFiles),
           currentEvidence = currentFileEvidence(afterFiles)
@@ -1023,8 +1047,8 @@ export async function runMembersLive(input: {
       const read = await verify.execute("poteto-read", [
         "read",
         explicitPoteto.ref,
-        "--database",
-        library.skills.database_id,
+        "--library",
+        library.library_id,
         "--refresh",
         "--metrics",
       ])
@@ -1047,8 +1071,8 @@ export async function runMembersLive(input: {
         "ctl",
         "prepare",
         explicitPoteto.ref,
-        "--database",
-        library.skills.database_id,
+        "--library",
+        library.library_id,
         "--purpose",
         "inspect",
         "--refresh",
@@ -1074,8 +1098,8 @@ export async function runMembersLive(input: {
       const used = await verify.execute("poteto-use", [
         "use",
         explicitPoteto.ref,
-        "--database",
-        library.skills.database_id,
+        "--library",
+        library.library_id,
         "--refresh",
         "--json",
         "--metrics",
@@ -1262,13 +1286,14 @@ async function main() {
   }
   const raw = property(JSON.parse(await readFile(required("--scope"), "utf8")))
   const library = Schema.decodeUnknownSync(SharedLibrarySchema)(raw.library ?? raw)
-  if (raw.parent !== undefined) assert.equal(raw.parent, library.library_id)
+  if (raw.parent !== undefined) assert.ok(pageId(String(raw.parent)), "Retain the actual authorized outer parent")
   if (raw.kind !== undefined) assert.equal(raw.kind, "library_ready")
   const root = required("--output"),
     driver = await installedDriver(required("--cli"), required("--runtime"), root)
   const report = await runMembersLive({
     root,
     library,
+    ...(raw.parent === undefined ? {} : { parent: String(raw.parent) }),
     corpus: required("--corpus"),
     prefix:
       args.get("--prefix") ?? `members-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`,

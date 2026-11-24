@@ -122,8 +122,8 @@ test("a successful import acknowledgement cannot conceal missing actual automati
         "skill",
         "update",
         owner.pageId,
-        "--entry",
-        currentLibrary.skills.database_id,
+        "--library",
+        currentLibrary.library_id,
         "--members",
         memberId,
       ])
@@ -209,7 +209,7 @@ test("a public action cannot escape the retained test library", async () => {
     },
   })
   await expect(
-    verify.execute("foreign", ["read", ownerId, "--database", currentId(999)]),
+    verify.execute("foreign", ["read", ownerId, "--library", currentId(999)]),
   ).rejects.toThrow("exact library")
   expect(calls).toBe(0)
 })
