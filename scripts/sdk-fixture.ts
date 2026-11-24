@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
-import { LIBRARY_MARKER } from "../packages/core/src/shared-library-model.ts"
+import { property } from "../packages/core/src/model.ts"
+import { librarySchemaResponse } from "../packages/core/test/library-schema-fixture.ts"
 import {
   currentBytes,
   currentDigest,
@@ -96,6 +97,25 @@ if (args[2] === "--catalog")
     skills.push(row)
   }
 const envPath = join(root, "env.json")
+const roles = ["skills", "files", "records", "sources"] as const
+const outerParent = currentId(800000)
+const rootPage = {
+  ...property(librarySchemaResponse("v1/pages/" + currentLibrary.library_id, currentLibrary)),
+  parent: { type: "page_id", page_id: outerParent },
+}
+const rootChildren = property(
+  librarySchemaResponse("v1/blocks/" + currentLibrary.library_id + "/children", currentLibrary),
+).results
+const schemas = roles.map((role) => {
+  const binding = currentLibrary[role]
+  return {
+    database: property(librarySchemaResponse("v1/databases/" + binding.database_id, currentLibrary)),
+    dataSource: {
+      ...property(librarySchemaResponse("v1/data_sources/" + binding.data_source_id, currentLibrary)),
+      parent: { type: "database_id", database_id: binding.database_id },
+    },
+  }
+})
 await writeFile(
   envPath,
   JSON.stringify(
@@ -116,19 +136,16 @@ await writeFile(
 const fixture = {
   version: 2,
   kind: "current-notion-service",
+  library_id: currentLibrary.library_id,
   database: currentLibrary.skills.database_id,
   root_page_id: main.id,
   env: envPath,
   notion: {
     library: currentLibrary,
-    database: {
-      object: "database",
-      id: currentLibrary.skills.database_id,
-      database_type: null,
-      title: [{ plain_text: "Current SDK fixture" }],
-      description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(currentLibrary) }],
-      data_sources: [{ id: currentLibrary.skills.data_source_id, name: "Skills" }],
-    },
+    root: rootPage,
+    root_children: rootChildren,
+    databases: schemas.map((schema) => schema.database),
+    data_sources: schemas.map((schema) => schema.dataSource),
     main,
     skills,
     files: structuredClone(f.files),

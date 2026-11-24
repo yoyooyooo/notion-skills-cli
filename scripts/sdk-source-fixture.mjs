@@ -44,10 +44,12 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     fs.writeFileSync(path, "", { flag: "wx", mode: 0o600 })
 
   const notion = structuredClone(sample.notion)
-  if (notion.skills_data_source !== undefined) {
-    assert.equal(notion.skills_data_source.object, "data_source")
-    assert.equal(notion.skills_data_source.id, notion.library.skills.data_source_id)
-  }
+  assert.equal(notion.library.version, 2, "The controlled service requires the current Library descriptor")
+  assert.equal(notion.root?.object, "page", "Declare the actual root page independently")
+  assert.ok(Array.isArray(notion.root_children), "Declare the actual root children independently")
+  assert.ok(Array.isArray(notion.databases), "Declare actual databases independently of the descriptor")
+  assert.ok(Array.isArray(notion.data_sources), "Declare actual data sources independently of the descriptor")
+  const skillsDataSource = () => notion.data_sources.find((source) => source.id === notion.library.skills.data_source_id)
   notion.blocks ??= {}
   let nextPage = 900000,
     edit = 0
@@ -92,8 +94,8 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
         (item) => item.data_source_id === body.parent.data_source_id,
       )
       const defaults = {}
-      if (rows === notion.skills && notion.skills_data_source !== undefined)
-        for (const field of Object.values(notion.skills_data_source.properties))
+      if (rows === notion.skills && skillsDataSource() !== undefined)
+        for (const field of Object.values(skillsDataSource().properties))
           if (field.type === "relation") {
             assert.equal(typeof field.id, "string")
             assert.ok(field.id.length > 0)
@@ -294,17 +296,17 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       }
     } else if (request.method === "GET" && url.pathname === "/v1/users/me")
       value = { object: "user", id: "00000000-0000-4000-8000-000000000099" }
-    else if (
-      request.method === "GET" &&
-      url.pathname === `/v1/databases/${library.skills.database_id}`
-    )
-      value = notion.database
-    else if (
-      notion.skills_data_source !== undefined &&
-      request.method === "GET" &&
-      url.pathname === `/v1/data_sources/${library.skills.data_source_id}`
-    )
-      value = notion.skills_data_source
+    else if (request.method === "GET" && url.pathname === "/v1/pages/" + notion.root.id)
+      value = notion.root
+    else if (request.method === "GET" && url.pathname === "/v1/blocks/" + notion.root.id + "/children")
+      value = page(notion.root_children, {
+        page_size: 100,
+        ...(url.searchParams.has("start_cursor") ? { start_cursor: url.searchParams.get("start_cursor") } : {}),
+      })
+    else if (request.method === "GET" && notion.databases.some((row) => url.pathname === "/v1/databases/" + row.id))
+      value = notion.databases.find((row) => url.pathname === "/v1/databases/" + row.id)
+    else if (request.method === "GET" && notion.data_sources.some((row) => url.pathname === "/v1/data_sources/" + row.id))
+      value = notion.data_sources.find((row) => url.pathname === "/v1/data_sources/" + row.id)
     else if (
       allowCurrentWrites &&
       request.method === "GET" &&
@@ -446,9 +448,10 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     if (method === "GET")
       return (
         path === "/v1/users/me" ||
-        path === "/v1/databases/" + library.skills.database_id ||
-        (notion.skills_data_source !== undefined &&
-          path === "/v1/data_sources/" + library.skills.data_source_id) ||
+        path === "/v1/pages/" + notion.root.id ||
+        path === "/v1/blocks/" + notion.root.id + "/children" ||
+        notion.databases.some((row) => path === "/v1/databases/" + row.id) ||
+        notion.data_sources.some((row) => path === "/v1/data_sources/" + row.id) ||
         path === "/v1/pages/" + notion.main?.id ||
         notion.files.some((file) => path === "/v1/pages/" + file.id) ||
         notion.skills.some((row) => path === "/v1/pages/" + row.id) ||
