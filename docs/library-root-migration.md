@@ -4,7 +4,7 @@ The one-time migration executor has been retired from the current repository.
 This guide preserves the ownership, recovery and adoption requirements of the
 transition; it does not expose another supported command or identity resolver.
 The original executor, inventory, exact plan, journal and readback evidence remain
-with [AH-1300](https://linear.app/yoyooyooo/issue/AH-1300). Current CLI and SDK
+with the operator's cutover records. Current CLI and SDK
 operations use the root-page contract described in [Library roots](library-roots.md).
 
 Library v2 uses the canonical UUID of its owning Notion page as `library_id`.
