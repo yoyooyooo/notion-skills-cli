@@ -739,6 +739,7 @@ const storeUrl = new URL("../src/notion-mcp-credential-store.ts", import.meta.ur
 function authChild(
   options: McpAuthOptions,
   operation: "resolveMcpCredential" | "logoutMcp" = "resolveMcpCredential",
+  holdFenceRead = false,
 ) {
   const child = spawn(
     process.execPath,
@@ -748,10 +749,31 @@ function authChild(
       `
     import {${operation} as operation} from ${JSON.stringify(authUrl)};
     import {McpCredentialStore} from ${JSON.stringify(storeUrl)};
+    import fs from "node:fs";
+    import {syncBuiltinESMExports} from "node:module";
+    const holdFenceRead=${JSON.stringify(holdFenceRead)};
+    const fenceSuffix="/sync/locks/"+${JSON.stringify(createHash("sha256").update("notion-mcp-credentials").digest("hex"))};
+    const lstat=fs.lstat;
+    let heldFence,ownedRead=false;
+    if(holdFenceRead) {
+      fs.lstat=function(location,...args) {
+        if(heldFence===undefined && String(location).endsWith(fenceSuffix)) {
+          heldFence=String(location);
+          process.send?.("fence-observed");
+          process.once("message",()=>lstat.call(fs,location,...args));
+          return;
+        }
+        return lstat.call(fs,location,...args);
+      };
+      syncBuiltinESMExports();
+    }
     const read=McpCredentialStore.prototype.read;
     let observed=false;
     McpCredentialStore.prototype.read=async function() {
       const state=await read.call(this);
+      if(heldFence!==undefined && fs.existsSync(heldFence+"/owner.json")) {
+        ownedRead=JSON.parse(fs.readFileSync(heldFence+"/owner.json","utf8")).pid===process.pid;
+      }
       if(!observed && state.oauth.kind==="ready" && state.oauth.refresh.kind==="pending") {
         observed=true;
         process.send?.("read-pending");
@@ -767,7 +789,7 @@ function authChild(
       })});
       process.stdout.write(JSON.stringify({kind:result.kind,revision:result.revision})+"\\n");
     } catch(error) {
-      process.stdout.write(JSON.stringify({code:error.code})+"\\n");
+      process.stdout.write(JSON.stringify({code:error.code,...(holdFenceRead?{ownedRead,details:error.details}:{})})+"\\n");
       process.exitCode=1;
     } finally {
       process.disconnect?.();
@@ -777,8 +799,10 @@ function authChild(
     { stdio: ["ignore", "pipe", "pipe", "ipc"] },
   )
   const observedPending = latch<void>()
+  const observedFence = latch<void>()
   child.on("message", (message: unknown) => {
     if (message === "read-pending") observedPending.resolve()
+    if (message === "fence-observed") observedFence.resolve()
   })
   let output = "",
     errors = ""
@@ -793,7 +817,12 @@ function authChild(
     errors += chunk.toString("utf8")
   })
   const done = once(child, "exit").then(([code, signal]) => ({ code, signal, output, errors }))
-  return { child, done, observedPending: observedPending.promise }
+  return {
+    child,
+    done,
+    observedPending: observedPending.promise,
+    observedFence: observedFence.promise,
+  }
 }
 async function stopChild(child: ChildProcess) {
   if (child.exitCode === null && child.signalCode === null) {
@@ -809,6 +838,47 @@ async function childReachedRefresh(received: Promise<void>, child: ReturnType<ty
     }),
   ])
 }
+
+test("a successor retries a normally released fence and rereads its marker only after reacquiring ownership", async () => {
+  await withFixture(async (f) => {
+    await loginMcp({ ...f.options, onAuthorize: f.authorize })
+    await f.expire()
+    f.setRefreshMode("hold")
+    const controller = new AbortController()
+    const first = resolveMcpCredential({
+      ...f.options,
+      signal: controller.signal,
+      deadline: Date.now() + 15_000,
+    }).then(
+      () => "success",
+      (error: unknown) => error,
+    )
+    let successor: ReturnType<typeof authChild> | undefined
+    try {
+      await f.refreshReceived
+      successor = authChild(f.options, "resolveMcpCredential", true)
+      await childReachedRefresh(successor.observedFence, successor)
+      // The child's mkdir already observed EEXIST. Retire the real owner's
+      // fence before allowing its first lstat, without changing the fs result.
+      controller.abort()
+      expect(await first).toMatchObject({ code: "MCP_AUTH_CANCELLED" })
+      successor.child.send("read-released-fence")
+      const result = await successor.done
+      expect(result.code).toBe(1)
+      expect(result.errors).toBe("")
+      expect(JSON.parse(result.output), result.output).toMatchObject({
+        code: "MCP_AUTH_REAUTH_REQUIRED",
+        ownedRead: true,
+      })
+      expect(f.refreshes).toBe(1)
+    } finally {
+      controller.abort()
+      f.releaseRefresh()
+      await first
+      if (successor) await stopChild(successor.child)
+    }
+  })
+})
 
 test("two actual processes serialize refresh and reread the winning rotated grant", async () => {
   await withFixture(async (f) => {
