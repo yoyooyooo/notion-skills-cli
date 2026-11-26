@@ -900,7 +900,7 @@ function currentObservations(options: ReturnType<typeof sdkOptions>) {
   }
 }
 
-function expireCurrentObservations(options: ReturnType<typeof sdkOptions>, ageMs: number) {
+function ageCurrentObservations(options: ReturnType<typeof sdkOptions>, ageMs: number) {
   const database = new DatabaseSync(join(options.env.NTN_SKILLS_HOME, "state.sqlite"))
   try {
     const validatedAt = Date.now() - ageMs
@@ -920,6 +920,7 @@ function expireCurrentObservations(options: ReturnType<typeof sdkOptions>, ageMs
         observation.id!,
       )
     }
+    return validatedAt
   } finally {
     database.close()
   }
@@ -985,6 +986,79 @@ test("public SDK reuses complete five-minute online graphs across independent pr
   }
 })
 
+test("public SDK default one-hour freshness reuses a thirty-minute graph and revalidates at expiry", async () => {
+  const root = await mkdtemp(join(await realpath(tmpdir()), "sdk-default-hour-"))
+  const source = await startSdkSourceFixture(
+    await sample(undefined, true),
+    join(root, "requests.jsonl"),
+  )
+  const options = sdkOptions(source, root, "shared")
+  const input = { ...fiveMinuteUse, freshness: { policy: "default" } }
+  try {
+    const invoke = await processConsumer(root, options)
+    const cold = readyConsumption(await invoke(input))
+    const originalNodes = cold.preparation.nodes.filter((node) => node.state === "prepared")
+    expect(originalNodes).toHaveLength(2)
+    for (const node of originalNodes)
+      expect(node.freshness).toMatchObject({
+        max_age_ms: 3_600_000,
+        current_eligibility_max_age_ms: 3_600_000,
+        full_body_max_age_ms: 86_400_000,
+        policy_source: "product",
+      })
+    // This Store has no local policy or Profile override. Preserve the complete
+    // content and move only its current observations into the default window.
+    const validatedAt = ageCurrentObservations(options, 1_800_000)
+    const retained = currentObservations(options)
+    const beforeWarm = source.requests.length
+    source.setPhase("default-half-hour")
+    const warm = readyConsumption(await invoke(input))
+    expect(warm.preparation.session_bindings).toEqual(cold.preparation.session_bindings)
+    const nodes = warm.preparation.nodes.filter((node) => node.state === "prepared")
+    expect(nodes.map((node) => node.content)).toEqual(originalNodes.map((node) => node.content))
+    for (const node of nodes) {
+      expect(node.source).toBe("local_cache")
+      expect(node.freshness).toMatchObject({
+        policy: "default",
+        max_age_ms: 3_600_000,
+        current_eligibility_max_age_ms: 3_600_000,
+        policy_source: "product",
+        validated_at: new Date(validatedAt).toISOString(),
+        stale: false,
+      })
+      expect(node.freshness?.age_ms).toBeGreaterThanOrEqual(1_800_000)
+      expect(node.freshness?.age_ms).toBeLessThan(3_600_000)
+    }
+    expect(source.requests).toHaveLength(beforeWarm)
+    expect(currentObservations(options)).toEqual(retained)
+
+    const expiredAt = ageCurrentObservations(options, 3_600_000)
+    const beforeExpired = source.requests.length
+    source.setPhase("default-hour-expired")
+    const expired = readyConsumption(await invoke(input))
+    expect(expired.preparation.session_bindings).toEqual(cold.preparation.session_bindings)
+    const refreshed = expired.preparation.nodes.filter((node) => node.state === "prepared")
+    expect(refreshed.map((node) => node.content)).toEqual(originalNodes.map((node) => node.content))
+    for (const node of refreshed) {
+      expect(node.source).toBe("notion")
+      expect(node.freshness?.validated_at).not.toBe(new Date(expiredAt).toISOString())
+    }
+    const requests = source.requests.slice(beforeExpired)
+    expect(requests.filter((row: { path: string }) => row.path === "/v1/users/me")).toHaveLength(1)
+    for (const page of [skillPage, currentId(902)])
+      expect(requests.some((row: { path: string }) => row.path === `/v1/pages/${page}`)).toBe(true)
+    // An unchanged main body retains its independent twenty-four-hour deadline.
+    expect(requests.filter((row: { path: string }) => row.path.endsWith("/markdown"))).toHaveLength(
+      0,
+    )
+    expect(source.unexpected).toEqual([])
+    noConsumerWrites(source)
+  } finally {
+    await source.close()
+    console.info(JSON.stringify({ publicSdkDefaultHourEvidence: root }))
+  }
+})
+
 test("public SDK online graph cache still authenticates expired, forced, missing and foreign-credential reads", async () => {
   const root = await mkdtemp(join(await realpath(tmpdir()), "sdk-hot-boundaries-"))
   const source = await startSdkSourceFixture(await sample(), join(root, "requests.jsonl"))
@@ -1012,7 +1086,7 @@ test("public SDK online graph cache still authenticates expired, forced, missing
     }
     // Move only this fixture's persisted current observations past the unchanged
     // five-minute policy; immutable bytes and their full-body deadline remain.
-    expireCurrentObservations(options, 300_001)
+    ageCurrentObservations(options, 300_001)
     const beforeExpired = source.requests.length
     const expired = readyConsumption(await invoke(fiveMinuteUse))
     expect(expired.preparation.nodes[0]).toMatchObject({ source: "notion" })

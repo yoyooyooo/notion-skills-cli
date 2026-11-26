@@ -255,6 +255,11 @@ collide. A fixed selection keeps its chosen content locally; it is not remote
 history. `--offline` needs the selected local bytes. See [reading and cache
 behavior](skills/ntn-skills/references/integration.md#current-selection-and-cache).
 
+Skill content defaults to a one-hour cache window; catalogs default to 60 seconds.
+A new process can reuse complete, unexpired content in the same credential scope
+and Library without HTTP. Cache reads keep the original validation time. Use
+`--refresh` to request current remote validation, or set `--max-age` explicitly.
+
 ## Agent setup
 
 An Agent with a shell can discover the guides shipped with its CLI version:

@@ -233,6 +233,10 @@ Git 来源获取还要求当前 Git 支持 `--no-lazy-fetch`，
 固定选择在本地保留选中的内容，不是远端历史记录。
 `--offline` 需要所选字节已在本地。详见[读取与缓存](skills/ntn-skills/references/integration.md#current-selection-and-cache)。
 
+Skill 正文默认缓存一小时，目录默认 60 秒。同一凭据作用域和 Library 下，
+新进程可以直接复用完整且未过期的内容，无需 HTTP。读取缓存保留原始验证时间，
+不会续期。需要立即远程验证时使用 `--refresh`，也可以显式设置 `--max-age`。
+
 ## Agent 接入
 
 有 shell 的 Agent 可以直接发现当前 CLI 版本随包提供的指引：
