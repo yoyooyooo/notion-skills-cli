@@ -378,7 +378,7 @@ Missing or truncated trace data does not prove that no request occurred.
 A complete zero-request observation requires enabled tracing, zero total requests, an empty trace,
 zero dropped events, and no in-flight requests.
 
-Content cache age defaults to 300,000 ms and catalog age to 60,000 ms.
+Content cache age defaults to 3,600,000 ms and catalog age to 60,000 ms.
 Explicit read age wins over a stable Skill's Profile override, then its Profile default, then the product default.
 Long age delays change visibility. Full-body and current-eligibility checks retain independent deadlines.
 A cache hit does not improve discovery coverage.
