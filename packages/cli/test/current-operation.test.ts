@@ -23,7 +23,7 @@ const parent = mkdtempSync(join(tmpdir(), "ntn-operation-cli-"))
 afterAll(async () => {
   if (process.platform === "darwin") await Effect.runPromise(trashPath(parent))
 })
-const entry = library.skills.database_id
+const libraryRoot = library.library_id
 const owner = { kind: "skill", id: "pending-skill" } as const
 
 test("operation inspection is one current read route with exact owner and bounded controls", () => {
@@ -31,7 +31,7 @@ test("operation inspection is one current read route with exact owner and bounde
   expect(currentOperationCommand.subcommands).toEqual([])
   const schema = property(commandSchema(currentOperationCommand))
   const parameters = Array.isArray(schema.parameters) ? schema.parameters.map(property) : []
-  for (const name of ["owner-id", "kind", "entry"])
+  for (const name of ["owner-id", "kind", "library"])
     expect(parameters.find((parameter) => parameter.name === name)).toMatchObject({
       required: true,
     })
@@ -49,8 +49,8 @@ test("operation local admission refuses invalid kinds, identities, entries and b
   for (const changed of [
     { kind: "page" },
     { ownerId: "unsafe identity" },
-    { entry: "notion_page:old" },
-    { entry: "skill://old" },
+    { library: "notion_page:old" },
+    { library: "skill://old" },
     { maxRequests: 0 },
     { maxBytes: -1 },
     { timeout: 1.5 },
@@ -58,14 +58,19 @@ test("operation local admission refuses invalid kinds, identities, entries and b
   ])
     await expect(
       f.run(
-        inspectCurrentLibraryOperation({ ownerId: owner.id, kind: owner.kind, entry, ...changed }),
+        inspectCurrentLibraryOperation({
+          ownerId: owner.id,
+          kind: owner.kind,
+          library: libraryRoot,
+          ...changed,
+        }),
       ),
     ).rejects.toThrow()
   for (const args of [
-    [owner.id, "--entry", entry],
-    [owner.id, "--kind", "skill", "--entry", entry, "--resume"],
-    [owner.id, "--kind", "skill", "--entry", entry, "--kind", "source"],
-    [owner.id, "--kind", "skill", "--entry", entry, "--max-requests", "0"],
+    [owner.id, "--library", libraryRoot],
+    [owner.id, "--kind", "skill", "--library", libraryRoot, "--resume"],
+    [owner.id, "--kind", "skill", "--library", libraryRoot, "--kind", "source"],
+    [owner.id, "--kind", "skill", "--library", libraryRoot, "--max-requests", "0"],
   ])
     await expect(
       f.run(Command.runWith(currentOperationCommand, { version: "0" })(args)),
@@ -79,7 +84,12 @@ test("no observable Skill or Source intent does not certify an owner is present,
   for (const kind of ["skill", "source"] as const) {
     f.clearCalls()
     const value = await f.run(
-      inspectCurrentLibraryOperation({ ownerId: "not-created", kind, entry, maxRequests: 37 }),
+      inspectCurrentLibraryOperation({
+        ownerId: "not-created",
+        kind,
+        library: libraryRoot,
+        maxRequests: 37,
+      }),
     )
     expect(value).toMatchObject({
       version: 1,
@@ -89,13 +99,18 @@ test("no observable Skill or Source intent does not certify an owner is present,
       operation: null,
       library: {
         library_id: library.library_id,
-        database_id: entry,
+        database_id: library.skills.database_id,
         data_source_id: library.skills.data_source_id,
       },
       budget: { limits: { requests: 37 } },
     })
     expect("state" in value).toBe(false)
-    expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
+    expect(
+      f.calls.some(
+        (call) =>
+          call.path.startsWith("v1/pages/") && call.path !== `v1/pages/${library.library_id}`,
+      ),
+    ).toBe(false)
     expect(f.calls.some((call) => call.path.includes("/query"))).toBe(true)
     expect(f.mutations()).toEqual([])
   }
@@ -124,7 +139,7 @@ test("the public operation reader reports a real unknown CREATE without replay o
   const before = pending()
   f.clearCalls()
   const value = await f.run(
-    inspectCurrentLibraryOperation({ ownerId: owner.id, kind: owner.kind, entry }),
+    inspectCurrentLibraryOperation({ ownerId: owner.id, kind: owner.kind, library: libraryRoot }),
   )
   expect(value).toMatchObject({
     status: "observed",
@@ -143,7 +158,12 @@ test("the public operation reader reports a real unknown CREATE without replay o
   expect(value.operation?.record_page_id).toMatch(/^[a-f0-9-]{36}$/)
   expect(value.operation?.local_lifecycle?.phase).toBe("active")
   expect(
-    f.calls.some((call) => call.path.includes("/markdown") || call.path.includes("/children")),
+    f.calls.some(
+      (call) =>
+        call.path.includes("/markdown") ||
+        (call.path.includes("/children") &&
+          call.path.split("?")[0] !== `v1/blocks/${libraryRoot}/children`),
+    ),
   ).toBe(false)
   expect(f.mutations()).toEqual([])
   expect(JSON.stringify([...f.pages])).toBe(pages)

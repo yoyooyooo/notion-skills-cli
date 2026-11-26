@@ -337,13 +337,64 @@ test("declarations refuse unsupported provider, transformations, implicit retent
     { ...input.definition, options: { storage: "retained" } },
     { ...input.definition, options: { accepted_ref: "main" } },
     { ...input.definition, options: { require_all_included: "true" } },
-    { ...input.definition, options: { require_all_included: true } },
+    { ...input.definition, options: { require_all_included: 1 } },
+    { ...input.definition, options: { require_all_included: null } },
     { ...input.definition, policy: "auto", options: { check_interval_ms: 60000 } },
     { ...input.definition, source_id: `source-${"f".repeat(64)}` },
   ]
   for (const definition of definitions)
     expect(() => validateCurrentSourceInput({ ...input, definition })).toThrow()
   expect(() => validateCurrentSourceInput({ ...input, evidence: true })).toThrow()
+})
+
+test.each([true, false])(
+  "current Sources preserve the explicit require_all_included=%s selection guard",
+  async (required) => {
+    const declaration: CurrentSourceDeclaration = {
+      ...input,
+      definition: {
+        ...input.definition,
+        selection: { ...input.definition.selection, include: ["skills/alpha", "skills/beta"] },
+        options: { require_all_included: required },
+      },
+    }
+    const result = await prepare(declaration)
+    const resumed = await prepare(declaration, snapshot(), commit)
+    expect(result.declaration.definition.options).toEqual({ require_all_included: required })
+    expect(result.configuration_sha256).toBe(sha(canonicalSharedJson(result.declaration)))
+    expect(resumed.configuration_sha256).toBe(result.configuration_sha256)
+    expect(resumed.targets).toEqual(result.targets)
+    expect(declaration.definition.options).toEqual({ require_all_included: required })
+  },
+)
+
+test("a required literal member cannot become a successful partial or empty current Source selection", async () => {
+  const declaration: CurrentSourceDeclaration = {
+    ...input,
+    definition: {
+      ...input.definition,
+      selection: { ...input.definition.selection, include: ["skills/alpha", "skills/beta"] },
+      options: { require_all_included: true },
+    },
+  }
+  for (const members of [[member("alpha")], []]) {
+    const observed = {
+      ...snapshot(),
+      provenance: { ...snapshot().provenance, tree_hash: tree },
+      members,
+    }
+    await expect(prepare(declaration, observed)).rejects.toThrow(
+      "An explicitly included source member is missing SKILL.md",
+    )
+    const optional = {
+      ...declaration,
+      definition: { ...declaration.definition, options: { require_all_included: false } },
+    }
+    const allowed = await prepare(optional, observed)
+    expect(allowed.targets).toHaveLength(members.length)
+    expect(allowed.declaration.definition.options).toEqual({ require_all_included: false })
+  }
+  expect(declaration.contributions).toHaveLength(2)
 })
 
 test("discovered membership creates stable identities and removes vanished overrides", async () => {

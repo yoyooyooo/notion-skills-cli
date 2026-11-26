@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
-import { databaseId } from "../../core/src/catalog.ts"
+import { libraryId } from "../../core/src/catalog.ts"
 import { defineCommand } from "../../core/src/command-schema.ts"
 import { loadSkillUpdateFile } from "../../core/src/import.ts"
 import {
@@ -30,7 +30,7 @@ const budgetFlag = (name: string, description: string) =>
     Flag.withDescription(description),
   )
 const common = () => ({
-  entry: requiredSingleton("entry", "Current Skills database ID, URL or exact registered alias"),
+  library: requiredSingleton("library", "Library root page ID, URL or exact registered alias"),
   dryRun: switchFlag(
     "dry-run",
     "Read the complete selected scope and report the plan without writing",
@@ -69,7 +69,7 @@ const relations = () => ({
   ),
 })
 type Common = {
-  readonly entry: string
+  readonly library: string
   readonly dryRun: boolean
   readonly maxRequests: Option.Option<number>
   readonly maxBytes: Option.Option<number>
@@ -109,8 +109,9 @@ function manage<A extends object, R>(
   return Effect.gen(function* () {
     const limits = yield* checked(() => {
       if (
-        /^notion_page:/iu.test(options.entry) ||
-        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.entry) && !/^https?:\/\//iu.test(options.entry))
+        /^notion_page:/iu.test(options.library) ||
+        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.library) &&
+          !/^https?:\/\//iu.test(options.library))
       )
         throw fail(
           "INVALID_ARGUMENT",
@@ -130,7 +131,7 @@ function manage<A extends object, R>(
     })
     const invocation = yield* withCurrentInvocationBudget(
       Effect.gen(function* () {
-        const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
+        const library = yield* loadSharedLibrary(yield* libraryId(options.library))
         return yield* run(library)
       }),
       limits,
@@ -195,7 +196,7 @@ const create = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Create one Notion-owned Skill. Markdown files become editable native bodies; other files become exact resources. The CLI supplies required fields and ownership, verifies complete current content, and closes its operation. A complete equal repeat writes nothing; existing different content requires update. Repeat the same command after interruption to reconcile its own unfinished intent.",
+    "Create one Notion-owned Skill. Markdown files become editable native bodies; other files become exact resources. The CLI supplies required fields and ownership, verifies complete current content, and closes its operation. Native Markdown can correct a precisely verified automatic link on original plain text within that same intent before final readback. A complete equal repeat writes nothing; existing different content requires update. Repeat the same command after interruption to reconcile its own unfinished intent.",
   ),
 )
 
@@ -277,7 +278,7 @@ const update = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Update only explicitly selected current bodies, files, metadata or relations. Unselected files retain their latest Notion content and identities. Markdown selections are native; other selections are resources. Missing flags preserve current values. The CLI validates the complete resulting directory and references, verifies changes and removes unreachable owned resources. Repeat the same command to resume its matching unfinished update; a different pending intent is never overwritten.",
+    "Update only explicitly selected current bodies, files, metadata or relations. Unselected files retain their latest Notion content and identities. Markdown selections are native; other selections are resources. Native Markdown uses the same verified plain-text correction and complete readback as create. Missing flags preserve current values. The CLI validates the complete resulting directory and references, verifies changes and removes unreachable owned resources. Repeat the same command to resume its matching unfinished update; a different pending intent is never overwritten.",
   ),
 )
 

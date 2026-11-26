@@ -73,35 +73,44 @@ test("a cancelled producer holds its capacity through cleanup but cannot attract
       const shared = yield* makeBoundedImmutableReadCoalescer<string>({ entries: 1, bytes: 5 })
       const cleanupStarted = yield* Deferred.make<void>()
       const allowCleanup = yield* Deferred.make<void>()
-      const original = yield* fork(
-        shared.run(
-          "same",
-          5,
-          Effect.never.pipe(
-            Effect.ensuring(
-              Deferred.succeed(cleanupStarted, undefined).pipe(
-                Effect.andThen(Deferred.await(allowCleanup)),
+      const freshGate = yield* Deferred.make<void>()
+      yield* Effect.gen(function* () {
+        const original = yield* fork(
+          shared.run(
+            "same",
+            5,
+            Effect.never.pipe(
+              Effect.ensuring(
+                Deferred.succeed(cleanupStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(allowCleanup)),
+                ),
               ),
             ),
           ),
+        )
+        const cancelling = yield* fork(Fiber.interrupt(original))
+        yield* Deferred.await(cleanupStarted)
+        let freshCalls = 0
+        const execute = Effect.sync(() => ++freshCalls).pipe(
+          Effect.andThen(Deferred.await(freshGate)),
+          Effect.as("fresh"),
+        )
+        const first = yield* fork(shared.run("same", 5, execute))
+        const second = yield* fork(shared.run("same", 5, execute))
+        expect(freshCalls).toBe(2)
+        yield* Deferred.succeed(allowCleanup, undefined)
+        yield* Fiber.join(cancelling)
+        yield* Deferred.succeed(freshGate, undefined)
+        expect(yield* Fiber.joinAll([first, second])).toEqual(["fresh", "fresh"])
+        expect(yield* shared.run("same", 5, Effect.succeed("after-cleanup"))).toBe("after-cleanup")
+      }).pipe(
+        // Unblock child finalizers even when a behavioral assertion fails.
+        Effect.ensuring(
+          Deferred.succeed(allowCleanup, undefined).pipe(
+            Effect.andThen(Deferred.succeed(freshGate, undefined)),
+          ),
         ),
       )
-      const cancelling = yield* fork(Fiber.interrupt(original))
-      yield* Deferred.await(cleanupStarted)
-      const freshGate = yield* Deferred.make<void>()
-      let freshCalls = 0
-      const execute = Effect.sync(() => ++freshCalls).pipe(
-        Effect.andThen(Deferred.await(freshGate)),
-        Effect.as("fresh"),
-      )
-      const first = yield* fork(shared.run("same", 5, execute))
-      const second = yield* fork(shared.run("same", 5, execute))
-      expect(freshCalls).toBe(2)
-      yield* Deferred.succeed(allowCleanup, undefined)
-      yield* Fiber.join(cancelling)
-      yield* Deferred.succeed(freshGate, undefined)
-      expect(yield* Fiber.joinAll([first, second])).toEqual(["fresh", "fresh"])
-      expect(yield* shared.run("same", 5, Effect.succeed("after-cleanup"))).toBe("after-cleanup")
     }),
   )
 })

@@ -30,7 +30,8 @@ import { prepareCurrentSharedSourceContent } from "../src/shared-current-source.
 import { writePreparedCurrentSource } from "../src/shared-current-source-write.ts"
 import { prepareCurrentSkillWrite, writeCurrentSkill } from "../src/shared-current-write.ts"
 import { prepareCurrentWriteFile } from "../src/shared-current-write-input.ts"
-import { readSkill } from "../src/snapshot.ts"
+import { listSkill, readSkill, resolveReference, resolveSkillRef } from "../src/snapshot.ts"
+import { parseRef } from "../src/ref.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { sourceRich } from "../src/shared-source-definitions.ts"
 import type { SourceSnapshot } from "../src/upstream-source.ts"
@@ -328,7 +329,7 @@ test("a complete Source successor replaces an uncertain child Skill creation whi
   ).toBe(false)
   expect(
     await f.run(
-      http.use(readSkill(native.page_id, { database: library.skills.database_id, refresh: true })),
+      http.use(readSkill(native.page_id, { library: library.library_id, refresh: true })),
     ),
   ).toMatchObject({ content: nativeHeader + humanBody })
   await assertReady(f)
@@ -588,15 +589,13 @@ test("one Source writes two current Skills, preserves native authorship and reso
   ).toEqual([])
   const alphaMain = observed.members[0]!.portable.files[0]!.bytes
   expect(
-    await f.run(
-      http.use(readSkill(alphaPage, { database: library.skills.database_id, refresh: true })),
-    ),
+    await f.run(http.use(readSkill(alphaPage, { library: library.library_id, refresh: true }))),
   ).toMatchObject({ content: new TextDecoder().decode(alphaMain) })
   expect(
     await f.run(
       http.use(
         readSkill(native.page_id, {
-          database: library.skills.database_id,
+          library: library.library_id,
           path: "vendor/guide.md",
           refresh: true,
         }),
@@ -618,9 +617,7 @@ test("one Source writes two current Skills, preserves native authorship and reso
   expect(f.calls.filter((call) => call.path.startsWith("v1/file_uploads"))).toEqual([])
   const output = join(f.root, "exported-alpha")
   await f.run(
-    http.use(
-      exportSkill(alphaPage, { database: library.skills.database_id, output, format: "directory" }),
-    ),
+    http.use(exportSkill(alphaPage, { library: library.library_id, output, format: "directory" })),
   )
   for (const file of observed.members[0]!.portable.files) {
     expect(new Uint8Array(readFileSync(join(output, file.path)))).toEqual(
@@ -660,14 +657,12 @@ test("one Source writes two current Skills, preserves native authorship and reso
   ).toEqual([])
   expect(
     await f.run(
-      http.use(readSkill(native.page_id, { database: library.skills.database_id, refresh: true })),
+      http.use(readSkill(native.page_id, { library: library.library_id, refresh: true })),
     ),
   ).toMatchObject({ content: nativeHeader + humanBody })
   expect(
     await f.run(
-      http.use(
-        readSkill(native.page_id, { database: library.skills.database_id, path: "local.json" }),
-      ),
+      http.use(readSkill(native.page_id, { library: library.library_id, path: "local.json" })),
     ),
   ).toMatchObject({ content: new TextDecoder().decode(localBytes) })
   const renamedDeclaration = {
@@ -904,7 +899,7 @@ test("Source writes reach ready without projection bodies and preserve current n
     await f.run(
       http.use(
         readSkill(String(alpha.id), {
-          database: library.skills.database_id,
+          library: library.library_id,
           refresh: true,
         }),
       ),
@@ -916,7 +911,7 @@ test("Source writes reach ready without projection bodies and preserve current n
     await f.run(
       http.use(
         readSkill(native.page_id, {
-          database: library.skills.database_id,
+          library: library.library_id,
           refresh: true,
         }),
       ),
@@ -924,6 +919,75 @@ test("Source writes reach ready without projection bodies and preserve current n
   ).toMatchObject({ content: nativeHeader + originalBody })
   expect(f.mutations()).toEqual([])
   await assertReady(f)
+})
+
+test("fixed nested File resolution uses the Source path and target mount without reading target bytes", async () => {
+  const f = currentWriteFixture(parent)
+  await seedNative(f)
+  const observed = observation(),
+    http = provider([observed])
+  const mapped: CurrentSourceDeclaration = {
+    ...declaration,
+    contributions: declaration.contributions.map((contribution) =>
+      contribution.skill_id === "skill-alpha"
+        ? { ...contribution, mapping: { "notes.md": "references/nested/note.md" } }
+        : contribution,
+    ),
+  }
+  const prepared = await f.run(prepareCurrentSourceFromDiscovery(mapped, observed))
+  await f.run(
+    http.use(
+      writePreparedCurrentSource(library, {
+        prepared,
+        operation_id: "source-relative-resolution",
+      }),
+    ),
+  )
+  const alpha = f
+    .table("skills")
+    .find((row) => fieldText(row, library.skills.property_ids["Skill ID"]!) === "skill-alpha")!
+  const selected = await f.run(
+    http.use(
+      readSkill(String(alpha.id), {
+        library: library.library_id,
+        refresh: true,
+      }),
+    ),
+  )
+  const manifest = await f.run(listSkill(selected.snapshot_id, { offline: true }))
+  const from = manifest.files.find((file) => file.path === "references/nested/note.md")!.ref
+  const beforeDownloads = http.requests.length
+  f.clearCalls()
+  const resolved = await f.run(http.use(resolveReference("../beta/guide.md", { from })))
+  expect(parseRef(resolved.ref)).toMatchObject({
+    skillId: "skill-beta",
+    scope: { kind: "library", libraryId: library.library_id },
+    path: "vendor/guide.md",
+  })
+  expect(resolved).toMatchObject({
+    version: 1,
+    from,
+    effects: { version: 1, remote_writes: "none", author_content: "unchanged" },
+  })
+  expect(http.requests).toHaveLength(beforeDownloads)
+  expect(f.mutations()).toEqual([])
+  const withoutFileId = from.replace(/&file_id=[^&]+/u, "")
+  expect(await f.run(http.use(resolveSkillRef(withoutFileId, "../beta/guide.md")))).toBe(
+    resolved.ref,
+  )
+  const read = await f.run(
+    http.use(
+      readSkill("../beta/guide.md", {
+        from,
+        library: library.library_id,
+      }),
+    ),
+  )
+  expect(read).toMatchObject({
+    path: "vendor/guide.md",
+    content: "# Source guide one\n\nEvery line is readable.\n",
+  })
+  expect(f.mutations()).toEqual([])
 })
 
 test("an unobserved Source CREATE remains one finite parent intent and never blindly creates another Source", async () => {
@@ -1174,7 +1238,7 @@ test("a Source refresh does not read or rewrite an existing generated projection
     await f.run(
       http.use(
         readSkill(native.page_id, {
-          database: library.skills.database_id,
+          library: library.library_id,
           path: "vendor/guide.md",
           refresh: true,
         }),
@@ -1468,7 +1532,7 @@ test("an explicit Source mapping replaces same-path native authority while retai
   ).toEqual([])
   expect(
     await f.run(
-      http.use(readSkill(native.page_id, { database: library.skills.database_id, refresh: true })),
+      http.use(readSkill(native.page_id, { library: library.library_id, refresh: true })),
     ),
   ).toMatchObject({
     content: new TextDecoder().decode(observed.members[0]!.portable.files[0]!.bytes),
@@ -1526,9 +1590,7 @@ test.each(["skill", "source-and-skills"] as const)(
     for (const page of oldFiles) expect(f.pages.get(page)?.in_trash).toBe(true)
     expect(f.table("files").some((row) => oldFiles.has(String(row.id)))).toBe(false)
     expect(
-      await f.run(
-        http.use(readSkill(rebuiltPage, { database: library.skills.database_id, refresh: true })),
-      ),
+      await f.run(http.use(readSkill(rebuiltPage, { library: library.library_id, refresh: true }))),
     ).toMatchObject({
       content: new TextDecoder().decode(observed.members[0]!.portable.files[0]!.bytes),
     })

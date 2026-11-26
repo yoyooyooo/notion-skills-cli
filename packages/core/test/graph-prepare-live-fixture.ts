@@ -4,6 +4,7 @@ import { fail, property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { Store } from "../src/store.ts"
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import {
   currentId as id,
   currentLibrary,
@@ -138,6 +139,11 @@ export function nativeGraphFixture(
             ...api,
             request: (path, body, requestOptions) => {
               const endpoint = path.split("?", 1)[0]
+              const schema = librarySchemaResponse(path, descriptor)
+              if (schema !== undefined) {
+                f.calls.push({ path, body, method: requestOptions?.method ?? "GET" })
+                return Effect.succeed(schema)
+              }
               if (endpoint === `v1/data_sources/${library.files.data_source_id}/query`) {
                 f.calls.push({ path, body, method: requestOptions?.method ?? "POST" })
                 const filter = property(property(body).filter)

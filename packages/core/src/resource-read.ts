@@ -1,6 +1,6 @@
 import { Cause, Effect, Option, Schema } from "effect"
 import { validateSnapshotManifest } from "./cache.ts"
-import { databaseId as resolveDatabaseId } from "./catalog.ts"
+import { libraryId as resolveLibraryId } from "./catalog.ts"
 import type { VerifiedManifest } from "./consumer-model.ts"
 import {
   withConsumptionEffects,
@@ -8,7 +8,7 @@ import {
 } from "./consumption-effects.ts"
 import { openFixedSnapshotFiles } from "./fixed-snapshot-files.ts"
 import { aliasFor, entrypointFor, fail, property, SkillsError, type Snapshot } from "./model.ts"
-import { fileRef, normalizePath, pageId, parseRef } from "./ref.ts"
+import { fileRef, normalizePath, pageId, parseTarget, parseSkillIdentity } from "./ref.ts"
 import {
   RESOURCE_READ_CONTRACT_VERSION,
   RESOURCE_READ_DEFAULT_BUDGET,
@@ -54,13 +54,15 @@ function budgetFor(input: ResourceReadInput) {
   return budget
 }
 function ownerKey(selector: string) {
-  const page = pageId(selector)
-  if (page !== undefined) return page
-  if (/^shared_skill:[^:]+:.+$/u.test(selector)) return selector
-  throw fail(
-    "INVALID_ARGUMENT",
-    "Resources require an exact current Skill owner and fixed selection.",
-  )
+  try {
+    parseSkillIdentity(selector)
+    return selector
+  } catch {
+    throw fail(
+      "INVALID_ARGUMENT",
+      "Resources require a fully scoped current Skill identity and fixed selection.",
+    )
+  }
 }
 
 /** Structural limits run before the SDK acquires its runtime. */
@@ -85,7 +87,7 @@ export function decodeResourceReadInput(value: unknown): ResourceReadInput {
   let owner: string | undefined
   let pin: string | undefined
   for (const ref of input.refs) {
-    const target = parseRef(ref)
+    const target = parseTarget(ref)
     if (!target.snapshot || !target.path)
       throw fail("INVALID_ARGUMENT", "Each resource ref requires a fixed snapshot and file path.")
     const selectedOwner = ownerKey(target.selector)
@@ -160,22 +162,17 @@ function selectFiles(snapshot: Snapshot, input: ResourceReadInput, database?: st
   const paths = new Set<string>()
   let total = 0
   return input.refs.map((requested_ref) => {
-    const target = parseRef(requested_ref)
+    const target = parseTarget(requested_ref)
     const selectedOwner = ownerKey(target.selector)
-    if (
-      (selectedOwner !== snapshot.record.id &&
-        (snapshot.record.locator.type !== "shared_skill" ||
-          selectedOwner !== snapshot.record.locator.page_id)) ||
-      target.snapshot !== snapshot.snapshot_id
-    )
+    if (selectedOwner !== snapshot.record.id || target.snapshot !== snapshot.snapshot_id)
       throw fail(
         "RESOURCE_SELECTION_CONFLICT",
         "The fixed snapshot belongs to another resource owner.",
       )
     const locator = snapshot.record.locator
-    const selectedDatabase = locator.type === "local" ? undefined : locator.database_id
+    const selectedDatabase = locator.type === "local" ? undefined : locator.library_id
     if (database !== undefined && selectedDatabase !== database)
-      throw fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database.")
+      throw fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected Library.")
     const path = boundSnapshotPath(snapshot, target)
     const file = snapshot.files.find((file) => file.path === path)
     if (file === undefined)
@@ -197,7 +194,7 @@ function selectFiles(snapshot: Snapshot, input: ResourceReadInput, database?: st
     const file_id = snapshot.file_bindings?.find((binding) => binding.path === file.path)?.file_id
     return {
       requested_ref,
-      ref: fileRef(snapshot.record.id, file.path, snapshot.snapshot_id, file_id),
+      ref: fileRef(snapshot.record.id, file.path, snapshot.snapshot_id),
       ...(file_id === undefined ? {} : { file_id }),
       ...file,
     }
@@ -334,16 +331,16 @@ export function decodeResourceReadResult(value: unknown, expected?: ResourceRead
 }
 
 export type ResourceReadOptions = ConsumptionObservationOptions & {
-  readonly database?: string
+  readonly library?: string
   readonly offline?: boolean
   readonly signal?: AbortSignal
 }
 
 function readReady(input: ResourceReadInput, options: ResourceReadOptions) {
   return Effect.gen(function* () {
-    const target = parseRef(input.refs[0]!)
+    const target = parseTarget(input.refs[0]!)
     const database =
-      options.database === undefined ? undefined : yield* resolveDatabaseId(options.database)
+      options.library === undefined ? undefined : yield* resolveLibraryId(options.library)
     let selected: ReturnType<typeof selectFiles> | undefined
     const opened = yield* openFixedSnapshotFiles(
       target.snapshot!,

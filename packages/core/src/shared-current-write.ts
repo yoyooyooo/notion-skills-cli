@@ -16,7 +16,11 @@ import {
 import { Notion } from "./notion.ts"
 import { normalizePath, pageId } from "./ref.ts"
 import { withCurrentInvocationBudget } from "./shared-current-invocation.ts"
-import { sharedRecordFromPage, sharedSkillId, sharedSkillTextProperty } from "./shared-content.ts"
+import { sharedRecordFromPage, skillIdentity, sharedSkillTextProperty } from "./shared-content.ts"
+import {
+  assertFrozenCurrentImportProof,
+  type FrozenCurrentImportProof,
+} from "./shared-current-import-plan.ts"
 import {
   currentFileRecord,
   queryCurrentSkillIndex,
@@ -90,7 +94,13 @@ import {
 } from "./shared-current-write-input.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { observeSharedBody } from "./shared-page-body.ts"
-import { compareNativeMarkdown, nativeMarkdownTransport } from "./shared-native-markdown.ts"
+import { compareNativeMarkdown, nativeFileTransport } from "./shared-native-markdown.ts"
+import {
+  applyCurrentNativePlainText,
+  nativePlainTextPlan,
+  planCurrentNativePlainText,
+  type CurrentNativePlainTextTarget,
+} from "./shared-native-plain-text.ts"
 import {
   compileSharedNativeReferences,
   type NativeReferenceSource,
@@ -1713,6 +1723,7 @@ type CurrentWriteRequest = {
   readonly operation_id: string
   readonly mode?: CurrentWriteMode
   readonly create_only?: true
+  readonly frozen_import?: FrozenCurrentImportProof
 }
 type InternalWriteRequest = Omit<CurrentWriteRequest, "plan"> & {
   readonly plan: CurrentWritePlan
@@ -1845,6 +1856,16 @@ export function writeCoordinatedSkill(
 function executeCurrentSkillWrite(library: SharedLibrary, input: InternalWriteRequest) {
   return Effect.gen(function* () {
     const plan = input.plan
+    if (input.frozen_import !== undefined) {
+      const proof = input.frozen_import
+      yield* checked(() =>
+        assertFrozenCurrentImportProof(proof, library, {
+          skill_id: plan.skill_id,
+          operation_id: input.operation_id,
+          input_sha256: plan.input_sha256,
+        }),
+      )
+    }
     yield* checked(() => {
       if (isCoordinated(plan) !== (input.authorization !== undefined))
         throw invalid("A coordinated Source tree requires its exact live parent authorization.")
@@ -1926,11 +1947,17 @@ function applyPreparedCurrentSkillWrite(
         pending.in_flight?.key === "skill:create" &&
         current.index.state.state === "applying" &&
         current.index.state.operation_id === input.operation_id
+      const completedFrozenImport =
+        input.frozen_import !== undefined &&
+        input.mode === "resume" &&
+        pending === undefined &&
+        current.index.state.state === "ready"
       if (
-        pending === undefined ||
-        pending.intent.operation_id !== input.operation_id ||
-        pending.intent.input_sha256 !== plan.input_sha256 ||
-        (pending.owner_page_id !== current.index.page_id && !unboundCreation)
+        !completedFrozenImport &&
+        (pending === undefined ||
+          pending.intent.operation_id !== input.operation_id ||
+          pending.intent.input_sha256 !== plan.input_sha256 ||
+          (pending.owner_page_id !== current.index.page_id && !unboundCreation))
       )
         return yield* Effect.fail(
           fail(
@@ -2048,7 +2075,7 @@ function applyPreparedCurrentSkillWrite(
       if (cacheInvalidated) return
       const scope = yield* authScope
       yield* invalidateCurrentLibraryCatalog(scope, library.skills.database_id)
-      yield* invalidateSnapshotCache(sharedSkillId(library.library_id, plan.skill_id), scope)
+      yield* invalidateSnapshotCache(skillIdentity(library.library_id, plan.skill_id), scope)
       cacheInvalidated = true
     })
     const api = yield* Notion
@@ -2904,12 +2931,35 @@ function applyPreparedCurrentSkillWrite(
           for (const file of writableFiles) {
             const page = filePages.get(file.path)!
             if (file.kind === "native") {
+              let corrections: readonly CurrentNativePlainTextTarget[] | undefined
               const observe = () =>
                 Effect.gen(function* () {
                   const body = yield* observeSharedBody(page)
                   const comparison = yield* checked(() =>
                     compareNativeMarkdown({ expected: file.markdown, observed: body.markdown }),
                   )
+                  corrections = undefined
+                  if (
+                    input.completedNativeTransfer !== true &&
+                    /\.(?:md|markdown)$/iu.test(file.path) &&
+                    (comparison === "different" ||
+                      session.pendingActionKey?.startsWith(`native:${page}:plain:`))
+                  ) {
+                    const groups = yield* checked(() =>
+                      nativePlainTextPlan({ expected: file.markdown, observed: body.markdown }),
+                    )
+                    if (groups !== undefined) {
+                      corrections = yield* planCurrentNativePlainText({
+                        page,
+                        groups,
+                        pendingAction: session.pendingActionKey,
+                      })
+                      // The Markdown action has completed its structure stage. A
+                      // plain-span correction is still pending in this same intent.
+                      // Only the final strict read below verifies authored content.
+                      return { status: "complete", value: undefined } as const
+                    }
+                  }
                   if (comparison === "different" && input.completedNativeTransfer !== true)
                     return { status: "missing" } as const
                   nativeVerified.set(file.path, comparison === "different" ? "current" : comparison)
@@ -2926,7 +2976,7 @@ function applyPreparedCurrentSkillWrite(
                   body: {
                     markdown_version: "v2",
                     type: "replace_content",
-                    replace_content: { new_str: nativeMarkdownTransport(file.markdown) },
+                    replace_content: { new_str: nativeFileTransport(file) },
                   },
                   options: { method: "PATCH" },
                 },
@@ -2948,6 +2998,29 @@ function applyPreparedCurrentSkillWrite(
                       )
                   }),
               })
+              if (corrections !== undefined) {
+                yield* applyCurrentNativePlainText({
+                  page,
+                  targets: corrections,
+                  dispatch: coordinatedDispatch(
+                    resolved.find((selected) => selected.input.path === file.path)!,
+                    page,
+                  ),
+                })
+                const body = yield* observeSharedBody(page)
+                const comparison = yield* checked(() =>
+                  compareNativeMarkdown({ expected: file.markdown, observed: body.markdown }),
+                )
+                if (comparison === "different")
+                  return yield* Effect.fail(
+                    fail(
+                      "CURRENT_NATIVE_ROUNDTRIP",
+                      "The complete corrected native body still differs from the original author intent. The current intent remains pending.",
+                      { path: file.path },
+                    ),
+                  )
+                nativeVerified.set(file.path, comparison)
+              }
               continue
             }
           }
@@ -3086,7 +3159,7 @@ function applyPreparedCurrentSkillWrite(
     }
     const result = yield* withCurrentOperation(library, {
       ...operation,
-      ...(input.authorization === undefined
+      ...(input.authorization === undefined && input.frozen_import === undefined
         ? {}
         : {
             verifyCompletedResume: (session: CurrentOperationSession) =>

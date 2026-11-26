@@ -1,12 +1,25 @@
 import { Crypto, Effect, Option } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
-import { databaseId } from "../../core/src/catalog.ts"
+import { libraryId } from "../../core/src/catalog.ts"
 import { defineCommand, exclusiveFlags, withConstraints } from "../../core/src/command-schema.ts"
 import { importDocument, loadImport, type ImportFile } from "../../core/src/import.ts"
-import { entrypointFor, fail, SkillsError } from "../../core/src/model.ts"
-import { MANIFEST, readPortable } from "../../core/src/portable.ts"
+import { entrypointFor, fail, property, SkillsError } from "../../core/src/model.ts"
+import { MANIFEST, readPortable, validatePortableRelations } from "../../core/src/portable.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { withCurrentInvocationBudget } from "../../core/src/shared-current-invocation.ts"
+import {
+  bindCurrentImportOrigin,
+  planCurrentMembers,
+} from "../../core/src/shared-current-member-discovery.ts"
+import {
+  freezeCurrentImportValue,
+  thawCurrentImportSkill,
+  withCurrentImportPlan,
+  type CurrentImportDefinition,
+} from "../../core/src/shared-current-import-plan.ts"
+import { queryCurrentSkillIdentity } from "../../core/src/shared-current-skill-target.ts"
+import type { SharedLibrary } from "../../core/src/shared-library-model.ts"
+import type { PreparedCurrentSkillWrite } from "../../core/src/shared-current-write-input.ts"
 import {
   inspectCurrentSkillWrite,
   prepareCurrentSkillWrite,
@@ -15,7 +28,7 @@ import {
 import { emit, requiredSingleton, singleton, switchFlag } from "./command-options.ts"
 import { selectCurrentWriteMode } from "./current-write-options.ts"
 
-type ImportOptions = {
+export type ImportOptions = {
   readonly skillId: string
   readonly name?: string
   readonly description?: string
@@ -99,15 +112,40 @@ function currentImportInput(
   }
 }
 
-const budgetFlag = (name: string, description: string) =>
+export const currentImportBudgetFlag = (name: string, description: string) =>
   Flag.Int(name).pipe(
     Flag.atMost(1),
     Flag.map((values) => Option.fromUndefinedOr(values[0])),
     Flag.withDescription(description),
   )
 
+export function currentImportLimits(options: {
+  readonly maxRequests: Option.Option<number>
+  readonly maxBytes: Option.Option<number>
+  readonly timeout: Option.Option<number>
+}) {
+  return Effect.try({
+    try: () => {
+      const selected = {
+        requests: Option.getOrUndefined(options.maxRequests),
+        bytes: Option.getOrUndefined(options.maxBytes),
+        duration_ms: Option.getOrUndefined(options.timeout),
+      }
+      for (const [name, value] of Object.entries(selected))
+        if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0))
+          throw fail(
+            "INVALID_ARGUMENT",
+            "Invocation budgets must be positive safe integers; --timeout uses ms.",
+            { budget: name },
+          )
+      return selected
+    },
+    catch: (error) => error as SkillsError,
+  })
+}
+
 /** Finish complete local admission before any library or Notion request. */
-export function prepareCurrentImport(input: string, options: ImportOptions) {
+export function loadCurrentImportInput(input: string, options: ImportOptions) {
   return Effect.gen(function* () {
     const loaded = yield* loadImport(input)
     const admitted = yield* Effect.try({
@@ -117,6 +155,13 @@ export function prepareCurrentImport(input: string, options: ImportOptions) {
           ? error
           : fail("INVALID_ARCHIVE", "Could not decode the complete current import input."),
     })
+    return { loaded, admitted }
+  })
+}
+
+export function prepareCurrentImport(input: string, options: ImportOptions) {
+  return Effect.gen(function* () {
+    const { loaded, admitted } = yield* loadCurrentImportInput(input, options)
     const native = yield* Effect.try({
       try: () => {
         const paths = new Set(admitted.files.map((file) => file.path)),
@@ -165,13 +210,101 @@ export function prepareCurrentImport(input: string, options: ImportOptions) {
   })
 }
 
+/** This is compilation, not recovery. Recovery only loads the frozen plan. */
+export function prepareCurrentImportMembers(
+  library: SharedLibrary,
+  original: PreparedCurrentSkillWrite,
+) {
+  return Effect.gen(function* () {
+    const bound = yield* Effect.try({
+      try: () => {
+        const bound = bindCurrentImportOrigin(library.library_id, original)
+        const relations =
+          original.relations === undefined
+            ? undefined
+            : validatePortableRelations({
+                ...original.relations,
+                library_id: library.library_id,
+              })
+        return { ...bound, relations }
+      },
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("INVALID_ARCHIVE", "Cannot retain the portable reference context."),
+    })
+    const rebuild = (
+      files: PreparedCurrentSkillWrite["files"],
+      relations: PreparedCurrentSkillWrite["relations"],
+    ) =>
+      Effect.gen(function* () {
+        if (files.some((file) => file.kind === "source"))
+          return yield* Effect.fail(
+            fail(
+              "CURRENT_SOURCE_MANAGEMENT_REQUIRED",
+              "Import compilation cannot rewrite Source inputs.",
+            ),
+          )
+        return yield* prepareCurrentSkillWrite({
+          skill_id: original.skill_id,
+          kind: original.kind,
+          name: original.name,
+          description: original.description,
+          ...(original.enabled === undefined ? {} : { enabled: original.enabled }),
+          ...(original.default_context === undefined
+            ? {}
+            : { default_context: original.default_context }),
+          ...(relations === undefined ? {} : { relations }),
+          files: files.map((file) => ({
+            path: file.path,
+            bytes: file.bytes,
+            mode: file.mode,
+            ...(file.file_id === undefined ? {} : { file_id: file.file_id }),
+            authority: { kind: file.kind === "native" ? "native" : "resource" },
+          })),
+        })
+      })
+    const plan =
+      bound.rewrites.length > 0 || original.relations?.library_id !== bound.relations?.library_id
+        ? yield* rebuild(bound.files, bound.relations)
+        : original
+    const unchanged = (member_policy: string) => ({
+      plan,
+      create_only: false,
+      rewrites: bound.rewrites,
+      members_discovery: { member_policy, confirmed: [], unresolved: [] },
+    })
+    if (plan.relations?.members !== undefined) return unchanged("explicit")
+    if (plan.kind === "prompt") return unchanged("not_applicable")
+    const owner = yield* queryCurrentSkillIdentity(library, plan.skill_id)
+    if (owner !== undefined) return unchanged("preserve_existing")
+    const discovery = yield* planCurrentMembers(library, plan, { existing: false })
+    const {
+      portable: _portable,
+      importable: _importable,
+      skill_id: _skillId,
+      relations,
+      ...report
+    } = discovery
+    if (relations?.members === undefined)
+      return { ...unchanged(report.member_policy), members_discovery: report }
+    const selected = yield* rebuild(plan.files, relations)
+    return {
+      plan: selected,
+      create_only: true,
+      members_discovery: report,
+      rewrites: bound.rewrites,
+    }
+  })
+}
+
 export const currentImportCommand = defineCommand(
   "import",
   {
     input: Argument.String("input").pipe(
       Argument.withDescription("Complete local directory, portable ZIP, or one Markdown file"),
     ),
-    entry: requiredSingleton("entry", "Current Skills database ID, URL or exact registered alias"),
+    library: requiredSingleton("library", "Library root page ID, URL or exact registered alias"),
     skillId: requiredSingleton(
       "skill-id",
       "Exact stable Skill ID to create or replace in this library",
@@ -206,21 +339,25 @@ export const currentImportCommand = defineCommand(
         "Make this exact final input path editable in Notion; repeat for multiple files. Unselected paths remain resources. Native bodies accept UTF-8 with LF or CRLF and terminal blank lines. Complete readback verifies structure, text, code and links while allowing known Notion formatting normalization; the admitted input bytes stay exact. A single Markdown input uses SKILL.md.",
       ),
     ),
-    maxRequests: budgetFlag(
+    maxRequests: currentImportBudgetFlag(
       "max-requests",
       "Positive maximum HTTP attempts for the entire invocation; default 1000",
     ),
-    maxBytes: budgetFlag(
+    maxBytes: currentImportBudgetFlag(
       "max-bytes",
       "Positive maximum total HTTP payload bytes for the entire invocation; default 536870912",
     ),
-    timeout: budgetFlag("timeout", "Positive invocation deadline in ms; default 600000"),
+    timeout: currentImportBudgetFlag(
+      "timeout",
+      "Positive invocation deadline in ms; default 600000",
+    ),
   },
   (options) =>
     Effect.gen(function* () {
       if (
-        /^notion_page:/iu.test(options.entry) ||
-        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.entry) && !/^https?:\/\//iu.test(options.entry))
+        /^notion_page:/iu.test(options.library) ||
+        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.library) &&
+          !/^https?:\/\//iu.test(options.library))
       )
         return yield* Effect.fail(
           fail(
@@ -228,24 +365,7 @@ export const currentImportCommand = defineCommand(
             "Current import requires a database ID, HTTP(S) Notion URL or exact registered alias.",
           ),
         )
-      const limits = yield* Effect.try({
-        try: () => {
-          const selected = {
-            requests: Option.getOrUndefined(options.maxRequests),
-            bytes: Option.getOrUndefined(options.maxBytes),
-            duration_ms: Option.getOrUndefined(options.timeout),
-          }
-          for (const [name, value] of Object.entries(selected))
-            if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0))
-              throw fail(
-                "INVALID_ARGUMENT",
-                "Invocation budgets must be positive safe integers; --timeout uses ms.",
-                { budget: name },
-              )
-          return selected
-        },
-        catch: (error) => error as SkillsError,
-      })
+      const limits = yield* currentImportLimits(options)
       const selectedOperation = Option.getOrUndefined(options.operation)
       const mode = yield* Effect.try({
         try: () =>
@@ -268,13 +388,17 @@ export const currentImportCommand = defineCommand(
       })
       const invocation = yield* withCurrentInvocationBudget(
         Effect.gen(function* () {
-          const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
-          if (options.dryRun)
+          const library = yield* loadSharedLibrary(yield* libraryId(options.library))
+          if (options.dryRun) {
+            const selected = yield* prepareCurrentImportMembers(library, prepared.plan)
             return {
-              ...(yield* inspectCurrentSkillWrite(library, prepared.plan)),
+              ...(yield* inspectCurrentSkillWrite(library, selected.plan)),
               input: prepared.input,
+              members_discovery: selected.members_discovery,
+              rewrites: selected.rewrites,
               dry_run: true,
             }
+          }
           const operation =
             selectedOperation ??
             (yield* (yield* Crypto.Crypto)
@@ -282,14 +406,67 @@ export const currentImportCommand = defineCommand(
               .pipe(
                 Effect.mapError(() => fail("CRYPTO_ERROR", "Cannot identify the current import.")),
               ))
-          return {
-            ...(yield* writeCurrentSkill(library, {
-              plan: prepared.plan,
+          return yield* withCurrentImportPlan(
+            library,
+            {
               operation_id: operation,
+              request_sha256: prepared.plan.input_sha256,
               mode,
-            })),
-            input: prepared.input,
-          }
+            },
+            Effect.gen(function* () {
+              const selected = yield* prepareCurrentImportMembers(library, prepared.plan)
+              return {
+                version: 1,
+                kind: "single",
+                mapping: [],
+                rewrites: selected.rewrites,
+                items: [
+                  {
+                    skill_id: selected.plan.skill_id,
+                    original_input_sha256: prepared.plan.input_sha256,
+                    body: yield* freezeCurrentImportValue(selected.plan),
+                    body_input_sha256: selected.plan.input_sha256,
+                    create_only: selected.create_only,
+                    members_discovery: selected.members_discovery,
+                  },
+                ],
+              } satisfies CurrentImportDefinition
+            }),
+            (session) =>
+              Effect.gen(function* () {
+                const item = session.definition.items[0]!
+                const stepKey = "body:" + item.skill_id
+                const previous = session.step(stepKey)
+                if (previous?.phase === "complete")
+                  return {
+                    ...property(previous.result),
+                    input: prepared.input,
+                    members_discovery: item.members_discovery,
+                    rewrites: session.definition.rewrites,
+                  }
+                const plan = yield* thawCurrentImportSkill(item.body)
+                const step = yield* session.start(stepKey, {
+                  skill_id: item.skill_id,
+                  operation_id: operation,
+                  input_sha256: item.body_input_sha256,
+                  prepared: item.body,
+                })
+                const result = yield* writeCurrentSkill(library, {
+                  plan,
+                  operation_id: operation,
+                  mode: step.mode === "resume" ? "resume" : mode,
+                  frozen_import: step.proof,
+                  ...(item.create_only ? { create_only: true } : {}),
+                })
+                yield* session.complete(stepKey, result)
+                return {
+                  ...result,
+                  input: prepared.input,
+                  members_discovery: item.members_discovery,
+                  rewrites: session.definition.rewrites,
+                }
+              }),
+          )
         }),
         limits,
       )
@@ -298,27 +475,27 @@ export const currentImportCommand = defineCommand(
 ).pipe(
   withConstraints([exclusiveFlags(["resume", "supersede", "dryRun"])]),
   Command.withDescription(
-    "Import one complete current Skill under an exact stable Skill ID. Existing Notion-owned supporting files absent from the input are removed by the current writer. By default files remain exact Notion resources. Generated reading projections are separate and do not block current ready, import completion or ordinary consumption. Repeat --native PATH to select exact final input paths whose UTF-8 Markdown bodies become editable in Notion; frontmatter and mode remain in Content. Native accepts LF, CRLF and terminal blank lines. Complete actual readback allows understood formatting normalization and still rejects changed structure, text, code or links. Original input bytes and their fingerprint remain exact. Native selection never converts source bytes or falls back to resource after a failed round-trip. Complete import replaces native bodies too, including later Notion edits; review the current content before importing. If the existing main or any supporting file has Source authority, dry-run and apply reject with CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an unchanged export. Source removal, takeover, renaming or rebinding requires coordinated contribution management. A plain directory or ZIP requires root SKILL.md; a current portable manifest may select Skill, Router or Prompt with its canonical entrypoint. Portable Members/Requires use same-library stable Skill identities: omitted preserves, [] clears, an array replaces the complete set. Changed sets are limited to 100 targets per field; larger unchanged sets are retained. Changed Requires are checked for dependency cycles before writing. Only an explicitly selected single Markdown file is renamed to SKILL.md; select it with --native SKILL.md. Unknown or duplicate native paths, retained projections, unknown fields, symbolic links and oversized input are rejected locally. --dry-run only inspects. --max-requests, --max-bytes and --timeout (ms) bound all remote work. Resume with the same input, native paths and --operation ID --resume. To replace an unfinished intent, use --supersede OLD --operation NEW with a distinct new identity; the kernel first reconciles the exact predecessor. Supersede does not bypass unresolved writes or authority checks. No name matching or historical recovery.",
+    "Import one complete current Skill under an exact stable Skill ID. Existing Notion-owned supporting files absent from the input are removed by the current writer. By default files remain exact Notion resources. Generated reading projections are separate and do not block current ready, import completion or ordinary consumption. Repeat --native PATH to select exact final input paths whose UTF-8 Markdown bodies become editable in Notion; frontmatter and mode remain in Content. Native accepts LF, CRLF and terminal blank lines. Complete actual readback allows understood formatting normalization and still rejects changed structure, text, code or links. For Markdown paths, a precisely verified automatic link on original plain text can be corrected within the same intent before final readback. Original input bytes and their fingerprint remain exact. Native selection never converts source bytes or falls back to resource after a failed round-trip. Complete import replaces native bodies too, including later Notion edits; review the current content before importing. If the existing main or any supporting file has Source authority, dry-run and apply reject with CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an unchanged export. Source removal, takeover, renaming or rebinding requires coordinated contribution management. A plain directory or ZIP requires root SKILL.md; a current portable manifest may select Skill, Router or Prompt with its canonical entrypoint. When a portable input declares another Library, active short body refs are qualified with that origin before every Members policy; external and fixed refs keep their owner without querying that Library. Plain local input without an origin uses destination context. Dry-run and apply report derived rewrites, and the frozen plan preserves them for resume. An active short link that cannot safely be rewritten must be made explicit before copying. Portable Members/Requires use same-library stable Skill identities: omitted preserves existing sets, [] clears, an array replaces the complete set. On first creation only, omitted Members may be inferred from verified canonical links in Markdown; at most 100 distinct candidate refs are checked. Exact identities, enabled ready targets and actual files are required. Plain names and code are skipped. Requires is never inferred. Use import-batch with an explicit roots manifest to compile cross-root links among the declared local Skills, or members-plan with explicit path bindings for existing targets. A single import never guesses neighbouring directories. Changed sets are limited to 100 targets per field; larger unchanged sets are retained. Changed Requires are checked for dependency cycles before writing. Only an explicitly selected single Markdown file is renamed to SKILL.md; select it with --native SKILL.md. Unknown or duplicate native paths, retained projections, unknown fields, symbolic links and oversized input are rejected locally. --dry-run only inspects. --max-requests, --max-bytes and --timeout (ms) bound all remote work. Resume with the same input, native paths and --operation ID --resume. The local frozen plan retains the exact derived files, resource carriers and inferred Members; resume never rediscovers them. Unknown CREATE is reconciled, never replayed from absence. To replace an unfinished intent, use --supersede OLD --operation NEW with a distinct new identity; the kernel first reconciles the exact predecessor. Supersede does not bypass unresolved writes or authority checks. No name matching or historical recovery.",
   ),
   Command.withExamples([
     {
       command:
-        "ntn-skills ctl library import ./skill --entry LIBRARY_ID --skill-id my-skill --dry-run",
+        "ntn-skills ctl library import ./skill --library LIBRARY_ROOT_ID --skill-id my-skill --dry-run",
       description: "Review the complete current replacement without writing",
     },
     {
       command:
-        "ntn-skills ctl library import ./skill --entry LIBRARY_ID --skill-id my-skill --operation IMPORT_ID",
+        "ntn-skills ctl library import ./skill --library LIBRARY_ROOT_ID --skill-id my-skill --operation IMPORT_ID",
       description: "Apply the complete original file tree under one current operation",
     },
     {
       command:
-        "ntn-skills ctl library import ./skill --entry LIBRARY_ID --skill-id my-skill --native SKILL.md --native references/guide.md --dry-run",
+        "ntn-skills ctl library import ./skill --library LIBRARY_ROOT_ID --skill-id my-skill --native SKILL.md --native references/guide.md --dry-run",
       description: "Review editable native bodies alongside exact resource files",
     },
     {
       command:
-        "ntn-skills ctl library import ./skill --entry LIBRARY_ID --skill-id my-skill --operation IMPORT_ID --resume",
+        "ntn-skills ctl library import ./skill --library LIBRARY_ROOT_ID --skill-id my-skill --operation IMPORT_ID --resume",
       description: "Reconcile and continue the same current import",
     },
   ]),

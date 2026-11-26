@@ -133,6 +133,7 @@ export const CoverageSchema = Schema.Struct({
 })
 export const CatalogSchema = Schema.Struct({
   scope: Schema.String,
+  library_id: Schema.optional(Schema.String),
   fetched_at: Schema.Number,
   databases: Schema.Array(CatalogSourceSchema),
   records: Schema.Array(ContentRecordSchema),
@@ -204,7 +205,7 @@ export function snapshotMembers(snapshot: Pick<Snapshot, "members" | "router_mem
 }
 /** Machine preference contains identities only; the shared Profile owns its rules. */
 export const SharedProfileBindingSchema = Schema.Struct({
-  library_entry: Schema.String.check(
+  library_id: Schema.String.check(
     Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u),
   ),
   profile_id: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u)),
@@ -219,7 +220,7 @@ export const ConfigSchema = Schema.Struct({
   source_resources: Schema.optional(SourceResourceConfigurationSchema),
   sources: Schema.optional(Schema.Array(SourceSchema)),
   shared_profile: Schema.optional(SharedProfileBindingSchema),
-  default_database: Schema.optional(Schema.String),
+  default_library: Schema.optional(Schema.String),
   token: Schema.optional(Schema.String),
   cache_policy: Schema.optional(
     Schema.Struct({
@@ -296,64 +297,4 @@ export function aliasFor(name: string): string {
           (value) => `%${value.charCodeAt(0).toString(16).toUpperCase()}`,
         ),
   ).join("")
-}
-
-export function resolveRecord(
-  selector: string,
-  catalog: Catalog,
-  databaseId?: string,
-): ContentRecord {
-  if (catalog.coverage.failed_sources.length) {
-    throw fail(
-      "CATALOG_INCOMPLETE",
-      "Some skill sources could not be queried; uniqueness cannot be established.",
-      catalog.coverage,
-    )
-  }
-  const items = catalog.records.filter(
-    (s) => !databaseId || (s.locator.type !== "local" && s.locator.database_id === databaseId),
-  )
-  const exact = items.find(
-    (record) =>
-      record.id === selector ||
-      (record.locator.type === "shared_skill" && record.locator.page_id === selector),
-  )
-  if (exact) return exact
-  const matches = [
-    ...new Map(
-      items
-        .filter(
-          (s) =>
-            s.name === selector ||
-            s.alias === selector ||
-            s.id === selector ||
-            (s.locator.type === "shared_skill" && s.locator.page_id === selector),
-        )
-        .map((s) => [s.id, s]),
-    ).values(),
-  ]
-  if (!matches.length)
-    throw fail("SKILL_NOT_FOUND", "No skill matched in the discovered scope.", {
-      selector,
-      candidates: [],
-      coverage: catalog.coverage,
-    })
-  if (matches.length > 1)
-    throw fail(
-      "SKILL_AMBIGUOUS",
-      "Multiple skills match; select an exact record ID or pinned ref.",
-      {
-        selector,
-        candidates: matches,
-        exact_selectors: matches.map((record) => ({ id: record.id, ref: record.ref })),
-        databases: catalog.databases.filter((database) =>
-          matches.some(
-            (record) =>
-              record.locator.type !== "local" &&
-              record.locator.database_id === database.database_id,
-          ),
-        ),
-      },
-    )
-  return matches[0]!
 }

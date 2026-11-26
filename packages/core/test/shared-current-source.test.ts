@@ -26,10 +26,9 @@ const digest = (value: string | Uint8Array) => createHash("sha256").update(value
 const encode = (value: string) => new TextEncoder().encode(value)
 const origin = "https://raw.githubusercontent.com"
 const library: SharedLibrary = {
-  version: 1,
-  library_id: "current-library",
+  version: 2,
+  library_id: "088921ea-bc32-5c55-b294-f21ea18d7081",
   operation_id: "current-library",
-  parent_page_id: id(1),
   skills: { database_id: id(2), data_source_id: id(3), property_ids: {} },
   files: { database_id: id(4), data_source_id: id(5), property_ids: {} },
   records: {

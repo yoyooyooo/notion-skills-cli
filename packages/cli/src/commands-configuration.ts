@@ -7,7 +7,7 @@ import {
   configuration,
   publicConfiguration,
   setToken,
-  setDefaultDatabase,
+  setDefaultLibrary,
   fail,
   configureCachePolicy,
   effectiveCachePolicy,
@@ -30,11 +30,11 @@ export const configShow = defineCommand("show", {}, () =>
 ).pipe(
   Command.withShortDescription("Show local configuration with token presence only"),
   Command.withDescription(
-    "Read local configuration and effective cache policy offline. Token values are omitted; token_configured reports a non-empty configured token. Authentication priority: config.token > NOTION_API_TOKEN. The default database selects the current writer's library; cache policy controls current reads and catalog observations.",
+    "Read local configuration and effective cache policy offline. Token values are omitted; token_configured reports a non-empty configured token. Authentication priority: config.token > NOTION_API_TOKEN. Saved default_library does not select a writer target; use the target arguments documented by each library command. Cache policy controls current reads and catalog observations.",
   ),
 )
 export const configurationKeys =
-  "default_database, cache_policy.read_max_age_ms, cache_policy.catalog_max_age_ms"
+  "default_library, cache_policy.read_max_age_ms, cache_policy.catalog_max_age_ms"
 export const configSet = defineCommand(
   "set",
   {
@@ -49,8 +49,8 @@ export const configSet = defineCommand(
   },
   ({ key, value }) =>
     Effect.gen(function* () {
-      if (key === "default_database") {
-        yield* emit({ config: publicConfiguration(yield* setDefaultDatabase(value)) })
+      if (key === "default_library") {
+        yield* emit({ config: publicConfiguration(yield* setDefaultLibrary(value)) })
         return
       }
       if (key !== "cache_policy.read_max_age_ms" && key !== "cache_policy.catalog_max_age_ms")
@@ -90,8 +90,8 @@ export const configUnset = defineCommand(
   },
   ({ key }) =>
     Effect.gen(function* () {
-      if (key === "default_database") {
-        yield* emit({ config: publicConfiguration(yield* setDefaultDatabase()) })
+      if (key === "default_library") {
+        yield* emit({ config: publicConfiguration(yield* setDefaultLibrary()) })
         return
       }
       if (key !== "cache_policy.read_max_age_ms" && key !== "cache_policy.catalog_max_age_ms")
@@ -142,7 +142,7 @@ export const configSetToken = defineCommand(
 ).pipe(
   Command.withShortDescription("Store the token from standard input in local configuration"),
   Command.withDescription(
-    "Read one token from piped stdin with --stdin; trim surrounding whitespace and reject empty/multiple values. Store config.token with private file permissions while preserving sources/default_database. Works offline; no Notion request or credential validation. Output only reports token_configured. Config token takes priority over NOTION_API_TOKEN.",
+    "Read one token from piped stdin with --stdin; trim surrounding whitespace and reject empty/multiple values. Store config.token with private file permissions while preserving sources/default_library. Works offline; no Notion request or credential validation. Output only reports token_configured. Config token takes priority over NOTION_API_TOKEN.",
   ),
   Command.withExamples([
     {
@@ -159,7 +159,7 @@ export const configClearToken = defineCommand("clear-token", {}, () =>
 ).pipe(
   Command.withShortDescription("Remove config.token and use NOTION_API_TOKEN"),
   Command.withDescription(
-    "Remove only the configured token offline, preserving sources/default_database. Future online requests require NOTION_API_TOKEN. Output never includes a token.",
+    "Remove only the configured token offline, preserving sources/default_library. Future online requests require NOTION_API_TOKEN. Output never includes a token.",
   ),
   Command.withExamples([
     {
@@ -171,7 +171,7 @@ export const configClearToken = defineCommand("clear-token", {}, () =>
 export const configCommand = defineCommand("config").pipe(
   Command.withShortDescription("Manage local authentication and database preferences"),
   Command.withDescription(
-    `Configuration: NTN_SKILLS_CONFIG_HOME > XDG_CONFIG_HOME/ntn-skills > ~/.config/ntn-skills. Supported set/unset keys: ${configurationKeys}. Cache values are integer milliseconds; unset restores the corresponding built-in default. Database set validates online; unset works offline. Use set-token --stdin and clear-token for credentials. All output omits token values. default_database selects the current writer's default library. No Notion writes.`,
+    `Configuration: NTN_SKILLS_CONFIG_HOME > XDG_CONFIG_HOME/ntn-skills > ~/.config/ntn-skills. Supported set/unset keys: ${configurationKeys}. Cache values are integer milliseconds; unset restores the corresponding built-in default. Database set validates online; unset works offline. Use set-token --stdin and clear-token for credentials. All output omits token values. Saved default_library does not select a writer target; use the target arguments documented by each library command. No Notion writes.`,
   ),
   Command.withSubcommands([configShow, configSetToken, configClearToken, configSet, configUnset]),
 )

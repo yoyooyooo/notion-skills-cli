@@ -3,7 +3,7 @@ import { Reactivity } from "effect/reactivity"
 import { SqlClient } from "effect/sql"
 import { fail, type SkillsError } from "./model.ts"
 
-export const SUPPORTED_NODE_RANGE = "^22.22.3 || >=24.20.0"
+export const SUPPORTED_NODE_RANGE = "^22.23.5 || ^24.22.3 || ^26.13.1"
 
 const versionParts = (value: string): readonly [number, number, number] | undefined => {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value)
@@ -18,9 +18,9 @@ export const isSupportedNodeVersion = (value: string): boolean => {
   if (!parts) return false
   const [major, minor, patch] = parts
   return (
-    (major === 22 && (minor > 22 || (minor === 22 && patch >= 3))) ||
-    major > 24 ||
-    (major === 24 && minor >= 20)
+    (major === 22 && (minor > 23 || (minor === 23 && patch >= 5))) ||
+    (major === 24 && (minor > 22 || (minor === 22 && patch >= 3))) ||
+    (major === 26 && (minor > 13 || (minor === 13 && patch >= 1)))
   )
 }
 

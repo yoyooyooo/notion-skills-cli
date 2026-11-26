@@ -12,7 +12,8 @@ import {
   type SharedSkillRecord,
   type Source,
 } from "./model.ts"
-import { pageId } from "./ref.ts"
+import { fileRef, pageId } from "./ref.ts"
+import { formatSkillIdentity, SkillReferenceError } from "./skill-ref.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 
 function invalid(message: string, details?: unknown) {
@@ -31,13 +32,18 @@ function exactPage(value: unknown, label: string) {
 }
 
 function stableIdentity(value: string, label: string, details?: unknown) {
-  if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(value))
+  if (!/^[a-z0-9][a-z0-9._-]{0,199}$/u.test(value))
     throw invalid(`${label} must be a stable bounded identity.`, details)
   return value
 }
 
-export function sharedSkillId(libraryId: string, skillId: string): string {
-  return `shared_skill:${encodeURIComponent(stableIdentity(libraryId, "Library ID"))}:${encodeURIComponent(stableIdentity(skillId, "Skill ID"))}`
+export function skillIdentity(libraryId: string, skillId: string): string {
+  try {
+    return formatSkillIdentity({ libraryId, skillId })
+  } catch (error) {
+    if (error instanceof SkillReferenceError) throw invalid(error.message)
+    throw error
+  }
 }
 
 /** Address a Skills property by descriptor ID; display names are not identities. */
@@ -172,7 +178,7 @@ function registeredSharedRecord(
   })
   const description = validateDescription(descriptionValue)
   const kind = decode(ContentKindSchema, kindValue)
-  const id = sharedSkillId(library.library_id, skillId)
+  const id = skillIdentity(library.library_id, skillId)
   const entrypoint = entrypointFor(kind)
   return {
     id,
@@ -191,7 +197,7 @@ function registeredSharedRecord(
     default_context: defaultContext,
     enabled,
     entrypoint,
-    ref: `skill://${encodeURIComponent(id)}/${entrypoint}`,
+    ref: fileRef(id, entrypoint),
   }
 }
 
@@ -250,11 +256,11 @@ export function sharedRecordFromPage(
 /** Validate a cached shared record without loading its body or changing its page binding. */
 export function validateSharedRecordIdentity(record: ContentRecord): void {
   if (record.locator.type !== "shared_skill") return
-  const id = sharedSkillId(record.locator.library_id, record.locator.skill_id)
+  const id = skillIdentity(record.locator.library_id, record.locator.skill_id)
   if (
     record.id !== id ||
     record.entrypoint !== entrypointFor(record.kind) ||
-    record.ref !== `skill://${encodeURIComponent(id)}/${record.entrypoint}` ||
+    record.ref !== fileRef(id, record.entrypoint) ||
     typeof record.enabled !== "boolean"
   )
     throw fail("STATE_CORRUPT", "Cached shared Skill identity differs from its stable locator.", {

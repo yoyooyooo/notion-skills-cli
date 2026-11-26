@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import {
   compareNativeMarkdown,
+  nativeFileTransport,
   nativeMarkdownTransport,
   validateNativeMarkdown,
 } from "../src/shared-native-markdown.ts"
@@ -50,6 +51,88 @@ test("native comparison retains link definitions and escaped or code text", () =
   )
 })
 
+test("native hyperlink equivalence preserves a root selection and complete reference definitions", () => {
+  const ref = "skill://router?library=45c64249-e1dd-59ab-ad9f-604ff752ddb4"
+  const wire = "skill://router/entrypoint.md/..?library=45c64249-e1dd-59ab-ad9f-604ff752ddb4"
+  const expected = `[**run**][ref]\n\n[ref]: ${ref}`
+  expect(compareNativeMarkdown({ expected, observed: `[**run**](${wire})` })).toBe("normalized")
+  expect(nativeMarkdownTransport(expected)).toBe(expected)
+  expect(
+    compareNativeMarkdown({
+      expected: `[run](${ref})\n\n[extra]: skill://other`,
+      observed: `[run](${wire})`,
+    }),
+  ).toBe("different")
+  for (const changed of [
+    wire.replace("router/", "other/"),
+    wire.replace("/..?", "/../SKILL.md?"),
+    wire.replace("45c64249", "55c64249"),
+    wire + "&snapshot=s_" + "a".repeat(64),
+  ])
+    expect(
+      compareNativeMarkdown({ expected: `[run](${ref})`, observed: `[run](${changed})` }),
+    ).toBe("different")
+})
+
+test.each([
+  ["skill://router", "skill://router/entrypoint.md/.."],
+  ["skill://router/entrypoint.md/..", "skill://router/entrypoint.md/../entrypoint.md/.."],
+])(
+  "native wire equivalence never changes literal text, code or image sources: %s",
+  (input, wire) => {
+    for (const wrap of [
+      (href: string) => `Literal ${href}`,
+      (href: string) => "`" + href + "`",
+      (href: string) => "```text\n" + href + "\n```",
+      (href: string) => `![image](${href})`,
+    ])
+      expect(compareNativeMarkdown({ expected: wrap(input), observed: wrap(wire) })).toBe(
+        "different",
+      )
+  },
+)
+
+test("an image reference definition can become inline without changing its exact source", () => {
+  const source = "skill://router/entrypoint.md/../image.png"
+  expect(
+    compareNativeMarkdown({
+      expected: `![image][ref]\n\n[ref]: ${source}`,
+      observed: `![image](${source})`,
+    }),
+  ).toBe("normalized")
+  expect(
+    compareNativeMarkdown({
+      expected: `![image][ref]\n\n[ref]: ${source}`,
+      observed: "![image](skill://router/image.png)",
+    }),
+  ).toBe("different")
+})
+
+test("native code fences recognize Notion's sh-to-bash spelling without changing payload or transport", () => {
+  const expected = "```sh\nntn-skills read EXACT_REF --library ENTRY --json\n```\n"
+  const observed = expected.replace("```sh", "```bash")
+  expect(compareNativeMarkdown({ expected, observed })).toBe("normalized")
+  expect(nativeMarkdownTransport(expected)).toBe(expected)
+  expect(
+    compareNativeMarkdown({ expected, observed: observed.replace("--json", "--output FILE") }),
+  ).toBe("different")
+  expect(
+    compareNativeMarkdown({ expected, observed: observed.replace("```bash", "```python") }),
+  ).toBe("different")
+})
+
+test.each(["SKILL.md", "SKILL\\.md"])(
+  "native comparison rejects an unexpected filename link even when the input is escaped: %s",
+  (filename) => {
+    expect(
+      compareNativeMarkdown({
+        expected: `A new Skill requires root ${filename}.`,
+        observed: "A new Skill requires root [SKILL.md](http://SKILL.md).",
+      }),
+    ).toBe("different")
+  },
+)
+
 test.each([
   ["Use `code`.", "Use <code>code</code>."],
   ["`&amp;` and `` `literal` ``.", "<code>&amp;</code> and <code>`literal`</code>."],
@@ -86,6 +169,159 @@ test("native code tags cannot reinterpret entities, hide real links or turn esca
   for (const malformed of ["<code>unclosed", '<code class="unsafe">text</code>', "text</code>"])
     expect(() => validateNativeMarkdown(malformed)).toThrow()
 })
+
+test("native transport folds soft wraps and Markdown code-span line endings", () => {
+  const source =
+    'Read the selected\nmetadata, then use `ntn-skills read\n--json` with **complete\ncontext** and [the\nsource](https://example.com/a?next=one%20two "Stable title").\n'
+  const wire =
+    'Read the selected metadata, then use `ntn-skills read --json` with **complete context** and [the source](https://example.com/a?next=one%20two "Stable title").\n'
+  expect(nativeMarkdownTransport(source)).toBe(wire)
+  expect(compareNativeMarkdown({ expected: source, observed: wire })).toBe("normalized")
+})
+
+test("native file transport preserves line boundaries outside the Markdown path domain", () => {
+  const markdown = "#!/bin/sh\r\nprintf 'installed current original\\n'"
+  expect(nativeFileTransport({ path: "scripts/run.sh", markdown })).toBe(
+    markdown.replaceAll("\r\n", "\n"),
+  )
+  expect(nativeFileTransport({ path: "notes.MARKDOWN", markdown: "soft\nwrap" })).toBe("soft wrap")
+  expect(nativeFileTransport({ path: "notes.md", markdown: "soft\nwrap" })).toBe("soft wrap")
+})
+
+test.each([
+  "https://example.com/docs",
+  "<https://example.com/docs>",
+  "[https://example.com/docs](https://example.com/target)",
+])("native transport preserves literal autolink labels without re-lexing them: %s", (link) => {
+  const source = `See ${link}\nfor more.`
+  const wire = `See ${link} for more.`
+  expect(nativeMarkdownTransport(source)).toBe(wire)
+  expect(compareNativeMarkdown({ expected: source, observed: wire })).toBe("normalized")
+  expect(
+    compareNativeMarkdown({
+      expected: source,
+      observed: wire.replaceAll("example.com", "changed.example"),
+    }),
+  ).toBe("different")
+})
+
+test("native transport preserves explicit breaks, fenced payloads and native code literals", () => {
+  const source = [
+    "An explicit two-space break  ",
+    "then a backslash break\\",
+    "then an HTML<br />break.",
+    "",
+    "```bash",
+    "  printf 'first\\nsecond'",
+    "",
+    "```",
+    "",
+    "Native <code>a\nb<br>&amp;</code> stays literal.",
+    "",
+    '[stable](https://example.com/a?x=1&amp;y=2 "Stable title")',
+    "",
+    "[unused]: https://example.com/ref?next=x%20y",
+    "",
+  ].join("\n")
+  expect(nativeMarkdownTransport(source)).toBe(source)
+  expect(
+    compareNativeMarkdown({
+      expected: source,
+      observed: source.replace("<code>a\nb<br>&amp;</code>", "<code>a b<br>&amp;</code>"),
+    }),
+  ).toBe("different")
+})
+
+test("native transport retains nested list and quote structure while folding their soft wraps", () => {
+  const source = [
+    "> 3. Parent `ntn-skills",
+    ">    list` and wrapped",
+    ">    context.",
+    ">",
+    ">    - Child label",
+    ">      continues with [guide](https://example.com/guide).",
+    ">",
+    ">      ```text",
+    ">      line one",
+    ">        line two",
+    ">      ```",
+    ">",
+    "> 4. Next item.",
+  ].join("\n")
+  const wire = nativeMarkdownTransport(source)
+  expect(wire).toContain("Parent `ntn-skills list` and wrapped context.")
+  expect(wire).toContain("Child label continues with [guide](https://example.com/guide).")
+  expect(compareNativeMarkdown({ expected: source, observed: wire })).toBe("normalized")
+  expect(compareNativeMarkdown({ expected: source, observed: wire.replace(/^> ?/gmu, "") })).toBe(
+    "different",
+  )
+})
+
+test("native transport preserves the checked state of tight task items with soft wraps", () => {
+  const source = "- [x] Child label\n  continues.\n- [ ] Next item."
+  const wire = nativeMarkdownTransport(source)
+  expect(wire).toContain("- [x] Child label continues.")
+  expect(compareNativeMarkdown({ expected: source, observed: wire })).toBe("normalized")
+  expect(
+    compareNativeMarkdown({ expected: source, observed: wire.replace("- [x]", "- [ ]") }),
+  ).toBe("different")
+})
+
+test("native transport preserves trailing payload lines in an unclosed fence inside a changed list", () => {
+  const source = "- soft\n  wrap\n\n  ```txt\n  keep\n\n"
+  const wire = nativeMarkdownTransport(source)
+  expect(wire).toContain("- soft wrap")
+  expect(compareNativeMarkdown({ expected: source, observed: wire })).toBe("normalized")
+})
+
+test("native readback accepts a paragraph child after a fenced block in a list item", () => {
+  const expected = [
+    "1. Discover without loading bodies:",
+    "",
+    "   ```bash",
+    "   ntn-skills list --library ENTRY --query 'TASK_TERMS'",
+    "   ```",
+    "",
+    "   Use the connected library's ENTRY; continue with `next_cursor`.",
+  ].join("\n")
+  const observed = [
+    "1. Discover without loading bodies:",
+    "   ```bash",
+    "   ntn-skills list --library ENTRY --query 'TASK_TERMS'",
+    "   ```",
+    "",
+    "   <p>",
+    "   Use the connected library's ENTRY; continue with <code>next_cursor</code>.",
+    "   </p>",
+  ].join("\n")
+  expect(() => validateNativeMarkdown(observed)).not.toThrow()
+  expect(compareNativeMarkdown({ expected, observed })).toBe("normalized")
+  expect(
+    compareNativeMarkdown({
+      expected,
+      observed: observed.replace("\n   <p>\n   Use", "\n<p>\nUse").replace("\n   </p>", "\n</p>"),
+    }),
+  ).toBe("different")
+  expect(
+    compareNativeMarkdown({ expected, observed: observed.replace("next_cursor", "cursor") }),
+  ).toBe("different")
+})
+
+test.each([
+  ["Use `ntn-skills read\n--json`.", "Use <code>ntn-skills read<br>--json</code>."],
+  ["Wrapped\nprose.", "Wrapped<br />prose."],
+  ["First.\n\nSecond.", "<p>\nFirst. Second.\n</p>"],
+  ["Body.", '<p class="unknown">\nBody.\n</p>'],
+  ["Body.", "<p>\nBody."],
+  ["Body.", "<p>\nBody.\n\n</p>"],
+  ["[guide](https://example.com/a)", "<p>\n[guide](https://example.com/b)\n</p>"],
+  ["[guide](https://example.com/a)", "<p>\n[changed](https://example.com/a)\n</p>"],
+])(
+  "native paragraph and inline normalization cannot hide a change from %s",
+  (expected, observed) => {
+    expect(compareNativeMarkdown({ expected, observed })).toBe("different")
+  },
+)
 
 test("native admission rejects unknown structures before a write, including unsupported encoding", () => {
   for (const markdown of [

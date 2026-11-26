@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { fail, property, SkillsError, type Source } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
-import { sharedRecordFromPage, sharedSkillId } from "../src/shared-content.ts"
+import { sharedRecordFromPage, skillIdentity } from "../src/shared-content.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
 import { querySharedRouterMembers, querySharedSkillRelation } from "../src/shared-router-members.ts"
 import { currentLibrary } from "./shared-current-fixture.ts"
@@ -12,7 +12,7 @@ const routerPage = id(1)
 const membersProperty = "mem%3Aroles"
 const library: SharedLibrary = {
   ...currentLibrary,
-  library_id: "library-router",
+  library_id: "88c64f8d-88ee-5ebf-a45c-f9a4a0144e42",
   operation_id: "library-router",
   skills: {
     ...currentLibrary.skills,
@@ -371,13 +371,16 @@ describe("shared Router members", () => {
     f.inventory([f.members[1], f.rawRouter, f.members[0]])
     const result = await f.run(f.query())
     expect(result.map((member) => member.id)).toEqual([
-      sharedSkillId(library.library_id, "member-000"),
-      sharedSkillId(library.library_id, "member-001"),
+      skillIdentity(library.library_id, "member-000"),
+      skillIdentity(library.library_id, "member-001"),
     ])
     expect(result.map((member) => member.name)).toEqual(["Member 0", "Member 1"])
     expect(
       result.every(
-        (member) => member.ref.startsWith("skill://shared_skill%3A") && member.kind === "skill",
+        (member) =>
+          member.ref.startsWith("skill://") &&
+          member.ref.includes("?library=") &&
+          member.kind === "skill",
       ),
     ).toBe(true)
     expect(result[0]?.metadata).toEqual({

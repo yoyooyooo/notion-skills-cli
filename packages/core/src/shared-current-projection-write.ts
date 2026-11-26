@@ -95,7 +95,11 @@ export type CurrentProjectionRowResult = FileIdentity & {
 export type CurrentSkillProjectionResult = {
   readonly version: 1
   readonly contract: "current"
-  readonly library: { readonly library_id: string; readonly entry: string }
+  readonly library: {
+    readonly library_id: string
+    readonly database_id: string
+    readonly data_source_id: string
+  }
   readonly skill_id: string
   readonly page_id: string
   readonly operation_id: string
@@ -409,7 +413,7 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
     const input_sha256 = yield* sha256(
       canonicalSharedJson({
         purpose: "current_text_projection",
-        version: 1,
+        version: 2,
         owner: {
           skill_id: index.skill_id,
           page_id: index.page_id,
@@ -427,7 +431,9 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
     )
       return yield* Effect.fail(
         currentOperationFailure(
-          invalid("The current content or reading policy differs from the unfinished projection."),
+          invalid(
+            "The current content, reading policy or renderer differs from the unfinished projection.",
+          ),
           frozen,
           null,
           index.page_id,
@@ -543,6 +549,7 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
       checked(() => {
         const plan = renderCurrentProjection({
           path: prepared.file.path,
+          role: prepared.file.path === index.main.path ? "main" : "supporting",
           bytes: prepared.bytes,
           rewriteLink: currentProjectionLinkRewriter(
             prepared.file.path,
@@ -565,7 +572,11 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
     ): CurrentSkillProjectionResult => ({
       version: 1,
       contract: "current",
-      library: { library_id: library.library_id, entry: library.skills.database_id },
+      library: {
+        library_id: library.library_id,
+        database_id: library.skills.database_id,
+        data_source_id: library.skills.data_source_id,
+      },
       skill_id: index.skill_id,
       page_id: index.page_id,
       operation_id,

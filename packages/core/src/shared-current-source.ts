@@ -215,6 +215,22 @@ function currentSourcePlan(library: SharedLibrary, current: CurrentSourceContent
   })
 }
 
+/** Read the selected Git identity from the complete current plan without acquiring
+ * repository files. Resource-backed plans use the same owner and hash checks as
+ * consumption; Last Revision is a plan fingerprint, never a commit identity. */
+export function readCurrentSourceGitOrigin(
+  library: SharedLibrary,
+  input: CurrentSourceContentSelection,
+) {
+  return currentSourcePlan(library, input).pipe(
+    Effect.map((plan) =>
+      plan.base?.kind === "git" && plan.mounts.length === 0
+        ? { url: plan.base.source.url, commit: plan.base.source.commit }
+        : undefined,
+    ),
+  )
+}
+
 /** Management has already checked the exact Source owner and finite intent. This
  * admits only its current immutable content, never a moving Ref or old carrier. */
 export function prepareCurrentSourceManagementSelection(

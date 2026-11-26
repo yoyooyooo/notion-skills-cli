@@ -14,6 +14,7 @@ import {
   compareNativeMarkdown,
   readResources,
   readSkill,
+  resolveReference,
   listCatalog,
   listSkills,
   listSkill,
@@ -30,9 +31,9 @@ import { nodeRuntime } from "../src/runtime.ts"
 
 const input = { version: 1, targets: ["00000000-0000-4000-8000-000000000001"], purpose: "use" }
 const resourceRef =
-  "skill://shared_skill%3Alibrary%3Askill/references/a.txt?snapshot=s_" +
+  "skill://skill/references/a.txt?library=0c64a309-510e-5d37-b23c-3ce2f966c66e&snapshot=s_" +
   "a".repeat(64) +
-  "&file_id=file-a"
+  ""
 
 function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
   expect(reports).toHaveLength(count)
@@ -52,21 +53,39 @@ function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
 }
 
 describe("Promise SDK boundary", () => {
-  test("name resolution is pure and manifest listing preserves the SDK cancellation boundary", async () => {
-    expect(() =>
-      resolveCatalogReference("skill://missing/SKILL.md", {
-        scope: "a".repeat(64),
-        fetched_at: 1000,
-        databases: [],
-        records: [],
-        coverage: {
-          method: "search_and_registered",
-          exhaustive: false,
-          queried_data_sources: [],
-          failed_sources: [],
-          search_index_limited: true,
-        },
+  test("relative identity resolution preserves cancellation, effects and zero-request receipts", async () => {
+    const reports: unknown[] = []
+    await expect(
+      resolveReference("../SKILL.md", {
+        from: resourceRef,
+        env: {},
+        signal: AbortSignal.abort(),
+        onRequestMetrics: (value) => reports.push(value),
       }),
+    ).rejects.toMatchObject({
+      code: "CANCELLED",
+      details: { effects: { version: 1, remote_writes: "none", author_content: "unchanged" } },
+    })
+    expectUnstartedMetrics(reports, 1)
+  })
+  test("exact identity resolution is pure and manifest listing preserves the SDK cancellation boundary", async () => {
+    expect(() =>
+      resolveCatalogReference(
+        "skill://missing/SKILL.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e",
+        {
+          scope: "a".repeat(64),
+          fetched_at: 1000,
+          databases: [],
+          records: [],
+          coverage: {
+            method: "search_and_registered",
+            exhaustive: false,
+            queried_data_sources: [],
+            failed_sources: [],
+            search_index_limited: true,
+          },
+        },
+      ),
     ).toThrow(expect.objectContaining({ code: "CATALOG_INCOMPLETE" }))
     const controller = new AbortController()
     controller.abort()
@@ -354,6 +373,18 @@ describe("Promise SDK boundary", () => {
       "# Invoice\n",
     ])
       expect(compareNativeMarkdown({ expected, observed: changed })).toBe("different")
+    const wrapped = {
+      expected: "1. Run `list --library\n   ENTRY`.\n\n   Keep the paragraph.\n",
+      observed:
+        "1. Run <code>list --library ENTRY</code>.\n   <p>\n   Keep the paragraph.\n   </p>\n",
+    }
+    expect(compareNativeMarkdown(wrapped)).toBe("normalized")
+    expect(
+      compareNativeMarkdown({
+        ...wrapped,
+        observed: wrapped.observed.replace("library ENTRY", "library<br>ENTRY"),
+      }),
+    ).toBe("different")
   })
 
   test("independent resource capability preserves consumer v1 and rejects structural errors before runtime acquisition", async () => {
@@ -363,7 +394,7 @@ describe("Promise SDK boundary", () => {
       CONSUMER_CONTRACT_VERSION,
       RESOURCE_READ_CONTRACT_VERSION,
       READ_OUTPUT_PROOF_VERSION,
-    ]).toEqual([2, 1, 1, 1])
+    ]).toEqual([3, 1, 1, 1])
     const reports: unknown[] = []
     for (const input of [
       { version: 2, refs: [resourceRef] },

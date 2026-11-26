@@ -1,12 +1,12 @@
 # Releasing
 
-The public package and executable are `ntn-skills`, running on Node.js 22.22.3+ within 22.x, or Node.js 24.20.0+. The source repository remains `yoyooyooo/notion-skills-cli`. Only `packages/cli` is published. `packages/core` stays private, and both package versions are kept equal. Development and packing use Bun 1.4.3; CI installs the tarball with npm and exercises it on Node.js 22.22.3 and 24.20.0 on Linux and macOS.
+The public package and executable are `ntn-skills`, running on Node.js 22.23.5+ within 22.x, 24.22.3+ within 24.x, or 26.13.1+ within 26.x. The source repository remains `yoyooyooo/notion-skills-cli`. Only `packages/cli` is published. `packages/core` stays private, and both package versions are kept equal. Development and packing use Bun 1.4.3; CI installs the tarball with npm and exercises it on Node.js 22.23.5, 24.22.3 and 26.13.1 on Linux and macOS.
 
 Releases push an annotated tag and publish through GitHub Actions OIDC. The repository can remain private. npm provenance is enabled and verified only for public repositories; private releases retain registry integrity, signatures and consumer checks.
 
 ## Before a release
 
-Use a clean checkout of `main`, with `origin` pointing to `yoyooyooo/notion-skills-cli`. Install Bun 1.4.3, Node 24, npm 11.15.0 or newer, Git, and GitHub CLI. Configure Git author identity and permission to push tags. npm registry reads must work; an unavailable registry stops the release.
+Use a clean checkout of `main`, with `origin` pointing to `yoyooyooo/notion-skills-cli`. Install Bun 1.4.3, Node 26.13.1, npm 12.2.3, Git, and GitHub CLI. Configure Git author identity and permission to push tags. npm registry reads must work; an unavailable registry stops the release.
 
 ```sh
 bun install --frozen-lockfile
@@ -18,7 +18,7 @@ Replace `0.1.1` with the intended version. Precheck fetches remote state, reads 
 
 The tarball exposes only `ntn-skills`; retired migration and historical routes are rejected. The CLI smoke drives current complete import, read/files/export, repeat no-op and edited reimport through a controlled HTTP source. The SDK smoke must report `contract=current-only`, `selection=all` and zero failed current cases. Both failures propagate to the package check; no migration archive or historical cache seed is involved. Direct CLI smoke accepts `bun scripts/package-smoke.ts --archive /absolute/path/ntn-skills.tgz`, while registry readback uses `bun scripts/package-smoke.ts --registry ntn-skills@VERSION`. The full `package:check` also runs the installed SDK gate; direct CLI smoke alone does not replace it. These controlled runs do not prove real Notion cleanup or real Pi use.
 
-Before integration, require all four CI jobs for the PR's current head: Ubuntu and macOS 15, each with Node.js 22.22.3 and 24.20.0. Jobs run the full deterministic suite and the same installed-consumer package check used by publication. Artifact upload always retains its JSON summary, consumer reports and request logs for seven days, excluding installed dependencies. The package check runs directly and does not swallow failures. macOS exercises system Trash; Linux proves explicit unavailable-retention failure with preserved bytes. Real Notion acceptance remains separate and must not use PR secrets. The tag publication job repeats `check` and package verification on Linux/Node 24.20.0; it does not replace the PR's macOS/runtime matrix.
+Before integration, require all six CI jobs for the PR's current head: Ubuntu and macOS 15, each with Node.js 22.23.5, 24.22.3 and 26.13.1. Jobs run the full deterministic suite and the same installed-consumer package check used by publication. Artifact upload always retains its JSON summary, consumer reports and request logs for seven days, excluding installed dependencies. The package check runs directly and does not swallow failures. macOS exercises system Trash; Linux proves explicit unavailable-retention failure with preserved bytes. Real Notion acceptance remains separate and must not use PR secrets. The tag publication job repeats `check` and package verification on Linux/Node 26.13.1; it does not replace the PR's macOS/runtime matrix.
 
 Use explicit versions for prereleases, for example `0.2.0-rc.1`. They publish to `next`; stable versions publish to `latest`. Versions use SemVer without build metadata. A version must exceed every previously tagged or published release. `patch`, `minor`, and `major` choose a bump from the highest known version; bumping from a prerelease requires an explicit version.
 
@@ -38,9 +38,19 @@ Open [the package Access page](https://www.npmjs.com/package/ntn-skills/access) 
 | Environment | Leave empty |
 | Allowed action | Allow `npm publish` |
 
-The owner is the GitHub owner, which can differ from the npm username. The workflow does not set a GitHub environment. It uses a GitHub-hosted runner with `id-token: write`, Node 24, and npm 11.15.0. It does not use package-manager cache, `registry-url` in setup-node, or `NODE_AUTH_TOKEN`. Do not add npm tokens to Actions secrets.
+The owner is the GitHub owner, which can differ from the npm username. The workflow does not set a GitHub environment. It uses a GitHub-hosted runner with `id-token: write`, Node 26.13.1, and npm 12.2.3. It does not use package-manager cache, `registry-url` in setup-node, or `NODE_AUTH_TOKEN`. Do not add npm tokens to Actions secrets.
 
-Read the configuration back with `npm trust list ntn-skills`, or inspect the authenticated Access page if terminal 2FA is unavailable. A new configuration must complete its first successful OIDC publish within two days; otherwise delete the expired connection and recreate it. The "not yet validated" status means no publish has used that connection yet.
+Before publication, read the package configuration with `npm trust list ntn-skills --json`
+or the authenticated Access page. Compare the exact owner, repository, workflow,
+empty environment and direct `npm publish` permission with the table above.
+A stage-only connection does not authorize this workflow's direct publish.
+Authentication success or an OIDC declaration in YAML does not prove the registry
+configuration. If it cannot be read, retain `not_verified` and resolve that
+publication prerequisite before releasing. Follow the current
+[npm trust command](https://docs.npmjs.com/cli/v12/commands/npm-trust/) and
+[Trusted Publisher instructions](https://docs.npmjs.com/trusted-publishers/)
+for configuration status and renewal; do not infer a live account setting from
+an older setup record.
 
 ## Automated releases
 
@@ -80,12 +90,24 @@ For a repair after a newer version has shipped, the selected dist-tag may alread
 
 The maintainer handles registry changes, release corrections, and security coordination. Report vulnerabilities through [SECURITY.md](../SECURITY.md). Prepare a fix through normal review, release a higher patch version, and describe the affected versions and upgrade path without exposing credentials or private reports.
 
-Deprecation changes registry metadata and requires approval. For an affected version, use a precise, actionable message:
+Registry metadata changes require explicit incident approval. First retain the current channel and affected-version metadata. For a temporary channel rollback, also verify the exact known-good version's registry integrity, provenance/signatures and fresh independent installation. Replace the uppercase version placeholders with reviewed exact versions:
 
 ```sh
-npm deprecate ntn-skills@0.1.1 "Security issue fixed in 0.1.2; upgrade to 0.1.2 or newer." --registry https://registry.npmjs.org
-npm view ntn-skills@0.1.1 deprecated --registry https://registry.npmjs.org
+npm view ntn-skills dist-tags --json --registry https://registry.npmjs.org
+npm view ntn-skills@BAD_VERSION version deprecated dist --json --registry https://registry.npmjs.org
+npm view ntn-skills@KNOWN_GOOD_VERSION version dist --json --registry https://registry.npmjs.org
 ```
+
+If an incident requires directing new default installs to an older verified version while a patch is prepared, an authorized maintainer may run `npm dist-tag add ntn-skills@KNOWN_GOOD_VERSION latest --registry https://registry.npmjs.org`. Read `npm view ntn-skills dist-tags --json --registry https://registry.npmjs.org` afterward and confirm the exact expected value. Use the original `next` channel when handling a prerelease. This explicit incident operation is outside the forward-only release/repair workflow. Existing installations still need a concrete upgrade or pin instruction.
+
+For a specific affected version, use a precise, actionable deprecation message and read it back:
+
+```sh
+npm deprecate ntn-skills@BAD_VERSION "Affected by ISSUE; upgrade to FIXED_VERSION." --registry https://registry.npmjs.org
+npm view ntn-skills@BAD_VERSION deprecated --registry https://registry.npmjs.org
+```
+
+If the result is unknown, preserve the first attempt and reconcile the exact registry state before retrying. A deprecation notice does not replace archive bytes or change a dist-tag.
 
 Replace the versions and message with the verified incident facts. Prefer a patch and deprecation to withdrawal. If a compromised archive or exposed secret requires removal, follow npm's unpublish policy and obtain explicit incident approval before running `npm unpublish ntn-skills@VERSION --registry https://registry.npmjs.org`. Never unpublish as routine rollback. Rotate exposed credentials independently of package withdrawal. Published version numbers and their Git tags remain permanently reserved.
 

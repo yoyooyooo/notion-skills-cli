@@ -100,12 +100,7 @@ export function derivedGraphDirectory(snapshot: Snapshot, bodySha256: string) {
     const directory: typeof DirectorySchema.Type = {
       files: snapshot.files.map((file) => ({
         ...file,
-        ref: fileRef(
-          snapshot.record.id,
-          file.path,
-          snapshot.snapshot_id,
-          snapshot.file_bindings?.find((binding) => binding.path === file.path)?.file_id,
-        ),
+        ref: fileRef(snapshot.record.id, file.path, snapshot.snapshot_id),
       })),
       required: relationDirectory(snapshot.required),
       candidates: relationDirectory(snapshotMembers(snapshot)),

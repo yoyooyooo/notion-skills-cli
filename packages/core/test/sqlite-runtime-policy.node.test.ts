@@ -42,9 +42,29 @@ test("WAL fixes compare numeric release components and include only documented b
 })
 
 test("Node supports maintained fixed minimum lines", () => {
-  for (const version of ["22.22.3", "v22.22.3", "22.23.0", "24.20.0", "25.0.0"])
+  for (const version of [
+    "22.23.5",
+    "v22.23.5",
+    "22.24.0",
+    "24.22.3",
+    "24.23.0",
+    "26.13.1",
+    "26.14.0",
+  ])
     expect(isSupportedNodeVersion(version), version).toBe(true)
-  for (const version of ["22.19.0", "22.22.2", "23.99.0", "24.19.9", "22.22.3-vendor", "invalid"])
+  for (const version of [
+    "22.22.3",
+    "22.23.4",
+    "23.99.0",
+    "24.20.0",
+    "24.22.2",
+    "25.0.0",
+    "26.13.0",
+    "27.0.0",
+    "28.0.0",
+    "22.23.5-vendor",
+    "invalid",
+  ])
     expect(isSupportedNodeVersion(version), version).toBe(false)
 })
 

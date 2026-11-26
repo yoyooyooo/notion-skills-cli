@@ -45,6 +45,7 @@ import {
 } from "./shared-router-members.ts"
 import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
 import { sha256, Store } from "./store.ts"
+import { selectionSnapshotIdentityInput } from "./snapshot-identity.ts"
 import { observedRelationPageDenial } from "./shared-skill-targets.ts"
 
 export type FixedSharedSource = {
@@ -87,7 +88,6 @@ export type OpenSharedSnapshotInput = {
   readonly forceFull?: boolean
   readonly maxAge?: number
   readonly requestedPaths?: readonly string[]
-  readonly requestedFileIds?: readonly string[]
   readonly sourceOptions?: SharedSourcePlanOptions
   readonly routerMembers?: readonly SharedRouterMember[]
   readonly relations?: {
@@ -213,8 +213,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const byPath = new Map(currentFiles.map((file) => [file.path, file]))
     const paths = currentFiles.map((file) => file.path)
     const requested = yield* checked(() => {
-      if (input.requestedPaths === undefined && input.requestedFileIds === undefined)
-        return new Set(paths)
+      if (input.requestedPaths === undefined) return new Set(paths)
       const selectedPaths = new Set([record.entrypoint])
       for (const path of input.requestedPaths ?? []) {
         if (normalizePath(path) !== path || !byPath.has(path))
@@ -224,16 +223,6 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             { path },
           )
         selectedPaths.add(path)
-      }
-      for (const id of input.requestedFileIds ?? []) {
-        const binding = bindings.find((file) => file.file_id === id)
-        if (
-          binding === undefined ||
-          canonicalSharedJson(byPath.get(binding.path)?.content) !==
-            canonicalSharedJson(binding.content)
-        )
-          throw fail("FILE_NOT_FOUND", "The selected File ID is not current.", { file_id: id })
-        selectedPaths.add(binding.path)
       }
       return selectedPaths
     })
@@ -569,7 +558,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         required: (frozenRequired ?? []).map(({ id, ref }) => ({ id, ref })),
       }),
     )
-    const snapshotId = `s_${yield* sha256(JSON.stringify([input.scope, record.id, version]))}`
+    const snapshotId = `s_${yield* sha256(selectionSnapshotIdentityInput({ scope: input.scope, record, version_id: version }))}`
     const current = yield* checked(() =>
       decode(SnapshotSchema, {
         snapshot_id: snapshotId,
@@ -590,8 +579,8 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         ...(frozenRequired === undefined ? {} : { required: frozenRequired }),
       }),
     )
-    // The local selection keeps its original metadata; a current observation is
-    // free to return newer display data without altering that selected artifact.
+    // Repeated complete selections reuse one immutable manifest. Metadata-only
+    // changes select another manifest without changing content version or bytes.
     if ((yield* store.readJson(`snapshots/${snapshotId}.json`, SnapshotSchema)) === undefined)
       yield* store.writeJson(`snapshots/${snapshotId}.json`, current)
     yield* store.writeJson(observationKey, {

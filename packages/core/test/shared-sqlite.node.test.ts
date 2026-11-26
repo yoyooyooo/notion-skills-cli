@@ -1,3 +1,4 @@
+import { currentLibrary } from "./shared-current-fixture.ts"
 import { expect, test } from "@effect/vitest"
 import { Effect } from "effect"
 import { spawn } from "node:child_process"
@@ -13,9 +14,10 @@ const pendingKey = `operations/current-write-pending/${scope}/pending.json`
 const pendingPayload = {
   completion: "ready",
   owner_page_id: null,
-  version: 1,
+  version: 2,
+  library: currentLibrary,
   scope,
-  library_id: "current-sqlite",
+  library_id: currentLibrary.library_id,
   record_id: "operation-current-" + "c".repeat(64),
   intent: {
     operation_id: "current-write",
@@ -28,6 +30,47 @@ const pendingPayload = {
 const restrictedHash = "9".repeat(64)
 const restrictionKey = `content-restrictions/local/${restrictedHash}.json`
 const restriction = { version: 1, sha256: restrictedHash, reason: "local_resource" }
+
+const syncKey = `operations/current-source-sync/${scope}/pending.json`
+const syncInput = {
+  version: 2,
+  library: currentLibrary,
+  kind: "current_source_sync",
+  scope,
+  manager_id: "mini",
+  execution_id: "package-a",
+  phase: "content",
+  input: {
+    operation_id: "sync-a",
+    declaration: {
+      version: 1,
+      definition: {
+        version: 1,
+        source_id: "sqlite-sync",
+        name: "SQLite sync",
+        description: "Frozen source synchronization",
+        enabled: true,
+        policy: "manual",
+        adapter: { type: "git", url: "https://github.com/example/skills", ref: "refs/heads/main" },
+        selection: { roots: ["skills"], include: [], exclude: [], mapping: {} },
+        options: {},
+      },
+      contributions: [
+        { member_key: "skills/one", skill_id: "one", mount_path: "", mapping: {}, exclude: [] },
+        { member_key: "skills/two", skill_id: "two", mount_path: "", mapping: {}, exclude: [] },
+      ],
+    },
+    configuration_sha256: "b".repeat(64),
+    resolved_commit: "c".repeat(40),
+    revision: "d".repeat(64),
+    source_page_id: "00000000-0000-4000-8000-000000000001",
+    baseline_revision: "e".repeat(64),
+    baseline_configuration_sha256: "f".repeat(64),
+    affected_skill_ids: ["one", "two"],
+    retirements: [],
+    projection: "markdown",
+  },
+}
 
 function processProgram(root: string, body: string) {
   return `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
@@ -72,11 +115,11 @@ test("the current native slot fences rejected cold reads and pre-clear completio
   const domain = "current-native-bodies"
   await isolated(async (root) => {
     const key = `cache/${domain}/${"7".repeat(64)}/latest.json`
-    const identity = "shared_skill:slot-library:slot-skill"
+    const identity = "skill://slot-skill?library=c1349788-03f1-5a64-975e-9d26e4078f36"
     const payload = {
       version: 1,
       scope,
-      library_id: "slot-library",
+      library_id: "c1349788-03f1-5a64-975e-9d26e4078f36",
       skill_id: "slot-skill",
       skill_page_id: "00000000-0000-4000-8000-000000000001",
       files: Array.from({ length: 80 }, (_, index) => ({
@@ -149,11 +192,11 @@ test("the current native slot fences rejected cold reads and pre-clear completio
 test("a newer native observation can follow a rebuilt page without changing logical owner or accepting late old-page publication", async () => {
   await isolated(async (root) => {
     const key = `cache/current-native-bodies/${"8".repeat(64)}/latest.json`
-    const identity = "shared_skill:rebuilt-library:rebuilt-skill"
+    const identity = "skill://rebuilt-skill?library=0f655052-64a6-5cce-8087-a8a8e3f83a95"
     const old = {
       version: 1,
       scope,
-      library_id: "rebuilt-library",
+      library_id: "0f655052-64a6-5cce-8087-a8a8e3f83a95",
       skill_id: "rebuilt-skill",
       skill_page_id: "00000000-0000-4000-8000-000000000001",
       files: [],
@@ -175,7 +218,9 @@ test("a newer native observation can follow a rebuilt page without changing logi
     expect(sameGeneration.exit).not.toBe(0)
     expect(sameGeneration.stderr).toContain("different content")
     for (const field of ["scope", "library_id", "skill_id"] as const) {
-      const foreign = await child(root, write({ ...rebuilt, [field]: "foreign-owner" }, 4))
+      const value =
+        field === "library_id" ? "77e861a8-6432-51ac-a09e-90a2ab20a36c" : "foreign-owner"
+      const foreign = await child(root, write({ ...rebuilt, [field]: value }, 4))
       expect(foreign.exit).not.toBe(0)
       expect(foreign.stderr).toContain("cannot change its owner")
     }
@@ -196,6 +241,8 @@ import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
 import {Notion} from ${JSON.stringify(core + "notion.ts")};
 import {SnapshotSchema,decode} from ${JSON.stringify(core + "model.ts")};
 import {openSharedSnapshot} from ${JSON.stringify(core + "shared-snapshot.ts")};
+import {readSkill,targetSnapshot} from ${JSON.stringify(core + "snapshot.ts")};
+import {fileRef,parseTarget} from ${JSON.stringify(core + "ref.ts")};
 import {clearCache} from ${JSON.stringify(core + "cache.ts")};
 import {currentSnapshotFixture,currentLibrary,currentScope,currentSkillPage} from ${JSON.stringify(new URL("./shared-current-fixture.ts", import.meta.url).pathname)};
 process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};
@@ -207,14 +254,15 @@ const seed=decode(SnapshotSchema,await fixture.open());
 fixture.main.properties.Name.title[0].plain_text='Concurrent display';
 fixture.main.properties.Description.rich_text[0].plain_text='New current directory label.';
 fixture.main.properties.Description.rich_text[0].text.content='New current directory label.';
+fixture.main.properties['Default Context'].checkbox=true;
 const renamed=decode(SnapshotSchema,await fixture.open());
 const api=await fixture.run(Notion),http=await fixture.run(HttpClient.HttpClient);
 const services=Layer.mergeAll(NodeServices.layer,Layer.succeed(Notion,api),Layer.succeed(HttpClient.HttpClient,http),StoreLive.pipe(Layer.provideMerge(NodeServices.layer)));
 Effect.runPromise(Effect.gen(function*(){
  const store=yield* Store,fs=yield* FileSystem.FileSystem,key='snapshots/'+seed.snapshot_id+'.json';
  for(const file of seed.files)yield* store.writeBytes('objects/'+file.sha256,fixture.objects.get('objects/'+file.sha256));
- const alternate={...renamed,record:{...renamed.record,default_context:true},shared_acquisition:{...renamed.shared_acquisition,library:{...currentLibrary,files:{...currentLibrary.files,property_ids:{...currentLibrary.files.property_ids,'Reading status':'extra-display-property'}}}}};
- const contenders=yield* Effect.all([seed,alternate].map(value=>store.writeJson(key,value).pipe(Effect.result)),{concurrency:2});
+ const alternate={...renamed,shared_acquisition:{...renamed.shared_acquisition,library:{...currentLibrary,files:{...currentLibrary.files,property_ids:{...currentLibrary.files.property_ids,'Reading status':'extra-display-property'}}}}};
+ const contenders=yield* Effect.all([seed,alternate].map(value=>store.writeJson('snapshots/'+value.snapshot_id+'.json',value).pipe(Effect.result)),{concurrency:2});
  const first=yield* store.readJson(key,SnapshotSchema),physical=decode(SnapshotSchema,JSON.parse(yield* fs.readFileString(store.root+'/'+key)));
  const changed=[
   {...seed,files:seed.files.map((file,index)=>index===0?{...file,mode:'100755'}:file)},
@@ -226,6 +274,12 @@ Effect.runPromise(Effect.gen(function*(){
  const open=()=>openSharedSnapshot({library:currentLibrary,target:currentSkillPage,scope:currentScope,startedAt:Date.now()});
  fixture.clearCalls();yield* open();const coldBodies=fixture.bodyCalls().length;
  fixture.clearCalls();yield* open();const warmBodies=fixture.bodyCalls().length;
+ fixture.clearCalls();
+ const fixed=yield* Effect.forEach([seed,alternate],value=>targetSnapshot(parseTarget(fileRef(value.record.id,'',value.snapshot_id)),{offline:true}));
+ const fixedBodies=yield* Effect.forEach(fixed,value=>Effect.forEach(value.files,file=>readSkill(fileRef(value.record.id,file.path,value.snapshot_id),{offline:true})));
+ const fixedRecords=fixed.map((value,index)=>JSON.stringify(value.record)===JSON.stringify([seed,alternate][index].record));
+ const completeReads=fixedBodies.every((files,index)=>files.every((file,n)=>file.has_more===false&&file.range.start===1&&file.range.end===file.range.total_lines&&file.content===new TextDecoder().decode(fixture.objects.get('objects/'+fixed[index].files[n].sha256))));
+ const fixedRequests=fixture.calls.length;
  const nativeKeys=yield* store.listKeys('cache/current-native-bodies'),observation=yield* store.readJson(nativeKeys[0],Schema.Unknown);
  const final=yield* store.readJson(key,SnapshotSchema);
  const objectMode=(yield* fs.stat(store.root+'/objects/'+seed.files[0].sha256)).mode&0o777;
@@ -234,7 +288,8 @@ Effect.runPromise(Effect.gen(function*(){
  const stale=yield* store.writeJson(nativeKeys[0],observation).pipe(Effect.result);
  console.log(JSON.stringify({
   contenders:contenders.map(result=>result._tag==='Success'?'ok':result.failure.code),
-  sameContent:seed.snapshot_id===renamed.snapshot_id,nativeMetadataChanged:seed.native_references.index_sha256!==renamed.native_references.index_sha256,
+  sameContent:seed.version_id===renamed.version_id&&JSON.stringify(seed.files)===JSON.stringify(renamed.files),differentSelection:seed.snapshot_id!==renamed.snapshot_id,
+  fixedRecords,completeReads,fixedRequests,nativeMetadataChanged:seed.native_references.index_sha256!==renamed.native_references.index_sha256,
   immutable:JSON.stringify(first)===JSON.stringify(final),physical:JSON.stringify(first)===JSON.stringify(physical),
   storedName:first.record.name,conflicts:conflicts.map(result=>result._tag==='Failure'?result.failure.code:'accepted'),
   coldBodies,warmBodies,nativeKeys,generation:observation.generation,objectMode,pending,
@@ -244,7 +299,7 @@ Effect.runPromise(Effect.gen(function*(){
 }).pipe(Effect.provide(services),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
 }
 
-test("real Store current v5 publication tolerates concurrent display observations and preserves content, authority and cache fences", async () => {
+test("real Store publication tolerates concurrent display observations and preserves content, authority and cache fences", async () => {
   await isolated(async (root) => {
     const result = await runProgram(currentPublicationProgram(root))
     expect(result.exit, result.stderr).toBe(0)
@@ -254,6 +309,10 @@ test("real Store current v5 publication tolerates concurrent display observation
       immutable: true,
       physical: true,
       sameContent: true,
+      differentSelection: true,
+      fixedRecords: [true, true],
+      completeReads: true,
+      fixedRequests: 0,
       nativeMetadataChanged: true,
       conflicts: ["STATE_CORRUPT", "STATE_CORRUPT", "STATE_CORRUPT", "STATE_CORRUPT"],
       coldBodies: 2,
@@ -263,7 +322,7 @@ test("real Store current v5 publication tolerates concurrent display observation
       afterClear: null,
       stale: "CACHE_INVALIDATED",
     })
-    expect(["Current demo", "Concurrent display"]).toContain(value.storedName)
+    expect(value.storedName).toBe("Current demo")
     expect(value.nativeKeys).toHaveLength(1)
     expect(value.nativeKeys[0]).toMatch(
       /^cache\/current-native-bodies\/[a-f0-9]{64}\/latest\.json$/u,
@@ -293,7 +352,7 @@ const services=Layer.mergeAll(NodeServices.layer,Layer.succeed(Notion,remote),La
 Effect.runPromise(Effect.gen(function*(){
  const store=yield* Store;
  const access=${JSON.stringify(action === "directory" ? "manifest" : action === "selected" ? "target" : "all")};
- const snapshot=yield* targetSnapshot({selector:skillPage,...(access==='target'?{path:'assets/large.bin'}:{})},{database:library.skills.database_id,refresh:access==='manifest'},access);
+ const snapshot=yield* targetSnapshot({kind:'page',selector:skillPage,...(access==='target'?{path:'assets/large.bin'}:{})},{database:library.skills.database_id,refresh:access==='manifest'},access);
  const object=yield* store.readBytes('objects/'+hash).pipe(Effect.result);
  const stats=yield* Effect.scoped(Effect.gen(function*(){const state=yield* sqliteState(store.root,yield* FileSystem.FileSystem);return yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;return {native_bodies:yield* sql\`SELECT count(*) AS count FROM shared_local_records WHERE key LIKE 'cache/current-native-bodies/%'\`,snapshots:yield* sql\`SELECT count(*) AS count FROM snapshots\`}}))}));
  console.log(JSON.stringify({snapshot_id:snapshot.snapshot_id,files:snapshot.files,materialization:snapshot.materialization,requests,raw_present:object._tag==='Success',raw_exact:object._tag==='Success'&&digest(object.success)===hash,writes:fixture.semanticWrites().length,stats}));
@@ -499,6 +558,267 @@ test("local-content restrictions survive restarts and cache retirement, and cann
       removed: "Failure",
       changed: "Failure",
     })
+  })
+}, 30_000)
+
+test("Source sync restart preserves its input and advances the frozen projection cursor one target at a time", async () => {
+  await isolated(async (root) => {
+    const write = (value: unknown) =>
+      child(root, `yield* state.write(${JSON.stringify(syncKey)},${JSON.stringify(value)});`)
+    expect((await write(syncInput)).exit).toBe(0)
+    const read = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(syncKey)})));`,
+    )
+    expect(read.exit, read.stderr).toBe(0)
+    expect(JSON.parse(read.stdout)).toEqual(syncInput)
+    for (const changed of [
+      { ...syncInput, manager_id: "other" },
+      { ...syncInput, execution_id: "package-b" },
+      {
+        ...syncInput,
+        library: {
+          ...currentLibrary,
+          files: { ...currentLibrary.files, database_id: "77e861a8-6432-51ac-a09e-90a2ab20a36c" },
+        },
+      },
+      { ...syncInput, input: { ...syncInput.input, resolved_commit: "a".repeat(40) } },
+      { ...syncInput, input: { ...syncInput.input, affected_skill_ids: ["one", "three"] } },
+      {
+        ...syncInput,
+        input: {
+          ...syncInput.input,
+          declaration: { ...syncInput.input.declaration, contributions: [] },
+        },
+      },
+    ]) {
+      const rejected = await write(changed)
+      expect(rejected.exit).not.toBe(0)
+      expect(rejected.stderr).toContain("preserve its owner")
+    }
+    const projection = {
+      ...syncInput,
+      phase: "projection",
+      next_index: 0,
+      targets: [
+        { skill_id: "one", page_id: "00000000-0000-4000-8000-000000000002" },
+        { skill_id: "two", page_id: "00000000-0000-4000-8000-000000000003" },
+      ],
+    }
+    expect((await write({ ...projection, next_index: 1 })).exit).not.toBe(0)
+    expect((await write(projection)).exit).toBe(0)
+    expect((await write(projection)).exit).toBe(0)
+    expect((await write({ ...projection, next_index: 2 })).exit).not.toBe(0)
+    expect((await write({ ...projection, next_index: 1 })).exit).toBe(0)
+    expect((await write(projection)).exit).not.toBe(0)
+    expect(
+      (await write({ ...projection, next_index: 1, targets: [...projection.targets].reverse() }))
+        .exit,
+    ).not.toBe(0)
+    expect(
+      (
+        await write({
+          ...projection,
+          next_index: 1,
+          targets: projection.targets.map((target) => ({
+            ...target,
+            page_id: "00000000-0000-4000-8000-000000000004",
+          })),
+        })
+      ).exit,
+    ).not.toBe(0)
+    expect(
+      (
+        await write({
+          ...projection,
+          next_index: 1,
+          full_batch: { scope, batch_id: "00000000-0000-4000-8000-000000000005" },
+        })
+      ).exit,
+    ).not.toBe(0)
+    expect((await write({ ...projection, next_index: 2 })).exit).toBe(0)
+    const completed = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(syncKey)})));`,
+    )
+    expect(completed.exit, completed.stderr).toBe(0)
+    expect(JSON.parse(completed.stdout)).toEqual({ ...projection, next_index: 2 })
+    expect((await write(syncInput)).exit).not.toBe(0)
+    expect((await write({ ...projection, targets: [] })).exit).not.toBe(0)
+    const retired = await child(
+      root,
+      `yield* state.retire([${JSON.stringify(syncKey)}]);console.log(JSON.stringify(yield* state.list('operations/current-source-sync')));`,
+    )
+    expect(retired.exit, retired.stderr).toBe(0)
+    expect(JSON.parse(retired.stdout)).toEqual([])
+    expect((await write(projection)).exit).not.toBe(0)
+    expect(
+      (await write({ ...syncInput, input: { ...syncInput.input, operation_id: "sync-b" } })).exit,
+    ).toBe(0)
+  })
+}, 30_000)
+
+test("two Source sync processes cannot replace each other's first frozen input", async () => {
+  await isolated(async (root) => {
+    expect((await child(root, "console.log('ready')")).exit).toBe(0)
+    const contenders = await Promise.all(
+      ["mini-a", "mini-b"].map((manager_id) =>
+        child(
+          root,
+          `yield* state.write(${JSON.stringify(syncKey)},${JSON.stringify({ ...syncInput, manager_id })});`,
+        ),
+      ),
+    )
+    expect(contenders.filter((result) => result.exit === 0)).toHaveLength(1)
+    expect(contenders.filter((result) => result.exit !== 0)[0]!.stderr).toContain(
+      "preserve its owner",
+    )
+    const read = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(syncKey)})));`,
+    )
+    expect(["mini-a", "mini-b"]).toContain(JSON.parse(read.stdout).manager_id)
+  })
+}, 30_000)
+
+test("full Source batches preserve an exact terminal prefix across real processes and reject skipped work or changed generations", async () => {
+  await isolated(async (root) => {
+    const key = `operations/current-source-sync-batch/${scope}/pending.json`
+    const batch = {
+      version: 2,
+      kind: "current_source_sync_batch",
+      library: currentLibrary,
+      scope,
+      batch_id: "00000000-0000-4000-8000-000000000006",
+      library_id: currentLibrary.library_id,
+      sources_data_source_id: currentLibrary.sources.data_source_id,
+      manager_id: "mini",
+      execution_id: "package-a",
+      source_ids: ["alpha", "beta", "gamma"],
+      projection: "markdown",
+      started_at: 1,
+      results: [],
+    }
+    const failed = {
+      source_id: "alpha",
+      operation_id: null,
+      content: { status: "not_started" },
+      projection: { status: "not_started" },
+      status: "blocked",
+      retryable: false,
+      error: { code: "CURRENT_SOURCE_TARGET_PENDING", message: "Original owner must finish." },
+    }
+    const skipped = (source_id: string) => ({
+      source_id,
+      operation_id: null,
+      content: { status: "not_started" },
+      projection: { status: "not_started" },
+      status: "skipped",
+      reason: "disabled",
+      retryable: false,
+      error: null,
+    })
+    const write = (value: unknown) =>
+      child(root, `yield* state.write(${JSON.stringify(key)},${JSON.stringify(value)});`)
+    expect((await write({ ...batch, results: [failed] })).exit).not.toBe(0)
+    expect((await write(batch)).exit).toBe(0)
+    for (const changed of [
+      { ...batch, scope: "b".repeat(64) },
+      { ...batch, batch_id: "00000000-0000-4000-8000-000000000007" },
+      { ...batch, execution_id: "package-b" },
+      {
+        ...batch,
+        library: {
+          ...currentLibrary,
+          files: { ...currentLibrary.files, database_id: "77e861a8-6432-51ac-a09e-90a2ab20a36c" },
+        },
+      },
+      { ...batch, source_ids: ["alpha", "gamma"] },
+      { ...batch, projection: "none" },
+      { ...batch, results: [failed, skipped("beta")] },
+      { ...batch, results: [skipped("beta")] },
+      { ...batch, results: [{ ...failed, status: "pending", retryable: true }] },
+    ])
+      expect((await write(changed)).exit).not.toBe(0)
+    const prefix = { ...batch, results: [failed] }
+    expect((await write(prefix)).exit).toBe(0)
+    expect((await write(prefix)).exit).toBe(0)
+    expect((await write({ ...batch, results: [skipped("alpha")] })).exit).not.toBe(0)
+    expect((await write(batch)).exit).not.toBe(0)
+    const next = { ...batch, results: [failed, skipped("beta")] }
+    expect((await write(next)).exit).toBe(0)
+    const reopened = await child(
+      root,
+      `yield* state.retire(yield* state.list('cache'));console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})));`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(JSON.parse(reopened.stdout)).toEqual(next)
+    expect((await write({ ...batch, results: [...next.results, skipped("gamma")] })).exit).toBe(0)
+    const retired = await child(
+      root,
+      `yield* state.retire([${JSON.stringify(key)}]);console.log(JSON.stringify(yield* state.list('operations/current-source-sync-batch')));`,
+    )
+    expect(retired.exit, retired.stderr).toBe(0)
+    expect(JSON.parse(retired.stdout)).toEqual([])
+    expect((await write({ ...batch, batch_id: "00000000-0000-4000-8000-000000000008" })).exit).toBe(
+      0,
+    )
+  })
+}, 30_000)
+
+test("competing full Source batches cannot replace the first persisted identity", async () => {
+  await isolated(async (root) => {
+    expect((await child(root, "console.log('ready')")).exit).toBe(0)
+    const key = `operations/current-source-sync-batch/${scope}/pending.json`
+    const batch = {
+      version: 2,
+      kind: "current_source_sync_batch",
+      library: currentLibrary,
+      scope,
+      library_id: currentLibrary.library_id,
+      sources_data_source_id: currentLibrary.sources.data_source_id,
+      manager_id: "mini",
+      execution_id: "package-a",
+      source_ids: ["alpha"],
+      projection: "none",
+      started_at: 1,
+      results: [],
+    }
+    const ids = ["00000000-0000-4000-8000-000000000009", "00000000-0000-4000-8000-000000000010"]
+    const contenders = await Promise.all(
+      ids.map((batch_id) =>
+        child(
+          root,
+          `yield* state.write(${JSON.stringify(key)},${JSON.stringify({ ...batch, batch_id })});`,
+        ),
+      ),
+    )
+    expect(contenders.filter((result) => result.exit === 0)).toHaveLength(1)
+    expect(contenders.find((result) => result.exit !== 0)!.stderr).toContain(
+      "preserve its frozen scope",
+    )
+    const reopened = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})));`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(ids).toContain(JSON.parse(reopened.stdout).batch_id)
+  })
+}, 30_000)
+
+test("Source synchronization keeps one bounded disposable observation and no completed tick journals", async () => {
+  await isolated(async (root) => {
+    const key = `cache/current-source-sync/${scope}/latest.json`
+    const repeated = await child(
+      root,
+      `for(let i=0;i<100;i++){yield* state.write(${JSON.stringify(syncKey)},{...${JSON.stringify(syncInput)},input:{...${JSON.stringify(syncInput.input)},operation_id:'sync-'+i}});yield* state.write(${JSON.stringify(key)},{version:1,scope:${JSON.stringify(scope)},completed_at:i});yield* state.retire([${JSON.stringify(syncKey)}]);}console.log(JSON.stringify({pending:yield* state.list('operations/current-source-sync'),cache:yield* state.rebuildableCacheRecords()}));`,
+    )
+    expect(repeated.exit, repeated.stderr).toBe(0)
+    const result = JSON.parse(repeated.stdout)
+    expect(result.pending).toEqual([])
+    expect(result.cache).toHaveLength(1)
+    expect(JSON.parse(result.cache[0].payload).completed_at).toBe(99)
+    expect(result.cache[0].admitted_at).toBeGreaterThan(0)
   })
 }, 30_000)
 

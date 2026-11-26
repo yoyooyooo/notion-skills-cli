@@ -8,7 +8,7 @@ import { trashPath } from "../src/local-locks.ts"
 import type { Snapshot } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef, parseRef } from "../src/ref.ts"
-import { sharedSkillId } from "../src/shared-content.ts"
+import { skillIdentity } from "../src/shared-content.ts"
 import { prepareCurrentSharedSourceContent } from "../src/shared-current-source.ts"
 import { currentSourceWriteProperties } from "../src/shared-current-source-management.ts"
 import { resolveCurrentSourceReference } from "../src/shared-source-references.ts"
@@ -88,7 +88,7 @@ async function setup(enabled = true) {
       )
     }),
   )
-  const skill = sharedSkillId(library.library_id, "alpha")
+  const skill = skillIdentity(library.library_id, "alpha")
   const snapshot: Snapshot = {
     snapshot_id: "s_" + "c".repeat(64),
     scope: "d".repeat(64),
@@ -142,7 +142,8 @@ test("repository-relative sibling links resolve through one current Source contr
     resolveCurrentSourceReference(snapshot, "SKILL.md", "../beta/SKILL.md"),
   )
   expect(parseRef(result)).toMatchObject({
-    selector: sharedSkillId(library.library_id, "beta"),
+    skillId: "beta",
+    scope: { kind: "library", libraryId: library.library_id },
     path: "SKILL.md",
   })
   expect(f.mutations()).toEqual([])
@@ -168,12 +169,69 @@ test("outside-member repository references expose their exact fixed upstream loc
   expect(f.mutations()).toEqual([])
 })
 
+test("a mounted path collision cannot override the original Source-relative target", async () => {
+  const { f, snapshot } = await setup()
+  const from = "references/nested/main.md",
+    collision = "references/beta/SKILL.md"
+  const mounted: Snapshot = {
+    ...snapshot,
+    entrypoint: from,
+    files: [
+      { ...snapshot.files[0]!, path: from },
+      { ...snapshot.files[0]!, path: collision },
+    ],
+    file_bindings: [
+      { ...snapshot.file_bindings![0]!, path: from },
+      { path: collision, file_id: "collision", page_id: id(801) },
+    ],
+    shared_acquisition: {
+      ...snapshot.shared_acquisition!,
+      files: [{ ...snapshot.shared_acquisition!.files[0]!, path: from }],
+    },
+  }
+  expect(
+    parseRef(await f.run(resolveCurrentSourceReference(mounted, from, "../beta/SKILL.md"))),
+  ).toMatchObject({
+    skillId: "beta",
+    scope: { kind: "library", libraryId: library.library_id },
+    path: "SKILL.md",
+    selection: { kind: "current" },
+  })
+  expect(f.mutations()).toEqual([])
+  expect(f.downloads).toEqual([])
+})
+
+test("duplicate mounts of one Source file require an explicit target instead of selecting the first", async () => {
+  const { f, snapshot } = await setup()
+  const ambiguous: Snapshot = {
+    ...snapshot,
+    files: [...snapshot.files, { ...snapshot.files[0]!, path: "copy/SKILL.md" }],
+    shared_acquisition: {
+      ...snapshot.shared_acquisition!,
+      files: [
+        ...snapshot.shared_acquisition!.files,
+        {
+          ...snapshot.shared_acquisition!.files[0]!,
+          path: "copy/SKILL.md",
+        },
+      ],
+    },
+  }
+  await expect(
+    f.run(resolveCurrentSourceReference(ambiguous, "SKILL.md", "./SKILL.md", { offline: true })),
+  ).rejects.toMatchObject({ code: "CURRENT_SOURCE_REFERENCE_AMBIGUOUS" })
+  expect(f.calls).toEqual([])
+})
+
 test("fixed local links need no remote query while cross-member offline and disabled reads fail", async () => {
   const { f, snapshot } = await setup()
   const local = await f.run(
     resolveCurrentSourceReference(snapshot, "SKILL.md", "./SKILL.md", { offline: true }),
   )
-  expect(parseRef(local)).toMatchObject({ snapshot: snapshot.snapshot_id, file_id: "main-alpha" })
+  expect(parseRef(local)).toMatchObject({
+    selection: { kind: "fixed", snapshotId: snapshot.snapshot_id },
+    path: "SKILL.md",
+  })
   await expect(
     f.run(
       resolveCurrentSourceReference(snapshot, "SKILL.md", "../beta/SKILL.md", { offline: true }),

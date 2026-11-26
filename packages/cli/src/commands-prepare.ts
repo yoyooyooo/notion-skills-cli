@@ -10,7 +10,7 @@ import {
   type PrepareInput,
 } from "../../core/src/graph-prepare-model.ts"
 import {
-  databaseFlag,
+  libraryFlag,
   emit,
   readPolicy,
   readPolicyConstraint,
@@ -65,7 +65,7 @@ export const prepareCommand = defineCommand(
       "session-bindings",
       "JSON file containing the prior session_bindings array; exact existing pins remain fixed while freshness applies to new identities",
     ),
-    database: databaseFlag,
+    library: libraryFlag,
     ...readPolicyFlags,
     maxNodes: singleton(
       "max-nodes",
@@ -162,7 +162,7 @@ export const prepareCommand = defineCommand(
             : { sessionBindings: yield* readBindings(bindingPath) }),
         },
         {
-          database: Option.getOrUndefined(config.database),
+          library: Option.getOrUndefined(config.library),
           execution,
           metrics: config.metrics,
         },

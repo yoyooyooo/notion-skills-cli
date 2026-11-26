@@ -38,6 +38,7 @@ function listSingleCatalog(options: ListCatalogOptions = {}) {
   return catalogWithProfile(options).pipe(
     Effect.map((result) => ({
       scope: result.scope,
+      ...(result.library_id === undefined ? {} : { library_id: result.library_id }),
       fetched_at: result.fetched_at,
       databases: result.databases,
       records: result.records,
@@ -116,9 +117,9 @@ function listCatalogDirectory(options: ListCatalogDirectoryOptions) {
           if (
             "profile" in selection &&
             selection.profile !== undefined &&
-            options.database === undefined
+            options.library === undefined
           )
-            throw fail("INVALID_ARGUMENT", "A directory Profile requires an explicit database.")
+            throw fail("INVALID_ARGUMENT", "A directory Profile requires an explicit Library root.")
           return selection
         },
         catch: (error) =>
@@ -130,7 +131,7 @@ function listCatalogDirectory(options: ListCatalogDirectoryOptions) {
               ),
       })
       const policy: ListCatalogOptions = {
-        database: options.database,
+        library: options.library,
         refresh: options.refresh,
         offline: options.offline,
         maxAge: options.maxAge,
@@ -225,7 +226,6 @@ export function pageCatalog(catalog: ListCatalogResult, options: ListPageOptions
           ? undefined
           : {
               library_id: catalog.profile.library_id,
-              library_entry: catalog.profile.library_entry,
               profile_id: catalog.profile.profile_id,
               fingerprint: catalog.profile.fingerprint,
               selection: catalog.profile.selection,

@@ -1,3 +1,4 @@
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { createHash } from "node:crypto"
 import { mkdtempSync, readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -29,10 +30,9 @@ const properties = (layout: Record<string, unknown>) =>
     ]),
   )
 export const library = {
-  version: 1,
-  library_id: "library-writer-current",
+  version: 2,
+  library_id: "00000000-0000-4000-8000-000000000001",
   operation_id: "library-writer-current",
-  parent_page_id: id(1),
   skills: {
     database_id: id(2),
     data_source_id: id(3),
@@ -327,6 +327,12 @@ export function currentWriteFixture(parent: string) {
           uri = new URL("https://api.notion.test/" + path),
           route = uri.pathname.slice(1)
         calls.push({ path, body: clone(body), method })
+        if (
+          method === "GET" &&
+          (route === `v1/pages/${library.library_id}` ||
+            route === `v1/blocks/${library.library_id}/children`)
+        )
+          return Effect.succeed(response(path, property(librarySchemaResponse(path, library))))
         const schemaRole = roles.find(
           (role) => route === `v1/data_sources/${library[role].data_source_id}`,
         )
@@ -371,7 +377,7 @@ export function currentWriteFixture(parent: string) {
               id: library[databaseRole].database_id,
               database_type: null,
               title: [{ plain_text: "Current library" }],
-              parent: { type: "page_id", page_id: library.parent_page_id },
+              parent: { type: "page_id", page_id: library.library_id },
               data_sources: [
                 { id: library[databaseRole].data_source_id, name: "Current data source" },
               ],
@@ -701,6 +707,7 @@ export function currentWriteFixture(parent: string) {
                 before.version,
                 before.scope,
                 before.library_id,
+                before.library,
                 before.record_id,
                 property(before.intent).owner,
               ]) !==
@@ -708,6 +715,7 @@ export function currentWriteFixture(parent: string) {
                   after.version,
                   after.scope,
                   after.library_id,
+                  after.library,
                   after.record_id,
                   property(after.intent).owner,
                 ])
@@ -722,6 +730,7 @@ export function currentWriteFixture(parent: string) {
                 row.version,
                 row.scope,
                 row.library_id,
+                row.library,
                 row.record_id,
                 row.intent,
                 row.completion,

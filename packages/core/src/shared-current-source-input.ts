@@ -6,7 +6,7 @@ import {
   prepareCurrentSharedSourceContent,
   validateCurrentSourceId,
 } from "./shared-current-source.ts"
-import { currentWriteIdentity } from "./shared-current-write-input.ts"
+import { currentWriteSkillId } from "./shared-current-write-input.ts"
 import { assertSupportedGitBlob, gitBlobOid, type FixedGithubFile } from "./shared-github-source.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sourceDiscoveryInput } from "./shared-source-adapters.ts"
@@ -88,7 +88,7 @@ export function validateCurrentSourceContributions(input: unknown) {
   const identities = new Set<string>()
   const contributions = decoded.map((entry) => {
     if (entry.member_key !== ".") exactPath(entry.member_key, "Member key")
-    currentWriteIdentity(entry.skill_id, "Target Skill ID")
+    currentWriteSkillId(entry.skill_id)
     if (entry.mount_path !== "") exactPath(entry.mount_path, "Mount path")
     const identity = canonicalSharedJson([entry.member_key, entry.skill_id])
     if (identities.has(identity))
@@ -158,13 +158,16 @@ export function validateCurrentSourceInput(input: unknown): CurrentSourceDeclara
     ...requested,
     adapter: { ...requested.adapter, url },
   }
-  const permitted = new Set(["accepted_ref"])
+  const permitted = new Set(["accepted_ref", "require_all_included"])
   for (const key of Object.keys(definition.options))
     if (!permitted.has(key))
       throw unsupported("This option has no current fixed-file write behavior.", { option: key })
   const accepted = definition.options.accepted_ref
   if (accepted !== undefined && (typeof accepted !== "string" || !/^[a-f0-9]{40}$/u.test(accepted)))
     throw invalid("accepted_ref must select an exact lowercase Git commit.")
+  const requireAllIncluded = definition.options.require_all_included
+  if (requireAllIncluded !== undefined && typeof requireAllIncluded !== "boolean")
+    throw invalid("require_all_included must be boolean.")
   if (
     definition.policy === "pinned" &&
     definition.adapter.type === "git" &&

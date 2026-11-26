@@ -4,7 +4,10 @@
 
 Security fixes target the latest patch of the current 0.x minor series. Upgrade to
 that patch before relying on a fix; earlier patches and previous minor series are
-not maintained security branches.
+not maintained security branches. The supported Node.js lines are 22.23.5+
+within 22.x, 24.22.3+ within 24.x and 26.13.1+ within 26.x. Keep Node on a
+maintained patch within one of these lines; other major versions are outside
+the declared runtime range.
 
 ## Reporting a vulnerability
 
@@ -21,7 +24,8 @@ bugs and usage questions.
 
 The boundaries below describe the current `next` implementation. They do not
 establish that an older installation or existing Notion library has been converted.
-See the [current library contract](docs/current-contract.md) for remaining cutover work.
+See the [current library contract](docs/current-contract.md) for implementation
+and cutover boundaries.
 
 ## Credentials and network access
 
@@ -81,7 +85,7 @@ acquisition from an old pointer.
 
 ## Complete import and original files
 
-`ctl library import INPUT --entry LIBRARY --skill-id ID` creates or replaces one
+`ctl library import INPUT --library LIBRARY_ROOT --skill-id ID` creates or replaces one
 complete current Skill under its stable identity. Import selects the target by that
 ID, not by name. Notion-owned supporting files omitted from the input are removed
 from the current tree. The writer checks current references before trashing removed owned

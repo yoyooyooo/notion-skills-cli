@@ -103,8 +103,8 @@ test("normal runtime blocks legacy state and corrupt SQLite rather than manufact
 test("retirement fences reservations across restart and older catalogs cannot overwrite newer observations", async () => {
   await isolated(async (_directory, run) => {
     const scope = "a".repeat(64)
-    const page = "11111111-1111-4111-8111-111111111111"
-    const key = `cache/latest/${scope}/${page}/first.json`
+    const page = "skill://architect?library=library-test"
+    const key = `cache/latest/${scope}/${encodeURIComponent(page)}/first.json`
     const generation = await run(
       Effect.gen(function* () {
         return yield* (yield* Store).reserveCacheGeneration(scope, page)
@@ -112,7 +112,9 @@ test("retirement fences reservations across restart and older catalogs cannot ov
     )
     await run(
       Effect.gen(function* () {
-        yield* (yield* Store).retireKeys([`cache/latest/${scope}/${page}/.fence`])
+        yield* (yield* Store).retireKeys([
+          `cache/latest/${scope}/${encodeURIComponent(page)}/.fence`,
+        ])
       }),
     )
     const late = await run(

@@ -5,7 +5,7 @@ description: "定位 ntn-skills 当前实现、公共 CLI 与独立安装的验�
 
 # ntn-skills 验证路由
 
-从 [当前合同索引](../../../docs/verification-contracts.md) 选择 C01–C11/T01–T23，再按 [current-convergence](features/current-convergence.md) 进入已有执行配方。本入口不负责替代管理或消费实现，也不负责用受控测试证明真实 Notion、安装包或 Pi 已完成。
+从 [当前合同索引](../../../docs/verification-contracts.md) 选择当前 C/T 验收项，再按 [current-convergence](features/current-convergence.md) 进入已有执行配方。本入口不负责替代管理或消费实现，也不负责用受控测试证明真实 Notion、安装包或 Pi 已完成。
 
 当前合同是 Notion 长期 SSOT、最新内容、普通消费远端 0 写。git-only、mixed、native 共用严格 Content 描述符；保留当前 revision/hash、权限、完整树、请求预算及必要在途状态。
 
@@ -49,11 +49,13 @@ bun test packages/cli/test/verification-skill-map.test.ts packages/cli/test/buil
 
 原生日常管理沿 [skill-maintenance](features/skill-maintenance.md#原生日常管理与实际-pi)
 覆盖公开四动作、语义规范化、局部更新与自动清理。真实 magpie/group/worker
-用自然任务发现并读取已连接库里的维护 Skill；用户日用复验使用普通 Pi、正常本地
-Skills 和自动加载的 Broker，并按场景补 `pi -ns` 对照。隔离 `-ne` 不替代日用范围。
-仅查看仍用 read，真正采用时沿同来源
-精确 ref 用 notion_use/CLI use 加载 Requires，被编辑目标仍只 inspect。
-无连接或显式离线/随包检查另验 builtin。
+用自然任务验证维护和 Source sync 默认选择实际执行包的 Builtin，已连接库也不先搜
+远端同名指引。用户日用复验使用普通 Pi、正常本地 Skills 和自动加载的 Broker，
+并按场景补 `pi -ns` 对照；隔离 `-ne` 不替代日用范围。
+显式选择 Notion／团队工作流另验：仅查看用 read，采用时沿同来源精确 ref 用
+notion_use/CLI use 加载 Requires；失败、不完整发现和 pending 不改选 Builtin。
+普通业务发现保持远端；被编辑目标仍只 inspect，已选任务内容保持。
+Broker 无 enabled Notion source 时不注入目录／工具／系统指导，显式 setup 仍可读 CLI Builtin。
 不在提示里预填字段或命令来替代指引发现。
 
 [skill-domains.json](../../../verification/skill-domains.json) 记录当前 feature 的唯一主要 owner 与可执行回归。[feature map](features/README.md) 只路由现有能力及明确未实现边界，不保留已取消流程的执行说明。

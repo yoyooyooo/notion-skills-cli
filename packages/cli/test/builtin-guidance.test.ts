@@ -38,7 +38,7 @@ test("bundled current instructions include every relative reference without chec
 })
 
 test("executable builtin examples stay within the public current command surface", () => {
-  const roots = new Set(["list", "read", "use", "files", "export", "schema", "ctl"])
+  const roots = new Set(["list", "read", "use", "files", "export", "schema", "ctl", "auth"])
   const controls = new Set([
     "library",
     "config",
@@ -57,6 +57,8 @@ test("executable builtin examples stay within the public current command surface
     "operation",
     "skill",
     "import",
+    "import-batch",
+    "members-plan",
     "source",
     "projection",
     "profile",
@@ -79,7 +81,17 @@ test("executable builtin examples stay within the public current command surface
               expect(library.has(words[2]!), label).toBe(true)
               if (words[2] === "source")
                 expect(
-                  ["apply", "refresh", "enable", "disable", "remove", "takeover", "restore-follow"],
+                  [
+                    "apply",
+                    "check",
+                    "sync",
+                    "refresh",
+                    "enable",
+                    "disable",
+                    "remove",
+                    "takeover",
+                    "restore-follow",
+                  ],
                   label,
                 ).toContain(words[3]!)
               if (words[2] === "skill")
@@ -100,16 +112,18 @@ test("maintenance routes daily native management through public commands and kee
   const setup = fileText("notion/ntn-skills-maintain", "references/setup.md")
   const operations = fileText("notion/ntn-skills-maintain", "references/operations.md")
   expect(new TextEncoder().encode(root).byteLength).toBeLessThanOrEqual(5300)
-  expect(root).toContain("ctl library files PAGE_ID --entry ENTRY")
-  expect(root).toContain("read PAGE_ID --database ENTRY --refresh --json")
+  expect(root).toContain("ctl library files PAGE_ID --library LIBRARY_ID")
+  expect(root).toContain("read PAGE_ID --library LIBRARY_ID --refresh --json")
   expect(root).toContain("CURRENT_SCHEMA_REQUIRED")
   expect(root).toContain("CURRENT_OPERATION_PENDING")
-  expect(root).toContain("ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run")
+  expect(root).toContain(
+    "ctl library import INPUT --library LIBRARY_ID --skill-id SKILL_ID --dry-run",
+  )
   for (const action of ["create INPUT", "update TARGET", "register PAGE_ID", "remove TARGET"])
-    expect(root).toContain(`ctl library skill ${action} --entry ENTRY`)
-  expect(root).toContain("preserves everything else")
+    expect(root).toContain(`ctl library skill ${action} --library LIBRARY_ID`)
+  expect(root).toContain("preserves unmentioned files")
   expect(root).toContain("no projection is")
-  expect(root).toContain("do not construct those Notion fields")
+  expect(root).toContain("The CLI owns identity, authority, relationships and finite state")
   expect(root).toContain("clears")
   expect(root).toContain("incoming Members/Requires")
   expect(operations).toContain("--operation OPERATION_ID --resume")
@@ -128,14 +142,17 @@ test("maintenance routes daily native management through public commands and kee
     "Repeating an unchanged empty query or running CLI list does not refresh the host directory.",
   )
   expect(root).toContain("Summarized readbacks retain page/ref, snapshot")
-  expect(root).toContain("For a basic how-to, explain create/register below from this main")
+  expect(root).toContain("For a basic how-to, explain create/register below")
   expect(root).toContain("load an API Skill only for direct API work")
   expect(root).toContain("reported connection/schema problem")
   expect(operations).toContain("local input recipe")
   expect(setup).toContain("ctl library init --parent AUTHORIZED_PARENT_PAGE")
-  expect(setup).toContain("ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID")
-  expect(setup).toContain("converts an older library schema")
-  expect(setup).toContain("/context-broker connect SOURCE ENTRY")
+  expect(setup).toContain("ctl library skill create INPUT --library LIBRARY_ID --skill-id SKILL_ID")
+  expect(setup).toContain("Legacy libraries require a separately reviewed cutover")
+  expect(setup).toContain("The one-time executor is retired")
+  expect(setup).toContain("PASTE_LIBRARY_ROOT_PAGE_ID")
+  expect(setup).not.toContain("PASTE_LIBRARY_SKILLS_DATABASE_ID")
+  expect(setup).toContain("/context-broker connect SOURCE LIBRARY_ID")
   expect(operations).toContain("metadata-only")
   expect(operations).toContain("Target inspection does not prove whole-library coverage")
   expect(operations).toMatch(/unknown CREATE/iu)
@@ -163,7 +180,7 @@ test("consumption and Profile guidance preserve zero-write reads and complete cu
   expect(details).toContain("Contributions.exclude or removes scripts/tests")
   for (const route of ["enable", "disable", "remove", "takeover", "restore-follow"])
     expect(profile).toContain(`ctl library source ${route}`)
-  expect(details).toContain("Source options.storage are rejected")
+  expect(details).toContain("Source `options.storage` are rejected")
   expect(details).toContain("Any effective Source contribution, current Source Content or Origin")
   expect(details).toContain("without publishing ready or recreating the Source")
   expect(details).toContain("A metadata toggle cannot clear an unfinished multi-target refresh")
@@ -200,18 +217,29 @@ test("projection completion ends routine writes without blocking requested repea
   expect(synchronization).toContain("Uncertain actions remain pending")
 })
 
-test("connected maintenance guidance reads projected workflows and preserves their selected references", () => {
-  const consumer = fileText("notion/ntn-skills", "SKILL.md")
-  const maintain = fileText("notion/ntn-skills-maintain", "SKILL.md")
-  const sync = fileText("notion/ntn-skills-sync", "SKILL.md")
-  const integration = fileText("notion/ntn-skills", "references/integration.md")
-  expect(consumer).toContain("list --database ENTRY --query ntn-skills-maintain")
-  expect(consumer).toContain("exact ref with ordinary")
-  expect(consumer).toContain("To apply the maintenance workflow")
+test("product guidance defaults to the execution package and preserves explicit remote selections", () => {
+  const prose = (id: string, path: string) => fileText(id, path).replace(/\s+/g, " ")
+  const consumer = prose("notion/ntn-skills", "SKILL.md")
+  const maintain = prose("notion/ntn-skills-maintain", "SKILL.md")
+  const sync = prose("notion/ntn-skills-sync", "SKILL.md")
+  const commands = prose("notion/ntn-skills", "references/commands.md")
+  const integration = prose("notion/ntn-skills", "references/integration.md")
+  for (const guidance of [consumer, commands, integration]) {
+    expect(guidance).toContain("ctl builtin read notion/ntn-skills-maintain")
+    expect(guidance).toContain("ctl builtin read notion/ntn-skills-sync")
+    expect(guidance).toContain("including with a connected library")
+    expect(guidance).toContain("Ordinary business")
+    expect(guidance).toContain("pending content")
+    expect(guidance).toContain("denied access")
+  }
+  expect(consumer).toContain("the task's executable")
+  expect(consumer).toContain("no Notion copy or remote workflow search")
+  expect(consumer).toContain("If the user explicitly selects a Notion/team workflow")
   expect(consumer).toContain("use 'EXACT_WORKFLOW_REF'")
   expect(consumer).toContain("Inspect the edited target; do not activate it")
-  expect(consumer).toContain("Failed or partial discovery does not authorize switching")
-  expect(consumer).toContain("Without a connected library")
+  expect(consumer).toContain("never a reason to substitute a package workflow")
+  expect(consumer).toContain("cannot replace the package default")
+  expect(consumer).toContain("Keep an already selected task's identity and content")
   expect(consumer).toContain("An npm update does not refresh a Notion Source")
   expect(maintain).toContain("ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF")
   expect(maintain).toContain("For package-selected instructions")
@@ -219,11 +247,14 @@ test("connected maintenance guidance reads projected workflows and preserves the
   for (const guidance of [maintain, sync, integration]) {
     expect(guidance).toContain("notion_use")
     expect(guidance).toContain("Requires")
+    expect(guidance).toMatch(/never substitute/i)
   }
+  expect(integration).toContain("from its paired SDK")
+  expect(integration).toContain("Without an enabled source, it does not inject")
   expect(integration).toContain("startup directory")
   expect(integration).toContain("query the connected library explicitly")
   expect(integration).toContain("An independent CLI `list --refresh` does not refresh")
-  expect(integration).toContain("Do not combine refresh with an\nold pagination cursor")
+  expect(integration).toContain("Do not combine refresh with an old pagination cursor")
 })
 
 test("the published documentation allowlist contains only current guides", () => {
@@ -233,9 +264,14 @@ test("the published documentation allowlist contains only current guides", () =>
   expect(manifest.files.filter((path) => path.startsWith("docs/"))).toEqual([
     "docs/README.md",
     "docs/current-contract.md",
+    "docs/library-roots.md",
+    "docs/library-root-migration.md",
     "docs/usage.md",
+    "docs/notion-mcp.md",
+    "docs/source-sync.md",
     "docs/shared-authoring.md",
     "docs/protocol.md",
+    "docs/skill-reference-redesign.md",
     "docs/maintenance-verification-review.md",
   ])
 })

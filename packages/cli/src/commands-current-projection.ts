@@ -1,6 +1,6 @@
 import { Crypto, Effect, Option, Schema, Stdio, Stream } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
-import { databaseId } from "../../core/src/catalog.ts"
+import { libraryId } from "../../core/src/catalog.ts"
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
 import { fail, property, SkillsError } from "../../core/src/model.ts"
 import { Notion } from "../../core/src/notion.ts"
@@ -31,7 +31,7 @@ const readingFilter = (patterns: readonly string[] | undefined) => {
 export function prepareCurrentProjectionOptions(input: {
   readonly target?: string
   readonly daily: boolean
-  readonly entry: string
+  readonly library: string
   readonly operation?: string
   readonly resume: boolean
   readonly cancel?: boolean
@@ -54,10 +54,10 @@ export function prepareCurrentProjectionOptions(input: {
       "--restore requires one exact Skill and automatic execution without --daily, --operation, --resume, --cancel or --dry-run.",
     )
   if (
-    /^notion_page:/iu.test(input.entry) ||
-    (/^[a-z][a-z\d+.-]*:\/\//iu.test(input.entry) && !/^https?:\/\//iu.test(input.entry))
+    /^notion_page:/iu.test(input.library) ||
+    (/^[a-z][a-z\d+.-]*:\/\//iu.test(input.library) && !/^https?:\/\//iu.test(input.library))
   )
-    throw fail("INVALID_ARGUMENT", "Projection requires a current Skills database entry.")
+    throw fail("INVALID_ARGUMENT", "Projection requires an explicit current Library root.")
   if (input.daily && (input.operation !== undefined || input.resume || input.cancel))
     throw fail(
       "INVALID_ARGUMENT",
@@ -156,7 +156,7 @@ export function currentProjectionRecoveryNext(
         "library",
         "projection",
         ownerPage ?? target,
-        "--entry",
+        "--library",
         entry,
         ...execution,
         ...filterArgs("--include", policy.value.include),
@@ -182,7 +182,7 @@ export function currentProjectionRecoveryNext(
         owner.id,
         "--kind",
         owner.kind,
-        "--entry",
+        "--library",
         entry,
       ],
       read_only: true,
@@ -198,7 +198,7 @@ export const currentProjectionCommand = defineCommand(
       Argument.optional,
       Argument.withDescription("Exact Skill page ID or Notion URL; omitted only with --daily"),
     ),
-    entry: requiredSingleton("entry", "Current Skills database ID, URL or exact registered alias"),
+    library: requiredSingleton("library", "Library root page ID, URL or exact registered alias"),
     daily: switchFlag(
       "daily",
       "Select Source 日用 current members, Skill 日用 and Default Context from complete current metadata",
@@ -252,7 +252,7 @@ export const currentProjectionCommand = defineCommand(
         try: () =>
           prepareCurrentProjectionOptions({
             target: Option.getOrUndefined(options.target),
-            entry: options.entry,
+            library: options.library,
             daily: options.daily,
             operation,
             resume: options.resume,
@@ -272,7 +272,7 @@ export const currentProjectionCommand = defineCommand(
       })
       const invocation = yield* withCurrentInvocationBudget(
         Effect.gen(function* () {
-          const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
+          const library = yield* loadSharedLibrary(yield* libraryId(options.library))
           if (options.cancel) {
             if (prepared.scope.kind !== "skill" || operation === undefined)
               return yield* Effect.fail(
@@ -340,7 +340,7 @@ export const currentProjectionCommand = defineCommand(
                 const next = currentProjectionRecoveryNext(
                   error.details,
                   target,
-                  options.entry,
+                  options.library,
                   prepared.limits,
                   options.restore,
                 )
@@ -395,31 +395,31 @@ export const currentProjectionCommand = defineCommand(
   ),
   Command.withExamples([
     {
-      command: "ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry LIBRARY_ID",
+      command: "ntn-skills ctl library projection SKILL_PAGE_ID --restore --library LIBRARY_ID",
       description:
         "Restore the exact existing Skill and regenerate its complete reading projection",
     },
     {
-      command: "ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ID --dry-run",
+      command: "ntn-skills ctl library projection SKILL_PAGE_ID --library LIBRARY_ID --dry-run",
       description: "Inspect selected reading documents and planned Source row changes",
     },
     {
-      command: "ntn-skills ctl library projection --daily --entry LIBRARY_ID",
+      command: "ntn-skills ctl library projection --daily --library LIBRARY_ID",
       description: "Generate current readable bodies for every selected daily Skill",
     },
     {
       command:
-        "ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ID --operation PROJECTION_ID --resume",
+        "ntn-skills ctl library projection SKILL_PAGE_ID --library LIBRARY_ID --operation PROJECTION_ID --resume",
       description: "Reconcile and continue one unfinished projection",
     },
     {
       command:
-        "ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ID --operation PROJECTION_ID --cancel",
+        "ntn-skills ctl library projection SKILL_PAGE_ID --library LIBRARY_ID --operation PROJECTION_ID --cancel",
       description: "Retire an exact interrupted reading intent before selecting a new policy",
     },
     {
       command:
-        "ntn-skills ctl library projection SKILL_PAGE_ID --entry LIBRARY_ID --include '**/*.md' --exclude '**/tests/**' --dry-run",
+        "ntn-skills ctl library projection SKILL_PAGE_ID --library LIBRARY_ID --include '**/*.md' --exclude '**/tests/**' --dry-run",
       description: "Inspect an explicit reading policy without changing consumption files",
     },
   ]),

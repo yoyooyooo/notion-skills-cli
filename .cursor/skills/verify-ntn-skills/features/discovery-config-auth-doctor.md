@@ -11,14 +11,14 @@ ntn-skills --help
 ntn-skills schema list
 ntn-skills schema ctl views
 ntn-skills ctl config show
-ntn-skills ctl doctor --database "$ENTRY"
-ntn-skills list --database "$ENTRY" --json --metrics
+ntn-skills ctl doctor --library "$LIBRARY_ID"
+ntn-skills list --library "$LIBRARY_ID" --json --metrics
 ntn-skills ctl cache status
 ~~~
 
-使用明确的当前 library entry；缺 Sources、Members/Requires、Origin 或 Content 时不能以旧布局继续。身份、凭据与 endpoint 属于本次 scope，已知访问拒绝不得由缓存覆盖。需要配置 token 时只沿现有 stdin 入口，不把凭据放进命令参数或报告。
+使用明确的当前 Library 根页面 UUID；缺 Sources、Members/Requires、Origin 或 Content 时不能以旧布局继续。身份、凭据与 endpoint 属于本次 scope，已知访问拒绝不得由缓存覆盖。需要配置 token 时只沿现有 stdin 入口，不把凭据放进命令参数或报告。
 
-`ctl doctor` 是实际在线访问检查：不带 database 时核身份，带 database 时检查当前库描述、完整目录元数据与关系 schema。它不选择或读取 Skill 正文，`skill_read.checked` 始终为 false；正文资格用显式目标的 `read` 或 `use` 验证。Enabled 元数据本身不证明正文已可用。验证 controller 的 doctor 只检查本机运行条件；未指定 live 不冒充在线结果。
+`ctl doctor` 是实际在线访问检查：不带 library 时核身份，带 library 时检查当前库描述、完整目录元数据与关系 schema。它不选择或读取 Skill 正文，`skill_read.checked` 始终为 false；正文资格用显式目标的 `read` 或 `use` 验证。Enabled 元数据本身不证明正文已可用。验证 controller 的 doctor 只检查本机运行条件；未指定 live 不冒充在线结果。
 
 ## 必要守卫
 

@@ -1,18 +1,10 @@
-import { CatalogSchema, decode, fail, property, resolveRecord } from "./model.ts"
-import { fileRef, pageId, parseTarget, type SkillTarget } from "./ref.ts"
+import { CatalogSchema, decode, fail, property } from "./model.ts"
+import { bindTarget, fileRef, parseTarget } from "./ref.ts"
+import { validateSharedRecordIdentity } from "./shared-content.ts"
 
-/** Exact and fixed targets retain their direct owner admission path. */
-export function isCurrentNameTarget(target: SkillTarget) {
-  return (
-    target.snapshot === undefined &&
-    pageId(target.selector) === undefined &&
-    !/^shared_skill:[^:]+:.+$/u.test(target.selector)
-  )
-}
-
-/** Pure selection from the complete ordinary catalog; this does not prepare a Skill. */
-export function resolveCatalogReference(input: string, value: unknown) {
-  const target = parseTarget(input)
+/** Pure exact selection from a complete catalog. A short ref needs an entry scope. */
+export function resolveCatalogReference(input: string, value: unknown, contextLibraryId?: string) {
+  const target = bindTarget(parseTarget(input), contextLibraryId)
   if (target.snapshot !== undefined)
     throw fail("INVALID_ARGUMENT", "Resolve a fixed reference from its snapshot manifest.")
   const envelope = property(value)
@@ -48,24 +40,74 @@ export function resolveCatalogReference(input: string, value: unknown) {
   )
     throw fail(
       "CATALOG_INCOMPLETE",
-      "Name uniqueness requires complete ordinary discovery; select an exact returned ref or specify a database.",
-      { selector: target.selector, coverage: directory.coverage, projections },
+      "Exact selection requires a complete ordinary catalog or an explicit Library root.",
+      {
+        selector: target.selector,
+        coverage: directory.coverage,
+        projections,
+      },
+    )
+  const libraries = new Map<string, string>()
+  for (const source of directory.databases) {
+    const library = source.shared_library
+    if (library === undefined)
+      throw fail("CURRENT_SCHEMA_REQUIRED", "Catalog entries require a current Library descriptor.")
+    if (
+      source.database_id !== library.skills.database_id ||
+      source.data_source_ids.length !== 1 ||
+      source.data_source_ids[0] !== library.skills.data_source_id
+    )
+      throw fail(
+        "LIBRARY_INVALID",
+        "The catalog Library descriptor differs from its physical source.",
+      )
+    const physical = `${library.skills.database_id}/${library.skills.data_source_id}`
+    const previous = libraries.get(library.library_id)
+    if (previous !== undefined && previous !== physical)
+      throw fail("LIBRARY_ID_CONFLICT", "One Library ID is bound to different Notion databases.", {
+        library_id: library.library_id,
+      })
+    libraries.set(library.library_id, physical)
+  }
+  if (
+    target.kind === "skill" &&
+    target.reference.scope.kind === "library" &&
+    !libraries.has(target.reference.scope.libraryId)
+  )
+    throw fail(
+      "LIBRARY_SCOPE_MISMATCH",
+      "The complete selected catalog belongs to a different Library.",
+      { library_id: target.reference.scope.libraryId },
     )
   const identities = new Set<string>()
   for (const record of directory.records) {
+    validateSharedRecordIdentity(record)
+    const locator = record.locator
+    if (
+      locator.type !== "shared_skill" ||
+      libraries.get(locator.library_id) !== `${locator.database_id}/${locator.data_source_id}`
+    )
+      throw fail("LIBRARY_INVALID", "The catalog Skill has no exact Library binding.")
     if (identities.has(record.id))
-      throw fail("CATALOG_INCOMPLETE", "The catalog repeats a content identity.", {
-        id: record.id,
-      })
+      throw fail("SKILL_ID_CONFLICT", "The catalog repeats a Skill identity.", { id: record.id })
     identities.add(record.id)
   }
-  const record = resolveRecord(target.selector, {
-    ...directory,
-    records: directory.records.filter((candidate) => candidate.enabled !== false),
-  })
+  const matches = directory.records.filter((record) =>
+    target.kind === "page"
+      ? record.locator.type === "shared_skill" && record.locator.page_id === target.selector
+      : record.id === target.selector,
+  )
+  const record = matches[0]
+  if (matches.length > 1)
+    throw fail("SKILL_ID_CONFLICT", "The target has more than one physical binding.")
+  if (record === undefined)
+    throw fail("SKILL_NOT_FOUND", "The exact Skill identity was not found.", {
+      selector: target.selector,
+    })
+  if (record.enabled === false) throw fail("CONTENT_DISABLED", "The selected Skill is disabled.")
   return {
     record,
     scope: directory.scope,
-    ref: fileRef(record.id, target.path || record.entrypoint, undefined, target.file_id),
+    ref: fileRef(record.id, target.path || record.entrypoint),
   }
 }

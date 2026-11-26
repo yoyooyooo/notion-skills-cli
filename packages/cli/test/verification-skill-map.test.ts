@@ -224,7 +224,7 @@ function check(input: unknown): void {
     }
   }
   const requiredScenarios = Array.from(
-    { length: 23 },
+    { length: 24 },
     (_, index) => `T${String(index + 1).padStart(2, "0")}`,
   )
   if (JSON.stringify([...scenarioIds].sort()) !== JSON.stringify(requiredScenarios))

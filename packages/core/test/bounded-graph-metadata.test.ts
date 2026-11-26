@@ -5,7 +5,7 @@ import { prepareGraph } from "../src/graph-prepare.ts"
 import { fail, property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
-import { sharedSkillId } from "../src/shared-content.ts"
+import { skillIdentity } from "../src/shared-content.ts"
 import { sharedGraphInventory, withSharedGraphReads } from "../src/shared-graph-read-context.ts"
 import { readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
@@ -100,7 +100,7 @@ function selectedFailure(
       const api = yield* Notion
       return yield* prepareGraph(
         { roots: [root], purpose: "use", freshness: { policy: "refresh" } },
-        { database: f.descriptor.skills.database_id },
+        { library: f.descriptor.library_id },
       ).pipe(Effect.provideService(Notion, { ...api, request: request(api) }), Effect.result)
     }),
   )
@@ -118,12 +118,12 @@ describe("selected graph metadata stays bounded by requested identities", () => 
     async (mode) => {
       const f = selectedFixture({ width: 0 }),
         path = `v1/pages/${f.pageIds[0]}`
-      const root = fileRef(sharedSkillId(f.descriptor.library_id, "a"), "SKILL.md")
+      const root = fileRef(skillIdentity(f.descriptor.library_id, "a"), "SKILL.md")
       let updated = false
       const result = await f.run(
         Effect.gen(function* () {
           const api = yield* Notion
-          return yield* readSkill(root, { database: f.descriptor.skills.database_id }).pipe(
+          return yield* readSkill(root, { library: f.descriptor.library_id }).pipe(
             Effect.provideService(Notion, {
               ...api,
               request: (selected, body, options) => {
@@ -182,12 +182,9 @@ describe("selected graph metadata stays bounded by requested identities", () => 
       relation: [],
       has_more: false,
     }
-    const root = fileRef(sharedSkillId(f.descriptor.library_id, "a"), "SKILL.md")
+    const root = fileRef(skillIdentity(f.descriptor.library_id, "a"), "SKILL.md")
     const result = await f.run(
-      prepareGraph(
-        { roots: [root], purpose: "use" },
-        { database: f.descriptor.skills.database_id },
-      ),
+      prepareGraph({ roots: [root], purpose: "use" }, { library: f.descriptor.library_id }),
     )
     expect(result.usage.prepared_nodes).toBe(1)
     expect(f.responses.filter((row) => !row.filtered)).toEqual([])
@@ -208,7 +205,7 @@ describe("selected graph metadata stays bounded by requested identities", () => 
       const result = await f.run(
         prepareGraph(
           { roots: [f.pageIds[0]!], purpose: "inspect" },
-          { database: f.descriptor.skills.database_id },
+          { library: f.descriptor.library_id },
         ),
       )
       expect(result.usage.prepared_nodes).toBe(1)
@@ -231,7 +228,7 @@ describe("selected graph metadata stays bounded by requested identities", () => 
     const result = await f.run(
       prepareGraph(
         { roots: [f.pageIds[0]!], purpose: "use" },
-        { database: f.descriptor.skills.database_id },
+        { library: f.descriptor.library_id },
       ),
     )
     expect(result.usage.prepared_nodes).toBe(4)
@@ -252,7 +249,7 @@ describe("selected graph metadata stays bounded by requested identities", () => 
     const result = await f.run(
       prepareGraph(
         { roots: [f.pageIds[0]!], purpose: "use" },
-        { database: f.descriptor.skills.database_id },
+        { library: f.descriptor.library_id },
       ).pipe(Effect.result),
     )
     expect(result._tag === "Failure" && result.failure.code).toBe("SHARED_SKILL_ID_CONFLICT")
@@ -280,9 +277,9 @@ describe("selected graph metadata stays bounded by requested identities", () => 
 describe("physical authorization across stable identity changes", () => {
   test("the Store boundary fences both stable pins if a physical page alias has changed", async () => {
     const f = selectedFixture({ width: 1 })
-    const database = f.descriptor.skills.database_id
+    const libraryRoot = f.descriptor.library_id
     const first = await f.run(
-      prepareGraph({ roots: [f.pageIds[0]!], purpose: "use" }, { database }),
+      prepareGraph({ roots: [f.pageIds[0]!], purpose: "use" }, { library: libraryRoot }),
     )
     const child = first.nodes.find(
       (node) => node.state === "prepared" && node.roles.includes("required"),
@@ -297,8 +294,8 @@ describe("physical authorization across stable identity changes", () => {
     const changedContent = "# Changed stable child B\n"
     f.bodies.set(f.pageIds[1]!, changedContent)
     const changed = await f.run(
-      readSkill(fileRef(sharedSkillId(f.descriptor.library_id, "changed-child"), "SKILL.md"), {
-        database,
+      readSkill(fileRef(skillIdentity(f.descriptor.library_id, "changed-child"), "SKILL.md"), {
+        library: libraryRoot,
         refresh: true,
       }),
     )
@@ -324,7 +321,7 @@ describe("physical authorization across stable identity changes", () => {
       expect(result._tag === "Failure" && result.failure.code).toBe("ACCESS_DENIED")
     }
     expect(f.calls).toEqual([])
-    await f.run(readSkill(changed.record.ref, { database, refresh: true }))
+    await f.run(readSkill(changed.record.ref, { library: libraryRoot, refresh: true }))
     f.clearCalls()
     const pins = [
       { ref: child.ref, snapshot_id: child.binding.snapshot_id, content: "# leaf-0 instruction\n" },
@@ -344,7 +341,7 @@ describe("physical authorization across stable identity changes", () => {
     async (phase) => {
       const f = selectedFixture({ width: 0 })
       const page = f.pageIds[0]!
-      const first = await f.run(readSkill(page, { database: f.descriptor.skills.database_id }))
+      const first = await f.run(readSkill(page, { library: f.descriptor.library_id }))
       const alias = `cache/shared-page-identities/${first.scope}/${page}.json`
       const failureCode = phase === "alias-read" ? "STATE_CORRUPT" : "STATE_WRITE_FAILED"
       const result = await f.run(
@@ -382,8 +379,8 @@ describe("physical authorization across stable identity changes", () => {
   test("a physical grant does not become a duplicate current cache observation", async () => {
     const f = selectedFixture({ width: 0 })
     const page = f.pageIds[0]!
-    const database = f.descriptor.skills.database_id
-    const first = await f.run(readSkill(page, { database }))
+    const libraryRoot = f.descriptor.library_id
+    const first = await f.run(readSkill(page, { library: libraryRoot }))
     f.json.delete(`cache/shared-page-identities/${first.scope}/${page}.json`)
     await f.run(
       invalidateSnapshotCache(page, first.scope, {
@@ -391,7 +388,7 @@ describe("physical authorization across stable identity changes", () => {
         accessDenied: "ACCESS_DENIED",
       }),
     )
-    await f.run(readSkill(page, { database, refresh: true }))
+    await f.run(readSkill(page, { library: libraryRoot, refresh: true }))
     f.clearCalls()
     const status = await f.run(cacheStatus())
     expect(status.observations).toHaveLength(1)
@@ -410,7 +407,7 @@ describe("bounded target observations preserve identity and failure boundaries",
       const before = await f.run(
         prepareGraph(
           { roots: [f.pageIds[0]!], purpose: "use" },
-          { database: f.descriptor.skills.database_id },
+          { library: f.descriptor.library_id },
         ),
       )
       const root = before.nodes.find(
@@ -451,13 +448,14 @@ describe("bounded target observations preserve identity and failure boundaries",
       )
       expect(denied).toHaveLength(1)
       expect(denied[0]!.id).toBe(f.pageIds[1])
-      expect(denied[0]!.ref).toBe(fileRef(f.pageIds[1]!, ""))
+      expect(denied[0]!.ref).toBe(`https://www.notion.so/${f.pageIds[1]!.replaceAll("-", "")}`)
+      expect(property(property(denied[0]!.error).details).page_id).toBe(f.pageIds[1])
       expect(denied[0]!.roles).toEqual(["required"])
       expect(
         "content" in
           (await f.run(
             readSkill(child.binding.record.ref, {
-              database: f.descriptor.skills.database_id,
+              library: f.descriptor.library_id,
               refresh: true,
             }),
           )),
@@ -475,7 +473,7 @@ describe("bounded target observations preserve identity and failure boundaries",
       const before = await f.run(
         prepareGraph(
           { roots: [f.pageIds[0]!], purpose: "use" },
-          { database: f.descriptor.skills.database_id },
+          { library: f.descriptor.library_id },
         ),
       )
       const root = before.nodes.find(
@@ -517,7 +515,7 @@ describe("bounded target observations preserve identity and failure boundaries",
           (value) => property(value).access_denied !== undefined,
         )
         expect(new Set(denied.map((value) => property(value).record_identity))).toEqual(
-          new Set([sharedSkillId(f.descriptor.library_id, "leaf-0"), f.pageIds[1]]),
+          new Set([skillIdentity(f.descriptor.library_id, "leaf-0"), f.pageIds[1]]),
         )
         expect(denied.every((value) => property(value).scope === before.scope)).toBe(true)
       } else noGuessedDenial(f)
@@ -558,7 +556,7 @@ describe("bounded target observations preserve identity and failure boundaries",
     const before = await f.run(
       prepareGraph(
         { roots: [f.pageIds[0]!], purpose: "use" },
-        { database: f.descriptor.skills.database_id },
+        { library: f.descriptor.library_id },
       ),
     )
     const root = before.nodes.find((node) => node.state === "prepared")!
@@ -590,7 +588,7 @@ describe("bounded target observations preserve identity and failure boundaries",
     const before = await f.run(
       prepareGraph(
         { roots: [f.pageIds[0]!], purpose: "use" },
-        { database: f.descriptor.skills.database_id },
+        { library: f.descriptor.library_id },
       ),
     )
     const path = `v1/pages/${f.pageIds[1]}`
@@ -688,13 +686,18 @@ describe("bounded target observations preserve identity and failure boundaries",
       const f = selectedFixture({ width: 201 })
       const identity =
         issue === "wrong-library"
-          ? sharedSkillId("another-library", "a")
+          ? skillIdentity("00000000-0000-4000-8000-000000000118", "a")
           : issue === "missing-id"
-            ? sharedSkillId(f.descriptor.library_id, "absent")
+            ? skillIdentity(f.descriptor.library_id, "absent")
             : `shared_skill:${f.descriptor.library_id}:a:invalid`
-      const result = await selectedFailure(f, (api) => api.request, fileRef(identity, "SKILL.md"))
+      const target = issue === "noncanonical-id" ? identity : fileRef(identity, "SKILL.md")
+      const result = await selectedFailure(f, (api) => api.request, target)
       expect(result._tag === "Failure" && result.failure.code).toBe(
-        issue === "noncanonical-id" ? "INVALID_REF" : "SKILL_NOT_FOUND",
+        issue === "noncanonical-id"
+          ? "CURRENT_TARGET_REQUIRED"
+          : issue === "wrong-library"
+            ? "LIBRARY_SCOPE_MISMATCH"
+            : "SKILL_NOT_FOUND",
       )
       expect(f.responses.some((row) => !row.filtered)).toBe(false)
       expect(f.readBodyCount()).toBe(0)
@@ -710,7 +713,7 @@ describe("bounded target observations preserve identity and failure boundaries",
     const result = await f.run(
       prepareGraph(
         { roots: [f.pageIds[0]!], purpose: "inspect" },
-        { database: f.descriptor.skills.database_id },
+        { library: f.descriptor.library_id },
       ),
     )
     expect(result.usage.prepared_nodes).toBe(1)

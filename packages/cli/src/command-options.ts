@@ -35,7 +35,7 @@ export const readConstraints: readonly CommandConstraint[] = [
 ]
 export const cacheClearConstraints: readonly CommandConstraint[] = [
   { kind: "exactly_one", flags: ["target", "all"] },
-  { kind: "requires_absent", flag: "all", absent: ["database"] },
+  { kind: "requires_absent", flag: "all", absent: ["library"] },
 ]
 export const exportConstraints: readonly CommandConstraint[] = [
   ...filesConstraints,
@@ -99,11 +99,11 @@ export function withRuntime<Name extends string, Input, ContextInput, Error, Req
     ),
   )
 }
-export const databaseFlag = Flag.String("database").pipe(
+export const libraryFlag = Flag.String("library").pipe(
   Flag.atMost(1),
   Flag.map((values) => Option.fromUndefinedOr(values[0])),
   Flag.withDescription(
-    "Restrict to one Skills Database ID, URL or exact registered alias; repeated --database is rejected",
+    "Restrict to one Library root page ID, URL or exact registered alias; repeated --library is rejected",
   ),
 )
 export const singleton = (name: string, description: string) =>

@@ -107,7 +107,7 @@ test("doctor without a selected database only checks authentication", async () =
 test("doctor inspects catalog and schema without probing an arbitrary enabled Skill's content", async () => {
   const f = fixture()
   addUnreadySkill(f)
-  const report = await f.doctor(["--database", library.skills.database_id])
+  const report = await f.doctor(["--library", library.library_id])
   expect(report).toMatchObject({
     ok: true,
     authentication: "available",
@@ -121,31 +121,39 @@ test("doctor inspects catalog and schema without probing an arbitrary enabled Sk
   expect(
     f.calls.some((call) => call.path === `v1/data_sources/${library.skills.data_source_id}`),
   ).toBe(true)
-  expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
+  expect(
+    f.calls.some(
+      (call) => call.path.startsWith("v1/pages/") && call.path !== `v1/pages/${library.library_id}`,
+    ),
+  ).toBe(false)
   expect(f.downloads).toEqual([])
   expect(f.objects.size).toBe(0)
   expect([...f.json.keys()].some((key) => key.startsWith("snapshots/"))).toBe(false)
   expect(f.mutations()).toEqual([])
   await expect(
-    f.run(openSkill(id(1000), { database: library.skills.database_id, refresh: true })),
+    f.run(openSkill(id(1000), { library: library.library_id, refresh: true })),
   ).rejects.toMatchObject({ code: "CURRENT_SCHEMA_REQUIRED" })
 })
 
 test("doctor reports an empty catalog without claiming a content probe", async () => {
   const f = fixture()
-  expect(await f.doctor(["--database", library.skills.database_id])).toMatchObject({
+  expect(await f.doctor(["--library", library.library_id])).toMatchObject({
     skill_count: 0,
     skill_read: { checked: false },
     coverage: { exhaustive: true, failed_sources: [] },
   })
-  expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
+  expect(
+    f.calls.some(
+      (call) => call.path.startsWith("v1/pages/") && call.path !== `v1/pages/${library.library_id}`,
+    ),
+  ).toBe(false)
 })
 
 test("doctor preserves authentication and selected schema failures", async () => {
   const denied = fixture()
-  await expect(
-    denied.doctor(["--database", library.skills.database_id], true),
-  ).rejects.toMatchObject({ code: "AUTH_REQUIRED" })
+  await expect(denied.doctor(["--library", library.library_id], true)).rejects.toMatchObject({
+    code: "AUTH_REQUIRED",
+  })
   expect(denied.calls).toEqual([])
   const invalid = fixture()
   invalid.rewrite((path, response) => {
@@ -153,7 +161,7 @@ test("doctor preserves authentication and selected schema failures", async () =>
       delete property(response.properties).Content
     return response
   })
-  await expect(invalid.doctor(["--database", library.skills.database_id])).rejects.toMatchObject({
+  await expect(invalid.doctor(["--library", library.library_id])).rejects.toMatchObject({
     code: "LIBRARY_SCHEMA_CONFLICT",
   })
   expect(invalid.mutations()).toEqual([])
@@ -166,9 +174,13 @@ test("doctor preserves incomplete catalog coverage instead of certifying missing
       ? { ...response, has_more: true, next_cursor: null }
       : response,
   )
-  expect(await f.doctor(["--database", library.skills.database_id])).toMatchObject({
+  expect(await f.doctor(["--library", library.library_id])).toMatchObject({
     skill_read: { checked: false },
     coverage: { exhaustive: false, failed_sources: [{ code: "INVALID_RESPONSE" }] },
   })
-  expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
+  expect(
+    f.calls.some(
+      (call) => call.path.startsWith("v1/pages/") && call.path !== `v1/pages/${library.library_id}`,
+    ),
+  ).toBe(false)
 })

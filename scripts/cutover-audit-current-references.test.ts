@@ -170,13 +170,13 @@ test("reference audit proves exact identities without admitting escapes or modif
   const findings = report.owners[0].findings
   const exact = findings.find((item: { href: string }) => item.href === "../b/guide.md")
   expect(exact.target.enabled).toBe(false)
-  expect(parseRef(exact.repair_candidate.target_ref)).toEqual({
-    selector: "shared_skill:library-test:skill-b",
+  expect(parseRef(exact.repair_candidate.target_ref)).toMatchObject({
+    skillId: "skill-b",
+    scope: { kind: "library", libraryId: "library-test" },
     path: "guide.md",
-    file_id: "b-guide.md",
   })
   const main = findings.find((item: { href: string }) => item.href === "../b/SKILL.md")
-  expect(parseRef(main.repair_candidate.target_ref).file_id).toBeUndefined()
+  expect(main.repair_candidate.target_ref).not.toContain("file_id=")
   for (const item of findings.filter(
     (item: { repair_candidate?: { suffix_or_image_policy_required: boolean } }) =>
       item.repair_candidate?.suffix_or_image_policy_required,

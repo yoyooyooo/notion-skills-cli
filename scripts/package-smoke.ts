@@ -3,7 +3,8 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, stat, writeFile } from "node
 import { tmpdir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
-import { LIBRARY_MARKER } from "../packages/core/src/shared-library-model.ts"
+import { property } from "../packages/core/src/model.ts"
+import { librarySchemaResponse } from "../packages/core/test/library-schema-fixture.ts"
 import { currentLibrary } from "../packages/core/test/shared-current-fixture.ts"
 const { startSdkSourceFixture } = await import(
   new URL("./sdk-source-fixture.mjs", import.meta.url).href
@@ -98,7 +99,7 @@ const cli = async (argv: string[], exit = 0) => {
 const rootSchema = await cli(["schema"])
 assert.deepEqual(
   rootSchema.schema.commands.map((command: { name: string }) => command.name).sort(),
-  ["ctl", "export", "files", "list", "read", "schema", "use"],
+  ["auth", "ctl", "export", "files", "list", "read", "schema", "use"],
 )
 for (const path of [["read"], ["use"], ["files"], ["export"], ["ctl", "prepare"]]) {
   const schema = await cli(["schema", ...path])
@@ -108,8 +109,10 @@ const library = await cli(["schema", "ctl", "library"])
 assert.deepEqual(library.schema.commands.map((command: { name: string }) => command.name).sort(), [
   "files",
   "import",
+  "import-batch",
   "init",
   "inspect",
+  "members-plan",
   "operation",
   "profile",
   "projection",
@@ -124,7 +127,17 @@ assert.deepEqual(
 const sourceSchema = await cli(["schema", "ctl", "library", "source"])
 assert.deepEqual(
   sourceSchema.schema.commands.map((command: { name: string }) => command.name).sort(),
-  ["apply", "disable", "enable", "refresh", "remove", "restore-follow", "takeover"],
+  [
+    "apply",
+    "check",
+    "disable",
+    "enable",
+    "refresh",
+    "remove",
+    "restore-follow",
+    "sync",
+    "takeover",
+  ],
 )
 for (const path of [
   ["create"],
@@ -199,45 +212,22 @@ const source = await startSdkSourceFixture(
   {
     notion: {
       library: currentLibrary,
-      skills_data_source: {
-        object: "data_source",
-        id: currentLibrary.skills.data_source_id,
-        properties: {
-          ...Object.fromEntries(
-            (["Members", "Requires"] as const).map((name) => [
-              name,
-              {
-                id: currentLibrary.skills.property_ids[name]!,
-                name,
-                type: "relation",
-                relation: {
-                  type: "single_property",
-                  data_source_id: currentLibrary.skills.data_source_id,
-                  single_property: {},
-                },
-              },
-            ]),
-          ),
-          Origin: {
-            id: currentLibrary.skills.property_ids.Origin,
-            name: "Origin",
-            type: "relation",
-            relation: {
-              type: "dual_property",
-              data_source_id: currentLibrary.sources.data_source_id,
-              dual_property: { synced_property_id: currentLibrary.sources.property_ids.Skills },
-            },
-          },
-        },
-      },
-      database: {
-        object: "database",
-        id: currentLibrary.skills.database_id,
-        database_type: null,
-        title: [{ plain_text: "Installed current import" }],
-        description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(currentLibrary) }],
-        data_sources: [{ id: currentLibrary.skills.data_source_id, name: "Skills" }],
-      },
+      root: librarySchemaResponse("v1/pages/" + currentLibrary.library_id, currentLibrary),
+      root_children: property(
+        librarySchemaResponse(
+          "v1/blocks/" + currentLibrary.library_id + "/children",
+          currentLibrary,
+        ),
+      ).results,
+      databases: (["skills", "files", "records", "sources"] as const).map((role) =>
+        librarySchemaResponse("v1/databases/" + currentLibrary[role].database_id, currentLibrary),
+      ),
+      data_sources: (["skills", "files", "records", "sources"] as const).map((role) =>
+        librarySchemaResponse(
+          "v1/data_sources/" + currentLibrary[role].data_source_id,
+          currentLibrary,
+        ),
+      ),
       main: null,
       skills: [],
       files: [],
@@ -262,8 +252,8 @@ try {
     "library",
     "import",
     inputDirectory,
-    "--entry",
-    currentLibrary.skills.database_id,
+    "--library",
+    currentLibrary.library_id,
     "--skill-id",
     "installed-current",
     "--native",
@@ -274,16 +264,21 @@ try {
   assert.equal(inspected.remote_writes, 0)
   assert.equal(inspected.input.files, currentFiles.length)
   assert.equal(semanticWrites(), 0)
-  const beforeRejectedEntry = source.requests.length
+  const beforeRejectedLibrary = source.requests.length
   for (const entry of [
     `notion_page:${currentLibrary.skills.database_id}`,
     `ftp://www.notion.so/${currentLibrary.skills.database_id.replaceAll("-", "")}`,
   ]) {
-    const invalidEntry = [...importArgs]
-    invalidEntry[5] = entry
-    assert.equal((await cli(invalidEntry, 2)).error.code, "INVALID_ARGUMENT")
+    const invalidLibrary = [...importArgs]
+    invalidLibrary[5] = entry
+    assert.equal((await cli(invalidLibrary, 2)).error.code, "INVALID_ARGUMENT")
   }
-  assert.equal(source.requests.length, beforeRejectedEntry)
+  for (const removed of ["--entry", "--database"]) {
+    const invalidLibrary = [...importArgs]
+    invalidLibrary[4] = removed
+    assert.equal((await cli(invalidLibrary, 2)).error.code, "INVALID_ARGUMENT")
+  }
+  assert.equal(source.requests.length, beforeRejectedLibrary)
   const beforeBudget = source.requests.length
   const limited = await cli([...importArgs, "--dry-run", "--max-requests", "1"], 1)
   assert.equal(limited.error.code, "REQUEST_BUDGET_EXHAUSTED")
@@ -355,12 +350,7 @@ try {
   }
   const afterImport = semanticWrites()
   assert.ok(afterImport > 0)
-  const listing = await cli([
-    "files",
-    imported.page_id,
-    "--database",
-    currentLibrary.skills.database_id,
-  ])
+  const listing = await cli(["files", imported.page_id, "--library", currentLibrary.library_id])
   assert.deepEqual(
     listing.files.map((file: { path: string }) => file.path).sort(),
     currentFiles.map((file) => file.path).sort(),
@@ -375,8 +365,8 @@ try {
   await cli([
     "export",
     imported.page_id,
-    "--database",
-    currentLibrary.skills.database_id,
+    "--library",
+    currentLibrary.library_id,
     "--output",
     output,
     "--format",
@@ -426,8 +416,8 @@ try {
   await cli([
     "export",
     imported.page_id,
-    "--database",
-    currentLibrary.skills.database_id,
+    "--library",
+    currentLibrary.library_id,
     "--output",
     roundtripOutput,
     "--format",
@@ -444,15 +434,15 @@ try {
     "library",
     "projection",
     imported.page_id,
-    "--entry",
-    currentLibrary.skills.database_id,
+    "--library",
+    currentLibrary.library_id,
   ]
   const beforeProjection = semanticWrites()
   const beforeProjectionFiles = await cli([
     "files",
     imported.page_id,
-    "--database",
-    currentLibrary.skills.database_id,
+    "--library",
+    currentLibrary.library_id,
     "--refresh",
   ])
   assert.equal(typeof beforeProjectionFiles.snapshot_id, "string")
@@ -489,16 +479,16 @@ try {
   const afterProjectionFiles = await cli([
     "files",
     imported.page_id,
-    "--database",
-    currentLibrary.skills.database_id,
+    "--library",
+    currentLibrary.library_id,
     "--refresh",
   ])
   assert.equal(afterProjectionFiles.snapshot_id, beforeProjectionFiles.snapshot_id)
   const afterProjectionRead = await cli([
     "read",
     imported.page_id,
-    "--database",
-    currentLibrary.skills.database_id,
+    "--library",
+    currentLibrary.library_id,
     "--path",
     "references/guide.md",
     "--refresh",
@@ -610,8 +600,8 @@ try {
     "installed-current",
     "--kind",
     "skill",
-    "--entry",
-    currentLibrary.skills.database_id,
+    "--library",
+    currentLibrary.library_id,
   ])
   assert.equal(restorationOperation.status, "not_found")
   assert.equal(restorationOperation.operation, null, "No local or remote intent may remain")

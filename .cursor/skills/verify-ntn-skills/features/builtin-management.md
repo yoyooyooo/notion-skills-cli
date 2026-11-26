@@ -2,7 +2,7 @@
 
 主要验证入口：[verify-ntn-skills](../../verify-ntn-skills/SKILL.md)。本页验证当前 builtin 目录、中央安装、本地分发与用户修改保护；安装态结果由实际运行提供。
 
-This recipe covers explicit local copies. Broker exposes the three bundled Skills through ordinary `$ntn-skills@builtin`, `$ntn-skills-maintain@builtin` and `$ntn-skills-sync@builtin` selection on Pi without central installation or a Notion source. OMP/Tern host adaptation is deferred. The Broker artifact verifier consumes the packaged bodies and references offline; the installation lifecycle below is relevant when changing explicit install/update behavior.
+This recipe covers explicit local copies. With an enabled Notion source, Broker exposes the three bundled Skills through ordinary `$ntn-skills@builtin`, `$ntn-skills-maintain@builtin` and `$ntn-skills-sync@builtin` selection on Pi, without central installation or remote Builtin copies. Without an enabled source, Broker injects no Notion catalog, tools or system guidance; explicit setup can still read the shell CLI's Builtin. OMP/Tern host adaptation is deferred. The Broker artifact verifier consumes the packaged bodies and references offline; the installation lifecycle below is relevant when changing explicit install/update behavior.
 
 ## Sub-features
 

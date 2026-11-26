@@ -9,8 +9,17 @@ import {
   type ReadPolicyOptions,
 } from "./cache.ts"
 import { fail, property, SkillsError } from "./model.ts"
-import { SharedLibrarySchema, type SharedLibrary } from "./shared-library-model.ts"
-import { libraryFromDatabase, LIBRARY_MARKER, loadSharedLibrary } from "./shared-library.ts"
+import {
+  preservesSharedLibraryBindings,
+  SharedLibrarySchema,
+  type SharedLibrary,
+} from "./shared-library-model.ts"
+import {
+  assertSharedLibraryBinding,
+  libraryFromDatabase,
+  LIBRARY_MARKER,
+  loadSharedLibrary,
+} from "./shared-library.ts"
 import { pageId } from "./ref.ts"
 import { withLocalLocks } from "./local-locks.ts"
 import {
@@ -56,6 +65,7 @@ export const SharedProfilePendingSchema = Schema.Struct({
   version: Schema.Literal(2),
   scope: Schema.String,
   library_id: Schema.String,
+  library: SharedLibrarySchema,
   profile_id: Schema.String,
   target_page_id: Schema.NullOr(Schema.String),
   plan: SharedProfilePlanSchema,
@@ -284,7 +294,7 @@ function profileObservationKey(scope: string, selection: string) {
 function invalidateProfileObservation(library: SharedLibrary, profileId: string, scope: string) {
   return Effect.gen(function* () {
     const descriptor = yield* profileSelection(library, profileId)
-    const entry = yield* profileEntrySelection(library.skills.database_id, profileId)
+    const entry = yield* profileEntrySelection(library.library_id, profileId)
     yield* (yield* Store).retireKeys([
       profileObservationKey(scope, descriptor),
       profileObservationKey(scope, entry),
@@ -295,7 +305,7 @@ function invalidateProfileObservation(library: SharedLibrary, profileId: string,
 /**
  * Profile rules use the existing View-observation cache and generation fences.
  * Only a complete, unique current record is cached; local preferences still
- * contain only the selected library entry and Profile ID.
+ * contain only the selected Library root and Profile ID.
  */
 export function loadSharedProfileCached(
   library: SharedLibrary,
@@ -304,7 +314,7 @@ export function loadSharedProfileCached(
 ) {
   return Effect.gen(function* () {
     const selection = yield* profileSelection(library, profileId)
-    return yield* observeProfile(selection, library.skills.database_id, profileId, options, library)
+    return yield* observeProfile(selection, library.library_id, profileId, options, library)
   })
 }
 
@@ -321,7 +331,7 @@ export function loadSharedProfileEntryCached(
     const entry = pageId(input)
     if (!entry)
       return yield* Effect.fail(
-        fail("INVALID_ARGUMENT", "Use an exact shared library entry ID or Notion URL."),
+        fail("INVALID_ARGUMENT", "Use an exact Library root ID or Notion URL."),
       )
     const selection = yield* profileEntrySelection(entry, profileId)
     return yield* observeProfile(selection, entry, profileId, options)
@@ -360,7 +370,7 @@ function observeProfile(
           saved.profile_id !== profileId ||
           saved.profile.profile_id !== profileId ||
           saved.profile.library_id !== saved.library.library_id ||
-          saved.library.skills.database_id !== entry ||
+          saved.library.library_id !== entry ||
           !Number.isSafeInteger(saved.generation) ||
           saved.generation <= 0 ||
           !Number.isFinite(saved.fetched_at) ||
@@ -385,7 +395,8 @@ function observeProfile(
           // a local shape check, not a claim of current remote availability.
           yield* checked(() =>
             libraryFromDatabase({
-              id: entry,
+              id: saved.library.skills.database_id,
+              parent: { page_id: saved.library.library_id },
               description: [
                 { plain_text: `${LIBRARY_MARKER}${canonicalSharedJson(saved.library)}` },
               ],
@@ -462,7 +473,7 @@ function observeProfile(
     let refreshedLibrary: SharedLibrary | undefined
     const observed = yield* Effect.gen(function* () {
       const library = suppliedLibrary ?? (yield* loadSharedLibrary(entry))
-      if (library.skills.database_id !== entry)
+      if (library.library_id !== entry)
         return yield* Effect.fail(
           fail(
             "SHARED_PROFILE_SCOPE",
@@ -573,12 +584,25 @@ function pendingProfile(library: SharedLibrary, scope: string, profileId: string
         ),
       )
     const key = `${prefix}pending.json`
-    const saved = yield* store.readJson(key, SharedProfilePendingSchema)
-    if (saved === undefined) return undefined
+    const raw = yield* store.readJson(key, Schema.Unknown)
+    if (raw === undefined) return undefined
+    if (property(raw).library === undefined)
+      return yield* Effect.fail(
+        fail(
+          "STATE_MIGRATION_REQUIRED",
+          "The unfinished Profile write has no frozen Library binding. Retain its journal and reconcile the original operation before continuing.",
+          { profile_id: profileId, pending_journal: key },
+        ),
+      )
+    const saved = yield* Effect.try({
+      try: () => strict(SharedProfilePendingSchema, raw),
+      catch: () => fail("STATE_CORRUPT", "The pending Profile write has an invalid frozen intent."),
+    })
     const plan = yield* validateSharedProfilePlan(library, saved.plan)
     if (
       saved.scope !== scope ||
       saved.library_id !== library.library_id ||
+      saved.library.library_id !== saved.library_id ||
       saved.profile_id !== profileId ||
       plan.payload.profile_id !== profileId ||
       (saved.target_page_id !== null && pageId(saved.target_page_id) !== saved.target_page_id) ||
@@ -588,6 +612,14 @@ function pendingProfile(library: SharedLibrary, scope: string, profileId: string
         fail(
           "STATE_CORRUPT",
           "The pending Profile write has a different scope or target identity.",
+        ),
+      )
+    if (!preservesSharedLibraryBindings(saved.library, library))
+      return yield* Effect.fail(
+        fail(
+          "LIBRARY_BINDING_CHANGED",
+          "The unfinished Profile write belongs to its original Library bindings and cannot reconcile through replacement tables.",
+          { profile_id: profileId, pending_journal: key },
         ),
       )
     return { key, plan, target_page_id: saved.target_page_id }
@@ -676,7 +708,7 @@ export function saveSharedProfile(
     const store = yield* Store
     return yield* withLocalLocks(
       store.root,
-      [`profile:${library.records.data_source_id}:${requested.payload.profile_id}`],
+      [`profile:${library.library_id}:${requested.payload.profile_id}`],
       Effect.gen(function* () {
         const pending = yield* pendingProfile(library, scope, requested.payload.profile_id)
         if (
@@ -691,6 +723,7 @@ export function saveSharedProfile(
             ),
           )
         const plan = pending?.plan ?? requested
+        yield* assertSharedLibraryBinding(library)
         if (pending !== undefined || mode === "reconcile")
           return yield* confirmCurrent(
             library,
@@ -744,6 +777,7 @@ export function saveSharedProfile(
           version: 2,
           scope,
           library_id: library.library_id,
+          library: structuredClone(library),
           profile_id: plan.payload.profile_id,
           target_page_id: targetPageId,
           plan,

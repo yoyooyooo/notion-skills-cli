@@ -11,6 +11,7 @@ import { parseTarget } from "../src/ref.ts"
 import { loadSnapshot } from "../src/fixed-snapshot-files.ts"
 import { targetSnapshot } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
 import {
   currentDigest as digest,
   currentBytes as encode,
@@ -67,23 +68,26 @@ function withBrokenReference(f: Fixture, snapshot: Snapshot) {
       { file_id: "unresolved-link", page_id: currentId(800), path: "mounted/README.md" },
     ],
     version_id: version,
-    snapshot_id: `s_${digest(JSON.stringify([snapshot.scope, snapshot.record.id, version]))}`,
+    snapshot_id: `s_${digest(selectionSnapshotIdentityInput({ ...snapshot, version_id: version }))}`,
   })
 }
 
 describe("shared current complete-tree validation receipts", () => {
-  test("current preference projection reuses the stored manifest proof without unselected reads", async () => {
+  test("a current metadata selection reuses its own stored manifest proof without unselected reads", async () => {
     const f = currentSnapshotFixture()
     const first = await f.open()
+    f.main.properties["Default Context"].checkbox = !first.record.default_context
+    const selected = await f.open()
+    expect(selected.snapshot_id).not.toBe(first.snapshot_id)
+    expect(selected.version_id).toBe(first.version_id)
     const unselected = first.files.find((file) => file.path !== first.entrypoint)!
     f.objects.delete(`objects/${unselected.sha256}`)
-    for (const entry of latestEntries(f)) entry.default_context = !first.record.default_context
     const observations = structuredClone(latestEntries(f))
     const proofs = proofKeys(f).map((key) => structuredClone(f.json.get(key)))
     f.clearCalls()
     const candidate = trackedObservation(f, first, "metadata")
     const observed = await candidate.run()
-    expect(observed?.stored_snapshot?.record.default_context).toBe(first.record.default_context)
+    expect(observed?.stored_snapshot?.record.default_context).toBe(selected.record.default_context)
     expect(observed?.snapshot.record.default_context).toBe(!first.record.default_context)
     expect(candidate.reads).toEqual([])
     const reads: string[] = []
@@ -105,7 +109,10 @@ describe("shared current complete-tree validation receipts", () => {
     const main = first.files.find((file) => file.path === first.entrypoint)!
     expect(reads).toEqual([`objects/${main.sha256}`])
     expect(current.record.default_context).toBe(!first.record.default_context)
-    expect(current.snapshot_id).toBe(first.snapshot_id)
+    expect(current.snapshot_id).toBe(selected.snapshot_id)
+    expect(
+      property(property(f.json.get(`snapshots/${first.snapshot_id}.json`)).record).default_context,
+    ).toBe(first.record.default_context)
     expect(latestEntries(f)).toEqual(observations)
     expect(proofKeys(f).map((key) => f.json.get(key))).toEqual(proofs)
     expect(f.calls).toEqual([])
@@ -198,7 +205,7 @@ describe("shared current complete-tree validation receipts", () => {
     for (const [field, value] of Object.entries({
       version: 0,
       scope: "foreign-scope",
-      record_identity: "shared_skill:foreign:skill",
+      record_identity: "skill://skill?library=1fed9b5e-352d-53b8-811b-d62ae58344f8",
       snapshot_id: `s_${digest("foreign-snapshot")}`,
       version_id: digest("foreign-version"),
       materialization_version: "unchecked-compiler",
@@ -222,8 +229,11 @@ describe("shared current complete-tree validation receipts", () => {
     expect(original.file_bindings?.length).toBeGreaterThan(0)
     f.objects.delete(`objects/${first.files[0]!.sha256}`)
     const relation = { id: "foreign-member", ref: "skill://foreign/SKILL.md", metadata: {} }
+    f.json.set(key, { ...original, record: { ...original.record, description: "changed record" } })
+    const changedRecord = trackedObservation(f, first)
+    expect((await changedRecord.error()).code).toBe("STATE_CORRUPT")
+    expect(changedRecord.reads).toEqual([])
     const variants: readonly Snapshot[] = [
-      { ...original, record: { ...original.record, description: "changed record" } },
       { ...original, files: [...original.files].reverse() },
       {
         ...original,

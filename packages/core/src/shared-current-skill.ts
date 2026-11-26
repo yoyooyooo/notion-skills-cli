@@ -31,6 +31,7 @@ import { compareNativeMarkdown } from "./shared-native-markdown.ts"
 import { observeSharedBody } from "./shared-page-body.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
+import { formatSkillIdentity } from "./skill-ref.ts"
 
 type ManagementOptions = { readonly operation_id?: string; readonly dry_run?: boolean }
 const same = (a: unknown, b: unknown) => canonicalSharedJson(a) === canonicalSharedJson(b)
@@ -87,9 +88,7 @@ export function resolveCurrentSkillRelations(
             "Skill ID",
           ),
         )
-        refs.push(
-          "shared_skill:" + encodeURIComponent(library.library_id) + ":" + encodeURIComponent(id),
-        )
+        refs.push(formatSkillIdentity({ libraryId: library.library_id, skillId: id }))
       }
       if (new Set(refs).size !== refs.length)
         return yield* Effect.fail(

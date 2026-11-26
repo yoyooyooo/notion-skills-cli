@@ -37,28 +37,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [request-engine, current-lifecycle]
+        suite: [request-engine, current-lifecycle, notion-mcp-auth, notion-mcp-search, skill-reference]
     env:
       PSTACK_STATECHART_ROOT: ${{ github.workspace }}/.formal-tools/pstack/pstack/skills/statechart
       TLA2TOOLS: ${{ github.workspace }}/.formal-tools/tla2tools-1.7.4.jar
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Checkout the frozen statechart implementation
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: cursor/plugins
           ref: c742dd61706fbacc1b95f1a20b7b988cf096ce6c
           path: .formal-tools/pstack
           sparse-checkout: pstack/skills/statechart
           persist-credentials: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24.20.0
-      - uses: actions/setup-java@v4
+          node-version: 24.22.3
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: "21"
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.3
       - run: bun install --frozen-lockfile
@@ -78,14 +78,26 @@ jobs:
               node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-immutable-read.node.test.ts > "${{ runner.temp }}/formal-${{ matrix.suite }}/sdk-regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/sdk-regressions.stderr"
               ;;
             current-lifecycle)
-              bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-projection-write.test.ts --timeout 60000 > "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stderr"
+              bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-projection-write.test.ts packages/core/test/shared-current-source-sync-guards.test.ts packages/core/test/shared-current-source-sync-batch.test.ts packages/core/test/shared-current-source-sync-batch-model.test.ts --timeout 60000 > "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stderr"
+              node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-sqlite.node.test.ts > "${{ runner.temp }}/formal-${{ matrix.suite }}/sqlite-regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/sqlite-regressions.stderr"
+              ;;
+            notion-mcp-auth)
+              node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/notion-mcp-auth.node.test.ts packages/core/test/notion-mcp-credential-store.node.test.ts > "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stderr"
+              ;;
+            notion-mcp-search)
+              bun test packages/core/test/notion-mcp-search.test.ts packages/core/test/notion-mcp-client.test.ts --timeout 60000 > "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stderr"
+              node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-mcp-search.node.test.ts > "${{ runner.temp }}/formal-${{ matrix.suite }}/sdk-regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/sdk-regressions.stderr"
+              ;;
+            skill-reference)
+              bun test packages/core/test/skill-ref.test.ts packages/core/test/skill-reference-guards.test.ts packages/core/test/ref-archive.test.ts packages/core/test/shared-current-relative.test.ts packages/core/test/shared-source-references.test.ts packages/core/test/resource-read.test.ts packages/core/test/shared-current-member-discovery.test.ts packages/core/test/shared-current-import-plan.test.ts packages/cli/test/current-import.test.ts packages/cli/test/current-import-batch.test.ts packages/cli/test/current-members.test.ts --timeout 60000 > "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/regressions.stderr"
+              node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sqlite-state.node.test.ts packages/core/test/shared-sqlite.node.test.ts packages/core/test/cache-retention.node.test.ts packages/core/test/config.node.test.ts > "${{ runner.temp }}/formal-${{ matrix.suite }}/sqlite-regressions.stdout" 2> "${{ runner.temp }}/formal-${{ matrix.suite }}/sqlite-regressions.stderr"
               ;;
           esac
       - name: Prove production guards detect the reviewed failures
         run: python3 scripts/check-formal-mutations.py --suite "${{ matrix.suite }}" --out "${{ runner.temp }}/formal-${{ matrix.suite }}/guard-mutations"
       - name: Retain summaries, exact inputs, reports, TLC output and generated diagrams
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: formal-${{ matrix.suite }}-${{ github.sha }}
           path: ${{ runner.temp }}/formal-${{ matrix.suite }}/

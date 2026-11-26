@@ -61,7 +61,7 @@ test("public Node use batches current HTTPS metadata, persists derived directori
   await f.run(
     prepareGraph(
       { roots: [f.pageIds[0]!, f.pageIds[2]!], purpose: "use" },
-      { database: library.skills.database_id },
+      { library: library.library_id },
     ),
   )
   const calls: {
@@ -122,8 +122,8 @@ test("public Node use batches current HTTPS metadata, persists derived directori
           main,
           "use",
           f.pageIds[0]!,
-          "--database",
-          library.skills.database_id,
+          "--library",
+          library.library_id,
           "--json",
           "--metrics",
           ...extra,

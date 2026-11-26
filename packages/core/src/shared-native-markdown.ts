@@ -1,6 +1,7 @@
 import { SourceLexer } from "@notion-skills-cli/markdown"
 import { fail, property } from "./model.ts"
 import { splitNativeInlineCode } from "./shared-native-inline-code.ts"
+import { decodeNativeSkillLink } from "./shared-native-skill-link.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 
 type Style = {
@@ -10,7 +11,7 @@ type Style = {
   readonly underline: boolean
 }
 type Link = { readonly href: string; readonly title: string | null }
-type Inline =
+export type NativeMarkdownInline =
   | {
       readonly kind: "text"
       readonly text: string
@@ -25,6 +26,7 @@ type Inline =
       readonly alt: string
       readonly link: Link | null
     }
+type Inline = NativeMarkdownInline
 type Block =
   | { readonly kind: "paragraph"; readonly content: readonly Inline[] }
   | { readonly kind: "heading"; readonly depth: number; readonly content: readonly Inline[] }
@@ -69,8 +71,7 @@ function step(context: Context, depth: number): void {
   if (++context.count > 30000 || depth > 64) throw invalid("structure_limit")
 }
 
-/** Input bytes remain in the frozen write plan. Only the transport changes CRLF. */
-export function nativeMarkdownTransport(markdown: string): string {
+function normalizedEncoding(markdown: string): string {
   if (
     typeof markdown !== "string" ||
     /\r(?!\n)/u.test(markdown) ||
@@ -83,6 +84,146 @@ export function nativeMarkdownTransport(markdown: string): string {
       { reason: "invalid_text_encoding" },
     )
   return markdown.replace(/\r\n/g, "\n")
+}
+
+function rawText(input: readonly unknown[]): string {
+  return input.map((token) => string(property(token).raw)).join("")
+}
+
+function replaceContent(raw: string, before: string, after: string): string {
+  if (before === after) return raw
+  const offset = raw.indexOf(before)
+  if (offset < 0) throw invalid("transport_content_location")
+  return raw.slice(0, offset) + after + raw.slice(offset + before.length)
+}
+
+function paragraphWrapper(raw: string): string | undefined {
+  // Markdown v2 emits this exact, attribute-free wrapper for a paragraph child
+  // after another block in a list item. Its body is inline content, not blocks.
+  const match = /^<p>\n([\s\S]*)\n<\/p>\n?$/u.exec(raw)
+  if (match === null) return undefined
+  const body = match[1]!
+  if (/\n[ \t]*\n/u.test(body)) throw invalid("native_paragraph_children")
+  return body
+}
+
+function inlineTransport(input: readonly unknown[], links: Context["links"]): string {
+  const parts = splitNativeInlineCode(rawText(input))
+  if (parts === undefined) throw invalid("incomplete_native_inline_code")
+  return parts
+    .map((part) => {
+      if (part.code) return part.raw
+      return SourceLexer.lexInline(part.raw, links)
+        .map((raw) => {
+          const token = property(raw),
+            source = string(token.raw)
+          // Autolink labels are literal. Re-lexing their text would produce the
+          // same autolink again; their raw spelling contains no soft line wrap.
+          if (token.type === "link" && token.autolink === true) return source
+          if (
+            token.tokens !== undefined &&
+            (token.type === "strong" ||
+              token.type === "em" ||
+              token.type === "del" ||
+              token.type === "link" ||
+              token.type === "text")
+          ) {
+            const children = array(token.tokens)
+            return replaceContent(source, rawText(children), inlineTransport(children, links))
+          }
+          // Explicit br tokens, HTML code, destinations and fenced code never
+          // enter this branch. CommonMark soft wraps and code-span line endings
+          // are spaces; sending the LF itself lets Notion retain a hard break
+          // or a literal <br> inside code instead.
+          return token.type === "text" || token.type === "codespan"
+            ? source.replace(/\n/g, " ")
+            : source
+        })
+        .join("")
+    })
+    .join("")
+}
+
+function prefixLines(text: string, first: string, rest = first): string {
+  // Empty list lines need no indentation; empty quote lines need their marker
+  // to keep both paragraphs in the same quote.
+  const separator = rest.trim() === "" ? /\n(?!\n|$)/g : /\n(?!$)/g
+  return first + text.replace(separator, `\n${rest}`)
+}
+
+function blockTransport(input: readonly unknown[], links: Context["links"]): string {
+  return input
+    .map((raw) => {
+      const token = property(raw),
+        source = string(token.raw),
+        type = string(token.type)
+      if (type === "paragraph" || type === "text" || type === "heading") {
+        const children =
+          token.tokens === undefined
+            ? SourceLexer.lexInline(string(token.text), links)
+            : array(token.tokens)
+        return replaceContent(source, rawText(children), inlineTransport(children, links))
+      }
+      if (type === "blockquote") {
+        const children = array(token.tokens),
+          transformed = blockTransport(children, links)
+        if (transformed === rawText(children)) return source
+        return (
+          prefixLines(transformed, "> ") +
+          (source.endsWith("\n") && !transformed.endsWith("\n") ? "\n" : "")
+        )
+      }
+      if (type === "list") {
+        const items = array(token.items).map((raw) => {
+          const item = property(raw),
+            children = array(item.tokens).slice(item.task === true ? 1 : 0),
+            before = rawText(children)
+          return { item, before, after: blockTransport(children, links) }
+        })
+        if (items.every(({ before, after }) => before === after)) return source
+        const rendered = items.map(({ item, after }, index) => {
+          const marker = token.ordered === true ? `${Number(token.start) + index}. ` : "- "
+          const task = item.task === true ? (item.checked === true ? "[x] " : "[ ] ") : ""
+          return prefixLines(task + after.replace(/\n+$/u, ""), marker, " ".repeat(marker.length))
+        })
+        return (
+          rendered.join(token.loose === true ? "\n\n" : "\n") + (source.match(/\n*$/u)?.[0] ?? "")
+        )
+      }
+      if (type === "html") {
+        const body = paragraphWrapper(source)
+        if (body !== undefined)
+          return replaceContent(
+            source,
+            body,
+            inlineTransport(SourceLexer.lexInline(body, links), links),
+          )
+      }
+      return source
+    })
+    .join("")
+}
+
+/** Frozen input bytes and their hash stay unchanged. The wire form makes
+ * CommonMark soft wraps explicit without changing the complete document. */
+export function nativeMarkdownTransport(markdown: string): string {
+  const source = normalizedEncoding(markdown),
+    expected = signature(source),
+    tokens = SourceLexer.lex(source),
+    transport = blockTransport(tokens, tokens.links)
+  if (signature(transport) !== expected) throw invalid("transport_structure_changed")
+  return transport
+}
+
+/** Explicit native selection also admits other text paths. Only the existing
+ * Markdown file domain opts into Markdown wire normalization. */
+export function nativeFileTransport(input: {
+  readonly path: string
+  readonly markdown: string
+}): string {
+  return /\.(md|markdown)$/iu.test(input.path)
+    ? nativeMarkdownTransport(input.markdown)
+    : normalizedEncoding(input.markdown)
 }
 
 function entities(text: string): string {
@@ -118,7 +259,13 @@ function entities(text: string): string {
     }
   })
 }
-function destination(href: unknown, title: unknown, context: Context, literal = false): Link {
+function destination(
+  href: unknown,
+  title: unknown,
+  context: Context,
+  literal = false,
+  kind: "hyperlink" | "image" = "hyperlink",
+): Link {
   let url = literal ? string(href) : entities(string(href))
   try {
     const parsed = new URL(url)
@@ -126,11 +273,16 @@ function destination(href: unknown, title: unknown, context: Context, literal = 
   } catch {
     /* A relative target remains exact. */
   }
+  if (kind === "hyperlink") url = decodeNativeSkillLink(url)
   const result = {
     href: url,
     title: title == null || title === "" ? null : entities(string(title)),
   }
-  context.destinations.set(canonicalSharedJson(result), result)
+  // Definitions can be rendered as either links or images. Their complete
+  // destination ledger uses the same one-layer spelling in both cases, while
+  // an image's actual source below remains exact and independently compared.
+  const recorded = kind === "image" ? { ...result, href: decodeNativeSkillLink(url) } : result
+  context.destinations.set(canonicalSharedJson(recorded), recorded)
   return result
 }
 function language(value: unknown): string {
@@ -158,6 +310,8 @@ function language(value: unknown): string {
       return "c++"
     case "csharp":
       return "c#"
+    case "sh":
+      return "bash"
     default:
       return name
   }
@@ -236,7 +390,7 @@ function inline(
     } else if (type === "image") {
       add({
         kind: "image",
-        source: destination(token.href, token.title, context),
+        source: destination(token.href, token.title, context, false, "image"),
         alt: entities(string(token.text)),
         link,
       })
@@ -299,11 +453,18 @@ function blocks(input: readonly unknown[], context: Context, depth: number): rea
       // Used reference definitions are equivalent to inline links. An unused
       // destination cannot disappear unnoticed from the complete document.
       destination(token.href, token.title, context)
-    } else if (type === "paragraph" || type === "text") {
+    } else if (
+      type === "paragraph" ||
+      type === "text" ||
+      (type === "html" && paragraphWrapper(string(token.raw)) !== undefined)
+    ) {
+      const wrapped = type === "html" ? paragraphWrapper(string(token.raw)) : undefined
       const content = inline(
-        token.tokens === undefined
-          ? SourceLexer.lexInline(string(token.text), context.links)
-          : array(token.tokens),
+        wrapped !== undefined
+          ? SourceLexer.lexInline(wrapped, context.links)
+          : token.tokens === undefined
+            ? SourceLexer.lexInline(string(token.text), context.links)
+            : array(token.tokens),
         context,
         depth + 1,
       )
@@ -379,16 +540,20 @@ function blocks(input: readonly unknown[], context: Context, depth: number): rea
   }
   return result
 }
-function signature(markdown: string): string {
-  const tokens = SourceLexer.lex(nativeMarkdownTransport(markdown))
+/** Internal authoring structure, not a successful write or a read-time repair. */
+export function nativeMarkdownStructure(markdown: string) {
+  const tokens = SourceLexer.lex(normalizedEncoding(markdown))
   const context: Context = { count: 0, destinations: new Map(), links: tokens.links }
   const document = blocks(tokens, context, 0)
-  return canonicalSharedJson({
+  return {
     blocks: document,
     destinations: [...context.destinations]
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([, value]) => value),
-  })
+  }
+}
+function signature(markdown: string): string {
+  return canonicalSharedJson(nativeMarkdownStructure(markdown))
 }
 
 /** Reject unsupported syntax before allocating a remote operation. */

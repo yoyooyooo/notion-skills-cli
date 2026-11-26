@@ -234,7 +234,7 @@ describe("complete current reading projections", () => {
     ]) {
       const source = bytes("\uFEFFfirst\r\n" + '字😀\\"\n'.repeat(10000) + "FINAL\r\n")
       const before = new Uint8Array(source)
-      const plan = renderCurrentProjection({ path: path!, bytes: source })
+      const plan = renderCurrentProjection({ role: "supporting", path: path!, bytes: source })
       expect(plan.representation).toBe("code")
       expect(planText(plan)).toBe(new TextDecoder().decode(source).replace(/\r\n?/gu, "\n"))
       expect(source).toEqual(before)
@@ -259,6 +259,7 @@ describe("complete current reading projections", () => {
     const markdown =
       "# Heading\n\nA **bold** [child](./guide.md) and `code`.\n\n> Quote\n\n- one\n- two\n\n```ts\nconst x = 1\n```\n\n<table><tr><td>literal</td></tr></table>\n\n| A | B |\n| - | - |\n| 1 | 2 |\n"
     const plan = renderCurrentProjection({
+      role: "supporting",
       path: "SKILL.md",
       bytes: bytes(markdown),
       rewriteLink: (href) => (href === "./guide.md" ? "https://www.notion.so/" + page : undefined),
@@ -274,11 +275,100 @@ describe("complete current reading projections", () => {
     expect(JSON.stringify(plan)).toContain("https://www.notion.so/" + page)
   })
 
+  test.each(["SKILL.md", "ROUTER.md", "PROMPT.md"])(
+    "%s hides valid discovery frontmatter while preserving the original bytes and body formatting",
+    (path) => {
+      const header =
+        "---\nname: why\ndescription: >-\n  Explain decisions\n  using recorded evidence.\ndisable-model-invocation: true\nmetadata:\n  owner: human\n  labels: [research, decisions]\n---\n\n"
+      const body =
+        "# Why\n\nRead [evidence](references/guide.md).\n\n---\n\nBody heading\n---\n\n```yaml\nname: visible-example\ndescription: Keep this example.\n```\n"
+      const rewriteLink = (href: string) =>
+        href === "references/guide.md" ? "https://www.notion.so/" + page : undefined
+      const expected = renderCurrentProjection({
+        role: "main",
+        path,
+        bytes: bytes(body),
+        rewriteLink,
+      })
+      for (const prefix of ["", "\uFEFF"])
+        for (const newline of ["\n", "\r\n"]) {
+          const original = bytes(prefix + (header + body).replaceAll("\n", newline))
+          const before = new Uint8Array(original)
+          const plan = renderCurrentProjection({ role: "main", path, bytes: original, rewriteLink })
+          expect(plan).toEqual(expected)
+          expect(plan.blocks[0]?.type).toBe("heading_1")
+          expect(planText(plan)).not.toContain("disable-model-invocation")
+          expect(planText(plan)).not.toContain("using recorded evidence")
+          expect(planText(plan)).toContain("name: visible-example")
+          expect(plan.blocks.map((block) => block.type)).toContain("divider")
+          expect(plan.blocks.map((block) => block.type)).toContain("heading_2")
+          expect(original).toEqual(before)
+        }
+    },
+  )
+
+  test.each([
+    ["opening horizontal rule", "---\n\nOrdinary prose.\n"],
+    ["Setext heading", "Ordinary heading\n---\n\nKeep the text.\n"],
+    ["scalar between rules", "---\nOrdinary heading\n---\n\nKeep the text.\n"],
+    ["unclosed YAML", "---\nname: why\ndescription: Keep this metadata visible.\n"],
+    ["invalid YAML", "---\nname: why\ndescription: [unclosed\n---\n\nKeep the text.\n"],
+    [
+      "duplicate YAML keys",
+      "---\nname: why\nname: other\ndescription: Keep this metadata visible.\n---\n\nBody.\n",
+    ],
+    ["missing description", "---\nname: why\n---\n\nKeep the text.\n"],
+    ["missing name", "---\ndescription: Keep this metadata visible.\n---\n\nBody.\n"],
+    ["non-string name", "---\nname: 17\ndescription: Keep this metadata visible.\n---\n"],
+    ["non-string description", "---\nname: why\ndescription: false\n---\n"],
+    ["YAML sequence", "---\n- name: why\n  description: Keep this list visible.\n---\n"],
+    [
+      "header after prose",
+      "Introduction.\n\n---\nname: why\ndescription: Keep this example.\n---\n",
+    ],
+    [
+      "fenced header example",
+      "```yaml\n---\nname: why\ndescription: Keep this example.\n---\n```\n",
+    ],
+  ])("%s is rendered completely instead of being mistaken for skill metadata", (_label, source) => {
+    const original = bytes(source!)
+    expect(
+      renderCurrentProjection({ role: "main", path: "SKILL.md", bytes: original }).blocks,
+    ).toEqual(
+      renderCurrentProjection({ role: "supporting", path: "notes.md", bytes: original }).blocks,
+    )
+    expect(original).toEqual(bytes(source!))
+  })
+
+  test.each([
+    "SKILL.md",
+    "ROUTER.md",
+    "PROMPT.md",
+    "README.md",
+    "references/guide.md",
+    "nested/SKILL.md",
+    "skill.md",
+  ])("%s supporting file retains its frontmatter as readable content", (path) => {
+    const original = bytes(
+      "---\nname: supporting-document\ndescription: Supporting metadata stays visible.\ndisable-model-invocation: true\n---\n\n# Reference\n",
+    )
+    const plan = renderCurrentProjection({ role: "supporting", path, bytes: original })
+    expect(planText(plan)).toContain("name: supporting-document")
+    expect(planText(plan)).toContain("Supporting metadata stays visible.")
+    expect(planText(plan)).toContain("disable-model-invocation: true")
+    expect(planText(plan)).toContain("Reference")
+  })
+
   test("binary files require usable originals and images reuse that attachment for preview", () => {
     expect(() =>
-      renderCurrentProjection({ path: "small.bin", bytes: new Uint8Array([0, 255]) }),
+      renderCurrentProjection({
+        role: "supporting",
+        path: "small.bin",
+        bytes: new Uint8Array([0, 255]),
+      }),
     ).toThrow("original attachment")
     const plan = renderCurrentProjection({
+      role: "supporting",
       path: "photo.png",
       bytes: new Uint8Array([137, 80, 78, 71]),
       attachment: { ...upload, name: "photo.png" },
@@ -287,6 +377,7 @@ describe("complete current reading projections", () => {
     expect(plan.blocks.map((block) => block.type)).toEqual(["image", "file"])
     expect(JSON.stringify(plan).match(new RegExp(upload.id, "g"))).toHaveLength(2)
     const sharedOriginal = renderCurrentProjection({
+      role: "supporting",
       path: "photo.png",
       bytes: new Uint8Array([137, 80, 78, 71]),
       attachment: { ...upload, name: "photo.png" },
@@ -319,9 +410,12 @@ describe("complete current reading projections", () => {
       "file.bin",
     ]) {
       expect(isCurrentProjectionBinary(path, source)).toBe(true)
-      expect(() => renderCurrentProjection({ path, bytes: source })).toThrow("original attachment")
+      expect(() => renderCurrentProjection({ role: "supporting", path, bytes: source })).toThrow(
+        "original attachment",
+      )
       expect(
-        renderCurrentProjection({ path, bytes: source, attachment: upload }).representation,
+        renderCurrentProjection({ role: "supporting", path, bytes: source, attachment: upload })
+          .representation,
       ).toBe("binary")
     }
     for (const path of [
@@ -345,7 +439,9 @@ describe("complete current reading projections", () => {
       "model.dae",
     ]) {
       expect(isCurrentProjectionBinary(path, source)).toBe(false)
-      expect(renderCurrentProjection({ path, bytes: source }).representation).not.toBe("binary")
+      expect(
+        renderCurrentProjection({ role: "supporting", path, bytes: source }).representation,
+      ).not.toBe("binary")
     }
   })
 
@@ -363,25 +459,34 @@ describe("complete current reading projections", () => {
     for (const [path, source] of sources) {
       const original = bytes(source)
       expect(isCurrentProjectionBinary(path, original)).toBe(false)
-      const plan = renderCurrentProjection({ path, bytes: original })
+      const plan = renderCurrentProjection({ role: "supporting", path, bytes: original })
       expect(plan.representation).toBe("code")
       expect(planText(plan)).toBe(source)
     }
     const officeOriginal = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0])
     for (const path of ["word-template.dot", "presentation-template.pot"]) {
       expect(isCurrentProjectionBinary(path, officeOriginal)).toBe(true)
-      expect(() => renderCurrentProjection({ path, bytes: officeOriginal })).toThrow(
-        "original attachment",
-      )
+      expect(() =>
+        renderCurrentProjection({ role: "supporting", path, bytes: officeOriginal }),
+      ).toThrow("original attachment")
       expect(
-        renderCurrentProjection({ path, bytes: officeOriginal, attachment: upload }).representation,
+        renderCurrentProjection({
+          role: "supporting",
+          path,
+          bytes: officeOriginal,
+          attachment: upload,
+        }).representation,
       ).toBe("binary")
     }
   })
 
   test("oversized Markdown paragraphs and fragmented trees keep full source in bounded blocks", () => {
     for (const source of ["字".repeat(190000), "# Heading\n\n".repeat(8200)]) {
-      const plan = renderCurrentProjection({ path: "reference.md", bytes: bytes(source) })
+      const plan = renderCurrentProjection({
+        role: "supporting",
+        path: "reference.md",
+        bytes: bytes(source),
+      })
       expect(planText(plan)).toBe(source)
       expect(plan.blocks.every((block) => block.type === "code")).toBe(true)
       for (const batch of currentProjectionBatches(plan.blocks))
@@ -391,7 +496,11 @@ describe("complete current reading projections", () => {
 
   test("batching preserves all text and bounds both block count and serialized bytes", () => {
     const source = 'x\\"😀\n'.repeat(200000) + "LAST"
-    const plan = renderCurrentProjection({ path: "huge.json", bytes: bytes(source) })
+    const plan = renderCurrentProjection({
+      role: "supporting",
+      path: "huge.json",
+      bytes: bytes(source),
+    })
     const batches = currentProjectionBatches(plan.blocks)
     expect(batches.length).toBeGreaterThan(2)
     expect(batches.flat()).toEqual([...plan.blocks])
@@ -404,6 +513,7 @@ describe("complete current reading projections", () => {
 
   test("complete multi-page write reads only preflight and final inventories; rerun writes nothing", async () => {
     const plan = renderCurrentProjection({
+      role: "supporting",
       path: "many.txt",
       bytes: bytes("x".repeat(16000 * 102) + "END"),
     })
@@ -418,8 +528,16 @@ describe("complete current reading projections", () => {
   })
 
   test("changed generated content is replaced and native author bodies are never touched", async () => {
-    const old = renderCurrentProjection({ path: "old.txt", bytes: bytes("old") })
-    const next = renderCurrentProjection({ path: "old.txt", bytes: bytes("complete new") })
+    const old = renderCurrentProjection({
+      role: "supporting",
+      path: "old.txt",
+      bytes: bytes("old"),
+    })
+    const next = renderCurrentProjection({
+      role: "supporting",
+      path: "old.txt",
+      bytes: bytes("complete new"),
+    })
     const f = fixture(old.blocks)
     expect((await f.apply(next)).changed).toBe(true)
     expect(f.writes().map((call) => call.path)).toEqual([
@@ -435,8 +553,13 @@ describe("complete current reading projections", () => {
 
   test("fresh short prefixes are replaced while complete batch prefixes continue without clearing", async () => {
     const source = "# Guide\n\nComplete child document.\n"
-    const old = renderCurrentProjection({ path: "guide.md", bytes: bytes(source) })
+    const old = renderCurrentProjection({
+      role: "supporting",
+      path: "guide.md",
+      bytes: bytes(source),
+    })
     const next = renderCurrentProjection({
+      role: "supporting",
       path: "guide.md",
       bytes: bytes(`${source}\nEdited through the exported current package.\n`),
     })
@@ -451,6 +574,7 @@ describe("complete current reading projections", () => {
     )
 
     const many = renderCurrentProjection({
+      role: "supporting",
       path: "many.txt",
       bytes: bytes("x".repeat(16000 * 102) + "END"),
     })
@@ -478,7 +602,11 @@ describe("complete current reading projections", () => {
 
   test("Notion may coalesce equivalent rich-text runs without changing the reading body", async () => {
     const text = "x".repeat(5000)
-    const plan = renderCurrentProjection({ path: "long.txt", bytes: bytes(text) })
+    const plan = renderCurrentProjection({
+      role: "supporting",
+      path: "long.txt",
+      bytes: bytes(text),
+    })
     const f = fixture(plan.blocks)
     const block = f.originals()[0]!
     f.replace([
@@ -493,6 +621,7 @@ describe("complete current reading projections", () => {
 
   test("equivalent HTTP origin URLs in append ACKs preserve the original render plan", async () => {
     const plan = renderCurrentProjection({
+      role: "supporting",
       path: "SKILL.md",
       bytes: bytes("- [Nowledge Mem](https://mem.nowledge.co)\n"),
     })
@@ -533,6 +662,7 @@ describe("complete current reading projections", () => {
 
   test("equivalent HTTP origin URLs reconcile an accepted unknown append without replay", async () => {
     const plan = renderCurrentProjection({
+      role: "supporting",
       path: "SKILL.md",
       bytes: bytes("- [Nowledge Mem](https://mem.nowledge.co)\n"),
     })
@@ -552,6 +682,7 @@ describe("complete current reading projections", () => {
 
   test("cancellation observes only its exact pending batch without finishing the body", async () => {
     const plan = renderCurrentProjection({
+      role: "supporting",
       path: "SKILL.md",
       bytes: bytes("Paragraph.\n\n".repeat(150)),
     })
@@ -595,7 +726,11 @@ describe("complete current reading projections", () => {
   })
 
   test("cancellation cannot confirm a partial or different pending prefix", async () => {
-    const plan = renderCurrentProjection({ path: "SKILL.md", bytes: bytes("First.\n\nSecond.\n") })
+    const plan = renderCurrentProjection({
+      role: "supporting",
+      path: "SKILL.md",
+      bytes: bytes("First.\n\nSecond.\n"),
+    })
     const f = fixture(plan.blocks.slice(0, 1))
     const pending = await f.run(
       currentProjectionPendingAction({ pageId: page, key: `projection:${page}:append:0`, plan }),
@@ -641,7 +776,11 @@ describe("complete current reading projections", () => {
   })
 
   test("accepted unknown append reconciles actual blocks without replay or duplicates", async () => {
-    const plan = renderCurrentProjection({ path: "script.py", bytes: bytes("print('current')") })
+    const plan = renderCurrentProjection({
+      role: "supporting",
+      path: "script.py",
+      bytes: bytes("print('current')"),
+    })
     const f = fixture()
     f.loseAppend("accepted")
     await expect(f.apply(plan)).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
@@ -655,7 +794,11 @@ describe("complete current reading projections", () => {
   })
 
   test("unobserved or partial unknown append remains blocked instead of adding content repeatedly", async () => {
-    const plan = renderCurrentProjection({ path: "script.py", bytes: bytes("x".repeat(20000)) })
+    const plan = renderCurrentProjection({
+      role: "supporting",
+      path: "script.py",
+      bytes: bytes("x".repeat(20000)),
+    })
     for (const outcome of ["absent", "partial"] satisfies Array<"absent" | "partial">) {
       const f = fixture()
       f.loseAppend(outcome)
@@ -674,7 +817,11 @@ describe("complete current reading projections", () => {
   })
 
   test("a misleading append ACK cannot complete, but actual accepted content can reconcile", async () => {
-    const plan = renderCurrentProjection({ path: "run.sh", bytes: bytes("echo hello") })
+    const plan = renderCurrentProjection({
+      role: "supporting",
+      path: "run.sh",
+      bytes: bytes("echo hello"),
+    })
     const f = fixture()
     f.badAcknowledgement()
     await expect(f.apply(plan)).rejects.toMatchObject({ code: "CURRENT_PROJECTION_INVALID" })
@@ -685,6 +832,7 @@ describe("complete current reading projections", () => {
 
   test("binary comparison uses the verified original locator, not filename or caption", async () => {
     const plan = renderCurrentProjection({
+      role: "supporting",
       path: "small.bin",
       bytes: new Uint8Array([0, 255]),
       attachment: upload,
@@ -728,11 +876,13 @@ describe("complete current reading projections", () => {
   test("an existing original can be inspected without allocating an upload or writing its signed URL", async () => {
     const source = new Uint8Array([0, 255])
     const writable = renderCurrentProjection({
+      role: "supporting",
       path: "small.bin",
       bytes: source,
       attachment: upload,
     })
     const readOnly = renderCurrentProjection({
+      role: "supporting",
       path: "small.bin",
       bytes: source,
       attachment: { name: upload.name },
@@ -752,7 +902,11 @@ describe("complete current reading projections", () => {
   })
 
   test("incomplete pagination, foreign blocks and child content cannot authorize clearing", async () => {
-    const plan = renderCurrentProjection({ path: "readme.txt", bytes: bytes("new") })
+    const plan = renderCurrentProjection({
+      role: "supporting",
+      path: "readme.txt",
+      bytes: bytes("new"),
+    })
     for (const transform of [
       (row: Record<string, unknown>) => ({ ...row, next_cursor: undefined }),
       (row: Record<string, unknown>) => ({ ...row, request_status: { type: "incomplete" } }),
@@ -766,7 +920,10 @@ describe("complete current reading projections", () => {
         ],
       }),
     ]) {
-      const f = fixture(renderCurrentProjection({ path: "old.txt", bytes: bytes("old") }).blocks)
+      const f = fixture(
+        renderCurrentProjection({ role: "supporting", path: "old.txt", bytes: bytes("old") })
+          .blocks,
+      )
       f.mutatePage(transform)
       await expect(f.apply(plan)).rejects.toMatchObject({ code: "CURRENT_PROJECTION_INVALID" })
       expect(f.writes()).toHaveLength(0)
@@ -788,7 +945,11 @@ describe("complete current reading projections", () => {
 
   test("lost authority stops before another projection mutation", async () => {
     const f = fixture()
-    const plan = renderCurrentProjection({ path: "small.txt", bytes: bytes("current") })
+    const plan = renderCurrentProjection({
+      role: "supporting",
+      path: "small.txt",
+      bytes: bytes("current"),
+    })
     let checks = 0
     const guard = Effect.suspend(() =>
       ++checks === 1
@@ -802,7 +963,11 @@ describe("complete current reading projections", () => {
   })
 
   test("changed body replacement scans nested children and rejects hidden author pages", async () => {
-    const plan = renderCurrentProjection({ path: "file.txt", bytes: bytes("current") })
+    const plan = renderCurrentProjection({
+      role: "supporting",
+      path: "file.txt",
+      bytes: bytes("current"),
+    })
     const f = fixture()
     f.replace([
       {

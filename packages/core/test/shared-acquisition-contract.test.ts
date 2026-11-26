@@ -1,3 +1,4 @@
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import * as NodeServices from "@effect/platform-node/NodeServices"
@@ -33,10 +34,9 @@ const scope = hash(JSON.stringify(["principal", "", "https://api.notion.com", "c
 const bindings = (names: readonly string[]) =>
   Object.fromEntries(names.map((name, index) => [name, name === "Name" ? "title" : `p${index}`]))
 const library: SharedLibrary = {
-  version: 1,
-  library_id: "library-current",
+  version: 2,
+  library_id: "00000000-0000-4000-8000-000000000002",
   operation_id: "library-current",
-  parent_page_id: id(2),
   skills: {
     database_id: id(3),
     data_source_id: id(4),
@@ -228,6 +228,9 @@ function fixture(input: { beforeProvider?: () => Effect.Effect<void> } = {}) {
     request: (request, body, options) =>
       Effect.gen(function* () {
         calls.push(request)
+        const schema =
+          (options?.method ?? "GET") === "GET" ? librarySchemaResponse(request, library) : undefined
+        if (schema !== undefined) return schema
         if (request === `v1/databases/${library.skills.database_id}` && body === undefined)
           return {
             id: library.skills.database_id,
@@ -453,7 +456,10 @@ describe("current acquisition contract", () => {
     for (const changed of [
       { ...acquisition, files: [route, route] },
       { ...acquisition, files: [{ ...route, path: "absent.md" }] },
-      { ...acquisition, library: { ...library, library_id: "library-other" } },
+      {
+        ...acquisition,
+        library: { ...library, library_id: "45c64249-e1dd-59ab-ad9f-604ff752ddb4" },
+      },
       {
         ...acquisition,
         files: [
@@ -515,8 +521,10 @@ describe("current acquisition contract", () => {
     const files = await f.run(materializeSharedFixedAcquisition(f.snapshot, [path]))
     expect(files).toEqual([{ path, bytes: new TextEncoder().encode("body") }])
     expect(f.providerRequests).toEqual([f.url])
-    expect(f.calls).toHaveLength(5)
-    expect(f.calls.some((request) => request.includes(library.records.data_source_id))).toBe(false)
+    expect(f.calls).toHaveLength(18)
+    expect(
+      f.calls.some((request) => request.includes(`${library.records.data_source_id}/query`)),
+    ).toBe(false)
   })
 
   for (const changedBytes of [false, true])
@@ -565,9 +573,9 @@ describe("current acquisition contract", () => {
         expect(next.code).toBe("SOURCE_DISABLED")
       }
       expect(f.providerRequests).toEqual([f.url])
-      expect(f.calls.some((request) => request.includes(library.records.data_source_id))).toBe(
-        false,
-      )
+      expect(
+        f.calls.some((request) => request.includes(`${library.records.data_source_id}/query`)),
+      ).toBe(false)
     })
 
   test("delayed local source acquisition keeps exact bytes and durable local restrictions", async () => {
@@ -665,7 +673,7 @@ describe("current acquisition contract", () => {
       reason: "local_resource",
     })
     expect(f.providerRequests).toEqual([])
-    expect(f.calls).toHaveLength(5)
+    expect(f.calls).toHaveLength(18)
   })
 
   test("a changed Source stops missing-cache recovery before any provider or old Records access", async () => {
@@ -678,7 +686,7 @@ describe("current acquisition contract", () => {
     expect(error.code).toBe("SHARED_SOURCE_CONFLICT")
     expect(error.details).toMatchObject({ next: "reselect_current" })
     expect(f.providerRequests).toEqual([])
-    expect(f.calls).toHaveLength(5)
+    expect(f.calls).toHaveLength(18)
   })
 
   test("disabled owner stops before Files or resource access", async () => {
@@ -693,7 +701,15 @@ describe("current acquisition contract", () => {
       target: f.snapshot.record.id,
       paths: [path],
     })
-    expect(f.calls).toEqual([`v1/databases/${library.skills.database_id}`, `v1/pages/${skillPage}`])
+    expect(
+      f.calls.filter(
+        (request) =>
+          request.startsWith("v1/pages/") && request !== `v1/pages/${library.library_id}`,
+      ),
+    ).toEqual([`v1/pages/${skillPage}`])
+    expect(
+      f.calls.some((request) => request.includes("/query") || request.includes("/markdown")),
+    ).toBe(false)
   })
 
   test.each(["resource", "native", "identity", "path"])(
@@ -723,10 +739,10 @@ describe("current acquisition contract", () => {
       const error = await f.run(Effect.flip(materializeSharedFixedAcquisition(f.snapshot, [path])))
       expect(error.code).toBe("SHARED_ACQUISITION_CHANGED")
       expect(error.details).toMatchObject({ next: "reselect_current", path })
-      expect(f.calls).toHaveLength(4)
-      expect(f.calls.some((request) => request.includes(library.records.data_source_id))).toBe(
-        false,
-      )
+      expect(f.calls).toHaveLength(17)
+      expect(
+        f.calls.some((request) => request.includes(`${library.records.data_source_id}/query`)),
+      ).toBe(false)
     },
   )
 
@@ -736,6 +752,6 @@ describe("current acquisition contract", () => {
     f.main.properties.operation = rich(library.skills.property_ids.Operation!, "current-edit")
     const error = await f.run(Effect.flip(materializeSharedFixedAcquisition(f.snapshot, [path])))
     expect(error.code).toBe("CURRENT_OPERATION_PENDING")
-    expect(f.calls).toHaveLength(3)
+    expect(f.calls).toHaveLength(16)
   })
 })

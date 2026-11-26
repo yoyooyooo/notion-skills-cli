@@ -14,10 +14,15 @@ description: "验证当前 Skill/File 身份、Content 权威、有限 readiness
 
 当前生命周期沿 [CurrentLifecycle](../../../verification/models/current-lifecycle/README.md) 的完整规则清单验证；实际 writer/HTTP/SQLite 结果仍由 operation-recovery 维护。请求模型只拥有请求领域，不因每个 bug 复制模型。
 
+引用作用域、固定 manifest 与导入关系沿 [skill-reference](../verify-ntn-skills/features/skill-reference.md)。
+该切片复用同一 runner，分别建模引用选择与冻结导入计划；消费和管理负责实际行为回放。
+先读 coverage 中的基线与源码差异，再更新对应，用 pstack /statechart 阅读每条反例。
+
 ## Doctor
 
 | 当前边界 | 必须保持 |
 | --- | --- |
+| Library root / 原操作 | canonical root 唯一身份；root CREATE 前 durable intent；独立查真实 DB/DS parent；原 pending key 和完整物理绑定不随换表/default 漂移 |
 | Content = native / resource / source | 严格唯一 union，不读 Projection/旧事件，不推断 generated 编辑接管 |
 | ready / applying / attention | ready 无内容 Operation；projection/restore 可有独立 finite intent；普通 current 消费非 ready 不取正文 |
 | File identity/path/owner | 单 owner、stable File ID、完整分页、安全无冲突路径；删除不被 cache 复活 |
@@ -34,6 +39,21 @@ description: "验证当前 Skill/File 身份、Content 权威、有限 readiness
 node scripts/verify-formal.mjs --suite current-lifecycle --out /absolute/new-lifecycle-model-run
 python3 scripts/check-formal-mutations.py --suite current-lifecycle --out /absolute/new-lifecycle-guard-run
 ~~~
+
+改变 skill ref 或导入关系时另运行 skill-reference suite 的全部正负配置及其实际 guard。
+缺 Library、跨库重叠、失效 Source、缺 manifest、显式空 Members、人工修改与未知 CREATE
+不能通过名称、缓存路径、current fallback 或重新推断修复。
+
+改变根页面初始化、descriptor、原 pending 查找或完整 Library binding 时，沿
+current-lifecycle 的 LibraryLifecycle 全部正反配置。用独立 world facts 回放复制描述符、
+移动 DB、DS 改属、同 root 换 Skills 表、旧 pending 遇到新 root、root CREATE
+接受丢响应且不可见。完整读回才 Ready；只读检查零语义写。原 pending 寻址与读到后的
+绑定比较要分别验证，不能只测一个 helper。SDK/CLI 和 SQLite 结果沿原领域入口，
+Broker 的 branch/turn/迟到目录沿其 consumer-state 的 LibrarySession。
+导入计划必须含 `shared-current-import-plan.node.test.ts` 的真实 Store 重启回放。
+先保存并观察计划，再跨进程验证重复 apply、同根 Files DB/Skills DS 变化、原 child
+续跑与完成退役。地址 helper 和内存 fixture 通过，不能替代 coordinator/SQLite
+使用同一地址的证明；`library-import-sqlite-address` 恢复旧含 DS 校验来检出这类裂缝。
 
 检查全部正例/预期反例与条件进展；明确外部返回、显式 resume 及公平性假设。NoDeadlock 不等于最终恢复。实际 guard 原件通过、突变行为失败、恢复通过；导入/语法错误不算检出。
 

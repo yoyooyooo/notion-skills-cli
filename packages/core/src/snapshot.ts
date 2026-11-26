@@ -11,13 +11,12 @@ import {
   type ObservedSnapshot,
   type ReadPolicyOptions,
 } from "./cache.ts"
-import { isCurrentNameTarget, resolveCatalogReference } from "./catalog-reference.ts"
 import {
   authScope,
-  catalog,
+  bindEntryTarget,
   explicitSource,
-  freshCatalogForRead,
-  databaseId as resolveDatabaseId,
+  sourceForSkillsDatabase,
+  libraryId as resolveLibraryId,
   type CatalogOptions,
 } from "./catalog.ts"
 import {
@@ -25,17 +24,20 @@ import {
   type ConsumptionObservationOptions,
 } from "./consumption-effects.ts"
 import { openFixedSnapshotFiles } from "./fixed-snapshot-files.ts"
-import {
-  decode,
-  fail,
-  PageSchema,
-  property,
-  resolveRecord,
-  SkillsError,
-  type Snapshot,
-} from "./model.ts"
+import { decode, fail, PageSchema, property, SkillsError, type Snapshot } from "./model.ts"
 import { Notion } from "./notion.ts"
-import { fileRef, pageId, parseRef, parseTarget, resolveRef, type SkillTarget } from "./ref.ts"
+import {
+  bindTarget,
+  fileRef,
+  pageId,
+  parseRef,
+  parseTarget,
+  resolveRef,
+  sameSkillKey,
+  parseSkillIdentity,
+  skillRefSnapshot,
+  type SkillTarget,
+} from "./ref.ts"
 import { withSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { openSharedConsumer } from "./shared-consumer.ts"
 import {
@@ -44,14 +46,16 @@ import {
 } from "./shared-file-references.ts"
 import { sharedGraphTarget, sharedGraphSkillIdentity } from "./shared-graph-read-context.ts"
 import { sharedReadFreshness } from "./shared-read-freshness.ts"
-import { sharedSkillId } from "./shared-content.ts"
 import { resolveCurrentSourceReference } from "./shared-source-references.ts"
 import { sha256, Store } from "./store.ts"
 
 export { loadSnapshot, loadSnapshotManifest } from "./fixed-snapshot-files.ts"
 
 export function openSkill(selector: string, options: CatalogOptions = {}) {
-  return openSnapshot(selector, options)
+  return Effect.try({
+    try: () => parseTarget(selector),
+    catch: (error) => error as SkillsError,
+  }).pipe(Effect.flatMap((target) => targetSnapshot(target, options)))
 }
 
 function openSnapshot(
@@ -59,22 +63,30 @@ function openSnapshot(
   options: CatalogOptions = {},
   selectedFiles?: {
     readonly requestedPaths: readonly string[]
-    readonly requestedFileIds?: readonly string[]
   },
 ) {
   return Effect.gen(function* () {
-    if (/^(?:upstream|notion_subscription|notion_page):/u.test(selector))
+    const target = yield* bindEntryTarget(
+      yield* Effect.try({
+        try: () => parseTarget(selector),
+        catch: (error) => error as SkillsError,
+      }),
+      options,
+    )
+    if (target.snapshot !== undefined)
       return yield* Effect.fail(
-        fail(
-          "CURRENT_TARGET_REQUIRED",
-          "Select a current Skill by identity, current page ID or current library reference.",
-        ),
+        fail("CURRENT_TARGET_REQUIRED", "Open a fixed reference from its snapshot manifest."),
       )
+    selector = target.selector
     const startedAt = yield* Clock.currentTimeMillis
-    const selectedDatabase =
-      options.database === undefined ? undefined : yield* resolveDatabaseId(options.database)
-    const graphTarget = yield* sharedGraphTarget(selector, selectedDatabase)
-    if (graphTarget !== undefined)
+    const selectedLibrary =
+      options.library === undefined ? undefined : yield* resolveLibraryId(options.library)
+    const graphTarget = yield* sharedGraphTarget(selector)
+    if (graphTarget !== undefined) {
+      if (selectedLibrary !== undefined && graphTarget.library.library_id !== selectedLibrary)
+        return yield* Effect.fail(
+          fail("LIBRARY_SCOPE_MISMATCH", "The target conflicts with the selected Library."),
+        )
       return yield* openSharedConsumer({
         ...graphTarget,
         target: String(property(graphTarget.rawPage).id),
@@ -84,6 +96,8 @@ function openSnapshot(
         maxAge: options.maxAge,
         ...selectedFiles,
       })
+    }
+
     const id = pageId(selector)
     if (id !== undefined) {
       const scope = yield* authScope
@@ -105,11 +119,17 @@ function openSnapshot(
         return yield* Effect.fail(
           fail("NOT_SKILL", "The page must belong to an accessible current Skill library."),
         )
-      if (selectedDatabase !== undefined && selectedDatabase !== parent.database_id)
+      const source =
+        selectedLibrary === undefined
+          ? yield* sourceForSkillsDatabase(parent.database_id)
+          : yield* explicitSource(selectedLibrary)
+      if (
+        parent.database_id !== source.database_id ||
+        parent.data_source_id !== source.shared_library.skills.data_source_id
+      )
         return yield* Effect.fail(
-          fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected library."),
+          fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected Library."),
         )
-      const source = yield* explicitSource(parent.database_id)
       return yield* openSharedConsumer({
         library: source.shared_library,
         target: id,
@@ -121,71 +141,19 @@ function openSnapshot(
         ...selectedFiles,
       })
     }
-    if (selectedDatabase !== undefined && selector.startsWith("shared_skill:")) {
-      const identity = yield* Effect.try({
-        try: () => {
-          const parts = selector.split(":")
-          if (parts.length !== 3)
-            throw fail("INVALID_REF", "The shared Skill identity is malformed.")
-          const libraryId = decodeURIComponent(parts[1]!),
-            skillId = decodeURIComponent(parts[2]!)
-          if (sharedSkillId(libraryId, skillId) !== selector)
-            throw fail("INVALID_REF", "The shared Skill identity is not canonical.")
-          return { libraryId, skillId }
-        },
-        catch: (error) =>
-          error instanceof SkillsError
-            ? error
-            : fail("INVALID_REF", "The shared Skill identity is malformed."),
-      })
-      const scope = yield* authScope
-      const source = yield* explicitSource(selectedDatabase)
-      const library = source.shared_library
-      if (library.library_id !== identity.libraryId)
-        return yield* Effect.fail(
-          fail("SKILL_NOT_FOUND", "The Skill identity does not belong to the selected library."),
-        )
-      const target = yield* sharedGraphSkillIdentity(library, identity.skillId)
-      return yield* openSharedConsumer({
-        library,
-        target: target.record.locator.page_id,
-        expectedSkillId: identity.skillId,
-        scope,
-        startedAt,
-        forceFull: Boolean(options.refresh) || options.maxAge === 0,
-        maxAge: options.maxAge,
-        ...selectedFiles,
-      })
-    }
-    const observation = yield* freshCatalogForRead({ database: options.database })
-    const directory = observation.catalog
-    const resolved = yield* Effect.try({
-      try: () =>
-        observation.exactSharedRecords.get(selector) ??
-        (isCurrentNameTarget({ selector })
-          ? resolveCatalogReference(selector, directory).record
-          : resolveRecord(selector, directory)),
+    const identity = yield* Effect.try({
+      try: () => parseSkillIdentity(selector),
       catch: (error) => error as SkillsError,
     })
-    if (resolved.locator.type !== "shared_skill")
-      return yield* Effect.fail(
-        fail("CURRENT_TARGET_REQUIRED", "The selected record is not a current Skill."),
-      )
-    const locator = resolved.locator
-    const library = directory.databases.find(
-      (entry) => entry.database_id === locator.database_id,
-    )?.shared_library
-    if (library === undefined || library.library_id !== locator.library_id)
-      return yield* Effect.fail(
-        fail("LIBRARY_INVALID", "The current Skill has no matching library descriptor."),
-      )
+    const scope = yield* authScope
+    const source = yield* explicitSource(identity.libraryId)
+    const library = source.shared_library
+    const resolved = yield* sharedGraphSkillIdentity(library, identity.skillId)
     return yield* openSharedConsumer({
       library,
-      target: locator.page_id,
-      expectedSkillId: locator.skill_id,
-      skillsMetadata: observation.sharedSkills.get(library.skills.data_source_id),
-      rawPage: (yield* sharedGraphTarget(resolved.id, library.skills.database_id))?.rawPage,
-      scope: directory.scope,
+      target: resolved.record.locator.page_id,
+      expectedSkillId: identity.skillId,
+      scope,
       startedAt,
       forceFull: Boolean(options.refresh) || options.maxAge === 0,
       maxAge: options.maxAge,
@@ -207,46 +175,12 @@ function snapshotReferences(snapshot: Snapshot) {
   }
 }
 function snapshotFileRef(snapshot: Snapshot, path: string) {
-  return fileRef(
-    snapshot.record.id,
-    path,
-    snapshot.snapshot_id,
-    snapshot.file_bindings?.find((binding) => binding.path === path)?.file_id,
-  )
+  return fileRef(snapshot.record.id, path, snapshot.snapshot_id)
 }
-export function boundSnapshotPath(snapshot: Snapshot, target: SkillTarget): string | undefined {
-  if (target.file_id === undefined) return target.path
-  if (snapshot.record.locator.type !== "shared_skill" || target.selector !== snapshot.record.id)
-    throw fail(
-      "SHARED_REFERENCE_SCOPE",
-      "The stable File reference does not name this exact Skill owner.",
-    )
-  const bindings = snapshot.file_bindings
-  if (bindings === undefined)
-    throw fail(
-      "SHARED_FILE_BINDING_UNAVAILABLE",
-      "This historical snapshot has no frozen stable File bindings; its path bytes remain available through its original reference.",
-    )
-  const selected = bindings.filter((binding) => binding.file_id === target.file_id)
-  const binding = selected[0]
-  if (selected.length !== 1 || binding === undefined)
-    throw fail(
-      "SHARED_FILE_BINDING_UNAVAILABLE",
-      "The exact stable File ID is unavailable in this owner snapshot.",
-      { file_id: target.file_id },
-    )
-  if (
-    bindings.some(
-      (other) =>
-        other !== binding && (other.page_id === binding.page_id || other.path === binding.path),
-    ) ||
-    !snapshot.files.some((file) => file.path === binding.path)
-  )
-    throw fail(
-      "SHARED_FILE_ID_CONFLICT",
-      "The stable File ID has an ambiguous or missing physical binding.",
-    )
-  return binding.path
+
+/** Paths are exact within a selected manifest; File IDs never repair a stale URI. */
+export function boundSnapshotPath(_snapshot: Snapshot, target: SkillTarget) {
+  return target.path
 }
 
 export function snapshotInfo(snapshot: ObservedSnapshot) {
@@ -270,26 +204,21 @@ export function snapshotInfo(snapshot: ObservedSnapshot) {
 
 function assertSnapshotTarget(snapshot: Snapshot, target: SkillTarget, database?: string) {
   if (
-    target.snapshot &&
-    target.selector &&
-    ![
-      snapshot.record.id,
-      snapshot.record.name,
-      snapshot.record.alias,
-      snapshot.record.locator.type === "shared_skill"
-        ? snapshot.record.locator.page_id
-        : snapshot.record.locator.id,
-    ].includes(pageId(target.selector) ?? target.selector)
+    (target.kind === "skill" && target.selector !== snapshot.record.id) ||
+    (target.kind === "page" &&
+      (snapshot.record.locator.type !== "shared_skill" ||
+        target.selector !== snapshot.record.locator.page_id)) ||
+    (target.snapshot !== undefined && target.snapshot !== snapshot.snapshot_id)
   )
-    throw fail("SNAPSHOT_CONFLICT", "The snapshot belongs to another Skill.")
+    throw fail("SNAPSHOT_CONFLICT", "The snapshot belongs to another Skill or selection.")
   if (
     target.snapshot &&
     database !== undefined &&
     (snapshot.record.locator.type === "shared_skill"
-      ? snapshot.record.locator.database_id
+      ? snapshot.record.locator.library_id
       : undefined) !== database
   )
-    throw fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database.")
+    throw fail("LIBRARY_SCOPE_MISMATCH", "The Skill does not belong to the selected Library.")
   if (
     snapshot.record.locator.type === "shared_skill" &&
     snapshot.record.kind === "router" &&
@@ -321,9 +250,10 @@ function acquireTargetSnapshot(
       try: () => validateReadPolicy(options, Boolean(target.snapshot)),
       catch: (error) => error as SkillsError,
     })
+    target = yield* bindEntryTarget(target, options)
     const pinnedDatabase =
-      target.snapshot && options.database !== undefined
-        ? yield* resolveDatabaseId(options.database)
+      target.snapshot && options.library !== undefined
+        ? yield* resolveLibraryId(options.library)
         : undefined
     const select = (manifest: Snapshot) => {
       assertSnapshotTarget(manifest, target, pinnedDatabase)
@@ -365,17 +295,7 @@ function acquireTargetSnapshot(
       if (scopeResult._tag === "Failure" && options.offline)
         return yield* Effect.fail(scopeResult.failure)
       const scope = scopeResult._tag === "Success" ? scopeResult.success : undefined
-      let selected =
-        pageId(target.selector) ??
-        (target.selector.startsWith("shared_skill:") ? target.selector : undefined)
-      if (!selected && !options.refresh) {
-        const directoryResult = yield* catalog(options).pipe(Effect.result)
-        if (directoryResult._tag === "Failure") return yield* Effect.fail(directoryResult.failure)
-        selected = yield* Effect.try({
-          try: () => resolveCatalogReference(target.selector, directoryResult.success).record.id,
-          catch: (error) => error as SkillsError,
-        })
-      }
+      const selected = target.selector
       const observedResult =
         scope && selected && !options.refresh
           ? yield* cachedRemoteObservation(selected, scope, {
@@ -412,13 +332,16 @@ function acquireTargetSnapshot(
       let materialization: ObservedSnapshot["materialization"]
       if (observed && useObserved) {
         if (
-          options.database !== undefined &&
+          options.library !== undefined &&
           (observed.snapshot.record.locator.type === "shared_skill"
-            ? observed.snapshot.record.locator.database_id
-            : undefined) !== (yield* resolveDatabaseId(options.database))
+            ? observed.snapshot.record.locator.library_id
+            : undefined) !== (yield* resolveLibraryId(options.library))
         )
           return yield* Effect.fail(
-            fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database."),
+            fail(
+              target.kind === "page" ? "SKILL_NOT_FOUND" : "LIBRARY_SCOPE_MISMATCH",
+              "The Skill does not belong to the selected Library.",
+            ),
           )
         if (access !== "all" || observed.snapshot.record.locator.type === "shared_skill") {
           const selected = yield* Effect.gen(function* () {
@@ -499,22 +422,12 @@ function acquireTargetSnapshot(
           )
         const previousLocator = observed?.snapshot.record.locator
         const online = yield* openSnapshot(
-          previousLocator?.type === "shared_skill"
-            ? previousLocator.page_id
-            : options.refresh
-              ? target.selector
-              : (selected ?? target.selector),
+          previousLocator?.type === "shared_skill" ? previousLocator.page_id : selected,
           options,
           access === "all"
             ? undefined
             : {
-                requestedPaths:
-                  access === "target" && target.path && target.file_id === undefined
-                    ? [target.path]
-                    : [],
-                ...(access === "target" && target.file_id !== undefined
-                  ? { requestedFileIds: [target.file_id] }
-                  : {}),
+                requestedPaths: access === "target" && target.path ? [target.path] : [],
               },
         ).pipe(
           Effect.tapError((error) =>
@@ -527,21 +440,7 @@ function acquireTargetSnapshot(
                 error.code !== "CONTENT_DISABLED"
               )
                 return
-              // A refresh by name still has a known local binding when its
-              // online lookup is denied. Resolve only existing metadata here.
-              if (!selected) {
-                const cached = yield* catalog({
-                  database: options.database,
-                  offline: true,
-                }).pipe(Effect.result)
-                if (cached._tag === "Success") {
-                  const resolved = yield* Effect.try({
-                    try: () => resolveRecord(target.selector, cached.success).id,
-                    catch: (cause) => cause as SkillsError,
-                  }).pipe(Effect.result)
-                  if (resolved._tag === "Success") selected = resolved.success
-                }
-              }
+              // Entry binding already selected the exact owner before cache access.
               if (selected)
                 yield* invalidateSnapshotCache(selected, scope, {
                   retainForOffline: true,
@@ -616,28 +515,22 @@ export function targetSnapshot(
   return acquireTargetSnapshot(target, options, access).pipe(Effect.map(({ snapshot }) => snapshot))
 }
 
-/** Local refs remain pure; a source-root crossing uses the same exact map as read --from. */
+/** Fixed containing references resolve through their authoritative manifest. */
 export function resolveSkillRef(from: string, relative: string, options: CatalogOptions = {}) {
   return Effect.gen(function* () {
     const base = yield* Effect.try({
       try: () => parseRef(from),
       catch: (error) => error as SkillsError,
     })
-    if (base.file_id !== undefined) {
-      const containing = yield* targetSnapshot(base, options, "manifest")
-      const path = yield* Effect.try({
-        try: () => boundSnapshotPath(containing, base),
-        catch: (error) => error as SkillsError,
-      })
-      return yield* resolveCurrentRelative(
-        containing,
-        path || containing.entrypoint,
-        relative,
-        options,
-      )
-    }
+    if (skillRefSnapshot(base) !== undefined)
+      return (yield* resolveContainingReference(relative, from, options, true)).ref
+    const target = yield* bindEntryTarget(
+      yield* Effect.try({ try: () => parseTarget(from), catch: (error) => error as SkillsError }),
+      options,
+    )
+    const canonical = fileRef(target.selector, target.path ?? "")
     const local = yield* Effect.try({
-      try: () => resolveRef(from, relative),
+      try: () => resolveRef(canonical, relative),
       catch: (error) => error as SkillsError,
     }).pipe(Effect.result)
     if (local._tag === "Success") return local.success
@@ -646,23 +539,107 @@ export function resolveSkillRef(from: string, relative: string, options: Catalog
       local.failure.message !== "The path escapes the skill root."
     )
       return yield* Effect.fail(local.failure)
-    const containing = yield* targetSnapshot(base, options, "manifest")
-    return yield* resolveCurrentRelative(
-      containing,
-      base.path || containing.entrypoint,
-      relative,
-      options,
-    )
+    return (yield* resolveContainingReference(relative, canonical, options)).ref
   })
 }
 
 export interface ReadOptions extends ReadPolicyOptions, ConsumptionObservationOptions {
-  readonly database?: string
+  readonly library?: string
   readonly path?: string
   readonly from?: string
   readonly lines?: string
   readonly output?: string
   readonly authoring?: boolean
+}
+
+export interface ResolveReferenceOptions extends CatalogOptions, ConsumptionObservationOptions {
+  /** Exact fixed reference to the file that contains the relative path. */
+  readonly from: string
+}
+
+/** Resolve identity before a consumer chooses the target's own session snapshot.
+ * This never acquires the target body or activates Members/Requires. */
+export function resolveReference(relative: string, options: ResolveReferenceOptions) {
+  return withConsumptionEffects(
+    resolveContainingReference(relative, options.from, options, true).pipe(
+      Effect.map(({ ref }) => ({ version: 1 as const, from: options.from, ref })),
+    ),
+    options,
+  )
+}
+
+/** Shared by reads and identity-only resolution; Source paths are based on the
+ * actual containing File binding, including nested resources and renamed Files. */
+function resolveContainingReference(
+  relative: string,
+  from: string,
+  options: CatalogOptions,
+  fixed = false,
+) {
+  return Effect.gen(function* () {
+    const base = yield* Effect.try({
+      try: () => {
+        if (
+          !relative ||
+          (!relative.startsWith("skill://") &&
+            (/^[a-z]+:/i.test(relative) || relative.startsWith("s_")))
+        )
+          throw fail(
+            "INVALID_ARGUMENT",
+            "--from requires a relative file path or skill:// reference.",
+          )
+        if (!relative.startsWith("skill://") && (relative.includes("?") || relative.includes("#")))
+          throw fail("INVALID_PATH", "Only relative file paths can be resolved within a skill.")
+        const parsed = parseTarget(from)
+        if (
+          parsed.kind !== "skill" ||
+          parsed.reference.scope.kind !== "library" ||
+          (fixed && (!parsed.snapshot || !parsed.path))
+        )
+          throw fail(
+            "EXACT_TARGET_REQUIRED",
+            "Reference resolution requires a fully scoped containing Skill reference and, for fixed resolution, a snapshot and file path.",
+          )
+        return parsed
+      },
+      catch: (error) => error as SkillsError,
+    })
+    const containing = yield* targetSnapshot(base, options, "manifest")
+    const fromPath = yield* Effect.try({
+      try: () => {
+        if (fixed && base.selector !== containing.record.id)
+          throw fail(
+            "EXACT_TARGET_REQUIRED",
+            "The containing reference must name its exact Skill identity.",
+          )
+        const path = boundSnapshotPath(containing, base) || containing.entrypoint
+        if (!containing.files.some((file) => file.path === path))
+          throw fail("FILE_NOT_FOUND", "The containing File does not exist in this snapshot.", {
+            path,
+          })
+        return path
+      },
+      catch: (error) => error as SkillsError,
+    })
+    if (relative.startsWith("skill://")) {
+      const ref = yield* Effect.try({
+        try: () => {
+          const owner = parseSkillIdentity(containing.record.id)
+          const selected = bindTarget(parseTarget(relative), owner.libraryId)
+          if (selected.kind !== "skill") throw fail("INVALID_REF", "Expected a Skill reference.")
+          const selectedOwner = parseSkillIdentity(selected.selector)
+          const snapshot =
+            selected.snapshot ??
+            (sameSkillKey(owner, selectedOwner) ? containing.snapshot_id : undefined)
+          return fileRef(selected.selector, selected.path ?? "", snapshot)
+        },
+        catch: (error) => error as SkillsError,
+      })
+      return { containing, ref }
+    }
+    const ref = yield* resolveCurrentRelative(containing, fromPath, relative, options)
+    return { containing, ref }
+  })
 }
 
 /** Output-only file and owner commitments; text reads retain their existing shape. */
@@ -701,29 +678,9 @@ function readSkillContent(input: string, options: ReadOptions) {
     let target: SkillTarget
     let acquired: Effect.Success<ReturnType<typeof acquireTargetSnapshot>>
     if (options.from) {
-      const base = yield* Effect.try({
-        try: () => {
-          if (/^[a-z]+:/i.test(input) || input.startsWith("s_"))
-            throw fail("INVALID_ARGUMENT", "--from requires a relative file path.")
-          if (input.includes("?") || input.includes("#"))
-            throw fail("INVALID_PATH", "Only relative file paths can be resolved within a skill.")
-          return parseRef(options.from!)
-        },
-        catch: (error) => error as SkillsError,
-      })
-      const containing = yield* targetSnapshot(base, options, "manifest")
-      const basePath = yield* Effect.try({
-        try: () => boundSnapshotPath(containing, base),
-        catch: (error) => error as SkillsError,
-      })
-      const resolved = yield* resolveCurrentRelative(
-        containing,
-        basePath ?? containing.entrypoint,
-        input,
-        options,
-      )
+      const { containing, ref } = yield* resolveContainingReference(input, options.from, options)
       target = yield* Effect.try({
-        try: () => parseTarget(resolved),
+        try: () => parseTarget(ref),
         catch: (error) => error as SkillsError,
       })
       if (
@@ -842,7 +799,7 @@ function readSkillContent(input: string, options: ReadOptions) {
 
 export function listSkill(
   input: string,
-  options: ReadPolicyOptions & { readonly database?: string; readonly path?: string } = {},
+  options: ReadPolicyOptions & { readonly library?: string; readonly path?: string } = {},
 ) {
   return Effect.gen(function* () {
     const target = yield* Effect.try({
