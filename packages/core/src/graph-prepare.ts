@@ -177,7 +177,16 @@ function prepareSelected(
 ): Effect.Effect<PreparedGraphArtifacts, SkillsError, Services> {
   return Effect.gen(function* () {
     const policy = readPolicy(input)
-    const scope = policy.offline ? yield* locallySelectedScope(true) : yield* authScope
+    // Scope lookup identifies the cache; each snapshot reader still owns freshness,
+    // known denials and any online validation needed for missing or expired content.
+    const localScope = policy.refresh
+      ? undefined
+      : yield* locallySelectedScope(Boolean(policy.offline)).pipe(
+          Effect.catch((error) =>
+            policy.offline ? Effect.fail(error) : Effect.succeed(undefined),
+          ),
+        )
+    const scope = localScope ?? (yield* authScope)
     if (scope === undefined)
       return yield* Effect.fail(
         fail("CACHE_SCOPE_UNAVAILABLE", "Preparation requires the selected account scope."),
