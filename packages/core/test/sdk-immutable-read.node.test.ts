@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, realpath, rename, writeFile } from "node:fs/p
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
+import { fileURLToPath } from "node:url"
 import { expect, test, vi } from "vitest"
 import { ConfigProvider, Effect } from "effect"
 import {
@@ -18,7 +19,7 @@ import {
 import { nodeRuntime } from "../../cli/src/runtime.ts"
 import { clearCache, locallySelectedScope } from "../src/cache.ts"
 import { property } from "../src/model.ts"
-import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { currentSourceConsumerFixture } from "./shared-current-source-consumer-fixture.ts"
 import {
   currentSnapshotFixture,
@@ -79,14 +80,16 @@ test("public consume binds each complete SDK env to its actual Git executable", 
         records: [],
         sources: structuredClone([...f.sources.values()]),
         bodies: Object.fromEntries(f.bodies),
-        database: {
-          object: "database",
-          id: library.skills.database_id,
-          database_type: null,
-          title: [{ plain_text: "SDK child environment fixture" }],
-          description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(library) }],
-          data_sources: [{ id: library.skills.data_source_id, name: "Skills" }],
-        },
+        root: librarySchemaResponse("v1/pages/" + library.library_id, library),
+        root_children: property(
+          librarySchemaResponse("v1/blocks/" + library.library_id + "/children", library),
+        ).results,
+        databases: (["skills", "files", "records", "sources"] as const).map((role) =>
+          librarySchemaResponse("v1/databases/" + library[role].database_id, library),
+        ),
+        data_sources: (["skills", "files", "records", "sources"] as const).map((role) =>
+          librarySchemaResponse("v1/data_sources/" + library[role].data_source_id, library),
+        ),
       },
     },
     join(root, "requests.jsonl"),
@@ -111,7 +114,7 @@ process.exit(args.includes('fetch')?17:0);\n`,
       name,
       options: {
         cwd: root,
-        database: library.skills.database_id,
+        library: library.library_id,
         env: {
           PATH: join(root, name, "bin"),
           HOME: root,
@@ -140,7 +143,7 @@ process.exit(args.includes('fetch')?17:0);\n`,
 const input=JSON.parse(await readFile(process.argv[2],'utf8'));const sdk=await import(pathToFileURL(input.sdk));
 const rows=await Promise.all(input.cases.map(async c=>({name:c.name,result:await sdk.consume({version:1,purpose:'use',targets:[input.target]}, {...c.options,signal:AbortSignal.timeout(10000)})})));
 const explicitCalls=(await readFile(input.ledger,'utf8')).trim().split('\\n').length;
-const inherited=await sdk.consume({version:1,purpose:'use',targets:[input.target]}, {database:input.cases[0].options.database,cwd:input.cases[0].options.cwd,signal:AbortSignal.timeout(10000)});
+const inherited=await sdk.consume({version:1,purpose:'use',targets:[input.target]}, {library:input.cases[0].options.library,cwd:input.cases[0].options.cwd,signal:AbortSignal.timeout(10000)});
 await writeFile(process.argv[3],JSON.stringify({rows,explicitCalls,inherited}));\n`,
     )
     const child = spawn(
@@ -232,14 +235,16 @@ async function sample(currentSource?: Record<string, unknown>) {
   return {
     notion: {
       library,
-      database: {
-        object: "database",
-        id: library.skills.database_id,
-        database_type: null,
-        title: [{ plain_text: "Immutable read fixture" }],
-        description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(library) }],
-        data_sources: [{ id: library.skills.data_source_id, name: "Skills" }],
-      },
+      root: librarySchemaResponse("v1/pages/" + library.library_id, library),
+      root_children: property(
+        librarySchemaResponse("v1/blocks/" + library.library_id + "/children", library),
+      ).results,
+      databases: (["skills", "files", "records", "sources"] as const).map((role) =>
+        librarySchemaResponse("v1/databases/" + library[role].database_id, library),
+      ),
+      data_sources: (["skills", "files", "records", "sources"] as const).map((role) =>
+        librarySchemaResponse("v1/data_sources/" + library[role].data_source_id, library),
+      ),
       main,
       skills: [structuredClone(main)],
       files: structuredClone(f.files),
@@ -302,7 +307,7 @@ async function bootstrap(source: Source, root: string, name: string) {
     NTN_SKILLS_NOTION_INTERVAL_MS: "100",
     NTN_SKILLS_REQUEST_TRACE_LIMIT: "10000",
   }
-  const options = { env, database: library.skills.database_id, metrics: true }
+  const options = { env, library: library.library_id, metrics: true }
   const main = await readSkill(skillPage, options)
   const directoryRef = new URL(main.ref)
   directoryRef.pathname = "/"
@@ -771,7 +776,11 @@ test("public SDK reports the retired cache generation when clear races a current
           Effect.scoped,
         ),
       )
-      expect(retired.entries.some((key) => key.endsWith(`/${listing.record.id}/.fence`))).toBe(true)
+      expect(
+        retired.entries.some((key) =>
+          key.endsWith(`/${encodeURIComponent(listing.record.id)}/.fence`),
+        ),
+      ).toBe(true)
     } finally {
       hold.release()
     }
@@ -804,6 +813,139 @@ test("public SDK reports the retired cache generation when clear races a current
           request.method !== "GET" && !request.path.endsWith("/query"),
       ),
     ).toEqual([])
+  })
+})
+
+test("public SDK metadata selections survive independent processes and cache clear with exact original bindings", async () => {
+  await setup(async ({ source, root, options }) => {
+    let serial = 0
+    const sdk = new URL("../../cli/src/sdk.ts", import.meta.url).pathname
+    const workerSource = join(root, "selection-worker.ts"),
+      worker = join(root, "selection-worker.mjs")
+    await writeFile(
+      workerSource,
+      `import {readFile} from 'node:fs/promises';
+import {consume} from ${JSON.stringify(sdk)};
+import {Effect,ConfigProvider} from ${JSON.stringify(fileURLToPath(import.meta.resolve("effect")))};
+import {clearCache} from ${JSON.stringify(new URL("../src/cache.ts", import.meta.url).pathname)};
+import {nodeRuntime} from ${JSON.stringify(new URL("../../cli/src/runtime.ts", import.meta.url).pathname)};
+const request=JSON.parse(await readFile(process.argv[2],'utf8'));
+const result=request.clear
+? await Effect.runPromise(clearCache(undefined,{all:true}).pipe(Effect.provide(nodeRuntime(process.cwd()).live),Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(request.options.env))),Effect.scoped))
+: await consume(request.input,request.options);
+console.log(JSON.stringify(result));`,
+    )
+    const build = spawnSync(
+      "bun",
+      ["build", workerSource, "--target=node", "--format=esm", "--outfile", worker],
+      { encoding: "utf8" },
+    )
+    expect(build.status, build.stderr).toBe(0)
+    const invoke = async (input: unknown, clear = false) => {
+      const requestFile = join(root, `selection-${serial++}.json`)
+      await writeFile(requestFile, JSON.stringify({ input, options, clear }))
+      const child = spawn(process.execPath, [worker, requestFile], {
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+      let stdout = "",
+        stderr = ""
+      child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+        stdout += chunk
+      })
+      child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+        stderr += chunk
+      })
+      const exit = await new Promise<number | null>((resolve) => child.once("close", resolve))
+      await writeFile(requestFile + ".stdout", stdout)
+      await writeFile(requestFile + ".stderr", stderr)
+      expect(exit, stderr).toBe(0)
+      return JSON.parse(stdout) as Awaited<ReturnType<typeof consume>>
+    }
+    const inspect = {
+      version: 1,
+      targets: [skillPage],
+      purpose: "inspect",
+      freshness: { policy: "refresh" },
+    }
+    const selections = []
+    for (let stage = 0; stage < 4; stage++) {
+      if (stage > 0) {
+        if (stage === 1) source.notion.main.properties["Default Context"].checkbox = true
+        if (stage === 2) source.notion.main.properties.Name.title[0].plain_text = "Second display"
+        if (stage === 3)
+          source.notion.main.properties.Description = currentRich(
+            "description",
+            "Third observed description.",
+          )
+        source.notion.main.last_edited_time = `2026-11-18T00:0${stage}:00.000Z`
+        source.notion.skills = [structuredClone(source.notion.main)]
+      }
+      source.setPhase(`metadata-${stage}`)
+      const selected = await invoke(inspect)
+      expect(selected.status, JSON.stringify(selected)).toBe("ready")
+      if (selected.status !== "ready") throw new Error("Expected complete metadata selection")
+      selections.push(selected)
+    }
+    const bindings = selections.map((selection) => selection.preparation.session_bindings[0]!)
+    expect(new Set(bindings.map((binding) => binding.snapshot_id)).size).toBe(4)
+    expect(new Set(bindings.map((binding) => binding.version_id)).size).toBe(1)
+    expect(new Set(bindings.map((binding) => binding.body_sha256)).size).toBe(1)
+    const before = source.requests.length
+    await invoke(undefined, true)
+    for (const selected of selections) {
+      const used = await invoke({
+        version: 1,
+        targets: [skillPage],
+        purpose: "use",
+        freshness: { policy: "offline" },
+        sessionBindings: selected.preparation.session_bindings,
+      })
+      expect(used.status, JSON.stringify(used)).toBe("ready")
+      if (used.status !== "ready") throw new Error("Expected the original exact selection")
+      expect(used.preparation.session_bindings).toEqual(selected.preparation.session_bindings)
+      expect(used.entries[0]?.manifest).toEqual(selected.entries[0]?.manifest)
+      expect(
+        used.preparation.nodes
+          .filter((node) => node.state === "prepared")
+          .map((node) => node.content),
+      ).toEqual(
+        selected.preparation.nodes
+          .filter((node) => node.state === "prepared")
+          .map((node) => node.content),
+      )
+    }
+    expect(source.requests).toHaveLength(before)
+    const binding = bindings[1]!
+    const forged = await invoke({
+      version: 1,
+      targets: [skillPage],
+      purpose: "use",
+      freshness: { policy: "offline" },
+      sessionBindings: [
+        { ...binding, record: { ...binding.record, description: "Not the observed record" } },
+      ],
+    })
+    expect(forged).toMatchObject({ status: "failed", error: { code: "PREPARE_BINDING_CONFLICT" } })
+    source.notion.bodies[skillPage] += "\nAn actual author edit changes the content version.\n"
+    source.notion.main.last_edited_time = "2026-11-18T00:05:00.000Z"
+    source.notion.skills = [structuredClone(source.notion.main)]
+    const changed = await invoke(inspect)
+    expect(changed.status, JSON.stringify(changed)).toBe("ready")
+    if (changed.status !== "ready") throw new Error("Expected changed content")
+    expect(changed.preparation.session_bindings[0]?.version_id).not.toBe(binding.version_id)
+    const retained = await invoke({
+      version: 1,
+      targets: [skillPage],
+      purpose: "use",
+      freshness: { policy: "offline" },
+      sessionBindings: selections[1]!.preparation.session_bindings,
+    })
+    expect(retained.status, JSON.stringify(retained)).toBe("ready")
+    if (retained.status !== "ready") throw new Error("Expected retained intermediate selection")
+    expect(retained.preparation.session_bindings).toEqual(
+      selections[1]!.preparation.session_bindings,
+    )
+    noConsumerWrites(source)
   })
 })
 

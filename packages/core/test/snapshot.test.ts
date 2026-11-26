@@ -1,3 +1,4 @@
+import { fileRef } from "../src/ref.ts"
 import { expect, test } from "bun:test"
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
@@ -42,7 +43,7 @@ async function fixture() {
   return base
 }
 const selectedRef = (snapshot: Snapshot, path = "SKILL.md") =>
-  `skill://${encodeURIComponent(snapshot.record.id)}/${path}?snapshot=${snapshot.snapshot_id}`
+  fileRef(snapshot.record.id, path, snapshot.snapshot_id)
 const currentSource = {
   alias: "frontend",
   database_id: database,
@@ -53,10 +54,10 @@ const currentSource = {
 
 for (const matches of [0, 1])
   for (const offline of [false, true])
-    test(`current name rejects a cached incomplete catalog with ${matches} matches, offline=${offline}`, async () => {
+    test(`a bound owner uses its verified cache despite an incomplete catalog with ${matches} matches, offline=${offline}`, async () => {
       const f = await fixture()
-      await f.run(readSkill(page, { database }))
-      await f.run(catalog({ database, refresh: true }))
+      await f.run(readSkill(page, { library: currentLibrary.library_id }))
+      await f.run(catalog({ library: currentLibrary.library_id, refresh: true }))
       const key = [...f.json.keys()].find((value) => value.startsWith("cache/catalogs/"))
       if (key === undefined) throw new Error("Expected a real catalog observation")
       const observed = decode(CatalogSchema, f.json.get(key))
@@ -67,15 +68,19 @@ for (const matches of [0, 1])
       })
       f.clearCalls()
       const result = await f.run(
-        readSkill("skill://sample-skill/SKILL.md", { database, offline }).pipe(Effect.result),
+        readSkill(fileRef(`skill://demo?library=${currentLibrary.library_id}`, "SKILL.md"), {
+          library: currentLibrary.library_id,
+          offline,
+        }).pipe(Effect.result),
       )
-      expect(result._tag === "Failure" && result.failure.code).toBe("CATALOG_INCOMPLETE")
+      expect(result._tag).toBe("Success")
       expect(f.calls).toEqual([])
     })
 
 for (const matches of [0, 1])
-  test(`current name rejects fresh non-exhaustive discovery with ${matches} matches before body reads`, async () => {
+  test(`a short ref cannot infer Library from ${matches} discoverable matches`, async () => {
     const f = await fixture()
+    f.json.delete("config.json")
     const run = <A, E>(effect: Effect.Effect<A, E, Services>) =>
       f.run(
         Effect.gen(function* () {
@@ -108,9 +113,9 @@ for (const matches of [0, 1])
         }),
       )
     const result = await run(
-      readSkill("skill://sample-skill/SKILL.md", { refresh: true }).pipe(Effect.result),
+      readSkill("skill://demo/SKILL.md", { refresh: true }).pipe(Effect.result),
     )
-    expect(result._tag === "Failure" && result.failure.code).toBe("CATALOG_INCOMPLETE")
+    expect(result._tag === "Failure" && result.failure.code).toBe("LIBRARY_CONTEXT_REQUIRED")
     expect(f.bodyCalls()).toEqual([])
     expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
     expect(f.records.size).toBe(1)
@@ -124,7 +129,7 @@ test("selected resources retain exact bytes across current edits and remote revo
   )
   expect("content" in read && read.content).toBe("第二行")
   expect("has_more" in read && read.has_more).toBe(true)
-  expect(read.ref).toContain(`?snapshot=${first.snapshot_id}`)
+  expect(read.ref).toContain(`&snapshot=${first.snapshot_id}`)
   f.bodies.set(guide, "Current edited guide.")
   const second = await f.run(openSkill(page, { refresh: true }))
   expect(second.snapshot_id).not.toBe(first.snapshot_id)
@@ -203,11 +208,11 @@ test("current metadata edits do not rewrite authored frontmatter or selected byt
   expect(f.semanticWrites()).toEqual([])
 })
 
-test("physical page reads accept configured aliases and selected database checks stay local", async () => {
+test("physical page reads accept configured aliases and selected Library checks stay local", async () => {
   const f = await fixture()
   const otherLibrary = {
     ...currentLibrary,
-    library_id: "other",
+    library_id: "563e49fa-4378-5493-a5ff-8c96321f9ffd",
     operation_id: "other",
     skills: {
       ...currentLibrary.skills,
@@ -227,24 +232,24 @@ test("physical page reads accept configured aliases and selected database checks
       },
     ],
   })
-  const snapshot = await f.run(openSkill(page, { database: "frontend" }))
+  const snapshot = await f.run(openSkill(page, { library: "frontend" }))
   expect(snapshot.record.locator).toMatchObject({
     type: "shared_skill",
     database_id: database,
     page_id: page,
   })
-  const wrongOnline = await f.run(openSkill(page, { database: "ops" }).pipe(Effect.result))
+  const wrongOnline = await f.run(openSkill(page, { library: "ops" }).pipe(Effect.result))
   expect(wrongOnline._tag === "Failure" && wrongOnline.failure.code).toBe("SKILL_NOT_FOUND")
   f.failRequests(() => fail("ACCESS_DENIED", "Remote access revoked."))
   f.clearCalls()
-  const read = await f.run(readSkill(snapshot.snapshot_id, { database: "frontend" }))
+  const read = await f.run(readSkill(snapshot.snapshot_id, { library: "frontend" }))
   expect("content" in read && read.content).toBe(frontmatter + originalMain)
   for (const [selector, code] of [
-    ["ops", "SKILL_NOT_FOUND"],
-    ["missing", "DATABASE_NOT_FOUND"],
+    ["ops", "LIBRARY_SCOPE_MISMATCH"],
+    ["missing", "LIBRARY_NOT_FOUND"],
   ] as const) {
     const result = await f.run(
-      readSkill(snapshot.snapshot_id, { database: selector }).pipe(Effect.result),
+      readSkill(snapshot.snapshot_id, { library: selector }).pipe(Effect.result),
     )
     expect(result._tag === "Failure" && result.failure.code).toBe(code)
   }
@@ -260,8 +265,14 @@ test("current page acquisition fences the owner before and after body reads", as
   expect(bodyReads.length).toBe(2)
   expect(ownerReads[0]).toBeLessThan(Math.min(...bodyReads))
   expect(ownerReads[1]).toBeGreaterThan(Math.max(...bodyReads))
-  expect(f.calls.filter((call) => call.path === `v1/databases/${database}`)).toHaveLength(1)
-  expect(f.calls.some((call) => /\/ai\/|\/blocks\/|\/properties\//u.test(call.path))).toBe(false)
+  expect(f.calls.filter((call) => call.path === `v1/databases/${database}`)).toHaveLength(3)
+  expect(
+    f.calls.some(
+      (call) =>
+        call.path.split("?")[0] !== `v1/blocks/${currentLibrary.library_id}/children` &&
+        /\/ai\/|\/blocks\/|\/properties\//u.test(call.path),
+    ),
+  ).toBe(false)
   expect(f.semanticWrites()).toEqual([])
 })
 
@@ -297,8 +308,8 @@ test("explicit refresh reads current native files and resource bytes without a p
 for (const [change, code] of [
   ["trash", "NOT_SKILL"],
   ["id", "INVALID_RESPONSE"],
-  ["database", "SKILL_NOT_FOUND"],
-  ["data-source", "INVALID_SHARED_SKILL"],
+  ["database", "LIBRARY_SCOPE_MISMATCH"],
+  ["data-source", "LIBRARY_SCOPE_MISMATCH"],
 ] as const)
   test(`physical page acquisition rejects ${change} drift before any body reads`, async () => {
     const f = await fixture()
@@ -316,12 +327,21 @@ for (const [change, code] of [
         },
       }
     })
-    const result = await f.run(openSkill(page, { database }).pipe(Effect.result))
+    const result = await f.run(
+      openSkill(page, { library: currentLibrary.library_id }).pipe(Effect.result),
+    )
     expect(result._tag === "Failure" && result.failure.code).toBe(code)
     expect(f.bodyCalls()).toEqual([])
+    expect(
+      f.calls.some(
+        (call) =>
+          call.path === `v1/databases/${currentId(99)}` ||
+          call.path === `v1/data_sources/${currentId(99)}`,
+      ),
+    ).toBe(false)
   })
 
-test("name resolution rechecks live metadata while preserving independently authored frontmatter", async () => {
+test("stable identity resolution rechecks live metadata while preserving independently authored frontmatter", async () => {
   const f = await fixture()
   const old = structuredClone(f.main)
   f.main.properties.Name.title = [{ plain_text: "Renamed Skill" }]
@@ -331,7 +351,11 @@ test("name resolution rechecks live metadata while preserving independently auth
       ? { ...property(response), results: [old] }
       : response,
   )
-  const snapshot = await f.run(openSkill("sample-skill", { database }))
+  const snapshot = await f.run(
+    openSkill(`skill://demo?library=${currentLibrary.library_id}`, {
+      library: currentLibrary.library_id,
+    }),
+  )
   expect(snapshot.record).toMatchObject({
     name: "Renamed Skill",
     alias: "renamed-skill",
@@ -348,7 +372,7 @@ for (const [change, code] of [
   ["data-source", "INVALID_SHARED_SKILL"],
   ["stable-id", "SHARED_SKILL_ID_CONFLICT"],
 ] as const)
-  test(`name resolution rejects fresh ${change} ownership drift before body reads`, async () => {
+  test(`stable identity resolution rejects fresh ${change} ownership drift before body reads`, async () => {
     const f = await fixture()
     const old = structuredClone(f.main)
     f.alterResponses((call, response) => {
@@ -371,9 +395,20 @@ for (const [change, code] of [
         },
       }
     })
-    const result = await f.run(openSkill("sample-skill", { database }).pipe(Effect.result))
+    const result = await f.run(
+      openSkill(`skill://demo?library=${currentLibrary.library_id}`, {
+        library: currentLibrary.library_id,
+      }).pipe(Effect.result),
+    )
     expect(result._tag === "Failure" && result.failure.code).toBe(code)
     expect(f.bodyCalls()).toEqual([])
+    expect(
+      f.calls.some(
+        (call) =>
+          call.path === `v1/databases/${currentId(99)}` ||
+          call.path === `v1/data_sources/${currentId(99)}`,
+      ),
+    ).toBe(false)
   })
 
 for (const [change, code] of [

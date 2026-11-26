@@ -6,10 +6,25 @@ import {
   rebuildableCacheKey,
   type CacheCapacity,
 } from "./cache-retention-model.ts"
+import { identitySegment, identityFromSegment } from "./cache-address.ts"
 import { trashPath } from "./local-locks.ts"
 import { fail, property, SkillsError } from "./model.ts"
-import { sharedSkillId } from "./shared-content.ts"
+import { skillIdentity } from "./shared-content.ts"
 import { probeSqliteRuntime } from "./sqlite-runtime-policy.ts"
+import { CurrentSourceSyncPendingSchema } from "./shared-current-source-sync-model.ts"
+import {
+  CurrentSourceSyncBatchSchema,
+  preservesCurrentSourceSyncBatch,
+} from "./shared-current-source-sync-batch-model.ts"
+import {
+  ImportPlanSchema,
+  currentImportPlanAddressInput,
+  preservesCurrentImportPlan,
+} from "./shared-current-import-plan-model.ts"
+import {
+  LibraryInitializationPendingSchema,
+  preservesLibraryInitialization,
+} from "./shared-library-model.ts"
 
 // This physical schema identifies current local execution state, not content history.
 const currentApplicationId = 0x4e544e43
@@ -60,7 +75,7 @@ function sharedFileObservationOwner(value: unknown) {
     library_id,
     skill_id,
     skill_page_id,
-    record_identity: sharedSkillId(library_id, skill_id),
+    record_identity: skillIdentity(library_id, skill_id),
   }
 }
 const sharedCurrentTreeValidationPrefix = "cache/shared-current-tree-validation"
@@ -68,12 +83,32 @@ const currentNativeBodiesPrefix = "cache/current-native-bodies"
 function fencedFileObservation(key: string): boolean {
   return key.startsWith(`${currentNativeBodiesPrefix}/`) && key.endsWith("/latest.json")
 }
-const mutableSharedLocalPrefixes = [sharedCurrentTreeValidationPrefix]
+const mutableSharedLocalPrefixes = [sharedCurrentTreeValidationPrefix, "cache/current-source-sync"]
 const sharedLocalDomains: readonly {
   readonly prefix: string
   readonly category: SharedLocalCategory
   readonly address: RegExp
 }[] = [
+  {
+    prefix: "operations/current-source-sync-batch",
+    category: "dispatch",
+    address: /^operations\/current-source-sync-batch\/[a-f0-9]{64}\/pending\.json$/u,
+  },
+  {
+    prefix: "operations/current-source-sync",
+    category: "dispatch",
+    address: /^operations\/current-source-sync\/[a-f0-9]{64}\/pending\.json$/u,
+  },
+  {
+    prefix: "cache/current-source-sync",
+    category: "cache",
+    address: /^cache\/current-source-sync\/[a-f0-9]{64}\/latest\.json$/u,
+  },
+  {
+    prefix: "operations/import-plan",
+    category: "dispatch",
+    address: /^operations\/import-plan\/[a-f0-9]{64}\/plan\.json$/u,
+  },
   {
     prefix: currentNativeBodiesPrefix,
     category: "cache",
@@ -109,6 +144,11 @@ const sharedLocalDomains: readonly {
     prefix: "operations/current-write-pending",
     category: "dispatch",
     address: /^operations\/current-write-pending\/[a-f0-9]{64}\/pending\.json$/u,
+  },
+  {
+    prefix: "operations/library-init-pending",
+    category: "dispatch",
+    address: /^operations\/library-init-pending\/[a-f0-9]{64}\/pending\.json$/u,
   },
 ]
 
@@ -421,7 +461,7 @@ export function sqliteState(
               yield* sql`SELECT manifest AS payload FROM snapshots WHERE id=${parts[1]!.replace(/\.json$/, "")}`
           else if (parts[0] === "cache-generations")
             rows =
-              yield* sql`SELECT json_object('generation',generation,'retired_through',retired_through) AS payload FROM cache_fences WHERE scope=${parts[1]} AND identity=${parts[2]!.replace(/\.json$/, "")}`
+              yield* sql`SELECT json_object('generation',generation,'retired_through',retired_through) AS payload FROM cache_fences WHERE scope=${parts[1]} AND identity=${identityFromSegment(parts[2]!.replace(/\.json$/, ""))}`
           else if (parts[0] === "cache" && parts[1] === "latest")
             rows =
               yield* sql`SELECT o.payload FROM observations o LEFT JOIN cache_fences f ON f.scope=o.scope AND f.identity=o.record_identity WHERE o.id=${key} AND (o.generation>COALESCE(f.retired_through,0) OR json_extract(o.payload,'$.access_denied') IN ('AUTH_REQUIRED','ACCESS_DENIED'))`
@@ -540,7 +580,7 @@ export function sqliteState(
                   if (existing[0] === undefined) {
                     const totals = yield* sql<{
                       bytes: number
-                    }>`SELECT COALESCE(SUM(LENGTH(CAST(payload AS BLOB))),0) AS bytes FROM shared_local_records WHERE category='cache' AND (key LIKE 'cache/shared-github-blobs/%' OR key LIKE 'cache/shared-derived-graphs/%')`
+                    }>`SELECT COALESCE(SUM(LENGTH(CAST(payload AS BLOB))),0) AS bytes FROM shared_local_records WHERE category='cache' AND (key LIKE 'cache/shared-github-blobs/%' OR key LIKE 'cache/shared-derived-graphs/%' OR key LIKE 'cache/current-source-sync/%')`
                     if (
                       (totals[0]?.bytes ?? 0) + new TextEncoder().encode(payload).length >
                       capacity.max_bytes
@@ -630,6 +670,226 @@ export function sqliteState(
                   }
                   return
                 }
+                if (key.startsWith("operations/current-source-sync-batch/")) {
+                  const decodeBatch = (input: unknown) =>
+                    Effect.try({
+                      try: () =>
+                        Schema.decodeUnknownSync(CurrentSourceSyncBatchSchema)(input, {
+                          onExcessProperty: "error",
+                        }),
+                      catch: () => fail("STATE_CORRUPT", "Invalid unfinished full Source batch."),
+                    })
+                  const next = yield* decodeBatch(value)
+                  if (key !== `operations/current-source-sync-batch/${next.scope}/pending.json`)
+                    return yield* Effect.fail(
+                      fail("STATE_CONFLICT", "Full batch scope differs from its address."),
+                    )
+                  yield* sql`UPDATE shared_local_records SET payload=payload WHERE key=${key} AND category='dispatch' AND retired=0`
+                  const rows = yield* sql<{
+                    payload: string
+                    category: string
+                    retired: number
+                  }>`SELECT payload,category,retired FROM shared_local_records WHERE key=${key}`
+                  const previous = rows[0]
+                  if (previous !== undefined) {
+                    const before = yield* decodeBatch(yield* parse(previous.payload))
+                    if (
+                      previous.category !== "dispatch" ||
+                      previous.retired !== 0 ||
+                      !preservesCurrentSourceSyncBatch(before, next)
+                    )
+                      return yield* Effect.fail(
+                        fail(
+                          "STATE_CONFLICT",
+                          "A full batch must preserve its frozen scope and completed prefix.",
+                        ),
+                      )
+                    yield* sql`UPDATE shared_local_records SET payload=${payload} WHERE key=${key} AND category='dispatch' AND retired=0`
+                  } else {
+                    if (next.results.length !== 0)
+                      return yield* Effect.fail(
+                        fail(
+                          "STATE_CONFLICT",
+                          "A full batch must start with an empty completed prefix.",
+                        ),
+                      )
+                    yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},'dispatch',${payload},0)`
+                  }
+                  return
+                }
+                if (key.startsWith("operations/current-source-sync/")) {
+                  const decodePending = (input: unknown) =>
+                    Effect.try({
+                      try: () =>
+                        Schema.decodeUnknownSync(CurrentSourceSyncPendingSchema)(input, {
+                          onExcessProperty: "error",
+                        }),
+                      catch: () =>
+                        fail("STATE_CORRUPT", "Invalid unfinished Source synchronization."),
+                    })
+                  const next = yield* decodePending(value)
+                  if (next.phase === "projection" && next.next_index > next.targets.length)
+                    return yield* Effect.fail(
+                      fail(
+                        "STATE_CORRUPT",
+                        "Source sync projection cursor exceeds its target scope.",
+                      ),
+                    )
+                  if (key !== `operations/current-source-sync/${next.scope}/pending.json`)
+                    return yield* Effect.fail(
+                      fail("STATE_CONFLICT", "Source sync scope differs from its address."),
+                    )
+                  yield* sql`UPDATE shared_local_records SET payload=payload WHERE key=${key} AND category='dispatch' AND retired=0`
+                  const rows = yield* sql<{
+                    payload: string
+                    category: string
+                    retired: number
+                  }>`SELECT payload,category,retired FROM shared_local_records WHERE key=${key}`
+                  const previous = rows[0]
+                  if (previous !== undefined) {
+                    const before = yield* decodePending(yield* parse(previous.payload))
+                    const identity = (row: typeof next) =>
+                      JSON.stringify(
+                        currentIntentIdentity({
+                          version: row.version,
+                          kind: row.kind,
+                          library: row.library,
+                          scope: row.scope,
+                          manager_id: row.manager_id,
+                          execution_id: row.execution_id,
+                          full_batch: row.full_batch,
+                          input: row.input,
+                        }),
+                      )
+                    if (
+                      previous.category !== "dispatch" ||
+                      previous.retired !== 0 ||
+                      identity(before) !== identity(next) ||
+                      (before.phase === "content" &&
+                        next.phase === "projection" &&
+                        next.next_index !== 0) ||
+                      (before.phase === "projection" &&
+                        (next.phase !== "projection" ||
+                          JSON.stringify(currentIntentIdentity(before.targets)) !==
+                            JSON.stringify(currentIntentIdentity(next.targets)) ||
+                          (next.next_index !== before.next_index &&
+                            next.next_index !== before.next_index + 1)))
+                    )
+                      return yield* Effect.fail(
+                        fail(
+                          "STATE_CONFLICT",
+                          "Source sync must preserve its owner, frozen input and completed phase.",
+                          { key },
+                        ),
+                      )
+                    yield* sql`UPDATE shared_local_records SET payload=${payload} WHERE key=${key} AND category='dispatch' AND retired=0`
+                  } else {
+                    if (next.phase !== "content")
+                      return yield* Effect.fail(
+                        fail(
+                          "STATE_CONFLICT",
+                          "Source synchronization must start with a frozen content input.",
+                        ),
+                      )
+                    yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},'dispatch',${payload},0)`
+                  }
+                  return
+                }
+                if (key.startsWith("operations/import-plan/")) {
+                  const next = yield* Effect.try({
+                    try: () =>
+                      Schema.decodeUnknownSync(ImportPlanSchema)(value, {
+                        onExcessProperty: "error",
+                      }),
+                    catch: () => fail("STATE_CORRUPT", "Invalid frozen import plan."),
+                  })
+                  const address = yield* digest(currentImportPlanAddressInput(next))
+                  if (
+                    key !== `operations/import-plan/${address}/plan.json` ||
+                    !preservesCurrentImportPlan(next, next)
+                  )
+                    return yield* Effect.fail(
+                      fail(
+                        "STATE_CONFLICT",
+                        "The import plan differs from its bound address or definition.",
+                      ),
+                    )
+                  yield* sql`UPDATE shared_local_records SET payload=payload WHERE key=${key} AND category='dispatch' AND retired=0`
+                  const rows = yield* sql<{
+                    payload: string
+                    category: string
+                    retired: number
+                  }>`SELECT payload,category,retired FROM shared_local_records WHERE key=${key}`
+                  const previous = rows[0]
+                  if (previous !== undefined) {
+                    const before = yield* parse(previous.payload)
+                    if (
+                      previous.category !== "dispatch" ||
+                      previous.retired !== 0 ||
+                      !preservesCurrentImportPlan(before, next)
+                    )
+                      return yield* Effect.fail(
+                        fail(
+                          "STATE_CONFLICT",
+                          "Frozen import input and completed progress cannot be replaced.",
+                          { key },
+                        ),
+                      )
+                    yield* sql`UPDATE shared_local_records SET payload=${payload} WHERE key=${key} AND category='dispatch' AND retired=0`
+                  } else {
+                    yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},'dispatch',${payload},0)`
+                  }
+                  return
+                }
+                if (key.startsWith("operations/library-init-pending/")) {
+                  const next = yield* Effect.try({
+                    try: () =>
+                      Schema.decodeUnknownSync(LibraryInitializationPendingSchema)(value, {
+                        onExcessProperty: "error",
+                      }),
+                    catch: () =>
+                      fail("STATE_CORRUPT", "Invalid unfinished library initialization."),
+                  })
+                  if (key !== `operations/library-init-pending/${next.scope}/pending.json`)
+                    return yield* Effect.fail(
+                      fail(
+                        "STATE_CONFLICT",
+                        "Initialization scope does not match its state address.",
+                      ),
+                    )
+                  yield* sql`UPDATE shared_local_records SET payload=payload WHERE key=${key} AND category='dispatch' AND retired=0`
+                  const rows = yield* sql<{
+                    payload: string
+                    category: string
+                    retired: number
+                  }>`SELECT payload,category,retired FROM shared_local_records WHERE key=${key}`
+                  const previous = rows[0]
+                  if (previous !== undefined) {
+                    const before = yield* Effect.try({
+                      try: () =>
+                        Schema.decodeUnknownSync(LibraryInitializationPendingSchema)(
+                          JSON.parse(previous.payload),
+                          { onExcessProperty: "error" },
+                        ),
+                      catch: () => fail("STATE_CORRUPT", "Invalid stored library initialization."),
+                    })
+                    if (
+                      previous.category !== "dispatch" ||
+                      previous.retired !== 0 ||
+                      !preservesLibraryInitialization(before, next)
+                    )
+                      return yield* Effect.fail(
+                        fail(
+                          "STATE_CONFLICT",
+                          "Unfinished initialization cannot replace its parent, operation or known table identities.",
+                          { key },
+                        ),
+                      )
+                    yield* sql`UPDATE shared_local_records SET payload=${payload} WHERE key=${key} AND category='dispatch' AND retired=0`
+                  } else
+                    yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},'dispatch',${payload},0)`
+                  return
+                }
                 if (key.startsWith("operations/current-write-pending/")) {
                   // Take the writer slot before comparing a predecessor. The compare
                   // and replacement are one SQLite transaction, never delete/insert.
@@ -661,6 +921,7 @@ export function sqliteState(
                           before?.version,
                           before?.scope,
                           before?.library_id,
+                          before?.library,
                           before?.record_id,
                           beforeIntent.owner,
                         ],
@@ -668,6 +929,7 @@ export function sqliteState(
                           after.version,
                           after.scope,
                           after.library_id,
+                          after.library,
                           after.record_id,
                           nextIntent.owner,
                         ],
@@ -698,6 +960,7 @@ export function sqliteState(
                         row.version,
                         row.scope,
                         row.library_id,
+                        currentIntentIdentity(row.library),
                         row.record_id,
                         currentIntentIdentity(row.intent),
                         row.completion,
@@ -767,7 +1030,7 @@ export function sqliteState(
               } else if (parts[0] === "snapshots")
                 yield* sql`INSERT INTO snapshots(id,scope,record_identity,locator,version_id,manifest) VALUES(${v.snapshot_id},${v.scope},${property(v.record).id},${json(property(v.record).locator)},${v.version_id},${json(value)}) ON CONFLICT(id) DO NOTHING`
               else if (parts[0] === "cache-generations")
-                yield* sql`INSERT INTO cache_fences(scope,identity,generation,retired_through) VALUES(${parts[1]},${parts[2]!.replace(/\.json$/, "")},${v.generation},${v.retired_through ?? 0}) ON CONFLICT(scope,identity) DO UPDATE SET generation=MAX(generation,excluded.generation),retired_through=MAX(retired_through,excluded.retired_through)`
+                yield* sql`INSERT INTO cache_fences(scope,identity,generation,retired_through) VALUES(${parts[1]},${identityFromSegment(parts[2]!.replace(/\.json$/, ""))},${v.generation},${v.retired_through ?? 0}) ON CONFLICT(scope,identity) DO UPDATE SET generation=MAX(generation,excluded.generation),retired_through=MAX(retired_through,excluded.retired_through)`
               else if (parts[0] === "cache" && parts[1] === "identities")
                 yield* sql`INSERT INTO identities(id,scope) VALUES(${parts[2]!.replace(/\.json$/, "")},${v.scope}) ON CONFLICT(id) DO UPDATE SET scope=excluded.scope`
               else if (
@@ -780,7 +1043,7 @@ export function sqliteState(
                     ? `catalog-${parts[3]!.replace(/\.json$/, "")}`
                     : parts[1] === "views"
                       ? `views-${parts[3]!.replace(/\.json$/, "")}`
-                      : parts[3]!
+                      : identityFromSegment(parts[3]!)
                 const fence = yield* sql<{
                   retired_through: number
                 }>`SELECT retired_through FROM cache_fences WHERE scope=${scope} AND identity=${identity}`
@@ -836,7 +1099,6 @@ export function sqliteState(
             Result: Schema.Struct({ key: Schema.String }),
             execute: () => sql`
       SELECT 'snapshots/'||id||'.json' AS key FROM snapshots UNION ALL
-      SELECT 'cache-generations/'||scope||'/'||identity||'.json' FROM cache_fences UNION ALL
       SELECT id FROM observations UNION ALL SELECT 'cache/catalogs/'||scope||'/'||selection||'.json' FROM catalogs UNION ALL
       SELECT 'cache/views/'||scope||'/'||selection||'.json' FROM view_observations UNION ALL
       SELECT 'cache/identities/'||id||'.json' FROM identities UNION ALL
@@ -844,8 +1106,16 @@ export function sqliteState(
       SELECT 'content-restrictions/local/'||sha256||'.json' FROM local_content_restrictions
     `,
           })(undefined)
-          return rows
-            .map((r) => r.key)
+          const fences = yield* sql<{
+            scope: string
+            identity: string
+          }>`SELECT scope,identity FROM cache_fences`
+          return [
+            ...rows.map((r) => r.key),
+            ...fences.map(
+              (row) => `cache-generations/${row.scope}/${identitySegment(row.identity)}.json`,
+            ),
+          ]
             .filter((key) => key.startsWith(prefix.replace(/\/$/, "") + "/"))
             .sort()
         }),
@@ -898,6 +1168,9 @@ export function sqliteState(
                   // Completion permits the next intent at the same address.
                   if (
                     key.startsWith("operations/shared-profile-pending/") ||
+                    key.startsWith("operations/current-source-sync/") ||
+                    key.startsWith("operations/current-source-sync-batch/") ||
+                    key.startsWith("operations/library-init-pending/") ||
                     key.startsWith("operations/current-write-pending/")
                   )
                     yield* sql`DELETE FROM shared_local_records WHERE key=${key} AND category='dispatch'`
@@ -920,7 +1193,7 @@ export function sqliteState(
                       ? `catalog-${p[3]!.replace(/\.json$/, "")}`
                       : p[1] === "views"
                         ? `views-${p[3]!.replace(/\.json$/, "")}`
-                        : p[3]!
+                        : identityFromSegment(p[3]!)
                   yield* sql`UPDATE cache_fences SET retired_through=generation WHERE scope=${p[2]} AND identity=${identity}`
                   if (p[1] === "latest") {
                     // Clearing disposable content eligibility cannot grant access.
@@ -946,13 +1219,19 @@ export function sqliteState(
               }
               return keys.map((key) => ({
                 key,
-                retention_path: key.startsWith("operations/current-write-pending/")
-                  ? "sqlite_current_write_cleared"
-                  : key.startsWith("operations/shared-profile-pending/")
-                    ? "sqlite_current_profile_cleared"
-                    : sharedLocalCategory(key) === "dispatch"
-                      ? "sqlite_shared_dispatch_retirement"
-                      : "sqlite_observation_retirement",
+                retention_path: key.startsWith("operations/current-source-sync-batch/")
+                  ? "sqlite_current_source_sync_batch_cleared"
+                  : key.startsWith("operations/current-source-sync/")
+                    ? "sqlite_current_source_sync_cleared"
+                    : key.startsWith("operations/library-init-pending/")
+                      ? "sqlite_library_initialization_cleared"
+                      : key.startsWith("operations/current-write-pending/")
+                        ? "sqlite_current_write_cleared"
+                        : key.startsWith("operations/shared-profile-pending/")
+                          ? "sqlite_current_profile_cleared"
+                          : sharedLocalCategory(key) === "dispatch"
+                            ? "sqlite_shared_dispatch_retirement"
+                            : "sqlite_observation_retirement",
               }))
             }),
           )
@@ -967,7 +1246,7 @@ export function sqliteState(
             payload: string
             retired: number
             admitted_at: number | null
-          }>`SELECT r.key,r.payload,r.retired,a.admitted_at FROM shared_local_records r LEFT JOIN cache_admissions a ON a.key=r.key WHERE category='cache' AND (r.key LIKE 'cache/shared-github-blobs/%' OR r.key LIKE 'cache/shared-derived-graphs/%') ORDER BY r.key`
+          }>`SELECT r.key,r.payload,r.retired,a.admitted_at FROM shared_local_records r LEFT JOIN cache_admissions a ON a.key=r.key WHERE category='cache' AND (r.key LIKE 'cache/shared-github-blobs/%' OR r.key LIKE 'cache/shared-derived-graphs/%' OR r.key LIKE 'cache/current-source-sync/%') ORDER BY r.key`
         }),
       )
     const reclaimDerived = (

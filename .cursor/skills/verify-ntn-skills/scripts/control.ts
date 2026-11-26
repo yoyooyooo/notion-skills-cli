@@ -24,7 +24,7 @@ const { values, positionals } = parseArgs({
     help: { type: "boolean", short: "h" },
     live: { type: "boolean" },
     run: { type: "string" },
-    database: { type: "string" },
+    library: { type: "string" },
     stage: { type: "string" },
     parent: { type: "string" },
   },
@@ -355,7 +355,7 @@ async function main() {
             live: await cli([
               "ctl",
               "doctor",
-              ...(values.database ? ["--database", values.database] : []),
+              ...(values.library ? ["--library", values.library] : []),
             ]),
           }
         : {}),

@@ -10,7 +10,7 @@ import {
 } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
-import { sharedRecordFromPage, sharedSkillId } from "./shared-content.ts"
+import { sharedRecordFromPage, skillIdentity } from "./shared-content.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import type { CompleteSharedMetadataInventory } from "./shared-metadata-inventory.ts"
 
@@ -157,7 +157,7 @@ export function selectedSkillsFromInventory(
 function querySkillClaims(library: SharedLibrary, stableIds: readonly string[]) {
   return Effect.gen(function* () {
     yield* checked(() => {
-      for (const id of stableIds) sharedSkillId(library.library_id, id)
+      for (const id of stableIds) skillIdentity(library.library_id, id)
     })
     const api = yield* Notion
     const query = new URLSearchParams()
@@ -278,7 +278,7 @@ function querySkillClaims(library: SharedLibrary, stableIds: readonly string[]) 
 /** Resolve a stable identity inside an already verified library, without global discovery. */
 export function querySelectedSkillIdentity(library: SharedLibrary, skillId: string) {
   return Effect.gen(function* () {
-    const id = yield* checked(() => sharedSkillId(library.library_id, skillId))
+    const id = yield* checked(() => skillIdentity(library.library_id, skillId))
     const { claims, observations } = yield* querySkillClaims(library, [skillId])
     const pages = claims.get(id)
     if (pages === undefined || pages.size === 0)
@@ -297,7 +297,7 @@ export function querySelectedSkillIdentity(library: SharedLibrary, skillId: stri
 
 /** Fetch only requested physical targets, then exhaust exact stable-ID claim queries.
  * Disabled claims participate. Neither a partial page set nor a filtered list is complete inventory. */
-export function querySelectedSkillMetadata(
+export function querySelectedSkillMetadataWithClaims(
   library: SharedLibrary,
   ids: readonly string[],
   seeds: readonly unknown[] = [],
@@ -352,13 +352,25 @@ export function querySelectedSkillMetadata(
         )
       targets.set(id, target)
     }
-    if (targets.size === 0) return targets
-    const { claims } = yield* querySkillClaims(library, [
+    if (targets.size === 0)
+      return { targets, observations: new Map<string, SelectedSharedSkillMetadata>() }
+    const { claims, observations } = yield* querySkillClaims(library, [
       ...new Set([...targets.values()].map((target) => target.record.locator.skill_id)),
     ])
     yield* checked(() => {
       for (const target of targets.values()) assertUnique(target, claims)
     })
-    return targets
+    return { targets, observations }
   })
+}
+
+/** Existing consumers select exact targets; discovery can also retain newer claim observations. */
+export function querySelectedSkillMetadata(
+  library: SharedLibrary,
+  ids: readonly string[],
+  seeds: readonly unknown[] = [],
+) {
+  return querySelectedSkillMetadataWithClaims(library, ids, seeds).pipe(
+    Effect.map((value) => value.targets),
+  )
 }

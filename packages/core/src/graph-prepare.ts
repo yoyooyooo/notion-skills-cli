@@ -55,11 +55,7 @@ const rolesWith = (roles: readonly PrepareRole[], role: PrepareRole) =>
 const selectorKey = (selector: string) => pageId(selector) ?? selector
 const exactTarget = (input: string) => {
   const target = parseTarget(input)
-  if (
-    !target.snapshot &&
-    !pageId(target.selector) &&
-    !/^shared_skill:[^:]+:.+$/u.test(target.selector)
-  )
+  if (target.kind === "skill" && target.reference.scope.kind !== "library")
     throw fail(
       "EXACT_TARGET_REQUIRED",
       "Preparation requires an exact content ID, page URL or pinned ref.",
@@ -111,7 +107,7 @@ export function prepareGraph(
 export function prepareGraphWithSnapshots(
   inputValue: PrepareInput,
   options: ConsumptionObservationOptions & {
-    readonly database?: string
+    readonly library?: string
     readonly execution?: PrepareExecutionOptions
     readonly metrics?: boolean
   } = {},
@@ -155,7 +151,7 @@ export function prepareGraphWithSnapshots(
     }
     return yield* withPrepareExecution(
       prepareSelected(input, targets, budget, {
-        database: options.database,
+        library: options.library,
         metrics: options.metrics,
         startedAt,
       }).pipe(Effect.provideService(Notion, selectedApi)),
@@ -174,7 +170,7 @@ function prepareSelected(
   targets: readonly string[],
   budget: PrepareReady["budget"],
   options: {
-    readonly database?: string
+    readonly library?: string
     readonly metrics?: boolean
     readonly startedAt: number
   },
@@ -216,7 +212,7 @@ function prepareSelectedInScope(
   targets: readonly string[],
   budget: PrepareReady["budget"],
   options: {
-    readonly database?: string
+    readonly library?: string
     readonly metrics?: boolean
     readonly startedAt: number
   },
@@ -310,10 +306,7 @@ function prepareSelectedInScope(
       if (owner === undefined) return undefined
       const record = snapshots.get(owner)?.record ?? session.get(owner)?.record
       return record !== undefined &&
-        (target.selector === "" ||
-          [record.name, record.alias, ...recordSelectors(record)].includes(
-            selectorKey(target.selector),
-          ))
+        (target.selector === "" || recordSelectors(record).includes(selectorKey(target.selector)))
         ? owner
         : undefined
     }
@@ -342,7 +335,7 @@ function prepareSelectedInScope(
         const previous = nodes.get(denied.page_id)
         nodes.set(denied.page_id, {
           id: denied.page_id,
-          ref: fileRef(denied.page_id, ""),
+          ref: `https://www.notion.so/${denied.page_id.replaceAll("-", "")}`,
           roles: rolesWith(
             previous?.roles ?? [],
             denied.field === "Requires" ? "required" : "member",
@@ -380,11 +373,9 @@ function prepareSelectedInScope(
         const selected: SkillTarget =
           previousBinding === undefined
             ? target
-            : {
-                ...target,
-                selector: previousBinding.record.id,
-                snapshot: previousBinding.snapshot_id,
-              }
+            : parseTarget(
+                fileRef(previousBinding.record.id, target.path ?? "", previousBinding.snapshot_id),
+              )
         const cycle = id === undefined ? -1 : stack.indexOf(id)
         if (cycle >= 0)
           return yield* Effect.fail(
@@ -477,14 +468,8 @@ function prepareSelectedInScope(
               { id, kind: record.kind, path: [...stack, id] },
             ),
           )
-        const selectedPath =
-          target.file_id === undefined
-            ? target.path
-            : snapshot.file_bindings?.find((binding) => binding.file_id === target.file_id)?.path
-        if (
-          (target.file_id !== undefined && selectedPath === undefined) ||
-          (selectedPath && selectedPath !== snapshot.entrypoint)
-        )
+        const selectedPath = target.path
+        if (selectedPath && selectedPath !== snapshot.entrypoint)
           return yield* Effect.fail(
             fail(
               "PREPARE_ROOT_NOT_MAIN",
@@ -528,13 +513,7 @@ function prepareSelectedInScope(
               throw fail("BINARY_FILE", "A prepared main instruction must be UTF-8 text.", { id })
             }
           })
-          const ref = fileRef(
-            id,
-            snapshot.entrypoint,
-            snapshot.snapshot_id,
-            snapshot.file_bindings?.find((binding) => binding.path === snapshot!.entrypoint)
-              ?.file_id,
-          )
+          const ref = fileRef(id, snapshot.entrypoint, snapshot.snapshot_id)
           const binding: PrepareBinding = {
             record,
             scope,

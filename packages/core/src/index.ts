@@ -12,16 +12,25 @@ export {
 } from "./store.ts"
 export {
   authScope,
-  databaseId,
+  libraryId,
+  selectedLibraryId,
   explicitSource,
-  discoverDatabases,
-  setDefaultDatabase,
+  discoverLibraries,
+  setDefaultLibrary,
   catalog,
   type CatalogOptions,
 } from "./catalog.ts"
 export { listViews, type ViewOptions } from "./views.ts"
 export { resolveCatalogReference } from "./catalog-reference.ts"
-export { openSkill, readSkill, listSkill, resolveSkillRef, type ReadOptions } from "./snapshot.ts"
+export {
+  openSkill,
+  readSkill,
+  listSkill,
+  resolveSkillRef,
+  resolveReference,
+  type ReadOptions,
+  type ResolveReferenceOptions,
+} from "./snapshot.ts"
 export { prepareGraph } from "./graph-prepare.ts"
 export { consume, type ConsumeOptions } from "./consumer.ts"
 export { exportSkill, exportPortable, snapshotPortable, type ExportOptions } from "./export.ts"
@@ -43,3 +52,5 @@ export {
   type BuiltinSkill,
 } from "./builtin.ts"
 export { builtinStatus, installBuiltin, updateBuiltin } from "./builtin-install.ts"
+
+export { resolveLibrary } from "./shared-library.ts"

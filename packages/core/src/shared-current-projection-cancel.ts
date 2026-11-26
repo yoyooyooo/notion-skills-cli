@@ -40,7 +40,11 @@ export type CurrentSkillProjectionCancellationOptions = {
 export type CurrentSkillProjectionCancellationResult = {
   readonly version: 1
   readonly contract: "current"
-  readonly library: { readonly library_id: string; readonly entry: string }
+  readonly library: {
+    readonly library_id: string
+    readonly database_id: string
+    readonly data_source_id: string
+  }
   readonly skill_id: string
   readonly page_id: string
   readonly operation_id: string
@@ -91,7 +95,11 @@ export function cancelCurrentSkillProjection(
     ): CurrentSkillProjectionCancellationResult => ({
       version: 1,
       contract: "current",
-      library: { library_id: library.library_id, entry: library.skills.database_id },
+      library: {
+        library_id: library.library_id,
+        database_id: library.skills.database_id,
+        data_source_id: library.skills.data_source_id,
+      },
       skill_id: index.skill_id,
       page_id: index.page_id,
       operation_id: input.operation_id,
@@ -176,6 +184,7 @@ export function cancelCurrentSkillProjection(
             const plan = yield* checked(() =>
               renderCurrentProjection({
                 path: file.path,
+                role: file.path === index.main.path ? "main" : "supporting",
                 bytes: prepared.bytes,
                 rewriteLink: currentProjectionLinkRewriter(
                   file.path,

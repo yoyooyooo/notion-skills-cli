@@ -1,6 +1,6 @@
 # 当前验证合同与证据
 
-当前主线是 [AH-1188](https://linear.app/yoyooyooo/issue/AH-1188)，本入口由 [AH-1189](https://linear.app/yoyooyooo/issue/AH-1189) 维护。
+本入口维护当前实现的验证责任、场景与证据边界。具体交付进展和原始运行结果保留在对应 Issue/PR，不作为本合同的常量。
 [skill-domains.json](../verification/skill-domains.json) 是合同、领域 owner 和场景的唯一索引；它不是运行成绩册。
 先按改动读取对应合同及场景，再沿既有 Skill 执行最小完整范围。当前目标行为与实际实现结果分开，尚未运行的边界保持 not_run。
 
@@ -8,16 +8,16 @@
 
 | 合同 | 主要状态/验证 owner | 必须独立观察 |
 | --- | --- | --- |
-| C01–C04 | Broker consumer-state；AH-1191/1192 | 固定选择、准备、有效正文、provider 接受与后续 turn |
-| C05 | Broker consumer-state；AH-1193 | View 成员、精确资格、旧完整任务、显式 current |
-| C06 | CLI management；AH-1194 | 内容 authority/readiness、完整树与独立阅读投影 |
-| C07a | CLI consumption；AH-1190 | Store generation、clear、迟到发布及新 deny |
-| C07b | CLI operation-recovery；AH-1194 | unknown/partial、原意图恢复及有限退役 |
-| C07c | Broker consumer-state；AH-1191 | scope/epoch、fork、取消与迟到交付 |
-| C08 | Broker verify-notion-agent-workflows；AH-1196 | 自然任务结果、实际正文、工具必要性 |
-| C09 | CLI consumption；AH-503 | 共享获取、预算、取消、实际等待与完整性 |
-| C10 | Broker integration；AH-1197、AH-637 | 每机源码→产物→实际加载→新 Pi；后续同步 |
-| C11 | CLI verify-ntn-skills；AH-1189 | 合同→场景→运行→候选/加载→原件 |
+| C01–C04 | Broker consumer-state | 固定选择、准备、有效正文、provider 接受与后续 turn |
+| C05 | Broker consumer-state | View 成员、精确资格、旧完整任务、显式 current |
+| C06 | CLI management | 内容 authority/readiness、完整树与独立阅读投影 |
+| C07a | CLI consumption | Store generation、clear、迟到发布及新 deny |
+| C07b | CLI operation-recovery | unknown/partial、原意图恢复及有限退役 |
+| C07c | Broker consumer-state | scope/epoch、fork、取消与迟到交付 |
+| C08 | Broker verify-notion-agent-workflows | 自然任务结果、实际正文、工具必要性 |
+| C09 | CLI consumption | 共享获取、预算、取消、实际等待与完整性 |
+| C10 | Broker integration | 每机源码→产物→实际加载→新 Pi；后续同步 |
+| C11 | CLI verify-ntn-skills | 合同→场景→运行→候选/加载→原件 |
 
 C07 的总索引由 consumption 维护，三个状态子合同各有唯一 owner。
 resource-lifecycle 拥有 CLI 当前生命周期模型；operation-recovery 拥有实际管理恢复回放，两者互相引用，不重复 writer。
@@ -26,7 +26,7 @@ resource-lifecycle 拥有 CLI 当前生命周期模型；operation-recovery 拥�
 ## 场景选择
 
 索引保留审计 T01–T15 的危险时序，并增加 T16 主动采用、T17 查看不采用、T18 连续三轮恢复故障、
-T19 开关四组合、T20 多根共享 Requires、T21 两机持续同步、T22 本地充分负例及 T23 结果失败传播。
+T19 开关四组合、T20 多根共享 Requires、T21 两机持续同步、T22 本地充分负例、T23 结果失败传播及 T24 双库选择、引用与原操作续接。
 每行含前置状态、事件顺序、oracle、owner、入口、最低执行层及是否仍需 live 抽查。
 
 每个入口同时列 command 和 required_inputs。命令里的 `/absolute/owned/` 是待替换的自有路径，
@@ -37,11 +37,15 @@ candidate 是项目级检查，不能替代 Pro/Mini 的普通日用入口；候
 
 自然用户旅程由 Broker 的 verify-notion-agent-workflows 负责，复用 candidate-plan/candidate-run。长期语料在 scripts/notion-agent-scenarios.json；本轮对象绑定和原件分别保存，T编号仍归本索引。日常主环境不带 -ns；对照仅关闭默认原生发现，Broker local仍可能存在。两者正式模型均为 magpie/group/worker。有限事件在同进程轮间等待真实写入与读回完成，恢复/分叉/compact使用Pi公开入口。
 
+T24 分别运行双库管理与消费、跨库完整引用、原 Source 操作续接三条旅程。使用同一凭据下两个不同的 Library 根页，保留同名对象、原 Store 和操作身份；各旅程只证明其实际运行的切片。切换默认库不能改写已采用的任务或完整引用，控制端不能替模型恢复写入，也不能用 T22 的本地充分负例替代双库证明。
+
 不要遍历全部笛卡尔积。精确 TTL、24 小时 body 期限、publication/取消等使用受控时钟和 barrier；
 真实 Pi 执行代表性时序并核实际 payload。增加失败缩减后，更新原场景和所属实现回归，不按 bug 新建 Skill。
 已有命令是入口，不表示该场景已通过；新增合同的生产反例及当前修复需取得新结果。
 
 - 固定 A 与 current B 分开。目录刷新和 TTL 不偷偷升级任务；明确采用 B 才提交新完整选择。
+  仅修改名称、描述或 Default Context 时，内容 version 保持不变，opaque snapshot 身份绑定每次完整 record。
+  A→B→C 后须跨独立进程和 cache clear 验证三个原绑定；伪造 record 仍拒绝，真实正文编辑才生成新内容 version。
 - Default Context 随实际选定 View 决定默认候选，不自动注入正文、授予权限或 release。
   新 current 按 Enabled/授权判断；已完整旧任务、精确缺字节补取和授权拒绝各有不同边界。
   metadata 缺行不能推导精确 deny，重新启用需可信 fresh use 或新 metadata 观察。
@@ -58,6 +62,9 @@ candidate 是项目级检查，不能替代 Pro/Mini 的普通日用入口；候
 - 当前 Source 声明与稀疏阅读投影分开；脚本、测试、二进制和 mode 仍属于完整消费树。
 - 内容 Operation 与独立 projection intent 是两条状态轴。projection pending 不将内容 owner 改为 applying，
   也不能在结束时把另一个 writer 的 unready owner 改回 ready。
+  Native inline 校正属于原内容 intent：先绑定完整 Markdown 与实际块，只修正原普通文本新增的链接或精确匹配的有效 Skill 超链接丢失，再做原严格全文比较。
+  Skill 超链接的原生传输只允许可逆的中性路径对；完整 Skill、Library、路径和 snapshot 语义必须相同。默认入口不替换为 SKILL.md，代码/普通文字/图片目标不归一化。
+  原输入与 Markdown 请求身份不变；校正 ACK 丢失后须先观察原精确块，不能盲目重放或用中间结构阶段标记 ready。
 
 ## 结果回执
 
@@ -101,10 +108,9 @@ receipt-valid 只表示结构有效，不等于底层通过；缺字段、fixtur
 
 ## 当前与历史
 
-AH-500/560/639/871/1063 是各自版本的历史证据，不能成为当前两机默认通过。
-后续 AH-501/AH-1141 的真实 Pro 目录、冷读、SDK 与公开 cancel 结果按准确配对和范围复用；
-不把已收敛的两个旧 pending 继续报为现场阻塞，也不由它们推导长会话已通过。
-最终真实运行由 AH-1198 汇总，Mini 独立验收沿 AH-637；OMP/Tern 仍在 AH-272。
+历史结果只覆盖其原始版本、输入、安装与实际观察层。复用证据时先核对候选和受影响边界；
+不能由一次局部通过推导两机默认入口、长会话或未运行的宿主已通过。原失败、未知结果与
+未执行项继续保留，后续修复通过另记新运行。OMP/Tern 等其他宿主各自验收。
 
 当前已退役的 ACK/review/completion、永久历史 pin、旧工具和旧 reader 不恢复。
 有限清退完成后删一次性运行入口，静态失败证据保留。当前精确恢复、有界重试和能力降级沿唯一实现继续验证。

@@ -175,8 +175,8 @@ test("native mentions, page links and observed Link to page produce exact scoped
     availability: "metadata_only",
   })
   expect(parseRef(resource.ref)).toMatchObject({
-    selector: "shared_skill:library-current:stable-other",
-    file_id: "stable-resource",
+    skillId: "stable-other",
+    scope: { kind: "library", libraryId: "00000000-0000-4000-8000-000000000002" },
   })
   expect(f.calls).toEqual(["v1/blocks/" + skillPage + "/children?page_size=100"])
   const rendered = materializeSharedNativeFile(
@@ -273,10 +273,13 @@ test("the same File ID in distinct owners resolves each real page to its exact o
   expect(own.file_id).toBe(other.file_id)
   expect(own.skill_page_id).toBe(skillPage)
   expect(other.skill_page_id).toBe(id(21))
-  expect(parseRef(own.ref)).toMatchObject({ selector: f.record.id, file_id: f.ownFile.file_id })
+  expect(parseRef(own.ref)).toMatchObject({
+    skillId: f.record.locator.skill_id,
+    scope: { kind: "library", libraryId: library.library_id },
+  })
   expect(parseRef(other.ref)).toMatchObject({
-    selector: "shared_skill:library-current:stable-other",
-    file_id: f.ownFile.file_id,
+    skillId: "stable-other",
+    scope: { kind: "library", libraryId: "00000000-0000-4000-8000-000000000002" },
   })
   expect(own.id).not.toBe(other.id)
   expect(f.calls).toEqual([])
@@ -367,7 +370,7 @@ test("disabled targets stay a metadata directory entry without activating or rea
   const result = await f.compile("[skill](" + url(id(21)) + ")")
   expect(result.index?.entries[0]?.availability).toBe("disabled")
   expect(result.index?.entries[0]?.ref).toBe(
-    fileRef("shared_skill:library-current:stable-other", "SKILL.md"),
+    fileRef("skill://stable-other?library=00000000-0000-4000-8000-000000000002", "SKILL.md"),
   )
   expect(f.calls).toHaveLength(0)
 })

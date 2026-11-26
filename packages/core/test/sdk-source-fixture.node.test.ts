@@ -17,16 +17,37 @@ function sample() {
   return {
     notion: {
       library: {
+        version: 2,
+        library_id: "library-root",
+        operation_id: "library-independent-fixture",
         skills: { database_id: "skills-db", data_source_id: "skills" },
-        files: { data_source_id: "files" },
-        records: { data_source_id: "records" },
-        sources: { data_source_id: "sources" },
+        files: { database_id: "files-db", data_source_id: "files" },
+        records: { database_id: "records-db", data_source_id: "records" },
+        sources: { database_id: "sources-db", data_source_id: "sources" },
       },
       main,
       skills: [main],
       refreshed_main: refreshed,
       refreshed_skills: [refreshed],
-      database: { id: "skills-db" },
+      root: { object: "page", id: "library-root", parent: { type: "page_id", page_id: "outer" } },
+      root_children: ["skills", "files", "records", "sources"].map((role) => ({
+        object: "block",
+        id: role + "-db",
+        type: "child_database",
+        child_database: { title: role },
+      })),
+      databases: ["skills", "files", "records", "sources"].map((role) => ({
+        object: "database",
+        id: role + "-db",
+        parent: { type: "page_id", page_id: "library-root" },
+        data_sources: [{ id: role }],
+      })),
+      data_sources: ["skills", "files", "records", "sources"].map((role) => ({
+        object: "data_source",
+        id: role,
+        parent: { type: "database_id", database_id: role + "-db" },
+        properties: {},
+      })),
       files: [],
       records: [],
       sources: [],
@@ -121,6 +142,21 @@ test("Source contribution contains queries return complete candidates with norma
   } finally {
     await source.close()
   }
+})
+
+test("schema routes retain independent physical facts when a descriptor claim changes", async () => {
+  await withSource(async (source) => {
+    source.notion.library.library_id = "copied-descriptor-root"
+    source.notion.library.skills.database_id = "replacement-skills-db"
+    const root = await (await fetch(source.origin + "/v1/pages/library-root")).json()
+    const database = await (await fetch(source.origin + "/v1/databases/skills-db")).json()
+    const dataSource = await (await fetch(source.origin + "/v1/data_sources/skills")).json()
+    expect(root).toMatchObject({ id: "library-root", parent: { page_id: "outer" } })
+    expect(database).toMatchObject({ id: "skills-db", parent: { page_id: "library-root" } })
+    expect(dataSource).toMatchObject({ id: "skills", parent: { database_id: "skills-db" } })
+    await settled(source, 3)
+    expect(source.unexpected).toEqual([])
+  })
 })
 
 test("complete responses bind actual bytes, phases, View metadata and fixed 401/403 routes", async () => {

@@ -2,24 +2,28 @@ import { mkdir, readdir, writeFile } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
 import ts from "typescript"
 
-/** Emit declarations from the actual schemas, then retain the SDK's declaration closure. */
+/** Emit declarations from the actual schemas, then retain the public SDK, management and reference closures. */
 export async function buildDeclarations(root: string, target: string) {
   const outDir = join(target, "dist/types")
-  const program = ts.createProgram([join(root, "packages/cli/src/sdk.ts")], {
-    target: ts.ScriptTarget.ES2023,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    strict: true,
-    skipLibCheck: true,
-    allowImportingTsExtensions: true,
-    resolveJsonModule: true,
-    types: ["bun"],
-    noUncheckedIndexedAccess: true,
-    declaration: true,
-    emitDeclarationOnly: true,
-    rootDir: join(root, "packages"),
-    outDir,
-  })
+  const entries = ["sdk", "management"]
+  const program = ts.createProgram(
+    entries.map((name) => join(root, `packages/cli/src/${name}.ts`)),
+    {
+      target: ts.ScriptTarget.ES2023,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      strict: true,
+      skipLibCheck: true,
+      allowImportingTsExtensions: true,
+      resolveJsonModule: true,
+      types: ["bun"],
+      noUncheckedIndexedAccess: true,
+      declaration: true,
+      emitDeclarationOnly: true,
+      rootDir: join(root, "packages"),
+      outDir,
+    },
+  )
   const emitted = new Map<string, string>()
   const result = program.emit(undefined, (path, text) => emitted.set(path, text))
   const errors = [...ts.getPreEmitDiagnostics(program), ...result.diagnostics]
@@ -32,7 +36,10 @@ export async function buildDeclarations(root: string, target: string) {
         getNewLine: () => "\n",
       }),
     )
-  const pending = [join(outDir, "cli/src/sdk.d.ts")]
+  const pending = [
+    ...entries.map((name) => join(outDir, `cli/src/${name}.d.ts`)),
+    join(outDir, "core/src/skill-ref.d.ts"),
+  ]
   const declarations = new Map<string, string>()
   while (pending.length) {
     const path = pending.pop()!

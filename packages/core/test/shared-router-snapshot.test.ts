@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
-import { property, text } from "../src/model.ts"
+import { decode, property, SnapshotSchema, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
-import { parseTarget } from "../src/ref.ts"
+import { fileRef, parseTarget } from "../src/ref.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { targetSnapshot } from "../src/snapshot.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
 import { Store } from "../src/store.ts"
 import {
   currentDigest as digest,
@@ -90,6 +91,14 @@ function routerFixture(registered = true) {
                   next_cursor: null,
                 })
               }
+              if (endpoint === `v1/data_sources/${library.skills.data_source_id}`)
+                return api.request(path, body, options).pipe(
+                  Effect.map((raw) => {
+                    const value = structuredClone(property(raw))
+                    property(property(value.properties).Members).id = "members%3A"
+                    return value
+                  }),
+                )
               if (endpoint === `v1/databases/${library.skills.database_id}`)
                 return api.request(path, body, options).pipe(
                   Effect.map((raw) => ({
@@ -104,9 +113,7 @@ function routerFixture(registered = true) {
       }),
     )
   const target = (options: Parameters<typeof targetSnapshot>[1] = {}) =>
-    run(
-      targetSnapshot(parseTarget(skillPage), { database: library.skills.database_id, ...options }),
-    )
+    run(targetSnapshot(parseTarget(skillPage), { library: library.library_id, ...options }))
   return { ...f, member, run, target }
 }
 
@@ -127,7 +134,9 @@ describe("shared Router snapshot integration", () => {
     const snapshot = await f.target()
     expect(snapshot.entrypoint).toBe("ROUTER.md")
     expect(snapshot.router_members).toHaveLength(1)
-    expect(snapshot.router_members?.[0]?.id).toBe("shared_skill:library-current:router-member")
+    expect(snapshot.router_members?.[0]?.id).toBe(
+      "skill://router-member?library=00000000-0000-4000-8000-000000000002",
+    )
     expect(snapshot.router_members?.[0]?.metadata).toMatchObject({
       name: "Lazy member",
       description: "First member description",
@@ -167,7 +176,7 @@ describe("shared Router snapshot integration", () => {
     expect(f.json.get(`snapshots/${first.snapshot_id}.json`)).toEqual(original)
     f.clearCalls()
     const pinned = await f.run(
-      targetSnapshot({ selector: skillPage, path: "ROUTER.md", snapshot: first.snapshot_id }),
+      targetSnapshot(parseTarget(fileRef(first.record.id, "ROUTER.md", first.snapshot_id))),
     )
     expect(pinned.router_members?.[0]?.metadata).toMatchObject({
       description: "First member description",
@@ -177,10 +186,11 @@ describe("shared Router snapshot integration", () => {
 
   test("missing registered Members fails current admission before body observation or writes", async () => {
     const f = routerFixture(false)
+    const initial = [...f.json.entries()]
     await expect(f.target()).rejects.toMatchObject({ code: "CURRENT_SCHEMA_REQUIRED" })
     expect(f.bodyCalls().length).toBe(0)
     expect(f.semanticWrites().length).toBe(0)
-    expect(f.json.size).toBe(0)
+    expect([...f.json.entries()]).toEqual(initial)
   })
 
   test("an explicitly disabled member cannot produce a shortened successful Router", async () => {
@@ -194,22 +204,24 @@ describe("shared Router snapshot integration", () => {
   test("a damaged current Router directory cannot be used offline and is reselected online", async () => {
     const f = routerFixture()
     const first = await f.target()
-    const legacy = property(structuredClone(f.json.get(`snapshots/${first.snapshot_id}.json`)))
-    delete legacy.router_members
-    legacy.version_id = digest("legacy-router-version")
-    legacy.snapshot_id = `s_${digest(JSON.stringify([legacy.scope, property(legacy.record).id, legacy.version_id]))}`
-    const legacyId = String(legacy.snapshot_id)
-    f.json.set(`snapshots/${legacyId}.json`, legacy)
+    const damaged = {
+      ...decode(SnapshotSchema, f.json.get(`snapshots/${first.snapshot_id}.json`)),
+      router_members: undefined,
+      version_id: digest("damaged-router-version"),
+    }
+    damaged.snapshot_id = `s_${digest(selectionSnapshotIdentityInput(damaged))}`
+    const damagedId = damaged.snapshot_id
+    f.json.set(`snapshots/${damagedId}.json`, damaged)
     for (const [key, value] of f.json)
       if (key.startsWith("cache/latest/")) {
-        property(value).snapshot_id = legacyId
-        property(value).version_id = legacy.version_id
-        property(value).current_snapshot = legacy
+        property(value).snapshot_id = damagedId
+        property(value).version_id = damaged.version_id
+        property(value).current_snapshot = damaged
       }
     f.clearCalls()
     await expect(f.target({ offline: true })).rejects.toThrow("no frozen Members index")
     await expect(
-      f.run(targetSnapshot({ selector: skillPage, path: "ROUTER.md", snapshot: legacyId })),
+      f.run(targetSnapshot(parseTarget(fileRef(first.record.id, "ROUTER.md", damagedId)))),
     ).rejects.toThrow("no frozen Members index")
     expect(f.calls).toHaveLength(0)
     const refreshed = await f.target()
@@ -218,6 +230,6 @@ describe("shared Router snapshot integration", () => {
     expect(f.calls.length).toBeGreaterThan(0)
     expect(f.bodyCalls().length).toBe(0)
     expect(f.semanticWrites().length).toBe(0)
-    expect(property(f.json.get(`snapshots/${legacyId}.json`)).router_members).toBeUndefined()
+    expect(property(f.json.get(`snapshots/${damagedId}.json`)).router_members).toBeUndefined()
   })
 })

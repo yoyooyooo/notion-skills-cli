@@ -62,7 +62,7 @@ function schemaFixture(library = relatedLibrary) {
               if (path === `v1/databases/${library.skills.database_id}`)
                 return Effect.succeed({
                   id: library.skills.database_id,
-                  parent: { page_id: library.parent_page_id },
+                  parent: { page_id: library.library_id },
                   data_sources: [{ id: library.skills.data_source_id }],
                   in_trash: false,
                 })

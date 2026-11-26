@@ -30,7 +30,7 @@ bun test packages/core/test/shared-current-projection-write.test.ts --timeout 60
 ## Drive
 
 1. 完整相等的输入只读观察，确认没有 Operation、owner 状态或正文写入。首个必要 mutation 才创建当前意图。
-2. CREATE/append 已发出但响应丢失时，用 `ctl library import INPUT --entry DB --skill-id ID --operation ID --resume` 重传相同完整输入。实际当前结果满足同一动作才继续，不能因一次查询没有结果重发非幂等请求。
+2. CREATE/append 已发出但响应丢失时，用 `ctl library import INPUT --library LIBRARY_ID --skill-id ID --operation ID --resume` 重传相同完整输入。实际当前结果满足同一动作才继续，不能因一次查询没有结果重发非幂等请求。
 3. 幂等属性替换或归档，只在同一冻结意图、显式 resume 和当前 owner 校验下重试。若 append 只落了一部分，保留 pending 并拒绝盲目重放；明确报告未自动收敛。
 4. Files 或 Resource 已归档却丢 ACK，完整目录查询中已没有该行。通过在途动作的 exact page 核对归档状态，再收敛，不能丢掉这个动作或新建替代行。
 5. 当前内容写入的 applying/attention 阻止普通消费在正文前继续。最后核完整目录和当前字节，发布 ready 并清 Operation，然后退役远端意图、删除本地 pending。Projection 意图保持真实 Skill ready，正文渲染失败不应阻断原有消费。不要先删恢复指针。
@@ -43,7 +43,7 @@ bun test packages/core/test/shared-current-projection-write.test.ts --timeout 60
 
 Notion 属性和本地 mutex 不提供跨机器 CAS。显式 supersede 不能撤回已经发出的请求；未知 CREATE 以后仍可能出现，观察到重复身份就拒绝。当前结果满足意图并不恢复原请求的网络 ACK，也不需要永久证据链或长期墓碑。
 
-用 `ctl library operation OWNER_ID --kind skill|source --entry ENTRY` 只读查看当前意图及物理定位。没有可见意图不等于 owner ready。Source 连续 supersede 时，若当前父尚未接走祖父的 child，下一轮必须在父首次写前拒绝并指回现父 resume；已接走则可用新的完整目标继续，不保留历史链。
+用 `ctl library operation OWNER_ID --kind skill|source --library LIBRARY_ID` 只读查看当前意图及物理定位。没有可见意图不等于 owner ready。Source 连续 supersede 时，若当前父尚未接走祖父的 child，下一轮必须在父首次写前拒绝并指回现父 resume；已接走则可用新的完整目标继续，不保留历史链。
 
 Projection 的修改复用 `shared-current-projection-write.test.ts` 和 CLI 对应测试。
 普通单项/daily 命令重跑时，只在同目标、有效 policy 和完整输入 hash 一致时
@@ -58,7 +58,7 @@ Include 空仍保主文与全部 Notion-owned 文件，Exclude 空不排目录�
 ### 同页 Trash 恢复
 
 复用现有 projection-write、operation/Node 和 CLI projection tests，验证
-`projection PAGE_ID --restore --entry DB` 的两个有限阶段：只恢复同一 ready
+`projection PAGE_ID --restore --library LIBRARY_ID` 的两个有限阶段：只恢复同一 ready
 owner 的 in_trash=false，清 restore intent，再进入原 automatic projection。
 两阶段共用预算；不放开普通 projection 对 owner 属性的写权限。
 

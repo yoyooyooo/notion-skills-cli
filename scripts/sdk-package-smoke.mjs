@@ -32,7 +32,7 @@ const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
 const originalCwd = process.cwd(),
   originalToken = process.env.NOTION_API_TOKEN
 const cases = []
-let sdkPath, packageVersion, source
+let sdkPath, managementPath, packageVersion, source
 async function command(argv, options = {}) {
   const child = spawn(argv[0], argv.slice(1), {
     cwd: root,
@@ -146,14 +146,65 @@ try {
   sdkPath = require.resolve("ntn-skills/sdk")
   assert.ok(sdkPath.startsWith(join(root, "node_modules", "ntn-skills")))
   const sdk = await import(pathToFileURL(sdkPath).href)
+  managementPath = require.resolve("ntn-skills/management")
+  assert.ok(managementPath.startsWith(join(root, "node_modules", "ntn-skills")))
+  const management = await import(pathToFileURL(managementPath).href)
   const manifest = require("ntn-skills/package.json")
   packageVersion = manifest.version
   const cli = require.resolve("ntn-skills/dist/ntn-skills.js")
-  assert.equal(sdk.SDK_VERSION, 2)
+  assert.equal(sdk.SDK_VERSION, 3)
+  assert.equal(sdk.SKILL_REF_VERSION, 2)
   assert.equal(sdk.CONSUMER_CONTRACT_VERSION, 1)
   assert.equal(sdk.RESOURCE_READ_CONTRACT_VERSION, 1)
+  assert.equal(management.MANAGEMENT_VERSION, 1)
+  assert.equal(management.PACKAGE_VERSION, packageVersion)
+  assert.equal(Object.hasOwn(sdk, "checkSources"), false)
+  assert.equal(Object.hasOwn(sdk, "syncSources"), false)
+  assert.equal(typeof management.checkSources, "function")
+  assert.equal(typeof management.syncSources, "function")
+  await test("installed-pure-reference-module", "current", async () => {
+    const purePath = require.resolve("ntn-skills/ref")
+    assert.ok(purePath.startsWith(join(root, "node_modules", "ntn-skills")))
+    assert.ok(purePath.endsWith("/dist/ref.cjs"))
+    const commonjs = require("ntn-skills/ref")
+    const esm = await import(
+      pathToFileURL(join(root, "node_modules", "ntn-skills", "dist/ref.js")).href
+    )
+    for (const protocol of [commonjs, esm]) {
+      assert.equal(protocol.SKILL_REF_VERSION, sdk.SKILL_REF_VERSION)
+      const short = protocol.parseSkillRef("skill://architect/references/a%20b.md")
+      assert.throws(() => protocol.bindSkillRef(short), { code: "LIBRARY_CONTEXT_REQUIRED" })
+      assert.equal(
+        protocol.formatSkillRef(
+          protocol.bindSkillRef(short, "11111111-1111-4111-8111-111111111111"),
+        ),
+        "skill://architect/references/a%20b.md?library=11111111-1111-4111-8111-111111111111",
+      )
+      assert.notDeepEqual(
+        protocol.bindSkillRef(short, "11111111-1111-4111-8111-111111111111").owner,
+        protocol.bindSkillRef(short, "22222222-2222-4222-8222-222222222222").owner,
+      )
+      assert.throws(
+        () =>
+          protocol.parseSkillRef(
+            "skill://shared_skill%3A11111111-1111-4111-8111-111111111111%3Aarchitect/SKILL.md",
+          ),
+        { code: "INVALID_REF" },
+      )
+      assert.throws(
+        () =>
+          protocol.parseSkillRef(
+            "skill://architect/SKILL.md?library=11111111-1111-4111-8111-111111111111&file_id=old",
+          ),
+        { code: "INVALID_REF" },
+      )
+    }
+    return { protocol: 2, esm: true, commonjs: true, context_required: true }
+  })
   await test("installed-sdk-contract", "current", async () => {
     for (const name of [
+      "selectLibrary",
+      "resolveLibrary",
       "listCatalog",
       "listSkills",
       "listSkill",
@@ -182,9 +233,22 @@ try {
       }),
       "different",
     )
+    const wrapped = {
+      expected: "1. Run `list --library\n   ROOT`.\n\n   Keep the paragraph.\n",
+      observed:
+        "1. Run <code>list --library ROOT</code>.\n   <p>\n   Keep the paragraph.\n   </p>\n",
+    }
+    assert.equal(sdk.compareNativeMarkdown(wrapped), "normalized")
+    assert.equal(
+      sdk.compareNativeMarkdown({
+        ...wrapped,
+        observed: wrapped.observed.replace("library ROOT", "library<br>ROOT"),
+      }),
+      "different",
+    )
     await writeFile(
       join(root, "sdk-contract.ts"),
-      `import { SDK_VERSION, consume, readSkill, listSkill, readResources, type ConsumeOptions } from 'ntn-skills/sdk';\nconst version: 2 = SDK_VERSION;\nconst options: ConsumeOptions = { env: {}, database: '${fixture.database}' };\nvoid consume({version:1,targets:['${fixture.root_page_id}'],purpose:'use'}, options);\nvoid readSkill('${fixture.root_page_id}', options);\nvoid listSkill('${fixture.root_page_id}', options);\nvoid readResources({version:1,refs:[]}, options);\n// @ts-expect-error removed SDK option\nconst removed: ConsumeOptions = { readOnly: true };\n// @ts-expect-error retired Source management API\nimport { planSourceRefresh } from 'ntn-skills/sdk';\n`,
+      `import { SDK_VERSION, selectLibrary, resolveLibrary, consume, readSkill, listSkill, readResources, type ConsumeOptions } from 'ntn-skills/sdk';\nimport { MANAGEMENT_VERSION, checkSources, syncSources, currentSourceSyncExitCode, type SourceSyncInput, type ManagementOptions } from 'ntn-skills/management';\nimport { SKILL_REF_VERSION, parseSkillRef, bindSkillRef, formatSkillRef, type SkillKey } from 'ntn-skills/ref';\nconst refVersion: 2 = SKILL_REF_VERSION;\nconst bound = bindSkillRef(parseSkillRef('skill://architect'), '11111111-1111-4111-8111-111111111111');\nconst owner: SkillKey = bound.owner;\nconst uri: string = formatSkillRef(bound);\nconst version: 3 = SDK_VERSION;\nconst managementVersion: 1 = MANAGEMENT_VERSION;\nconst options: ConsumeOptions = { env: {}, library: '${fixture.library_id}' };\nconst selected: Promise<string> = selectLibrary(options);\nvoid resolveLibrary(options).then(library => { const root: string = library.library_id; });\nconst managementOptions: ManagementOptions = { env: {} };\nconst synchronization: SourceSyncInput = { library: '${fixture.library_id}', source_ids: ['fixture'], manager_id: 'installed-fixture', execution_id: '${"a".repeat(64)}' };\nvoid checkSources({ library: synchronization.library, source_ids: synchronization.source_ids }, managementOptions);\nvoid syncSources(synchronization, managementOptions).then(currentSourceSyncExitCode);\nvoid consume({version:1,targets:['${fixture.root_page_id}'],purpose:'use'}, options);\nvoid readSkill('${fixture.root_page_id}', options);\nvoid listSkill('${fixture.root_page_id}', options);\nvoid readResources({version:1,refs:[]}, options);\n// @ts-expect-error removed SDK option\nconst removed: ConsumeOptions = { readOnly: true };\n// @ts-expect-error removed database selector\nconst removedDatabase: ConsumeOptions = { database: '${fixture.database}' };\n// @ts-expect-error management requires explicit owner and execution\nconst missingSyncIdentity: SourceSyncInput = { library: '${fixture.library_id}', source_ids: ['fixture'] };\n// @ts-expect-error management remains a separate capability\nimport { syncSources as consumerSync } from 'ntn-skills/sdk';\n// @ts-expect-error retired Source management API\nimport { planSourceRefresh } from 'ntn-skills/sdk';\n`,
     )
     await command([
       process.execPath,
@@ -202,6 +266,13 @@ try {
     assert.equal(rejected.status, "failed")
     assert.equal(rejected.error.code, "INVALID_ARGUMENT")
     noWrites(rejected)
+    const obsoleteSelector = await sdk.consume(input(fixture.root_page_id), {
+      env: {},
+      database: fixture.database,
+    })
+    assert.equal(obsoleteSelector.status, "failed")
+    assert.equal(obsoleteSelector.error.code, "INVALID_ARGUMENT")
+    noWrites(obsoleteSelector)
     return {
       sdk_version: sdk.SDK_VERSION,
       types: "installed declaration closure",
@@ -211,7 +282,7 @@ try {
   source = await startSdkSourceFixture(fixture, join(root, "requests.jsonl"))
   const options = (name, extra = {}) => ({
     cwd: join(root, name),
-    database: fixture.database,
+    library: fixture.library_id,
     env: {
       ...env,
       NOTION_API_BASE_URL: source.origin,
@@ -221,6 +292,125 @@ try {
     ...extra,
   })
   const shared = options("current")
+  await test("installed-library-selection-is-local-and-fresh", "current", async () => {
+    const configRoot = join(root, "selection-config")
+    await mkdir(configRoot)
+    const configPath = join(configRoot, "config.json")
+    const alternate = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    const selection = { cwd: root, env: { ...shared.env, NTN_SKILLS_CONFIG_HOME: configRoot } }
+    const before = source.requests.length
+    await writeFile(configPath, JSON.stringify({ default_library: fixture.library_id }))
+    assert.equal(await sdk.selectLibrary(selection), fixture.library_id)
+    await writeFile(configPath, JSON.stringify({ default_library: alternate }))
+    assert.equal(await sdk.selectLibrary(selection), alternate)
+    assert.equal(
+      await sdk.selectLibrary({
+        ...selection,
+        library: "https://www.notion.so/" + fixture.library_id.replaceAll("-", ""),
+      }),
+      fixture.library_id,
+    )
+    assert.equal(source.requests.length, before, "Local selection must not perform Notion I/O")
+    return { ambient_changes_observed: true, explicit_root_canonicalized: true, notion_requests: 0 }
+  })
+  await test("installed-management-check-sync-and-cli-report", "current", async () => {
+    const reports = []
+    const selection = { library: fixture.library_id, source_ids: ["missing-installed-source"] }
+    const start = source.requests.length
+    const check = await management.checkSources(selection, {
+      ...shared,
+      onRequestMetrics: (value) => reports.push(value),
+    })
+    const sync = await management.syncSources(
+      {
+        ...selection,
+        manager_id: "installed-fixture",
+        execution_id: hash(await readFile(archive)),
+      },
+      {
+        ...shared,
+        onRequestMetrics: (value) => reports.push(value),
+      },
+    )
+    for (const [action, result] of [
+      ["check", check],
+      ["sync", sync],
+    ]) {
+      assert.equal(result.version, 1)
+      assert.equal(result.kind, "current_source_sync")
+      assert.equal(result.action, action)
+      assert.equal(result.status, "failed")
+      assert.equal(result.results.length, 1)
+      assert.equal(result.results[0].source_id, "missing-installed-source")
+      assert.equal(result.results[0].error.code, "CURRENT_SOURCE_NOT_FOUND")
+      assert.equal(management.currentSourceSyncExitCode(result), 1)
+      assert.ok(result.budget.attempts > 0)
+    }
+    assert.equal(reports.length, 2)
+    assert.ok(reports.every((value) => value !== null && value.in_flight === 0))
+    const cliEnv = { ...process.env, ...shared.env }
+    for (const action of ["check", "sync"]) {
+      const output = JSON.parse(
+        await command(
+          [
+            process.execPath,
+            cli,
+            "ctl",
+            "library",
+            "source",
+            action,
+            "--library",
+            fixture.library_id,
+            "--source",
+            "missing-installed-source",
+          ],
+          { cwd: shared.cwd, env: cliEnv, expectedExit: 1 },
+        ),
+      )
+      assert.equal(output.ok, false)
+      assert.equal(output.kind, "current_source_sync")
+      assert.equal(output.action, action)
+      assert.equal(output.status, "failed")
+      assert.equal(output.results[0].error.code, "CURRENT_SOURCE_NOT_FOUND")
+    }
+    const usage = JSON.parse(
+      await command(
+        [
+          process.execPath,
+          cli,
+          "ctl",
+          "library",
+          "source",
+          "check",
+          "--library",
+          fixture.library_id,
+        ],
+        { cwd: shared.cwd, env: cliEnv, expectedExit: 2 },
+      ),
+    )
+    assert.equal(usage.error.code, "INVALID_ARGUMENT")
+    const calls = source.requests.slice(start)
+    assert.ok(
+      calls.some(
+        (row) =>
+          row.path === `/v1/data_sources/${fixture.notion.library.sources.data_source_id}/query`,
+      ),
+    )
+    assert.ok(
+      calls.every(
+        (row) => row.method === "GET" || (row.method === "POST" && row.path.endsWith("/query")),
+      ),
+    )
+    return {
+      management_version: management.MANAGEMENT_VERSION,
+      source_selection: "explicit",
+      missing_source: "reported",
+      semantic_writes: 0,
+      cli_result_exit: 1,
+      cli_usage_exit: 2,
+      installed_bundle_identity: "default accepted",
+    }
+  })
   let main, listing
   await test("current-catalog-complete-pagination", "current", async () => {
     const start = source.requests.length
@@ -465,6 +655,7 @@ try {
     archive_sha256: hash(await readFile(archive)),
     installed_package: packageVersion,
     sdk_path: sdkPath,
+    management_path: managementPath,
     fixture: fixturePath,
     selection,
     passed: cases.filter((value) => value.status === "passed").length,

@@ -230,6 +230,76 @@ export function queryCurrentSourceManagement(library: SharedLibrary, sourceId: s
   })
 }
 
+/** Discover one explicit Source selection with complete, batched pagination. */
+export function queryCurrentSourceManagementBatch(
+  library: SharedLibrary,
+  sourceIds: readonly string[],
+) {
+  return Effect.gen(function* () {
+    const ids = yield* checked(() => [...new Set(sourceIds.map(validateCurrentSourceId))].sort())
+    const field = yield* checked(() => currentSourceProperty(library, "Source ID"))
+    const api = yield* Notion
+    const result = new Map<string, CurrentSourceManagement>()
+    const physical = new Set<string>()
+    for (let offset = 0; offset < ids.length; offset += 80) {
+      const selected = ids.slice(offset, offset + 80)
+      const filters = selected.map((id) => ({ property: field, rich_text: { equals: id } }))
+      const cursors = new Set<string>()
+      let cursor: string | undefined
+      for (;;) {
+        const raw = yield* api.request(
+          `v1/data_sources/${library.sources.data_source_id}/query`,
+          {
+            page_size: 100,
+            filter: filters.length === 1 ? filters[0] : { or: filters },
+            ...(cursor === undefined ? {} : { start_cursor: cursor }),
+          },
+          { method: "POST" },
+        )
+        const page = yield* checked(() => {
+          const envelope = property(raw)
+          if (
+            envelope.object !== "list" ||
+            (envelope.request_status !== undefined &&
+              property(envelope.request_status).type !== "complete")
+          )
+            throw invalid("Current Sources enumeration is incomplete.")
+          const page = Schema.decodeUnknownSync(listSchema(Schema.Unknown))(raw)
+          if (
+            page.has_more
+              ? !page.next_cursor || cursors.has(page.next_cursor)
+              : page.next_cursor !== null
+          )
+            throw invalid("Current Sources pagination did not finish or advance.")
+          return page
+        })
+        for (const value of page.results) {
+          const current = yield* checked(() => parseCurrentSourceManagement(library, value))
+          const id = current.declaration.definition.source_id
+          if (!selected.includes(id) || physical.has(current.page_id) || result.has(id))
+            return yield* Effect.fail(
+              invalid("The Source selection contains a foreign or repeated identity.", {
+                source_id: id,
+              }),
+            )
+          if ((yield* currentSharedSourceRevision(current.content)) !== current.revision)
+            return yield* Effect.fail(
+              fail("SHARED_SOURCE_CONFLICT", "Source Content and Last Revision disagree.", {
+                source_id: id,
+              }),
+            )
+          physical.add(current.page_id)
+          result.set(id, current)
+        }
+        if (!page.has_more) break
+        cursor = page.next_cursor!
+        cursors.add(cursor)
+      }
+    }
+    return result
+  })
+}
+
 export function currentSourceWriteProperties(
   library: SharedLibrary,
   input: {

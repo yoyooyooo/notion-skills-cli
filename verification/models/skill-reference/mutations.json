@@ -1,0 +1,199 @@
+[
+  {
+    "name": "bound-library-outranks-ambient",
+    "file": "packages/core/src/skill-ref.ts",
+    "replacements": [
+      [
+        "const library = reference.scope.kind === \"library\" ? reference.scope.libraryId : contextLibraryId",
+        "const library = contextLibraryId ?? (reference.scope.kind === \"library\" ? reference.scope.libraryId : undefined)"
+      ]
+    ],
+    "test": "packages/core/test/skill-ref.test.ts",
+    "pattern": "an explicit Library remains explicit",
+    "rule": "ContextIsAuthoritative"
+  },
+  {
+    "name": "short-ref-needs-context",
+    "file": "packages/core/src/skill-ref.ts",
+    "replacements": [
+      [
+        "const library = reference.scope.kind === \"library\" ? reference.scope.libraryId : contextLibraryId",
+        "const library = reference.scope.kind === \"library\" ? reference.scope.libraryId : (contextLibraryId ?? \"library-production\")"
+      ]
+    ],
+    "test": "packages/core/test/skill-ref.test.ts",
+    "pattern": "short author refs need a containing scope",
+    "rule": "ContextIsAuthoritative"
+  },
+  {
+    "name": "duplicate-stable-claims-fail",
+    "file": "packages/core/src/shared-current-skill-target.ts",
+    "replacements": [["if (rows.length > 1)", "if (false)"]],
+    "test": "packages/core/test/shared-current-member-discovery.test.ts",
+    "pattern": "duplicate exact Skill identities",
+    "rule": "DuplicateClaimRejected"
+  },
+  {
+    "name": "fixed-manifest-exact-owner",
+    "file": "packages/core/src/snapshot.ts",
+    "replacements": [
+      ["(target.kind === \"skill\" && target.selector !== snapshot.record.id) ||", "false ||"]
+    ],
+    "test": "packages/core/test/skill-reference-guards.test.ts",
+    "pattern": "a fixed reference rejects a foreign Library",
+    "rule": "FixedSelectionUsesManifest"
+  },
+  {
+    "name": "fixed-selection-cannot-be-discarded",
+    "file": "packages/core/src/snapshot.ts",
+    "replacements": [
+      [
+        "target = yield* bindEntryTarget(target, options)",
+        "target = yield* bindEntryTarget(target, options)\n    target = { ...target, snapshot: undefined }"
+      ]
+    ],
+    "test": "packages/core/test/skill-reference-guards.test.ts",
+    "pattern": "a missing selected manifest|a pathless fixed reference",
+    "rule": "MissingManifestRejected"
+  },
+  {
+    "name": "fixed-path-never-repaired",
+    "file": "packages/core/src/snapshot.ts",
+    "replacements": [
+      [
+        "return target.path\n}",
+        "return _snapshot.files.find((file) => file.path === target.path)?.path ?? _snapshot.entrypoint\n}"
+      ]
+    ],
+    "test": "packages/core/test/skill-reference-guards.test.ts",
+    "pattern": "a fixed missing path cannot be repaired",
+    "rule": "FixedSelectionUsesManifest"
+  },
+  {
+    "name": "source-coordinate-outranks-mounted-path",
+    "file": "packages/core/src/shared-source-references.ts",
+    "replacements": [
+      [
+        "const sourcePath = sourceSelection.success",
+        "const sourcePath = sourceSelection.success\n    return yield* checked(() => resolveRef(local, relative))"
+      ]
+    ],
+    "test": "packages/core/test/shared-source-references.test.ts",
+    "pattern": "a mounted path collision",
+    "rule": "SourceAuthorityRequired"
+  },
+  {
+    "name": "target-never-inherits-foreign-pin",
+    "file": "packages/core/src/snapshot.ts",
+    "replacements": [
+      [
+        "const snapshot =\n            selected.snapshot ??\n            (sameSkillKey(owner, selectedOwner) ? containing.snapshot_id : undefined)",
+        "const snapshot = selected.snapshot ?? containing.snapshot_id"
+      ]
+    ],
+    "test": "packages/core/test/shared-current-relative.test.ts",
+    "pattern": "containing Library binds short references",
+    "rule": "CrossSkillSelectionIsTargetOwned"
+  },
+  {
+    "name": "existing-members-are-preserved",
+    "file": "packages/core/src/shared-current-member-discovery.ts",
+    "replacements": [[": options.existing", ": false"]],
+    "test": "packages/core/test/shared-current-member-discovery.test.ts",
+    "pattern": "existing Members and explicit empty Members",
+    "rule": "ExistingMembersOnOmission"
+  },
+  {
+    "name": "explicit-empty-members-win",
+    "file": "packages/core/src/shared-current-member-discovery.ts",
+    "replacements": [
+      ["input.relations?.members !== undefined", "(input.relations?.members?.length ?? 0) > 0"]
+    ],
+    "test": "packages/core/test/shared-current-member-discovery.test.ts",
+    "pattern": "existing Members and explicit empty Members",
+    "rule": "ExplicitEmptyMembers"
+  },
+  {
+    "name": "requires-never-inferred",
+    "file": "packages/core/src/shared-current-member-discovery.ts",
+    "replacements": [
+      [
+        "            members,\n          }\n        : input.relations",
+        "            members,\n            requires: members,\n          }\n        : input.relations"
+      ]
+    ],
+    "test": "packages/cli/test/current-members.test.ts",
+    "pattern": "the public import command adds verified canonical Members only on creation",
+    "rule": "RequiresOnlyExplicit"
+  },
+  {
+    "name": "completed-frozen-steps-cannot-regress",
+    "file": "packages/core/src/shared-current-import-plan-model.ts",
+    "replacements": [
+      [
+        "if (JSON.stringify(previous) !== JSON.stringify(current)) return false",
+        "if (false) return false"
+      ]
+    ],
+    "test": "packages/core/test/shared-current-import-plan.test.ts",
+    "pattern": "frozen progress allows only additive phases",
+    "rule": "FrozenMembersIntent"
+  },
+  {
+    "name": "completed-import-resume-is-readback-only",
+    "file": "packages/core/src/shared-current-write.ts",
+    "replacements": [
+      [
+        "input.authorization === undefined && input.frozen_import === undefined",
+        "input.authorization === undefined"
+      ]
+    ],
+    "test": "packages/core/test/shared-current-import-plan.test.ts",
+    "pattern": "a lost local completion ACK resumes by exact read-only verification",
+    "rule": "RepeatHasNoWrites"
+  },
+  {
+    "name": "unobserved-nonidempotent-write-not-replayed",
+    "file": "packages/core/src/shared-current-operation.ts",
+    "replacements": [
+      [
+        "if (active !== null && (mode !== \"resume\" || action.replay === \"never\"))",
+        "if (active !== null && mode !== \"resume\")"
+      ]
+    ],
+    "test": "packages/core/test/shared-current-operation.test.ts",
+    "pattern": "unknown invisible append stays actionable",
+    "rule": "UnknownCreateNotReplayed"
+  },
+  {
+    "name": "sqlite-identity-segment-decodes-to-complete-owner",
+    "file": "packages/core/src/cache-address.ts",
+    "replacements": [["return identity", "return segment"]],
+    "test": "packages/core/test/sqlite-state.node.test.ts",
+    "pattern": "canonical Skill identities survive SQLite restart",
+    "rule": "ContextIsAuthoritative"
+  },
+  {
+    "name": "portable-origin-context-preserved",
+    "file": "packages/core/src/shared-current-member-discovery.ts",
+    "replacements": [
+      ["parsed.scope.kind === \"context\" && origin !== undefined && origin !== libraryId", "false"]
+    ],
+    "test": "packages/cli/test/current-import-batch.test.ts",
+    "pattern": "portable origin binds external short refs before batch Members inference",
+    "rule": "ContextIsAuthoritative"
+  },
+  {
+    "name": "explicit-library-constraint",
+    "file": "packages/core/src/catalog.ts",
+    "replacements": [
+      [
+        "if (options.library !== undefined && (yield* libraryId(options.library)) !== scope.libraryId)",
+        "if (false && options.library !== undefined && (yield* libraryId(options.library)) !== scope.libraryId)"
+      ]
+    ],
+    "test": "packages/core/test/skill-reference-guards.test.ts",
+    "pattern": "an explicit Library constraint rejects a cold full reference before I/O",
+    "rule": "ExplicitScopeConstraint"
+  }
+]

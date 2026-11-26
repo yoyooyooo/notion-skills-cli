@@ -30,15 +30,17 @@ import {
   type SourceFailure,
 } from "./model.ts"
 import { Notion } from "./notion.ts"
-import { pageId } from "./ref.ts"
+import { bindTarget, pageId, type SkillTarget } from "./ref.ts"
 import { sharedMetadataEntryFromPage, validateSharedRecordIdentity } from "./shared-content.ts"
 import { sharedGraphInventory } from "./shared-graph-read-context.ts"
-import { libraryFromDatabase } from "./shared-library.ts"
+import { libraryFromDatabase, loadSharedLibrary } from "./shared-library.ts"
 import {
   directorySkillMetadata,
   type SharedSkillMetadataObservation,
 } from "./shared-metadata-inventory.ts"
 import { Store, configuration, configuredSources, sha256 } from "./store.ts"
+import { libraryId, selectedLibraryId } from "./library-selection.ts"
+export { libraryId, selectedLibraryId } from "./library-selection.ts"
 
 export const authScope = Effect.gen(function* () {
   const local = yield* locallySelectedScope().pipe(Effect.result)
@@ -108,87 +110,56 @@ function paginate<S extends Schema.ConstraintDecoder<unknown>>(
   })
 }
 
-export function databaseId(input: string, sources?: readonly Source[]) {
-  return Effect.gen(function* () {
-    const id = pageId(input)
-    if (id) return id
-    const configured = sources ?? (yield* configuredSources)
-    const matches = configured.filter((source) => source.alias === input)
-    if (!matches.length)
-      return yield* Effect.fail(
-        fail(
-          "DATABASE_NOT_FOUND",
-          "No registered database alias matched; use an ID, URL or exact registered alias.",
-          { selector: input, candidates: configured },
-        ),
-      )
-    if (matches.some((source) => source.database_id !== matches[0]!.database_id))
-      return yield* Effect.fail(
-        fail(
-          "DATABASE_AMBIGUOUS",
-          "The registered alias names multiple databases; use a database ID.",
-          { selector: input, candidates: matches },
-        ),
-      )
-    return matches[0]!.database_id
-  })
-}
-
 export function explicitSource(input: string, sources?: readonly Source[]) {
   return Effect.gen(function* () {
     const configured = sources ?? (yield* configuredSources)
-    const id = yield* databaseId(input, configured)
-    const registered = configured.find((source) => source.database_id === id)
-    const api = yield* Notion
-    return yield* api.request(`v1/databases/${id}`).pipe(
-      Effect.flatMap((raw) =>
-        Effect.try({
-          try: () => {
-            const db = decode(DatabaseSchema, raw)
-            if (db.id !== id || db.in_trash)
-              throw fail("INVALID_RESPONSE", "The selected library identity is unavailable.")
-            const library = libraryFromDatabase(raw)
-            if (library === undefined)
-              throw fail(
-                "CURRENT_SCHEMA_REQUIRED",
-                "Select a current Skill library entry. Legacy page and subscription sources are not supported.",
-              )
-            if (
-              db.data_sources.length !== 1 ||
-              db.data_sources[0]?.id !== library.skills.data_source_id
-            )
-              throw fail(
-                "LIBRARY_SCHEMA_CONFLICT",
-                "The current library data source differs from its descriptor.",
-              )
-            return {
-              alias: registered?.alias ?? id,
-              database_id: id,
-              title: text(db.title),
-              data_source_ids: [library.skills.data_source_id],
-              role: "content" as const,
-              shared_library: library,
-            } satisfies Source
-          },
-          catch: (error) =>
-            error instanceof SkillsError
-              ? error
-              : fail("INVALID_RESPONSE", "Invalid current library response."),
-        }),
-      ),
-      Effect.mapError((error) =>
-        fail(error.code, error.message, {
-          ...property(error.details),
-          database_id: id,
-          alias: registered?.alias ?? id,
-          ...(registered === undefined ? {} : { title: registered.title }),
-        }),
-      ),
-    )
+    const id = yield* libraryId(input, configured)
+    const registered = configured.find((source) => source.shared_library?.library_id === id)
+    const library = yield* loadSharedLibrary(id)
+    const raw = yield* (yield* Notion).request(`v1/databases/${library.skills.database_id}`)
+    return {
+      alias: registered?.alias ?? id,
+      database_id: library.skills.database_id,
+      title: text(property(raw).title),
+      data_source_ids: [library.skills.data_source_id],
+      role: "content" as const,
+      shared_library: library,
+    } satisfies Source
   })
 }
 
-export function discoverDatabases() {
+/** Internal physical-page routing. A database is never accepted as a public Library selector. */
+export function sourceForSkillsDatabase(database: string, sources?: readonly Source[]) {
+  return Effect.gen(function* () {
+    const raw = yield* (yield* Notion).request(`v1/databases/${database}`)
+    const library = yield* Effect.try({
+      try: () => libraryFromDatabase(raw),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("LIBRARY_INVALID", "Invalid Library descriptor."),
+    })
+    if (library === undefined)
+      return yield* Effect.fail(
+        fail(
+          "CURRENT_SCHEMA_REQUIRED",
+          "This database is not the Skills table of a current Library.",
+        ),
+      )
+    const source = yield* explicitSource(library.library_id, sources)
+    if (source.database_id !== database)
+      return yield* Effect.fail(
+        fail(
+          "LIBRARY_SCHEMA_CONFLICT",
+          "The physical Skills table differs from the resolved root binding.",
+        ),
+      )
+    return source
+  })
+}
+
+/** Search is explicit and never claims workspace-exhaustive coverage. */
+export function discoverLibraries() {
   return Effect.gen(function* () {
     const configured = yield* configuredSources
     const candidates = new Map<string, { alias: string; title: string }>()
@@ -198,22 +169,21 @@ export function discoverDatabases() {
     for (const source of found) {
       if (source.in_trash) continue
       const props = property(source.properties)
-      const id = source.parent.database_id
-      const registered = configured.find((entry) => entry.database_id === id)
       if (
-        registered === undefined &&
-        (property(props["Skill ID"]).type !== "rich_text" ||
-          property(props["Main File ID"]).type !== "rich_text")
+        property(props["Skill ID"]).type !== "rich_text" ||
+        property(props["Main File ID"]).type !== "rich_text"
       )
         continue
+      const id = source.parent.database_id
+      const registered = configured.find((entry) => entry.database_id === id)
       candidates.set(id, { alias: registered?.alias ?? id, title: text(source.title) })
     }
     for (const source of configured)
       candidates.set(source.database_id, { alias: source.alias, title: source.title })
-    const databases: Source[] = []
-    const failures: SourceFailure[] = []
+    const databases: Source[] = [],
+      failures: SourceFailure[] = []
     for (const [id, candidate] of candidates) {
-      const result = yield* explicitSource(id, configured).pipe(Effect.result)
+      const result = yield* sourceForSkillsDatabase(id, configured).pipe(Effect.result)
       if (result._tag === "Success") databases.push(result.success)
       else failures.push({ id, database_id: id, code: result.failure.code, ...candidate })
     }
@@ -221,12 +191,15 @@ export function discoverDatabases() {
   })
 }
 
-export function setDefaultDatabase(database?: string) {
+export function setDefaultLibrary(database?: string) {
   return Effect.gen(function* () {
     const config = yield* configuration
     const source = database === undefined ? undefined : yield* explicitSource(database, undefined)
-    const { default_database: _previous, ...rest } = config
-    const next = { ...rest, ...(source ? { default_database: source.database_id } : {}) }
+    const { default_library: _previous, ...rest } = config
+    const next = {
+      ...rest,
+      ...(source ? { default_library: source.shared_library.library_id } : {}),
+    }
     const store = yield* Store
     yield* store.writeJson("config.json", next)
     return next
@@ -234,14 +207,39 @@ export function setDefaultDatabase(database?: string) {
 }
 
 export interface CatalogOptions extends ReadPolicyOptions {
-  readonly database?: string
+  readonly library?: string
+  readonly all?: boolean
 }
+
+/** Bind an authored short ref once, at a tool entry with an explicitly selected Library. */
+export function bindEntryTarget(target: SkillTarget, options: CatalogOptions = {}) {
+  return Effect.gen(function* () {
+    if (target.kind !== "skill") return target
+    const scope = target.reference.scope
+    if (scope.kind === "library") {
+      if (options.library !== undefined && (yield* libraryId(options.library)) !== scope.libraryId)
+        return yield* Effect.fail(
+          fail(
+            "LIBRARY_SCOPE_MISMATCH",
+            "The full reference conflicts with the explicitly selected Library.",
+          ),
+        )
+      return target
+    }
+    const root = yield* selectedLibraryId(options.library)
+    return yield* Effect.try({
+      try: () => bindTarget(target, root),
+      catch: (error) => error as SkillsError,
+    })
+  })
+}
+
 export function catalog(options: CatalogOptions = {}) {
   return readCatalog(options)
 }
 
 /** Internal scalar-read handoff; raw inventories never enter the public catalog or its cache. */
-export function freshCatalogForRead(options: Pick<CatalogOptions, "database"> = {}) {
+export function freshCatalogForRead(options: Pick<CatalogOptions, "library"> = {}) {
   return Effect.gen(function* () {
     const sharedSkills = new Map<string, SharedSkillMetadataObservation>()
     const exactSharedRecords = new Map<string, ContentRecord>()
@@ -264,13 +262,18 @@ function readCatalog(
       try: () => validateReadPolicy(options),
       catch: (error) => error as SkillsError,
     })
+    if (options.all && options.library !== undefined)
+      return yield* Effect.fail(
+        fail("INVALID_ARGUMENT", "--all and --library are mutually exclusive."),
+      )
+    const selected = options.all ? undefined : yield* selectedLibraryId(options.library)
     const selectedScope = !options.refresh
       ? yield* locallySelectedScope(Boolean(options.offline))
       : undefined
     const scope = selectedScope ?? (yield* authScope)
     const store = yield* Store
     const configured = yield* configuredSources
-    const catalogSelection = ["current-library-directory", options.database ?? "auto", configured]
+    const catalogSelection = ["root-library-directory-v2", selected ?? "all", configured]
     const key = `cache/catalogs/${scope}/${yield* sha256(JSON.stringify(catalogSelection))}.json`
     const now = yield* Clock.currentTimeMillis
     const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).catalog_max_age_ms
@@ -376,11 +379,11 @@ function readCatalog(
     )
     const databases = new Map<string, Source>()
     const failures: SourceFailure[] = []
-    if (options.database !== undefined) {
-      const db = yield* explicitSource(options.database, configured)
+    if (selected !== undefined) {
+      const db = yield* explicitSource(selected, configured)
       databases.set(db.database_id, db)
     } else {
-      const discovered = yield* discoverDatabases()
+      const discovered = yield* discoverLibraries()
       for (const source of discovered.databases) databases.set(source.database_id, source)
       failures.push(...discovered.failures)
     }
@@ -507,17 +510,18 @@ function readCatalog(
     }
     const output: Catalog = {
       scope: validatedScope,
+      ...(selected === undefined ? {} : { library_id: selected }),
       fetched_at: yield* Clock.currentTimeMillis,
       databases: [...databases.values()],
       records: [...skills.values()].sort(
         (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
       ),
       coverage: {
-        method: options.database !== undefined ? "explicit_database" : "search_and_registered",
-        exhaustive: options.database !== undefined && failures.length === 0,
+        method: selected !== undefined ? "explicit_library" : "search_and_registered",
+        exhaustive: selected !== undefined && failures.length === 0,
         queried_data_sources: queried,
         failed_sources: failures,
-        search_index_limited: options.database === undefined,
+        search_index_limited: selected === undefined,
       },
     }
     const validatedKey = `cache/catalogs/${validatedScope}/${catalogIdentity}.json`
@@ -539,11 +543,13 @@ export function addSource(alias: string, input: string) {
     const config = yield* configuration
     const configured = config.sources ?? []
     const sameAlias = configured.find((s) => s.alias === alias)
-    if (sameAlias && sameAlias.database_id !== source.database_id)
+    if (sameAlias && sameAlias.shared_library?.library_id !== source.shared_library.library_id)
       return yield* Effect.fail(
         fail("SOURCE_AMBIGUOUS", "This alias already names another database.", { alias }),
       )
-    const sources = configured.filter((s) => s.database_id !== source.database_id)
+    const sources = configured.filter(
+      (s) => s.shared_library?.library_id !== source.shared_library.library_id,
+    )
     sources.push(source)
     const store = yield* Store
     yield* store.writeJson("config.json", { ...config, sources })

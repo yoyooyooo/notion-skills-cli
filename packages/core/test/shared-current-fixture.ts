@@ -1,3 +1,4 @@
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { createHash } from "node:crypto"
 import { Crypto, Effect, FileSystem, Layer, Path } from "effect"
 import { HttpClient } from "effect/http"
@@ -58,10 +59,9 @@ const recordFields = propertyIds(
   { "Record ID": "record", "Entity ID": "entity" },
 )
 export const currentLibrary = {
-  version: 1,
-  library_id: "library-current",
+  version: 2,
+  library_id: "00000000-0000-4000-8000-000000000002",
   operation_id: "library-current",
-  parent_page_id: currentId(2),
   skills: { database_id: currentId(3), data_source_id: currentId(4), property_ids: skillFields },
   files: { database_id: currentId(5), data_source_id: currentId(6), property_ids: fileFields },
   records: { database_id: currentId(7), data_source_id: currentId(8), property_ids: recordFields },
@@ -140,7 +140,9 @@ export function currentSnapshotFixture(
   ])
   const records = new Map<string, unknown>()
   const sources = new Map<string, unknown>()
-  const json = new Map<string, unknown>()
+  const json = new Map<string, unknown>([
+    ["config.json", { default_library: currentLibrary.library_id }],
+  ])
   const objects = new Map<string, Uint8Array>()
   const calls: CurrentFixtureCall[] = []
   let metrics = createRequestMetrics()
@@ -278,16 +280,13 @@ export function currentSnapshotFixture(
           const error = failure?.(call)
           if (error !== undefined) return Effect.fail(error)
           let result: unknown
-          if (call.method === "GET" && path === `v1/databases/${currentLibrary.skills.database_id}`)
-            result = {
-              id: currentLibrary.skills.database_id,
-              database_type: null,
-              title: [{ plain_text: "Current Skills" }],
-              data_sources: [{ id: currentLibrary.skills.data_source_id, name: "Current Skills" }],
-              description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(currentLibrary) }],
-            }
+          const schema =
+            call.method === "GET" ? librarySchemaResponse(path, currentLibrary) : undefined
+          if (schema !== undefined) result = schema
           else if (call.method === "GET" && path === `v1/pages/${main.id}`)
             result = structuredClone(main)
+          else if (call.method === "GET" && files.some((file) => path === `v1/pages/${file.id}`))
+            result = structuredClone(files.find((file) => path === `v1/pages/${file.id}`))
           else if (call.method === "GET" && /\/markdown(?:\?|$)/u.test(path)) {
             const page = path.split("/")[2]
             const markdown = page === undefined ? undefined : bodies.get(page)
@@ -440,7 +439,9 @@ export function currentSnapshotFixture(
     },
     bodyCalls: () => calls.filter((call) => call.path.includes("/markdown")),
     recordCalls: () =>
-      calls.filter((call) => call.path.includes(currentLibrary.records.data_source_id)),
+      calls.filter((call) =>
+        call.path.startsWith(`v1/data_sources/${currentLibrary.records.data_source_id}/query`),
+      ),
     semanticWrites: () =>
       calls.filter(
         (call) =>

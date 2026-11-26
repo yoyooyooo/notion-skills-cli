@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
-import { databaseId } from "../../core/src/catalog.ts"
+import { libraryId } from "../../core/src/catalog.ts"
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
 import { fail, SkillsError } from "../../core/src/model.ts"
 import { Notion } from "../../core/src/notion.ts"
@@ -25,7 +25,7 @@ const budgetFlag = (name: string, description: string) =>
 export function inspectCurrentLibraryOperation(input: {
   readonly ownerId: string
   readonly kind: string
-  readonly entry: string
+  readonly library: string
   readonly maxRequests?: number
   readonly maxBytes?: number
   readonly timeout?: number
@@ -34,10 +34,10 @@ export function inspectCurrentLibraryOperation(input: {
     const selected = yield* Effect.try({
       try: () => {
         if (
-          /^notion_page:/iu.test(input.entry) ||
-          (/^[a-z][a-z\d+.-]*:\/\//iu.test(input.entry) && !/^https?:\/\//iu.test(input.entry))
+          /^notion_page:/iu.test(input.library) ||
+          (/^[a-z][a-z\d+.-]*:\/\//iu.test(input.library) && !/^https?:\/\//iu.test(input.library))
         )
-          throw fail("INVALID_ARGUMENT", "Operation inspection requires a current library entry.")
+          throw fail("INVALID_ARGUMENT", "Operation inspection requires an explicit Library root.")
         let owner: CurrentOperationOwner
         if (input.kind === "source") {
           validateCurrentSourceId(input.ownerId)
@@ -67,7 +67,7 @@ export function inspectCurrentLibraryOperation(input: {
     })
     const invocation = yield* withCurrentInvocationBudget(
       Effect.gen(function* () {
-        const library = yield* loadSharedLibrary(yield* databaseId(input.entry))
+        const library = yield* loadSharedLibrary(yield* libraryId(input.library))
         const operation = yield* inspectCurrentOperation(library, selected.owner)
         return {
           version: 1 as const,
@@ -96,7 +96,7 @@ export const currentOperationCommand = defineCommand(
       Argument.withDescription("Exact stable Skill or Source ID"),
     ),
     kind: requiredSingleton("kind", "Current owner kind: skill or source"),
-    entry: requiredSingleton("entry", "Current Skills database ID, URL or exact registered alias"),
+    library: requiredSingleton("library", "Library root page ID, URL or exact registered alias"),
     maxRequests: budgetFlag(
       "max-requests",
       "Positive maximum HTTP attempts including library lookup; default 1000",
@@ -110,7 +110,7 @@ export const currentOperationCommand = defineCommand(
         yield* inspectCurrentLibraryOperation({
           ownerId: options.ownerId,
           kind: options.kind,
-          entry: options.entry,
+          library: options.library,
           maxRequests: Option.getOrUndefined(options.maxRequests),
           maxBytes: Option.getOrUndefined(options.maxBytes),
           timeout: Option.getOrUndefined(options.timeout),
@@ -124,11 +124,11 @@ export const currentOperationCommand = defineCommand(
   ),
   Command.withExamples([
     {
-      command: "ntn-skills ctl library operation SKILL_ID --kind skill --entry ENTRY",
+      command: "ntn-skills ctl library operation SKILL_ID --kind skill --library ENTRY",
       description: "Inspect the current complete-import intent",
     },
     {
-      command: "ntn-skills ctl library operation SOURCE_ID --kind source --entry ENTRY",
+      command: "ntn-skills ctl library operation SOURCE_ID --kind source --library ENTRY",
       description: "Inspect the finite parent Source intent",
     },
   ]),

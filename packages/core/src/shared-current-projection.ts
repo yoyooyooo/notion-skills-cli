@@ -1,12 +1,13 @@
 import { SourceLexer } from "@notion-skills-cli/markdown"
 import { Effect } from "effect"
 import type { Token } from "marked"
-import { fail, property, SkillsError } from "./model.ts"
+import { entrypointFor, fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { normalizePath, pageId } from "./ref.ts"
 import type { CurrentFileContent } from "./shared-current-file.ts"
 import type { CurrentOperationAction } from "./shared-current-operation.ts"
 import { currentResourceAttachmentIdentity } from "./shared-current-resource.ts"
+import { parseYaml } from "./yaml.ts"
 
 type Rich = {
   readonly type: "text"
@@ -411,9 +412,29 @@ function readableMarkdown(
   return result
 }
 
-/** One current renderer. Unsupported Markdown is readable complete source, never a stub. */
+const mainPaths = new Set([
+  entrypointFor("skill"),
+  entrypointFor("router"),
+  entrypointFor("prompt"),
+])
+
+function mainReadingBody(path: string, text: string): string {
+  if (!mainPaths.has(path)) return text
+  const header = /^---\n([\s\S]*?)\n---(?:\n|$)/u.exec(text)
+  if (header === null || header[1] === undefined) return text
+  try {
+    const metadata = property(parseYaml(header[1]))
+    if (typeof metadata.name !== "string" || typeof metadata.description !== "string") return text
+  } catch {
+    return text
+  }
+  return text.slice(header[0].length)
+}
+
+/** Main-file metadata stays in the original; unsupported body Markdown remains complete. */
 export function renderCurrentProjection(input: {
   readonly path: string
+  readonly role: "main" | "supporting"
   readonly bytes: Uint8Array
   readonly attachment?: CurrentProjectionUpload
   readonly imagePreview?: boolean
@@ -438,8 +459,10 @@ export function renderCurrentProjection(input: {
   const text = currentProjectionText(input.path, input.bytes)
   const ext = input.path.split("/").at(-1)!.split(".").at(-1)!.toLowerCase()
   const markdown = text !== undefined && /^(?:md|markdown)$/u.test(ext)
+  const body =
+    text !== undefined && input.role === "main" ? mainReadingBody(input.path, text) : text
   const blocks: CurrentProjectionBlock[] =
-    text === undefined ? [] : markdown ? readableMarkdown(text, input.rewriteLink) : code(text, ext)
+    body === undefined ? [] : markdown ? readableMarkdown(body, input.rewriteLink) : code(body, ext)
   if (text === undefined && input.attachment === undefined)
     throw fail(
       "CURRENT_PROJECTION_ORIGINAL_REQUIRED",
@@ -627,7 +650,8 @@ function observedBlock(raw: unknown, owner: string): ObservedBlock {
     throw invalid("The projection contains a foreign or unavailable block.")
   return { id: exactPage(value.id), value }
 }
-function readProjectionBlocks(page: string) {
+/** Complete physical children shared by projection and authored native management. */
+export function readCurrentBodyBlocks(page: string) {
   return Effect.gen(function* () {
     const api = yield* Notion
     const blocks: ObservedBlock[] = [],
@@ -698,7 +722,7 @@ function assertReplaceableTree(roots: readonly ObservedBlock[]) {
           ),
         )
       if (block.value.has_children === true)
-        pending.push(...(yield* readProjectionBlocks(block.id)))
+        pending.push(...(yield* readCurrentBodyBlocks(block.id)))
     }
   })
 }
@@ -707,7 +731,7 @@ function assertReplaceableTree(roots: readonly ObservedBlock[]) {
 export function assertCurrentBodyReplaceable(pageId: string) {
   return Effect.gen(function* () {
     const page = yield* checked(() => exactPage(pageId))
-    yield* assertReplaceableTree(yield* readProjectionBlocks(page))
+    yield* assertReplaceableTree(yield* readCurrentBodyBlocks(page))
   })
 }
 
@@ -731,7 +755,7 @@ export function inspectCurrentProjection(input: {
   return Effect.gen(function* () {
     const page = yield* checked(() => exactPage(input.pageId))
     const expected = yield* expectedProjection(input.plan, input.attachment)
-    const actual = yield* readProjectionBlocks(page)
+    const actual = yield* readCurrentBodyBlocks(page)
     return {
       page_id: page,
       path: input.plan.path,
@@ -795,7 +819,7 @@ export function currentProjectionPendingAction(input: {
             },
       observe: () =>
         Effect.gen(function* () {
-          const actual = yield* readProjectionBlocks(page)
+          const actual = yield* readCurrentBodyBlocks(page)
           const prefix =
             actual.length <= expected.length &&
             actual.every((block, index) => canonicalBlock(block.value) === expected[index])
@@ -849,14 +873,14 @@ export function applyCurrentProjection<R>(input: {
       batchBoundaries.add(boundary)
     }
     yield* input.assertCurrent
-    let actual = yield* readProjectionBlocks(page)
+    let actual = yield* readCurrentBodyBlocks(page)
     const original = actual.map((block) => canonicalBlock(block.value))
     const prefix = () =>
       actual.length <= expected.length &&
       actual.every((block, index) => canonicalBlock(block.value) === expected[index])
     const refresh = (fresh: boolean) =>
       fresh
-        ? readProjectionBlocks(page).pipe(
+        ? readCurrentBodyBlocks(page).pipe(
             Effect.map((blocks) => {
               actual = blocks
             }),
@@ -965,7 +989,7 @@ export function applyCurrentProjection<R>(input: {
     const unchanged =
       original.length === expected.length &&
       original.every((value, index) => value === expected[index])
-    if (!unchanged) actual = yield* readProjectionBlocks(page)
+    if (!unchanged) actual = yield* readCurrentBodyBlocks(page)
     if (actual.length !== expected.length || !prefix())
       return yield* Effect.fail(
         fail(

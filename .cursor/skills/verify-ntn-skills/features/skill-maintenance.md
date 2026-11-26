@@ -35,24 +35,24 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 
 ~~~sh
 ntn-skills ctl library inspect ENTRY
-ntn-skills ctl library files PAGE_ID --entry ENTRY
-ntn-skills ctl library skill create INPUT --entry ENTRY --skill-id SKILL_ID
-ntn-skills ctl library skill update TARGET --entry ENTRY --input LOCAL_FILE
-ntn-skills ctl library skill register PAGE_ID --entry ENTRY
-ntn-skills ctl library skill remove TARGET --entry ENTRY --dry-run
-ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
-ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID
-ntn-skills ctl library projection PAGE_ID --entry ENTRY --dry-run
-ntn-skills ctl library projection PAGE_ID --entry ENTRY
-ntn-skills read PAGE_ID --database ENTRY --refresh --json
+ntn-skills ctl library files PAGE_ID --library LIBRARY_ID
+ntn-skills ctl library skill create INPUT --library LIBRARY_ID --skill-id SKILL_ID
+ntn-skills ctl library skill update TARGET --library LIBRARY_ID --input LOCAL_FILE
+ntn-skills ctl library skill register PAGE_ID --library LIBRARY_ID
+ntn-skills ctl library skill remove TARGET --library LIBRARY_ID --dry-run
+ntn-skills ctl library import INPUT --library LIBRARY_ID --skill-id SKILL_ID --dry-run
+ntn-skills ctl library import INPUT --library LIBRARY_ID --skill-id SKILL_ID
+ntn-skills ctl library projection PAGE_ID --library LIBRARY_ID --dry-run
+ntn-skills ctl library projection PAGE_ID --library LIBRARY_ID
+ntn-skills read PAGE_ID --library LIBRARY_ID --refresh --json
 ntn-skills files SNAPSHOT_ID
 ntn-skills export SNAPSHOT_ID --output NEW_DIRECTORY
 ~~~
 
-files 的完整目录不证明 body 已获取。整包导出、单文件输出和实际 Notion 全文阅读分别核对。日用 main 与全部文本子文件必须有完整正文；非文本明确 skipped，原件消费仍需成立。文本占位、原件缺失、Source-generated body 编辑自动接管均是缺陷。全日用只用同一公开 `projection --daily --entry ENTRY`；重跑时同目标、policy 和完整输入一致才自动续原意图，冲突与未确认的未知写仍停止。显式恢复使用原冻结策略，不另起批量 writer。
+files 的完整目录不证明 body 已获取。整包导出、单文件输出和实际 Notion 全文阅读分别核对。日用 main 与全部文本子文件必须有完整正文；非文本明确 skipped，原件消费仍需成立。文本占位、原件缺失、Source-generated body 编辑自动接管均是缺陷。全日用只用同一公开 `projection --daily --library LIBRARY_ID`；重跑时同目标、policy 和完整输入一致才自动续原意图，冲突与未确认的未知写仍停止。显式恢复使用原冻结策略，不另起批量 writer。
 
 恢复已完成后被移入 Trash 的 Skill，使用原页的 `projection PAGE_ID --restore
---entry ENTRY`。核 exact-only/default-auto 和与 daily/dry-run/手工恢复参数互斥。
+--library LIBRARY_ID`。核 exact-only/default-auto 和与 daily/dry-run/手工恢复参数互斥。
 完整实跑沿 [单条命令验收](current-convergence.md#单条命令恢复已完成的投影)：
 先清生成正文再 trash，恢复后完整对照和同命令零写，不用额外写操作补结果。
 仅恢复同页和当前 Source，不创建替代 owner，不把永久丢失或旧 pending 被外部
@@ -89,10 +89,12 @@ trash 说成可自动恢复。
 自动加载的 Broker、本地 Skills、MCP 和其它日用状态，按场景补 `pi -ns` 对照。
 冷启动只隔离本次自有缓存；被动 `-e` observer 只记录实际调用，不引导行为。
 不通过 `-ne`、预载维护 Skill 或工具过滤替代自然发现。给自然的新建、修改、读取、
-登记与删除目标，让模型从已连接库发现并普通读取 maintain；实际采用时用同来源的
-精确 ref 调用 notion_use/CLI use 加载 Requires，沿同一选择读取必要 reference 后自行选择
-公共动作。任务输入可以给内容和已授权对象，不能预填内部字段、正确命令或期望答案。
-只查看指引时保持 read，被编辑目标也只 inspect；无采用工具时报告不可用。
+登记与删除目标，让模型默认读取实际执行包的 maintain；Source 管理另验同包 sync，
+已连接库也不先搜索远端同名指引。沿同一包读取必要 reference 后自行选择公共动作。
+另给显式 Notion／团队工作流选择，核同来源精确 ref 和 notion_use/CLI use 的 Requires，
+失败、pending、权限与不完整发现不静默改选 Builtin；普通业务发现仍走当前库。
+任务输入可以给内容和已授权对象，不能预填内部字段、正确命令或期望答案。
+只查看指引时保持 read，被编辑目标也只 inspect；远端无采用工具时报告不可用。
 核 group/worker 实际调用与 provider 收到的完整正文、后续 native 编辑可读、最终有限
 意图清空。缺管理能力、靠外部 Agent 扫尾或只跑准备命令都不能记 passed。真实写入仅
 限授权对象；cleanup 也走同一公开 remove。受控、安装、live、natural 结果分开，不提前填数。
@@ -102,7 +104,8 @@ trash 说成可自动恢复。
 刷新、临时路径或正确答案。复用 Broker 现有 RPC harness 和公共 session 审计，
 不新增 runner。先有目录观察，再创建 Enabled=true/Default Context=false 的目标，
 核 native notion_list 能刷新发现并由 native read 读取其精确 ref；CLI list/read 不代填
-宿主成绩。原有维护 Skill 的 selected/active snapshot 和 fixed refs 保持，目标仅 inspect。
+宿主成绩。已选维护指引的身份和内容保持，远端 selected/active snapshot 与 fixed refs
+保持，目标仅 inspect。
 普通 mktemp 输入须在调用入口使用物理路径；不能用预先建在非临时目录的 fixture
 绕过本次 macOS 反例。核无路径失败、无相同条件反复空搜、实际 owner/snapshot/正文
 hash/bytes/completeness/effects，保留失败原件与复验关联。只分析公开文本和实际工具
@@ -110,15 +113,19 @@ hash/bytes/completeness/effects，保留失败原件与复验关联。只分析�
 同时核实际加载范围：已连接库的基础 how-to 由维护主文直接回答，不提前读 setup；
 只有直接 REST 工作才采用通用 API Skill，不能因最终创建成功忽略无关正文加载。
 
-维护说明随包和 Notion 投影分别保留身份；无连接或显式离线检查另验包内入口。
-发布指导更新后，用现有安装包运行
-`node scripts/verify-projected-builtins.mjs --cli CLI --entry ENTRY`，
+包内指引和 Notion 工作流分别保留身份。同名远端内容不能声明包身份或覆盖默认路由；
+原生副本属于用户，不要求随包升级。只有明确分发选定包字节到 Notion 时，才用现有安装包运行
+`node scripts/verify-projected-builtins.mjs --cli CLI --library LIBRARY_ID`，
 核消费返回的全部主文/附件字节、目录和发现 Description。脚本只读；它不验证生成的
 Notion 阅读正文或 Source ownership，也不证明安装配对或模型投递。相同名称和字节
 不足以证明来源归属；这些边界仍沿原有领域入口验证。Source refresh 不覆盖人工描述。
 受控正反例由 `bun test packages/cli/test/verify-projected-builtins.test.ts` 执行，
 根 `test:unit` 的 `packages/*/test` 已收集它；受控子 CLI 成绩不代表真实库通过。
-目录晚到或 View 未含维护项时仍应查询当前库，不能把不完整发现当作切换包内版本的理由。
+目录晚到或 View 未含显式选择的远端工作流时仍查询当前库，不能把不完整发现当作改选理由。
+初始化另核只建四表与关系、仅需保存 Skills ENTRY、next.argv 只读 list 且空结果正常，
+无隐式 Builtin／业务内容、default_library、host 或本地安装写入。default_library
+仅消费；管理仍需 --library。建立业务 Skill 后再核全文、实际应用及新会话重连，
+结构就绪不计作首次业务完成。不新增 onboarding 状态机或 runner。
 
 ## 当前内容 writer 与剩余治理
 

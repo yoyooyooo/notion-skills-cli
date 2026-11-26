@@ -35,7 +35,7 @@ const prepare = (
   f.run(
     prepareGraph(
       { roots: [f.pageIds[0]!], purpose: "use", ...extra },
-      { database: library.skills.database_id, metrics: true },
+      { library: library.library_id, metrics: true },
     ),
   )
 const derivedKeys = (f: ReturnType<typeof nativeGraphFixture>) =>
@@ -260,7 +260,7 @@ describe("library-scoped graph metadata batches", () => {
         const api = yield* Notion
         return yield* prepareGraph(
           { roots: [f.pageIds[0]!], purpose: "use" },
-          { database: library.skills.database_id },
+          { library: library.library_id },
         ).pipe(
           Effect.provideService(Notion, {
             ...api,
@@ -338,7 +338,7 @@ describe("library-scoped graph metadata batches", () => {
       const result = await f.run(
         prepareGraph(
           { roots: [f.pageIds[0]!], purpose: "use", budget },
-          { database: library.skills.database_id },
+          { library: library.library_id },
         ).pipe(Effect.result),
       )
       expect(result._tag).toBe("Failure")
@@ -446,7 +446,7 @@ describe("library-scoped graph metadata batches", () => {
     const failed = await f.run(
       prepareGraph(
         { roots: [f.pageIds[0]!], purpose: "use" },
-        { database: library.skills.database_id },
+        { library: library.library_id },
       ).pipe(Effect.result),
     )
     expect(failed._tag).toBe("Failure")
@@ -471,7 +471,7 @@ describe("library-scoped graph metadata batches", () => {
     const result = await f.run(
       prepareGraph(
         { roots: [f.pageIds[0]!], purpose: "inspect" },
-        { database: library.skills.database_id },
+        { library: library.library_id },
       ).pipe(Effect.result),
     )
     expect(result._tag).toBe("Failure")

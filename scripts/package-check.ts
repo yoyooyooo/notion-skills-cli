@@ -68,10 +68,23 @@ if (
   !entries.includes("package/dist/sdk.js")
 )
   throw new Error("Packed SDK export or generated declarations are missing.")
-if (manifest.engines?.node !== "^22.22.3 || >=24.20.0" || manifest.engines?.bun)
-  throw new Error(
-    "Packed consumer runtime must be Node.js 22.22.3+ within 22.x, or Node.js 24.20.0+.",
-  )
+if (
+  manifest.exports?.["./management"]?.import !== "./dist/management.js" ||
+  manifest.exports?.["./management"]?.default !== "./dist/management.js" ||
+  manifest.exports?.["./management"]?.types !== "./dist/types/cli/src/management.d.ts" ||
+  !entries.includes("package/dist/management.js")
+)
+  throw new Error("Packed management export or generated declarations are missing.")
+if (
+  manifest.exports?.["./ref"]?.import !== "./dist/ref.js" ||
+  manifest.exports?.["./ref"]?.require !== "./dist/ref.cjs" ||
+  manifest.exports?.["./ref"]?.types !== "./dist/types/core/src/skill-ref.d.ts" ||
+  !entries.includes("package/dist/ref.js") ||
+  !entries.includes("package/dist/ref.cjs")
+)
+  throw new Error("Packed pure Skill reference protocol is missing.")
+if (manifest.engines?.node !== "^22.23.5 || ^24.22.3 || ^26.13.1" || manifest.engines?.bun)
+  throw new Error("Packed consumer runtime must be Node.js ^22.23.5, ^24.22.3, or ^26.13.1.")
 for (const section of ["dependencies", "optionalDependencies", "peerDependencies"])
   for (const [dependency, value] of Object.entries(manifest[section] ?? {}))
     if (typeof value !== "string" || /^(?:catalog|workspace|file|link):/.test(value))
@@ -88,9 +101,14 @@ const publicFiles = [
   "THIRD_PARTY_NOTICES.md",
   "docs/README.md",
   "docs/current-contract.md",
+  "docs/library-roots.md",
+  "docs/library-root-migration.md",
   "docs/usage.md",
+  "docs/notion-mcp.md",
+  "docs/source-sync.md",
   "docs/shared-authoring.md",
   "docs/protocol.md",
+  "docs/skill-reference-redesign.md",
   "docs/maintenance-verification-review.md",
   "skills/ntn-skills/SKILL.md",
   "skills/ntn-skills/references/commands.md",
@@ -104,8 +122,9 @@ const publicFiles = [
 const declarations = (await readdir(join(target, "dist/types"), { recursive: true }))
   .filter((file) => file.endsWith(".d.ts"))
   .map((file) => `dist/types/${file}`)
-if (!declarations.includes("dist/types/cli/src/sdk.d.ts"))
-  throw new Error("Public SDK declaration entrypoint is missing.")
+for (const entry of ["sdk", "management"])
+  if (!declarations.includes(`dist/types/cli/src/${entry}.d.ts`))
+    throw new Error(`Public ${entry} declaration entrypoint is missing.`)
 for (const file of declarations) {
   const declaration = await readFile(join(target, file), "utf8")
   const packedDeclaration = await run(["tar", "-xOf", archive, `package/${file}`])
@@ -119,6 +138,9 @@ const expected = new Set([
   "package/package.json",
   "package/dist/ntn-skills.js",
   "package/dist/sdk.js",
+  "package/dist/management.js",
+  "package/dist/ref.js",
+  "package/dist/ref.cjs",
   ...declarations.map((file) => `package/${file}`),
   ...publicFiles.map((file) => `package/${file}`),
 ])
@@ -130,6 +152,14 @@ for (const file of publicFiles) {
   const bytes = await readFile(join(root, file))
   const bundled = await run(["tar", "-xOf", archive, `package/${file}`])
   if (bundled !== bytes.toString("utf8")) throw new Error(`Bundled document is stale: ${file}`)
+  if (
+    /(?:\/Users\/[^/\s]+\/|\/home\/[^/\s]+\/|https:\/\/(?:linear\.app|app\.notion\.com|(?:www\.)?notion\.so)\/)/u.test(
+      bundled,
+    )
+  )
+    throw new Error(
+      `Public document contains a private workspace path or workspace-only link: ${file}`,
+    )
   // Examples describe a Skill's own file tree. Only rendered document links,
   // including nested and reference links, must resolve inside this package.
   const links = documentLinks(SourceLexer.lex(bundled))
@@ -222,6 +252,14 @@ if (
   sdk?.contract !== "current-only" ||
   sdk.selection !== "all" ||
   sdk.failed !== 0 ||
-  sdk.passed !== 11
+  sdk.passed !== 14 ||
+  !sdk.cases.some(
+    (entry: { name: string; status: string }) =>
+      entry.name === "installed-pure-reference-module" && entry.status === "passed",
+  ) ||
+  !sdk.cases.some(
+    (entry: { name: string; status: string }) =>
+      entry.name === "installed-library-selection-is-local-and-fresh" && entry.status === "passed",
+  )
 )
-  throw new Error("The installed current SDK gate did not complete its 11 current contract cases.")
+  throw new Error("The installed current SDK gate did not complete its 14 current contract cases.")

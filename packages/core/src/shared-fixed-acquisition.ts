@@ -48,10 +48,11 @@ export function materializeSharedFixedAcquisition(
           "The selected acquisition belongs to another authenticated scope.",
         ),
       )
-    const library = yield* loadSharedLibrary(acquisition.library.skills.database_id)
+    const library = yield* loadSharedLibrary(acquisition.library.library_id)
     const previous = acquisition.library
     if (
       library.library_id !== previous.library_id ||
+      library.skills.database_id !== previous.skills.database_id ||
       library.skills.data_source_id !== previous.skills.data_source_id ||
       library.files.database_id !== previous.files.database_id ||
       library.files.data_source_id !== previous.files.data_source_id ||

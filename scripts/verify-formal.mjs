@@ -5,7 +5,7 @@ import path from "node:path"
 import os from "node:os"
 import { createHash } from "node:crypto"
 import { spawnSync } from "node:child_process"
-import { pathToFileURL } from "node:url"
+import { pathToFileURL, fileURLToPath } from "node:url"
 import { inspect } from "node:util"
 import {
   assertFormalCase,
@@ -18,7 +18,7 @@ const configExtension = ""
 const args = process.argv.slice(2)
 if (args.includes("--help")) {
   console.log(
-    "Usage: node scripts/verify-formal.mjs --suite request-engine|current-lifecycle --out /absolute/new/output " +
+    "Usage: node scripts/verify-formal.mjs --suite request-engine|current-lifecycle|notion-mcp-auth|notion-mcp-search|skill-reference --out /absolute/new/output " +
       "[--model Model] [--statechart PINNED_SKILL] [--jar TLC_JAR]",
   )
   process.exit(0)
@@ -36,7 +36,16 @@ for (let i = 0; i < args.length; i += 2) {
 if (options.has("--out")) assert.ok(path.isAbsolute(options.get("--out")), "--out must be absolute")
 const selectedModel = options.get("--model")
 const suite = options.get("--suite")
-assert.ok(["request-engine", "current-lifecycle"].includes(suite), "Select one current --suite")
+assert.ok(
+  [
+    "request-engine",
+    "current-lifecycle",
+    "notion-mcp-auth",
+    "notion-mcp-search",
+    "skill-reference",
+  ].includes(suite),
+  "Select one current --suite",
+)
 const lockFile = `verification/models/${suite}/tool-lock.json`
 const root = path.join(repository, "verification/models", suite)
 const out = options.has("--out")
@@ -46,13 +55,11 @@ if (fs.existsSync(out))
   assert.equal(fs.readdirSync(out).length, 0, "Use a new empty output directory")
 else fs.mkdirSync(out, { recursive: true, mode: 0o700 })
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
-const head = spawnSync("git", ["-C", repository, "rev-parse", "HEAD"], { encoding: "utf8" })
-assert.equal(head.status, 0)
 const summary = {
   version: 2,
   suite,
   selected_model: selectedModel ?? null,
-  checkout_commit: head.stdout.trim(),
+  checkout_commit: null,
   runner_sha256: hash(fs.readFileSync(import.meta.filename)),
   result_contract_sha256: hash(
     fs.readFileSync(new URL("./formal-result-contract.mjs", import.meta.url)),
@@ -119,6 +126,30 @@ try {
     (c) => selectedModel === undefined || c.model === selectedModel,
   )
   summary.expected_cases = cases
+  // Reuse the existing strict source contract. A development overlay cannot
+  // inherit the selected build's commit merely because its directory is paired.
+  const identityFile = path.join(repository, "scripts/formal_source_identity.py")
+  const identityFiles = { ...coverage.files }
+  for (const file of [
+    coverageFile,
+    import.meta.filename,
+    fileURLToPath(new URL("./formal-result-contract.mjs", import.meta.url)),
+    identityFile,
+    path.join(repository, lockFile),
+    ...coverage.cases.flatMap((c) => [
+      path.join(root, c.model + ".tla"),
+      path.join(root, c.model + ".view.mjs"),
+      path.join(root, c.model + "." + c.config),
+    ]),
+  ])
+    identityFiles[path.relative(repository, file)] = hash(fs.readFileSync(file))
+  const identity = spawnSync("python3", ["-B", identityFile, "--repository", repository], {
+    encoding: "utf8",
+    input: JSON.stringify(identityFiles),
+  })
+  assert.equal(identity.status, 0, identity.stderr || "Unable to establish formal source identity")
+  Object.assign(summary, JSON.parse(identity.stdout))
+  summary.source_identity_sha256 = hash(fs.readFileSync(identityFile))
   const scratch = path.join(out, "scratch")
   const retained = path.join(out, "retained-tool-temporaries")
   const inputs = path.join(out, "model-inputs")
@@ -148,7 +179,13 @@ try {
       sha256: hash(fs.readFileSync(file)),
     }))
     const result = await check(spec, config)
-    const view = checkView(await import(pathToFileURL(viewFile)), inspect)
+    const viewModule = await import(pathToFileURL(viewFile))
+    const view = checkView(
+      typeof viewModule.forConfig === "function"
+        ? viewModule.forConfig(fs.readFileSync(config, "utf8"))
+        : viewModule,
+      inspect,
+    )
     const rendered = compile(result, view)
     for (const [file, parts] of rendered.files) {
       const fd = fs.openSync(path.join(destination, file), "wx")

@@ -73,7 +73,7 @@ test.each(["read", "export", "use"] as const)(
     const rebuilt = currentId(900)
     f.main.id = rebuilt
     for (const file of f.files) file.properties.Skill.relation = [{ id: rebuilt }]
-    const options = { database: currentLibrary.skills.database_id, refresh: true }
+    const options = { library: currentLibrary.library_id, refresh: true }
     f.clearCalls()
     f.requests.length = 0
     let currentSnapshotId: string
@@ -121,11 +121,11 @@ test.each(["read", "export", "use"] as const)(
     expect(f.bodyCalls()).toHaveLength(0)
     expect(f.semanticWrites()).toHaveLength(0)
     f.clearCalls()
-    const warm = await f.run(readSkill(rebuilt, { database: options.database }))
+    const warm = await f.run(readSkill(rebuilt, { library: options.library }))
     expect(warm.snapshot_id).toBe(currentSnapshotId)
     expect(warm.version_id).not.toBe(first.version_id)
     expect(warm.source).toBe("local_cache")
-    const stable = await f.run(readSkill(first.record.id, { database: options.database }))
+    const stable = await f.run(readSkill(first.record.id, { library: options.library }))
     expect(stable.snapshot_id).toBe(currentSnapshotId)
     expect(stable.source).toBe("local_cache")
     const pinned = await f.run(
@@ -141,7 +141,7 @@ test.each(["read", "export", "use"] as const)(
       f.objects.delete(`objects/${missing.sha256}`)
       const acquired = await f.run(
         readSkill(fileRef(warm.record.id, missing.path, warm.snapshot_id), {
-          database: options.database,
+          library: options.library,
         }),
       )
       expect(acquired.record.locator).toEqual(warm.record.locator)
@@ -160,7 +160,7 @@ test.each(["read", "export", "use"] as const)(
             version: 1,
             refs: [fileRef(warm.record.id, missing.path, warm.snapshot_id)],
           },
-          { database: options.database },
+          { library: options.library },
         ),
       )
       expect(batch.status, JSON.stringify(batch)).toBe("ready")
@@ -328,7 +328,7 @@ test("main plus one Markdown projection keeps scripts and tests in snapshots, co
   f.requests.length = 0
   const selected = await f.run(
     readSkill(fileRef(first.record.id, script.path, first.snapshot_id), {
-      database: currentLibrary.skills.database_id,
+      library: currentLibrary.library_id,
     }),
   )
   expect("content" in selected && selected.content).toBe(
@@ -343,7 +343,7 @@ test("main plus one Markdown projection keeps scripts and tests in snapshots, co
   let archive: Uint8Array | undefined
   await f.run(
     exportSkill(currentSkillPage, {
-      database: currentLibrary.skills.database_id,
+      library: currentLibrary.library_id,
       output: "/complete-source.zip",
       format: "zip",
     }).pipe(
@@ -410,7 +410,7 @@ test("native takeover prevents a former Source path from cold acquisition and re
   await expect(
     f.run(
       readSkill(fileRef(first.record.id, script.path, first.snapshot_id), {
-        database: currentLibrary.skills.database_id,
+        library: currentLibrary.library_id,
       }),
     ),
   ).rejects.toMatchObject({ code: "SHARED_ACQUISITION_CHANGED" })

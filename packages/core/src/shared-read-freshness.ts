@@ -17,8 +17,8 @@ export function sharedReadFreshness(record: ContentRecord, options: ReadPolicyOp
       options.maxAge === undefined &&
       binding !== undefined &&
       locator.type === "shared_skill" &&
-      binding.library_entry === locator.database_id
-        ? yield* loadSharedProfileEntryCached(binding.library_entry, binding.profile_id, {
+      binding.library_id === locator.library_id
+        ? yield* loadSharedProfileEntryCached(binding.library_id, binding.profile_id, {
             ...(options.offline ? { offline: true } : {}),
             ...(options.refresh ? { refresh: true } : {}),
           })

@@ -73,7 +73,7 @@ async function fixture(options: { main?: string } = {}) {
       ? options.main
       : `# ${name}\nExact prepared instruction ${name}.\n`
   const snapshots: Snapshot[] = ["a", "b", "optional", "broken"].map((name, index) => {
-    const id = `shared_skill:prepare-library:${name}`
+    const id = `skill://${name}?library=bca052c3-72f0-5d5c-a168-ba971a4b33ba`
     const body = instruction(name)
     const version = hash(body)
     return {
@@ -93,7 +93,7 @@ async function fixture(options: { main?: string } = {}) {
         ref: fileRef(id, "SKILL.md"),
         locator: {
           type: "shared_skill",
-          library_id: "prepare-library",
+          library_id: "bca052c3-72f0-5d5c-a168-ba971a4b33ba",
           skill_id: name,
           page_id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
           database_id: "00000000-0000-4000-8000-000000000010",
@@ -120,8 +120,12 @@ async function fixture(options: { main?: string } = {}) {
     ...snapshots[3]!,
     required: [
       {
-        id: "shared_skill:prepare-library:missing",
-        ref: fileRef("shared_skill:prepare-library:missing", "SKILL.md", `s_${"f".repeat(64)}`),
+        id: "skill://missing?library=bca052c3-72f0-5d5c-a168-ba971a4b33ba",
+        ref: fileRef(
+          "skill://missing?library=bca052c3-72f0-5d5c-a168-ba971a4b33ba",
+          "SKILL.md",
+          `s_${"f".repeat(64)}`,
+        ),
         metadata: { name: "missing", kind: "skill", description: "Missing controlled dependency" },
       },
     ],

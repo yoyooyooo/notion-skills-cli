@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect"
 import { decode, fail, listSchema, property, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
+import { bindSkillRef, parseSkillRef } from "./skill-ref.ts"
 import { validateCurrentSourceContributions } from "./shared-current-source-input.ts"
 import { currentWriteIdentity } from "./shared-current-write-input.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
@@ -187,9 +188,20 @@ export function resolveCurrentSkillPage(
 ) {
   return Effect.gen(function* () {
     const exact = pageId(target)
+    const stableId = yield* checkedSkillManagement(() => {
+      if (!target.startsWith("skill://")) return target
+      const reference = bindSkillRef(parseSkillRef(target), library.library_id)
+      if (
+        reference.owner.libraryId !== library.library_id ||
+        reference.path ||
+        reference.selection.kind !== "current"
+      )
+        throw invalid("Management targets must be current root Skills in the selected Library.")
+      return reference.owner.skillId
+    })
     const raw =
       exact === undefined
-        ? yield* queryCurrentSkillIdentity(library, target)
+        ? yield* queryCurrentSkillIdentity(library, stableId)
         : yield* (yield* Notion).request("v1/pages/" + exact)
     if (raw === undefined)
       return yield* Effect.fail(

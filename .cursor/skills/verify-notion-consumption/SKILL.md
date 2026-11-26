@@ -1,6 +1,6 @@
 ---
 name: verify-notion-consumption
-description: "验证 ntn-skills 当前完整目录、有界元数据、正文与子文件、任务内选择、缓存、导出及普通消费远端零写。修改 list/read/use/files/export、权限、精确获取或 freshness 时使用，不保留历史内容恢复合同。"
+description: "验证 ntn-skills 当前完整目录、有界元数据、正文与子文件、任务内选择、缓存、导出及普通消费远端零写。修改 list/read/use/files/export、Hosted MCP 内容搜索与独立 Token/OAuth、权限、精确获取或 freshness 时使用，不保留历史内容恢复合同。"
 ---
 
 # 当前消费验证
@@ -27,7 +27,7 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 4. 同任务内保持一份完整选定目录。缺 Source/resource bytes 只可使用仍相符的当前 owner/descriptor；缺 native 旧选择字节或当前声明变化要求重选，不恢复远端历史。
 5. 每文件 acquisition v5 支持多 Source、native 和 resource。Source/resource 核 exact hash/bytes/mode；native 核实际当前正文加显式 frontmatter/mode，不承诺写入前 Markdown 字节。检查按需获取、offline 不发请求及权限拒绝；generated body 编辑不自动接管。 已观察到的 target `ACCESS_DENIED` 或 scope `AUTH_REQUIRED` 对 offline 正文同样生效；历史目录不授予正文权限。保留未知网络失败下的离线正例，以及业务 Enabled 关闭后的完整旧字节正例。T05 必须从公开 SDK 实际观察 401/403 后检查 scalar、batch、use/inspect 与 clear 后行为，不以直接构造失败对象代替这条边界。
    精确 child403 只归因已观察的 physical path；库级 claim 拒绝、未知或不匹配 path 不得误伤 root/其他 scope。physical 拒绝先于 alias 读取及 stable 写入持久化；分别注入后两步故障。用实际 SQLite 验 alias 退休、clear、迟到 grant，以及同 stable 两个正文版本的 fresh 恢复；逐个 pin 核原 hash。physical 授权槽不成为第二份正文 cache status。
-6. 相对文件留在选定 owner；跨 Skill 路径要求显式当前引用。整包 export 与单文件 read --output 分别核 bytes/path/mode；任意多路径 export 尚未公开，不发明选项。
+6. 相对文件留在选定 owner；跨 Skill 路径需要可靠 containing-file Source 证据或完整身份引用，不能按缓存布局补全。沿 [引用验证](../verify-ntn-skills/features/skill-reference.md) 检查两库重叠、正文 Library 上下文、固定 manifest 的 owner/path/entrypoint 与缺失拒绝。Source 文件不必有 Notion File 投影行。整包 export 与单文件 read --output 分别核 bytes/path/mode；任意多路径 export 尚未公开，不发明选项。
 7. 真实公开 list/read/use/files/export 的语义写计数均为 0。Notion query POST 是读；Record 创建、投影、adoption 和清理都是写。
 8. SDK 的完整 `options.env` 同时约束配置和实际 Git 子进程；并发 operation 不共享可变环境。公共 consume 的接线必须有受控 Source/实际 shim 证据，单独测试 runtime 不能代替。
 9. 取消不只检查 SDK 返回。POSIX Git 主进程及其自有进程组须收束，包括主进程先退、孙进程忽略 SIGTERM 的情况；保留原取消原因、2 秒强杀边界和 stderr 保密。不改认证或延长预算制造通过。
@@ -48,6 +48,24 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 安装层复用 [portable-export-package-consumption](../verify-ntn-skills/features/portable-export-package-consumption.md) 的实际包入口。旧远端恢复或已退出命令的步骤不可继承；包未切换记缺口。Pi 由 Broker integration 沿 AH-1197/AH-637/AH-1198 验；AH-1063 仅为历史基线，不扩 OMP/Tern。
 
 ## Evidence
+
+### Hosted MCP 内容搜索与认证
+
+复用 [notion-mcp-auth](../../../verification/models/notion-mcp-auth/README.md) 和现有形式验证 runner，不建立第二份 REST 认证或通用验证入口。MCP 凭据只使用本次隔离 config home；测试用假令牌和真实 loopback HTTP，不读取个人凭据。
+
+~~~sh
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/notion-mcp-auth.node.test.ts packages/core/test/notion-mcp-credential-store.node.test.ts
+node scripts/verify-formal.mjs --suite notion-mcp-auth --out /absolute/new-mcp-model-run
+python3 scripts/check-formal-mutations.py --suite notion-mcp-auth --out /absolute/new-mcp-mutation-run
+~~~
+
+认证或存储守卫变化时保留两个模型的 31 个正例、负例和可达性见证；准确的独立规则清单、TLC/statechart 字节、模型范围和实际 source hash 均由现有 runner 核对。先审阅实现差异与模型抽象，再更新对应 hash。实际 guard mutation 必须原件通过、删除守卫后行为断言失败、恢复原字节后通过；导入或语法错误不算捕获。
+
+分别核显式环境 token → 存储 token → OAuth 的优先级，错误显式 token 不切身份，headless 不开浏览器，独立 waiter 取消，callback state/iss/PKCE/resource/redirect/expiry，跨进程 logout 对 exchange/commit 的 fence。绝对时间已过但定时器尚未执行时，也须在兑换、提交和原子发布前重新确认至少一个未取消且未过期的 owner；过期 waiter 不可恢复，另一有效 waiter 仍可完成。刷新必须在同 config home 的锁内重读、先 fsync 在途标记、原子提交新 AT/RT 并清标记；不同调用的 deadline、SIGKILL 后接管、未知结果和 403/429 不重放分别留原始记录。只承诺同机协作进程，不把有限模型的原子存储步骤写成断电证明。
+
+内容命中资格、独立 Source 选择和 cursor 绑定沿公开 SDK/CLI 与 [notion-mcp-search](../../../verification/models/notion-mcp-search/README.md) 的 SearchAdmission 模型验：复用 `verify-formal.mjs --suite notion-mcp-search` 和 `check-formal-mutations.py --suite notion-mcp-search`，各用新的外部绝对输出目录。Broker 的 Enabled/前台/会话 ticket 与 Pi 授权 UI 由其既有 integration owner 验。模型中的 Enabled/sessionEpoch 是宿主输入，核心认证 suite 通过不代替这些接线或真实用户授权证据。
+
+### 回执范围
 
 按 [当前合同与回执](../../../docs/verification-contracts.md) 标 C01/C06/C07a/C09、具体时间线及实际层级；相同原件跨票引用不重复计数。
 

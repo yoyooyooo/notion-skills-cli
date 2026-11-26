@@ -6,14 +6,17 @@ import { createHash } from "node:crypto"
 import { chmod, mkdir, mkdtemp, readFile, realpath, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { prepareCurrentImport } from "../src/commands-current-import.ts"
+import {
+  prepareCurrentImport,
+  prepareCurrentImportMembers,
+} from "../src/commands-current-import.ts"
 import { currentImportCommand } from "../src/commands-current-import.ts"
 import { commandSchema } from "../../core/src/command-schema.ts"
 import { exportSkill } from "../../core/src/export.ts"
 import { property } from "../../core/src/model.ts"
 import { Notion } from "../../core/src/notion.ts"
 import { queryCurrentSkillIndex } from "../../core/src/shared-current-index.ts"
-import { writeCurrentSkill } from "../../core/src/shared-current-write.ts"
+import { prepareCurrentSkillWrite, writeCurrentSkill } from "../../core/src/shared-current-write.ts"
 import { readSkill } from "../../core/src/snapshot.ts"
 import { currentWriteFixture, library } from "../../core/test/shared-current-write-fixture.ts"
 
@@ -199,7 +202,7 @@ test("native LF and CRLF normalize through full readback while the admitted inpu
     expect(
       await f.run(
         readSkill(written.page_id, {
-          database: library.skills.database_id,
+          library: library.library_id,
           path: selected,
           refresh: true,
         }),
@@ -208,7 +211,7 @@ test("native LF and CRLF normalize through full readback while the admitted inpu
     const output = join(parent, "normalized-export")
     await f.run(
       exportSkill(written.page_id, {
-        database: library.skills.database_id,
+        library: library.library_id,
         output,
         format: "directory",
       }),
@@ -256,8 +259,8 @@ test("unsupported native structure fails public admission before remote work", a
     f.run(
       Command.runWith(currentImportCommand, { version: "test", renderErrors: false })([
         directory,
-        "--entry",
-        library.skills.database_id,
+        "--library",
+        library.library_id,
         "--skill-id",
         "unsupported-native",
         "--native",
@@ -277,8 +280,8 @@ test("the public parser accepts repeatable native flags and rejects duplicates b
     f.run(
       Command.runWith(currentImportCommand, { version: "test", renderErrors: false })([
         directory,
-        "--entry",
-        library.skills.database_id,
+        "--library",
+        library.library_id,
         "--skill-id",
         "native-skill",
         "--native",
@@ -324,11 +327,11 @@ test("mixed CLI import writes editable native bodies, reads and exports exact fi
     ).toBe(true)
   f.clearCalls()
   const main = await f.run(
-      readSkill(written.page_id, { database: library.skills.database_id, refresh: true }),
+      readSkill(written.page_id, { library: library.library_id, refresh: true }),
     ),
     guide = await f.run(
       readSkill(written.page_id, {
-        database: library.skills.database_id,
+        library: library.library_id,
         path: "references/guide.txt",
       }),
     )
@@ -337,7 +340,7 @@ test("mixed CLI import writes editable native bodies, reads and exports exact fi
   const output = join(parent, "exported")
   await f.run(
     exportSkill(written.page_id, {
-      database: library.skills.database_id,
+      library: library.library_id,
       output,
       format: "directory",
     }),
@@ -371,9 +374,7 @@ test("mixed CLI import writes editable native bodies, reads and exports exact fi
   )
   f.clearCalls()
   expect(
-    await f.run(
-      readSkill(written.page_id, { database: library.skills.database_id, refresh: true }),
-    ),
+    await f.run(readSkill(written.page_id, { library: library.library_id, refresh: true })),
   ).toMatchObject({ content: nativeHeader + humanBody })
   expect(f.mutations()).toEqual([])
   expect(
@@ -385,9 +386,7 @@ test("mixed CLI import writes editable native bodies, reads and exports exact fi
     f.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/markdown")),
   ).toHaveLength(1)
   expect(
-    await f.run(
-      readSkill(written.page_id, { database: library.skills.database_id, refresh: true }),
-    ),
+    await f.run(readSkill(written.page_id, { library: library.library_id, refresh: true })),
   ).toMatchObject({ content: nativeHeader + nativeBody })
 })
 
@@ -438,7 +437,7 @@ test("a changed native round-trip remains pending and a resume cannot change nat
     operation_id: "native-roundtrip",
   })
   await expect(
-    f.run(readSkill(page, { database: library.skills.database_id, refresh: true })),
+    f.run(readSkill(page, { library: library.library_id, refresh: true })),
   ).rejects.toMatchObject({ code: "CURRENT_OPERATION_PENDING" })
 
   const resource = await f.run(prepareCurrentImport(directory, { skillId: "native-skill" }))
@@ -544,9 +543,9 @@ test("current portable relations survive local admission and invalid selections 
   const relations = {
     version: 1 as const,
     ownership: "notion" as const,
-    library_id: "library",
+    library_id: "0c64a309-510e-5d37-b23c-3ce2f966c66e",
     members: [],
-    requires: ["shared_skill:library:target"],
+    requires: ["skill://target?library=0c64a309-510e-5d37-b23c-3ce2f966c66e"],
   }
   await writeFile(join(directory, ".ntn-skills.json"), JSON.stringify({ ...base, relations }))
   const admitted = await run(prepareCurrentImport(directory, { skillId: "portable" }))
@@ -554,9 +553,14 @@ test("current portable relations survive local admission and invalid selections 
   expect(admitted.plan.files[0]!.bytes).toEqual(original)
   for (const extra of [
     { requires: ["Display name"] },
-    { requires: ["shared_skill:other:target"] },
-    { requires: ["shared_skill:library:portable"] },
-    { requires: ["shared_skill:library:target", "shared_skill:library:target"] },
+    { requires: ["skill://target?library=563e49fa-4378-5493-a5ff-8c96321f9ffd"] },
+    { requires: ["skill://portable?library=0c64a309-510e-5d37-b23c-3ce2f966c66e"] },
+    {
+      requires: [
+        "skill://target?library=0c64a309-510e-5d37-b23c-3ce2f966c66e",
+        "skill://target?library=0c64a309-510e-5d37-b23c-3ce2f966c66e",
+      ],
+    },
     { future_relation: [] },
   ]) {
     await writeFile(
@@ -606,7 +610,7 @@ test("the import machine schema exposes bounded integer HTTP controls and timeou
 test("current import rejects ambiguous supersede identities before input or remote acquisition", async () => {
   const directory = await root(),
     f = currentWriteFixture(directory)
-  const base = ["missing.md", "--entry", library.skills.database_id, "--skill-id", "import-target"]
+  const base = ["missing.md", "--library", library.library_id, "--skill-id", "import-target"]
   for (const flags of [
     ["--supersede", "old-intent"],
     ["--supersede", "same-intent", "--operation", "same-intent"],
@@ -629,4 +633,107 @@ test("current import rejects ambiguous supersede identities before input or remo
   ).rejects.toMatchObject({ code: "CURRENT_WRITE_INPUT_INVALID" })
   expect(f.calls).toEqual([])
   expect(f.pages.size).toBe(0)
+})
+
+test("single portable import preserves origin before omitted explicit-empty and existing member policies", async () => {
+  const directory = await root(),
+    f = currentWriteFixture(directory)
+  const pin = "s_" + "a".repeat(64)
+  const document =
+    "---\nname: Origin\ndescription: Context fixture\n---\n[External](skill://outside/SKILL.md)\n[Fixed](skill://outside/SKILL.md?snapshot=" +
+    pin +
+    ")"
+  await writeFile(join(directory, "SKILL.md"), document)
+  const metadata = (fields: Record<string, unknown>) =>
+    JSON.stringify({
+      format: "ntn-skills",
+      version: 2,
+      kind: "skill",
+      name: "Origin",
+      description: "Context fixture",
+      main: "SKILL.md",
+      relations: {
+        version: 1,
+        ownership: "notion",
+        library_id: "884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+        ...fields,
+      },
+    })
+  const seed = async (skill_id: string) => {
+    const plan = await f.run(
+      prepareCurrentSkillWrite({
+        skill_id,
+        kind: "skill",
+        name: skill_id,
+        description: "Destination fixture",
+        files: [
+          {
+            path: "SKILL.md",
+            bytes: encode(
+              "---\nname: " + skill_id + "\ndescription: Destination fixture\n---\n# B",
+            ),
+          },
+        ],
+      }),
+    )
+    await f.run(writeCurrentSkill(library, { plan, operation_id: "seed-" + skill_id }))
+  }
+  await seed("outside")
+  for (const fields of [{}, { members: [] }, { requires: [] }]) {
+    await writeFile(join(directory, ".ntn-skills.json"), metadata(fields))
+    f.clearCalls()
+    const prepared = await f.run(prepareCurrentImport(directory, { skillId: "origin-owner" }))
+    const result = await f.run(
+      prepareCurrentImportMembers(library, prepared.plan).pipe(Effect.result),
+    )
+    expect(result._tag).toBe("Success")
+    if (result._tag !== "Success") continue
+    const selected = result.success
+    const expected = document
+      .replace(
+        "[External](skill://outside/SKILL.md)",
+        "[External](skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec)",
+      )
+      .replace(
+        "skill://outside/SKILL.md?snapshot=",
+        "skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec&snapshot=",
+      )
+    expect(new TextDecoder().decode(selected.plan.files[0]!.bytes)).toBe(expected)
+    expect(selected.plan.relations).toEqual({
+      version: 1,
+      ownership: "notion",
+      library_id: library.library_id,
+      ...fields,
+    })
+    expect(selected.rewrites).toHaveLength(2)
+    expect(selected.plan.input_sha256).not.toBe(prepared.plan.input_sha256)
+    expect(f.mutations()).toEqual([])
+    expect(
+      f.calls.filter(
+        (call) => call.path.endsWith("/query") && JSON.stringify(call.body).includes('"outside"'),
+      ),
+    ).toEqual([])
+  }
+  await seed("origin-owner")
+  await writeFile(join(directory, ".ntn-skills.json"), metadata({}))
+  f.clearCalls()
+  const prepared = await f.run(prepareCurrentImport(directory, { skillId: "origin-owner" }))
+  const existing = await f.run(prepareCurrentImportMembers(library, prepared.plan))
+  expect(existing.members_discovery.member_policy).toBe("preserve_existing")
+  expect(existing.plan.relations?.members).toBeUndefined()
+  expect(new TextDecoder().decode(existing.plan.files[0]!.bytes)).toContain(
+    "skill://outside/SKILL.md?library=884155c9-d3d6-57d3-8d2b-735ef1d41fec",
+  )
+  expect(existing.rewrites).toHaveLength(2)
+  expect(await readFile(join(directory, "SKILL.md"), "utf8")).toBe(document)
+  expect(f.mutations()).toEqual([])
+  for (const field of ["members", "requires"]) {
+    await writeFile(join(directory, ".ntn-skills.json"), metadata({ [field]: ["skill://outside"] }))
+    f.clearCalls()
+    const foreign = await f.run(prepareCurrentImport(directory, { skillId: "foreign-owner" }))
+    await expect(f.run(prepareCurrentImportMembers(library, foreign.plan))).rejects.toMatchObject({
+      code: "PORTABLE_RELATION_SCOPE",
+    })
+    expect(f.calls).toEqual([])
+  }
 })

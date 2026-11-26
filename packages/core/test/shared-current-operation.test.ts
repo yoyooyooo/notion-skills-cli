@@ -1,3 +1,4 @@
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { afterAll, describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { join } from "node:path"
@@ -120,6 +121,8 @@ function fixture(
         const method = options?.method ?? "GET",
           request = property(body)
         calls.push({ path, body, method })
+        const schema = method === "GET" ? librarySchemaResponse(path, library) : undefined
+        if (schema !== undefined) return schema
         if (path.startsWith("v1/data_sources/" + library.records.data_source_id + "/query"))
           return {
             object: "list",
@@ -262,6 +265,7 @@ function fixture(
                 before.version,
                 before.scope,
                 before.library_id,
+                before.library,
                 before.record_id,
                 property(before.intent).owner,
               ]) !==
@@ -269,6 +273,7 @@ function fixture(
                   after.version,
                   after.scope,
                   after.library_id,
+                  after.library,
                   after.record_id,
                   property(after.intent).owner,
                 ])
@@ -283,6 +288,7 @@ function fixture(
                 row.version,
                 row.scope,
                 row.library_id,
+                row.library,
                 row.record_id,
                 row.intent,
                 row.completion,
@@ -1555,6 +1561,48 @@ describe("one finite current write", () => {
     expect(await f.run(f.apply({ mode: "resume", values: ["first", "second"] }))).toBe(2)
     expect(f.productRequests()).toBe(1)
     expect(f.values).toEqual(["first", "second"])
+  })
+  test("a new native wire spelling cannot replace an unknown original request", async () => {
+    const f = fixture()
+    const original = "skill://router"
+    f.fault({ target: "product", outcome: "visible" })
+    await expect(
+      f.run(f.apply({ values: [original], replay: "idempotent" })),
+    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    const pending = await f.run(readCurrentOperationIntent(library, intent.owner))
+    const calls = f.calls.length
+    await expect(
+      f.run(
+        withCurrentOperation(library, {
+          intent,
+          ownerPageId: ownerId,
+          mode: "resume",
+          run: (session) =>
+            session.dispatch({
+              key: "append:" + original,
+              replay: "idempotent",
+              request: {
+                path: productPath,
+                body: { value: "skill://router/entrypoint.md/.." },
+                options: { method: "POST" },
+              },
+              observe: () => Effect.die("A changed pending request must fail before observation"),
+              acknowledge: () => Effect.die("A changed pending request must never be sent"),
+            }),
+          verify: () => Effect.void,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_CONFLICT" })
+    expect(
+      f.calls.slice(calls).filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+    ).toEqual([])
+    expect(await f.run(readCurrentOperationIntent(library, intent.owner))).toEqual(pending)
+    expect(f.productRequests()).toBe(1)
+    expect(await f.run(f.apply({ mode: "resume", values: [original], replay: "idempotent" }))).toBe(
+      1,
+    )
+    expect(f.productRequests()).toBe(1)
+    expect(f.json.size).toBe(0)
   })
   test("a failed final scope stays attention and can finish without another append", async () => {
     const f = fixture()

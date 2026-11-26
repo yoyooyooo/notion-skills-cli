@@ -49,13 +49,13 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 对实际已是 current schema 的授权对象，使用实际返回的身份：
 
 ~~~sh
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library files "$CURRENT_TARGET" --entry "$CURRENT_ENTRY"
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library projection "$CURRENT_TARGET" --entry "$CURRENT_ENTRY" --dry-run
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library projection "$CURRENT_TARGET" --entry "$CURRENT_ENTRY"
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- read "$CURRENT_TARGET" --database "$CURRENT_ENTRY" --refresh --metrics
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- files "$CURRENT_TARGET" --database "$CURRENT_ENTRY"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library files "$CURRENT_TARGET" --library "$CURRENT_LIBRARY"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library projection "$CURRENT_TARGET" --library "$CURRENT_LIBRARY" --dry-run
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library projection "$CURRENT_TARGET" --library "$CURRENT_LIBRARY"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- read "$CURRENT_TARGET" --library "$CURRENT_LIBRARY" --refresh --metrics
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- files "$CURRENT_TARGET" --library "$CURRENT_LIBRARY"
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- read "$CURRENT_FILE_REF"
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- export "$CURRENT_TARGET" --database "$CURRENT_ENTRY" --output "$CURRENT_RUN/scratch/current-export"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- export "$CURRENT_TARGET" --library "$CURRENT_LIBRARY" --output "$CURRENT_RUN/scratch/current-export"
 ~~~
 
 必须分别确认：
@@ -69,7 +69,7 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN"
 
 固定 pin 缺字节补取使用另一条已有路径：下载前核当前资格与原固定 descriptor，准入后只完成原 revision/path/hash/bytes/mode 对应的字节；后到的业务管理变化不把本次补取变成 latest read，也没有末尾再次要求 current ready。下一次新的 acquisition 重新核资格。已有完整本地字节保持固定语义；已知真实权限拒绝仍按既有访问检查处理，精确字节校验不授予权限。native 原正文缺失没有旧版远端恢复路线。复验入口是 `shared-acquisition-contract.test.ts` 的 provider 暂停用例，其实际交错是 Source Enabled/revision 变化，不代称所有 owner 或撤权交错。
 
-获得整个日用范围授权后，用公开 `ctl library projection --daily --entry DB`
+获得整个日用范围授权后，用公开 `ctl library projection --daily --library LIBRARY_ID`
 执行同一路径，记录 full tree、selected、excluded、row changes、正文读回和非文本跳过，再重复确认零语义写。Disabled
 和期望删除只报告，不隐式排除或改策略。失败批次保留 completed/remaining 与
 单项恢复命令。重跑普通单项/daily 命令时核同目标、policy 和完整输入 hash 才沿
@@ -89,7 +89,7 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN"
 3. 只用一条公开产品命令恢复：
 
    ~~~sh
-   ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry LIBRARY_ENTRY
+   ntn-skills ctl library projection SKILL_PAGE_ID --restore --library LIBRARY_ID
    ~~~
 
    有自定义 filters 或预算时加在同一条命令中。期间及事后禁止 Agent 另写页面、
@@ -114,8 +114,8 @@ daily、dry-run、operation、resume、cancel。自身 restore 与后续 project
 目标观察沿现有入口：
 
 ~~~sh
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library inspect "$CURRENT_ENTRY"
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library files "$CURRENT_TARGET" --entry "$CURRENT_ENTRY"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library inspect "$CURRENT_LIBRARY"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN" -- ctl library files "$CURRENT_TARGET" --library "$CURRENT_LIBRARY"
 ~~~
 
 Source remove 自带库内完整 Skills/Files 元数据反查，能找到缺 Origin 的语义 Content 引用；有引用先显式 takeover，再清退无引用 Source。它不等于已清完整个旧库。旧 audit/census/cleanup route 已退出；通用旧对象治理未接通的范围报告未完成，不另写临时清理内核或让旧接口补位。
@@ -180,14 +180,18 @@ AH-1197 配对当前 CLI/SDK/Broker 并核两机 next 的实际加载字节；AH
 
 完成自然查找→选用→子文档读取，再按当前已具备的管理/单文件导出能力继续消费。检查实际模型输入、必要全文、去重和成本；mock、准备稿或 enqueue 不是投递。未接通的内容管理不能由 Profile 改动代称。
 
-原生管理新增验收使用实际 `pi -ne` 与 group/worker，沿
+原生管理新增验收使用普通 Pi、自动加载的 Broker 与 group/worker，按场景补 `pi -ns`，沿
 [skill-maintenance](skill-maintenance.md#原生日常管理与实际-pi) 跑自然作者任务。
-已连接库应发现并普通读取 maintain；实际采用时沿同来源精确 ref 用 notion_use/CLI use
-加载 Requires，再选择四动作。只查看说明和被编辑目标仍只 inspect。
+维护和 Source sync 默认读取实际执行包的 Builtin，已连接库也不先搜远端同名工作流。
+显式选择 Notion／团队工作流时，采用沿同来源精确 ref 用 notion_use/CLI use 加载 Requires，
+错误或不完整发现不静默改选。已选任务内容保持；普通业务仍在库里发现。
+只查看说明和被编辑目标仍只 inspect。
 不能靠提示里塞命令、手填机器字段或
 外部 Agent 事后补写取得通过。独立安装加载字节和实际 Notion/Pi 回执都须留存。
 
-AH-1198 执行 T01–T23 中必须真实运行的代表旅程：普通固定任务、主动最新、查看不采用、连续故障续聊、开关变化、本地充分负例与两机后续更新。AH-1196 负责自然任务和工具必要性；受控 provider 不充自然模型。无需逐 Skill 重跑全部矩阵。
+按 [当前合同索引](../../../../docs/verification-contracts.md) 选择需要真实运行的旅程。AH-1198 的普通日用代表范围包括固定任务、主动最新、查看不采用、连续故障续聊、开关变化、本地充分负例与两机后续更新。AH-1196 负责自然任务和工具必要性；受控 provider 不充自然模型。无需逐 Skill 重跑全部矩阵。
+
+T24 分别保留双库选择和消费、跨库完整引用、Source 原操作续接三条真实旅程的回执，每条只证明索引声明的切片。首次建库单列 native-onboarding 及其独立 fresh grader；初始化原操作续建沿 [Library 恢复合同](../../../../docs/library-roots.md#interrupted-setup-and-writes) 单列验收，保留原 Store、parent、operation 和实际续建读回。
 
 ## 结果与停止
 

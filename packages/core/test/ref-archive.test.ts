@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { normalizePath, pageId, parseRef, resolveRef } from "../src/ref.ts"
-import { aliasFor, resolveRecord, type Catalog } from "../src/model.ts"
+import { aliasFor } from "../src/model.ts"
 
 const id = "12345678-1234-1234-1234-123456789abc"
 const snapshot = "s_" + "a".repeat(64)
@@ -15,15 +15,16 @@ function failureOf(operation: () => unknown): unknown {
 }
 
 describe("protocol references", () => {
-  test("round trips names and paths and keeps snapshot across nested relative links", () => {
-    const ref = `skill://Resource%20Governance/references/deep/guide.md?snapshot=${snapshot}`
-    expect(parseRef(ref)).toEqual({
-      selector: "Resource Governance",
+  test("round trips stable identities and paths and keeps snapshots across nested relative links", () => {
+    const ref = `skill://resource-governance/references/deep/guide.md?library=0602093b-7ffd-5687-9f6a-8a78fa5cd2ba&snapshot=${snapshot}`
+    expect(parseRef(ref)).toMatchObject({
+      skillId: "resource-governance",
+      scope: { kind: "library", libraryId: "0602093b-7ffd-5687-9f6a-8a78fa5cd2ba" },
       path: "references/deep/guide.md",
-      snapshot,
+      selection: { kind: "fixed", snapshotId: snapshot },
     })
     expect(resolveRef(ref, "../../assets/词表.md")).toBe(
-      `skill://Resource%20Governance/assets/%E8%AF%8D%E8%A1%A8.md?snapshot=${snapshot}`,
+      `skill://resource-governance/assets/%E8%AF%8D%E8%A1%A8.md?library=0602093b-7ffd-5687-9f6a-8a78fa5cd2ba&snapshot=${snapshot}`,
     )
     expect(pageId(`https://app.notion.com/p/title-${id.replaceAll("-", "")}?v=x`)).toBe(id)
     expect(pageId(`https://www.notion.so/${id.replaceAll("-", "")}`)).toBe(id)
@@ -73,70 +74,5 @@ describe("skill identity", () => {
         details: { name },
       })
     }
-  })
-  const skill = {
-    id: "shared_skill:library-current:sample",
-    kind: "skill" as const,
-    entrypoint: "SKILL.md",
-    locator: {
-      type: "shared_skill" as const,
-      page_id: id,
-      database_id: "db",
-      data_source_id: "ds",
-      library_id: "library-current",
-      skill_id: "sample",
-    },
-    name: "Sample Skill",
-    alias: "sample-skill",
-    description: "Use samples",
-    default_context: false,
-    enabled: true,
-    ref: "skill://shared_skill%3Alibrary-current%3Asample/SKILL.md",
-  }
-  const directory: Catalog = {
-    scope: "scope",
-    fetched_at: 0,
-    databases: [],
-    records: [skill],
-    coverage: {
-      method: "search",
-      exhaustive: false,
-      queried_data_sources: ["ds"],
-      failed_sources: [],
-      search_index_limited: true,
-    },
-  }
-  test("resolves exact name and alias but does not silently choose on collisions", () => {
-    expect(resolveRecord("Sample Skill", directory).id).toBe(skill.id)
-    expect(resolveRecord("sample-skill", directory).id).toBe(skill.id)
-    expect(failureOf(() => resolveRecord("missing", directory))).toMatchObject({
-      code: "SKILL_NOT_FOUND",
-      details: { selector: "missing", candidates: [], coverage: directory.coverage },
-    })
-    const other = { ...skill, id: "other", name: "sample skill" }
-    expect(
-      failureOf(() => resolveRecord("sample-skill", { ...directory, records: [skill, other] })),
-    ).toMatchObject({
-      code: "SKILL_AMBIGUOUS",
-      details: { selector: "sample-skill", candidates: [skill, other] },
-    })
-  })
-  test("incomplete discovery cannot claim a unique match", () => {
-    const coverage = {
-      ...directory.coverage,
-      failed_sources: [
-        {
-          id: "failed",
-          code: "ACCESS_DENIED",
-          database_id: "db",
-          alias: "ops",
-          title: "Operations Skills",
-          data_source_id: "failed",
-        },
-      ],
-    }
-    expect(
-      failureOf(() => resolveRecord("Sample Skill", { ...directory, coverage })),
-    ).toMatchObject({ code: "CATALOG_INCOMPLETE", details: coverage })
   })
 })

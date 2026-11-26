@@ -6,14 +6,14 @@
 
 `ctl library import` 接受完整本地文件树。先 dry-run，再执行同一输入；需要恢复时沿同一入口提交原 operation 和完整输入。每个文件只有当前权威，正文阅读投影不自动转移权威。Operation 只保留未完成意图，完成后清理。
 
-同步后用 `ctl library projection PAGE_ID --entry DB` 或授权日用范围的 `--daily`
+同步后用 `ctl library projection PAGE_ID --library LIBRARY_ID` 或授权日用范围的 `--daily`
 生成完整主文和文本子文件正文。Native 只读验证，非文本明确跳过；投影意图不改
 真实 Skill ready，同版本正文零写。Daily 失败可重跑同一普通 daily 命令；只在
 目标、policy 和完整输入一致时续原意图。非日用投影与额外二进制呈现不作为
 日用文本完成的前置。
 
 已完成 Skill 被移入 Trash 后，用原 exact page 的 `projection PAGE_ID --restore
---entry DB` 恢复同页并完成原 automatic projection。恢复与投影各用有限意图、
+--library LIBRARY_ID` 恢复同页并完成原 automatic projection。恢复与投影各用有限意图、
 共享一次预算，保留身份、四开关、native/resource，不重新发现 Source HEAD。
 自身阶段中断重跑同命令；旧 projection pending 又被外部 trash 的情况零写
 拒绝。真实验收先清生成正文再 trash，完整对照并重跑零写；额外 Agent 修补

@@ -5,32 +5,38 @@ management decisions and Notion-authored content. Git-only, mixed and Notion-nat
 Skills share this contract. The system does not retain content versions, page
 generations, historical graph releases or permanent recovery pins.
 
-The work is tracked by [AH-499](https://linear.app/yoyooyooo/issue/AH-499) and its
-[implementation parent](https://linear.app/yoyooyooo/issue/AH-498). This document
-defines the current behavior and its remaining delivery scope. The installed Pro
-CLI/SDK/Broker already has a bounded native, Git and resource consumption baseline.
-That baseline does not establish that every daily Skill or the long tail has been
-converted. Daily acceptance also requires complete main bodies and selected human-readable
-Markdown supporting documents in Notion. The last section separates that work from non-daily projection,
-binary presentation and unrelated cleanup.
+This document defines current behavior and implementation constraints. Use the
+[verification review](maintenance-verification-review.md) for checks and the
+[verification contracts](https://github.com/yoyooyooo/notion-skills-cli/blob/next/docs/verification-contracts.md) for evidence boundaries.
+Delivery progress and individual run results belong to the corresponding issue or
+PR. A source implementation or an earlier installation does not establish that a
+particular Notion library has been converted or its reading pages projected.
 
 ## One current owner for each fact
 
-The CLI's bundled guidance may also be projected into a connected Notion library.
-Those projected Skills use ordinary scoped discovery, exact-ref reads and
-same-selection reference reads. Package IDs and Notion page identities remain
-distinct. Reading inspects the workflow. Applying it uses the same source's exact
-ref through Pi `notion_use` or CLI `use` to load its complete Requires, unless
-already prepared for this task. Inspecting the edited target does not activate it.
-Use only available tools; report when adoption has no supported route.
-Use package guidance when no library is connected or when offline/package
-inspection is explicit; failed or partial discovery does not select that fallback.
-Updating the npm package does not advance the Notion Source or its reading pages.
-Source refresh preserves human Name/Description choices. Compare consumed file
-bytes and discovery descriptions after updating distributed guidance. This byte
-comparison does not prove generated reading pages, Source ownership, installed
-CLI/Broker pairing or model delivery; those retain their own verification paths.
-An existing task keeps its loaded selection until explicitly changed.
+Product maintenance and Source sync default to the Builtin guidance of the
+executable or paired SDK actually used for the task. A connected library does
+not change that default or require a remote workflow search. Ordinary business
+Skill discovery stays in the selected Notion library. Package guidance neither
+chooses the target library nor grants write permission.
+
+An explicitly selected Notion/team workflow retains its source and exact ref.
+Read inspects; Pi `notion_use` or CLI `use` loads its complete Requires before
+application, unless already prepared. Report unsupported adoption and preserve
+failed/incomplete discovery, pending content and access errors; do not substitute
+package guidance. Inspecting the edited target does not activate it. Same-name
+Notion content cannot claim package identity or override the default. An existing
+task keeps its selected identity and content until explicitly changed.
+
+Copying bundled guidance into Notion is optional. Native copies are user-owned,
+editable Skills with independent identities; they are not Source reading
+projections and do not follow package upgrades. Updating the package does not
+advance a Notion Source, regenerate reading pages or overwrite native copies.
+An explicitly requested Source refresh preserves human Name/Description choices.
+When distributing selected package bytes, compare their full consumed files and
+discovery descriptions. That comparison does not prove reading-page generation,
+Source ownership, installed CLI/Broker pairing or model delivery; each needs its
+own evidence.
 
 | Table | Current responsibility | Authoritative writer | Rebuildable display |
 | --- | --- | --- | --- |
@@ -44,6 +50,33 @@ Skills and Records Origin relations, and the Files Origin rollup. A purely
 Notion-authored library leaves Sources empty. Normal discovery, consumption,
 management and initialization reject an incomplete older layout; the independent
 read-only extractor does not admit it into the current runtime.
+
+A Library is identified by its root page's canonical UUID. `ctl library init
+--parent CONTAINER` creates that root and four direct child databases. The sole
+v2 descriptor remains in the Skills database description; it names `library_id`,
+the original `operation_id`, and exact database/data-source/property bindings.
+It does not duplicate the root as `parent_page_id` or create a second registry.
+Resolving a root enumerates all direct children and independently verifies the
+root, each table's actual parent, each data source's owner, and stable fields.
+Ordinary docs, subpages, and helper tables are allowed. A copied descriptor,
+missing table, duplicate role, incomplete pagination, or replaced binding fails.
+
+Clients retain `library.library_id`, use `--library` everywhere, and may set
+`default_library` for unscoped consumption. Bare list reads that selected Library;
+`list --all` explicitly requests discovery with non-exhaustive search coverage.
+Complete refs carry their own root; explicit selector conflicts fail before
+content lookup. Writers require a deliberate target and retain the original
+root, four-table bindings, input and Store across apply/resume. Replacing a table
+under the same root invalidates an old operation; it never changes its target.
+
+Init success means a verified structure at the last observation. Its next argv
+is a read-only list and an empty Library is valid. Init does not seed content,
+save defaults or configure a host. A new init creates a new root; `init --library`
+and `inspect --library` attach read-only. The original operation's marker is part
+of the atomic root CREATE. Unknown creation is reconciled, never inferred from
+a matching title or replayed from absence. Retained root and table identities
+are monotonic. These observations and local locks are not cross-machine CAS.
+See [Library roots and selection](library-roots.md).
 
 The main document lives on the Skills page. Its stable `Main File ID` participates
 in the same file namespace, but Files does not contain another editable main
@@ -162,6 +195,73 @@ complete Notion readback must retain text, code payloads, link destinations and
 supported document structure. Formatting-only differences can complete and are
 reported through `native.verified` and `native.normalized_paths`. Lost content,
 changed meaning or an unconfirmed full body cannot publish ready.
+
+For `.md` and `.markdown` paths, the native transport folds ordinary soft line
+wraps and line endings inside Markdown code spans to spaces, following their
+CommonMark meaning. Other explicitly selected native paths retain their previous
+text transport: CRLF becomes LF without folding line boundaries. Explicit hard
+breaks, fenced code payloads and native `<code>` literals stay unchanged. Link
+destinations retain their targets, with the native Skill hyperlink spelling
+described below. The complete structure must still match before any write. Readback
+also recognizes the attribute-free `<p>` paragraph wrapper that Notion emits for
+list children; its inline body remains one paragraph. A literal `<br>` inside
+code is content, not a line-break spelling, and cannot pass as a space.
+The observed Notion code-block label normalization from `sh` to `bash` is also
+accepted with an exact code payload. This concerns the presentation label;
+POSIX `sh` and Bash interpreters are not interchangeable.
+Admission and remote readback are separate boundaries. A Notion representation
+outside this decoder, including the observed multi-paragraph `<quote>` wrapper,
+still leaves the operation unfinished even if its original Markdown was admitted.
+Native authoring does not promise lossless support for every Markdown construct.
+
+Notion may turn ordinary technical identifiers, such as the filename `SKILL.md`
+or option name `options.storage`, into external links. A backslash-escaped
+filename can still acquire a link. For `.md` and `.markdown` writes, the writer
+keeps the existing Markdown structure transport and can then correct that exact
+plain-text span through the block's explicit `rich_text` link field. It first
+binds the complete observed Markdown structure and physical block inventory to
+the original author intent. Only an added HTTP link for the same domain-like
+plain text is eligible; original links, code, styles, text and structure remain
+exact requirements. An unrelated difference or incomplete block binding leaves
+the operation unfinished.
+
+### Native Skill hyperlinks
+
+The Markdown endpoint can also drop an authored `skill://` hyperlink while
+retaining its label. A precisely matched, valid Skill URL with no link title can
+be restored through the same rich-text correction. No other lost destination is
+inferred. Notion has rejected pathless and extensionless Skill URLs through this
+endpoint, even though those references are valid in the Skill protocol.
+
+The native rich-text request adds the ordinary, canceling POSIX path pair
+`/entrypoint.md/..` immediately after the Skill ID. For example,
+`skill://router?library=ROOT` is transported as
+`skill://router/entrypoint.md/..?library=ROOT`; `ROOT` here stands for the actual
+Library UUID. This does not choose a file called `entrypoint.md` or `SKILL.md`.
+The original reference still selects the target's declared entrypoint, including
+a Router or Prompt. Explicit paths, Library context and fixed snapshot selection
+keep their original meaning. The writer does not read the target Library to
+construct this representation.
+
+Each raw Markdown or rich-text hyperlink boundary decodes at most one exact
+prefix, only when both complete references validate and have the same Skill ID,
+Library scope, path and snapshot selection. Encoding adds exactly one layer to
+that decoded inline span, so an authored prefix, including a repeated prefix,
+does not grow on repeated writes. Other path spellings and the raw authority and
+query remain unchanged. Image sources, prose and literal code do not receive
+this equivalence. Complete link definitions, labels, titles, formatting and the
+rest of the document still participate in final readback.
+
+The correction uses the same finite operation, input fingerprint and invocation
+budget. Each block request is rebuilt from the original spans; after an unknown
+response, the same-input resume observes that exact action before any retry.
+The original Markdown request is unchanged. An older unresolved correction whose
+exact request fingerprint differs remains blocked; an upgrade cannot rewrite its
+pending request. A definitively rejected correction can continue through the
+original operation's normal recovery path.
+Only complete final Markdown readback can verify the native file and permit
+ready. Ordinary reads never repair content. Author inline code when code styling
+is intended; plain text does not need that styling to preserve its meaning.
 
 The original input bytes/hash and operation fingerprint remain fixed. Stored
 frontmatter and executable mode remain exact. Native reads and exports use the
@@ -300,6 +400,15 @@ coordinator or promise atomic publication of an entire multi-Skill Source batch.
 
 ## Consumer and reading projection
 
+One reference protocol identifies a Skill by its Library root page UUID and
+stable Skill ID. `ContentRecord.id` is a full current root URI; `locator.type:
+"shared_skill"` only identifies the Notion adapter. Short author refs inherit the
+containing Library. Tool entry defaults do not change document-relative scope.
+Fixed refs carry the owner and snapshot, and resolve an exact path in the selected
+manifest. A source file may have a frozen acquisition route without a Files row.
+See [the reference contract](skill-reference-redesign.md). Old identity strings,
+name fallbacks and public `file_id` parameters are not alternate reader paths.
+
 List, read, use, resource read and export perform zero semantic remote writes.
 They do not repair pages, retain history, update a selected Source or clear residue.
 Management owns those actions. A current reader only needs current identities,
@@ -316,10 +425,25 @@ Protocol numbers identify incompatible wire formats, not content versions.
 Validate local Markdown references against the complete current file tree. Ordinary
 links may identify files or real directories derived from those file paths, with
 or without a trailing slash; they do not require an invented README. Images must
-identify files. Missing targets, unsafe paths and relative paths escaping the
-Skill remain errors. Escaped HTML is literal authored text, not a link attribute.
-Cross-Skill targets require explicit stable references rather than guessing from
-adjacent display names.
+identify files. Missing targets and unsafe paths remain errors. Escaped HTML is
+literal authored text, not a link attribute. A cross-Skill relative path is resolved
+only when the containing file has reliable current Source authority: its frozen
+Source revision and original repository path must map through one current
+contribution to an exact target. Otherwise use an explicit stable Skill reference.
+Resolve Source paths before applying contribution mounts or renames; a coincidental
+local-path match cannot override a valid repository address. Only when resolving
+the original Source-relative path escapes the repository root may the reader
+select a native companion through an exact File binding in the same owner's
+fixed snapshot. That target must have no Source route. A valid repository address
+whose target is missing, excluded or ambiguous does not permit this fallback.
+A Source path with multiple mapped destinations is ambiguous rather than first-match wins.
+Display names and adjacent cache directories do not establish identity. A local
+import has no Source context merely because its files came from a repository.
+
+`read --from` and SDK `resolveReference` share the same containing-file resolver.
+The SDK requires a fixed canonical containing File ref and returns identity before
+the host selects the target's own snapshot. Pi preserves an already selected target
+pin. Resolution does not activate instructions, expand Requires or write relationships.
 
 The public SDK is version 2. Hosts must require this exact SDK contract before
 using current consumption. Source management methods and the public `readOnly`
@@ -351,8 +475,16 @@ source path and exact bytes/mode; Source reading page IDs do not enter content
 identity. Source fixed refs use paths without a presentation File ID. Rebuilding
 a Source supporting projection leaves its selected consumption identity unchanged.
 Rebuilding an authoritative Notion owner or File still creates a new selection.
-The snapshot-ID formula is unchanged; previous fixed references retain their
-selected exact bytes and authorization scope.
+An opaque snapshot ID identifies the complete local selection, including its
+observed record metadata. Name, Description, Default Context or Enabled changes
+can therefore select a new snapshot without changing content `version_id` or
+file hashes. Repeated identical selections reuse their ID. Previously selected
+metadata and bytes remain bound to their original local manifest; a later
+directory observation cannot replace them or invalidate an intermediate session.
+Existing materialized fixed references retain their exact bytes and authorization
+scope. Their former ID formula is recognized only for retained local manifests;
+current acquisition produces record-bound selections. This adds no remote history
+reader or permanent recovery service and uses the existing local retention rules.
 
 Source manifests and Contributions define the complete consumption directory.
 Source reading rows and generated bodies are not required for list/read/use/export
@@ -412,7 +544,8 @@ legacy flags or a parallel daily protocol:
    Remove each completed batch's one-time conversion entry and runtime admission
    wiring. Unmigrated non-daily rows do not justify retaining an old runtime path.
    Notion projection and unrelated old-data cleanup remain separate work. Keep
-   agent-kit main-path Skills and global exposure; isolate Pi verification with `pi -ns`.
+   existing local Skills and host registrations until their selected replacement
+   has been verified; isolate Pi verification with `pi -ns`.
 5. Clear incompatible disposable sessions/caches and select current content. Keep
    any still-unique local author copy until that item has a verified current home.
 
@@ -427,20 +560,18 @@ the state database. Current pending operations and fixed local content survive
 normal process restarts within the current schema; an old operation is not silently
 reinterpreted as a new one. This schema boundary is not content version management.
 
-Pro inventory distinguishes active local assets and real host registrations from
-copies in old worktrees, package caches and verification exports. Physical
-`SKILL.md` counts are not the migration denominator. An uninspected or sensitive
-scope remains explicitly unresolved; it is never silently counted as migrated.
-AK Models, Agents, providers and unrelated host operations remain separate assets.
+A cutover inventory distinguishes active local assets and real host registrations
+from copies in old worktrees, package caches and verification exports. Physical
+`SKILL.md` counts are not the migration denominator. Keep uninspected scopes and
+unrelated Agent/provider configuration separate from the selected Skill inventory.
 
 Use the existing verification Skills and the
 [bounded current-convergence journey](https://github.com/yoyooyooo/notion-skills-cli/blob/next/.cursor/skills/verify-ntn-skills/features/current-convergence.md).
-The six checks have explicit stop conditions; do not add another runner, evidence
-archive, recursive proof requirement or broad new platform. The final shared
-journey is the real Notion → CLI/SDK → Pi use, followed by the scoped residue check.
-First daily use does not close the separate Pro-wide migration task.
+Select the checks for the changed boundary and their stop conditions. Actual
+Notion → CLI/SDK → Pi use and scoped residue inspection have separate results;
+first use of one library does not establish a machine-wide migration.
 
-## Implementation status and remaining cutover blockers
+## Current management behavior
 
 Current tree assembly reads complete Source manifests and Contributions, then
 merges Notion-owned Skills/Files `Content`. Physical Source rows only describe
@@ -451,7 +582,7 @@ check for actual unsupported Notion export nodes; it is not a historical operati
 gate. Acquisition v5 checks current ownership and locators before obtaining missing
 selected resource or Source bytes. Old cached selections require reselection.
 
-The Promise SDK exposes only `SDK_VERSION=2`. Ordinary consumption always rejects
+The Promise SDK exposes only `SDK_VERSION=3`. Ordinary consumption always rejects
 remote writes; the old `readOnly` option is rejected before a runtime starts.
 Broker requires the matching SDK and package manifest. It does not load an older
 SDK or use a CLI consumer fallback. Local ZIP exports follow the portable tree's
@@ -467,7 +598,7 @@ The registered CLI exposes current consumption, library initialization,
 inspection, native daily management, complete current import, Source apply/refresh,
 text projection, Profiles and local configuration.
 
-`ctl library skill create INPUT --entry DB --skill-id ID` creates the complete
+`ctl library skill create INPUT --library LIBRARY_ID --skill-id ID` creates the complete
 input with `.md`/`.markdown` files native and other files resource-backed.
 `skill update TARGET --input LOCAL [--path PATH]` changes the main by default or
 one selected file; repeated `--file PATH=LOCAL` and `--remove-file PATH` declare
@@ -478,7 +609,7 @@ Requires explicitly; omitted fields are retained. A single empty Members/Require
 argument clears the set. TARGET accepts exact page IDs/URLs or stable Skill IDs,
 never a display-title match.
 
-`skill register PAGE_ID --entry DB` only registers an existing page in the exact
+`skill register PAGE_ID --library LIBRARY_ID` only registers an existing page in the exact
 Skills data source. It preserves body text, including any frontmatter-looking
 text in that body. Missing Content becomes native/frontmatter empty/mode 100644;
 valid native Content remains. Missing Kind defaults to skill, while an existing
@@ -492,7 +623,7 @@ need valid explicit paths and exactly one owner. Complete valid native registrat
 is unchanged; foreign pages, ambiguous bindings and resource/Source authority
 conversion are refused.
 
-`skill remove TARGET --entry DB` owns supporting Files, unused owned resources
+`skill remove TARGET --library LIBRARY_ID` owns supporting Files, unused owned resources
 and incoming same-library Members/Requires cleanup before moving the owner to
 Trash. It preserves referencing Skills and all other relation targets. Complete
 relation pagination, operation conflicts and Notion's replacement limit are
@@ -512,7 +643,7 @@ intent or unconfirmed competing writes cannot be discarded. Ready native bodies
 are immediately consumable, with no projection after an ordinary Notion edit.
 
 Complete import is
-`ctl library import INPUT --entry DB --skill-id ID`; `--dry-run` inspects the
+`ctl library import INPUT --library LIBRARY_ID --skill-id ID`; `--dry-run` inspects the
 replacement, and `--operation ID --resume` supplies the same input to its finite
 intent. Default import keeps exact originals as Notion resources without waiting
 for generated text projections. Repeated `--native PATH` selects editable Markdown
@@ -538,8 +669,8 @@ any Source file, including an unchanged exported tree. Coordinated Source writes
 use typed preserved bindings for other current files; preserved body bytes do not
 become part of the frozen Source input or get rewritten during resume.
 
-`ctl library source apply INPUT --entry DB` creates or replaces a complete current
-Source declaration. `source refresh SOURCE_ID --entry DB` reads that declaration
+`ctl library source apply INPUT --library LIBRARY_ID` creates or replaces a complete current
+Source declaration. `source refresh SOURCE_ID --library LIBRARY_ID` reads that declaration
 from Notion and enters the same writer. Both support dry-run and explicit
 same-operation resume. Regular Git content from GitHub or credential-free private
 HTTP(S) origins uses the same current contract and machine authentication. Manual
@@ -560,6 +691,25 @@ Files and Skill are archived. A target retaining unrelated author content is not
 silently deleted. Reapplying a saved declaration can recreate a deleted Source or
 Skill. Human policy values cannot be reconstructed from upstream content and must
 be preserved on surviving pages or supplied separately when rebuilding.
+
+`source check --library LIBRARY_ID --source SOURCE_ID` observes the registered declaration
+and upstream ref without publishing. `source sync` exposes the same management
+operation through the CLI and `ntn-skills/management`, with an explicit Source
+allowlist, one invocation budget and serial publication. It first recovers an
+owned unfinished input, then returns that Source's result; a later invocation can
+select a newer upstream commit. An unchanged ref does not certify target contents.
+Schedulers select `changed` checks or `full` reconciliation; ordinary consumption
+continues to use Notion's published exact version and its existing freshness policy.
+
+Source publication and optional Markdown projection have separate outcomes.
+Projection and full-batch progress use finite protected checkpoints. A completed
+Source records its exact terminal result in the owning full batch before retiring
+its local pending input, including when a `changed` call completes that input.
+Later hourly publication cannot erase that batch's completed prefix. A batch
+report describes each Source at its processing time, not one atomic final snapshot.
+Cache timestamps never authorize completion or recovery. The [Source sync guide](source-sync.md)
+defines manager and execution identity, bounded retries, result fields and caller
+responsibilities.
 
 `source takeover SOURCE_ID SOURCE_PATH --skill-id ID --file-id ID --as native|resource`
 transfers exactly one selected original into Notion authority. Resource is the
@@ -595,7 +745,7 @@ consumption. Source manifest resources belong to that Source and are collected
 after the current manifest changes. The full effective tree, native references
 and exact target scope are checked before completion.
 
-`ctl library projection PAGE_ID --entry DB` reconciles the selected Source reading
+`ctl library projection PAGE_ID --library LIBRARY_ID` reconciles the selected Source reading
 rows and complete bodies on one Skill. It creates missing selected Files, updates
 stale Source descriptors and archives excluded or upstream-removed Source rows,
 then renders text. Notion-owned rows are never pruned by this selection. Links to
@@ -606,6 +756,13 @@ Context, using current Source contributions and complete metadata pagination.
 Enabled and 期望删除 are preserved and reported, including disabled daily choices.
 Absent current metadata, unavailable bytes or incomplete traversal cannot become
 an omitted or successful target.
+
+Generated Source/resource reading bodies omit frontmatter only from the bound
+main `SKILL.md`, `ROUTER.md` or `PROMPT.md`. It must be a leading, `---`-delimited YAML
+mapping with string `name` and `description`. All keys remain in the exact original
+bytes; discovery Name/Description are unchanged. Supporting files, even with
+another canonical entrypoint filename, and unrecognized headers retain their
+complete text. Native authoring keeps its existing stored-frontmatter contract.
 
 At the CLI boundary, a sole `--include ''` or `--exclude ''` selects an explicit
 empty array for that filter; omission keeps defaults. Empty include retains the
@@ -618,6 +775,10 @@ It leaves the real Skill ready and does not bind generated-body recovery to
 ordinary consumption. The intent freezes authoritative consumption facts, Source
 fingerprint and stores the effective reading policy in that same intent; disposable row allocation and rewritten links do
 not change its input identity. Each actual mutation still freezes its exact request.
+The input fingerprint binds the renderer revision as well. Resuming an unfinished
+intent from a different renderer is rejected without semantic writes; complete or
+cancel it with the original executable before upgrading. Completed bodies are compared
+against the new rendering and regenerated without changing consumption identity.
 Native bodies are checked without writing them. Without an explicit operation,
 repeating the single-Skill or daily command resumes an existing projection only
 when its target, effective policy and complete input fingerprint still match.
@@ -635,7 +796,7 @@ share one invocation budget, with the same defaults and limit flags as import.
 
 ### Restore a trashed Skill before projection
 
-`ctl library projection PAGE_ID --restore --entry DB` restores one exact current
+`ctl library projection PAGE_ID --restore --library LIBRARY_ID` restores one exact current
 Skill from Trash, then runs the existing automatic projection. It accepts reading
 filters and budget limits. It rejects `--daily`, `--dry-run`, `--operation`,
 `--resume` and `--cancel` before remote work.
@@ -683,8 +844,15 @@ parent/child operation records are then retired. An entirely equal invocation
 does not allocate any remote intent.
 
 Portable Members/Requires round-trip as complete current stable-ref sets. Omitted
-fields preserve, [] clears, and lists replace. Prompt relations are invalid. The
-writer checks same-library single-property schema, complete pagination and unique
+fields preserve existing sets, [] clears, and lists replace. For a first local import,
+omitted Members may be discovered from confirmed exact references; an explicit
+Members set takes precedence. Inline, fenced and indented code, comments and images are excluded;
+names, template placeholders and filename similarity cannot establish a target.
+Active prose links remain candidates. `ctl library members-plan` can use explicitly
+declared path-to-identity bindings and generate a portable copy with confirmed relative links normalized.
+It reports unresolved references and refuses an unimportable output. It does not
+infer Requires or continuously reconcile existing relationships. Prompt relations
+are invalid. The writer checks same-library single-property schema, complete pagination and unique
 enabled ready targets before mutation. Changed sets are limited to 100 targets;
 larger unchanged sets are retained. Changed Requires checks its reachable metadata
 closure for cycles and rechecks it before ready, including an unfinished resume.
@@ -723,7 +891,7 @@ duplicate identities and changed bindings fail closed; completion proves the
 observed current result. No permanent tombstone or predecessor chain watches for
 unbounded late responses.
 
-`ctl library operation OWNER_ID --kind skill|source --entry DB` reads the exact
+`ctl library operation OWNER_ID --kind skill|source --library LIBRARY_ID` reads the exact
 current intent, local phase, remote Record, owner observation and in-flight action
 without mutations. `status: not_found` with `operation: null` says only that no
 intent was observed; it does not prove the owner is ready or retired. If a parent
@@ -737,32 +905,23 @@ migration command families are not active authoring routes. Source actions use
 the current coordinator; general cross-object governance still needs implementation.
 Removing a command does not prove that every old module, export or guide is gone.
 
-The current delivery scope is the user-selected daily set, tracked by AH-504/AH-516.
-The selection is Source 日用 (all real members) ∪ Skill 日用 ∪ Default Context,
-with actual upstream membership used to repair broken Origin relations. 日用 does
-not imply Default Context. The initial analysis selected 142 current members;
-complete discovery recalculates that number when upstream changes.
+A daily acceptance scope is the user-selected set: Source 日用 current members ∪
+Skill 日用 ∪ Default Context. Discover actual upstream membership to repair broken
+Origin relations and recalculate the set when upstream changes. 日用 does not imply
+Default Context.
 
-- AH-504/AH-499: one public sync/rebuild path, same-version zero writes, explicit
-  finite legacy admission and same-wave removal of replaced runtime paths.
-- AH-516/AH-500: apply that path to actual daily sources, verify full trees and
-  relationships, and reuse the resulting evidence for ordinary zero-write consumption.
-- AH-617: update only SDK/Broker behavior actually changed by this implementation,
-  pair the built artifacts, and verify necessary real Pi samples. The first native,
-  Git and resource daily baselines are already recorded in AH-1063/AH-516.
-- AH-501/AH-1141: complete daily main/selected reading documents in Notion through the public
-  projection command, including readback and same-version zero writes. Non-daily
-  text and additional binary presentation remain deferred. Code availability is
-  not evidence that the live daily batch has already been projected.
-- AH-505/AH-507/AH-1143: additional governance, recovery and broader documentation
-  only when needed; changed public help and current guidance are updated now.
-- AH-513: non-daily legacy data. AH-517: obsolete static migration materials only.
-  Neither issue postpones cleanup of runtime code replaced in this implementation.
+Verify complete paths, bytes, modes, relationships, preserved user policy,
+upstream removals and same-version zero writes through the public routes. Use a
+matching CLI/SDK/Broker installation for host delivery. Reading-page acceptance
+also requires full main and selected supporting text in Notion, complete readback
+and a zero-write repeat of the public projection command. Code availability does
+not prove that a live batch has been projected. Report unselected data, non-text
+presentation and unrelated governance separately.
 
 Run only the applicable checks in the existing current-convergence entry. Current
 schema/index, native tree, exact resource, Source, acquisition and complete-import
 tests establish their controlled boundaries. They do not certify live table cleanup,
 every authoring operation, an installed package or real Pi delivery. The old
 resource-lifecycle and ACK recovery models and their dedicated recipes are retired.
-The two request-engine models retain their original bounded properties; current
-writer safety is checked by the existing implementation and real HTTP tests.
+The retained models prove only their [declared finite properties](https://github.com/yoyooyooo/notion-skills-cli/blob/next/docs/formal-verification-maintenance.md);
+current writer safety also requires the existing implementation and real HTTP tests.

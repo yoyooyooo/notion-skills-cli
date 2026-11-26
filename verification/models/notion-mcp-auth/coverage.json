@@ -1,0 +1,716 @@
+{
+  "version": 1,
+  "source_base": "fe70c9f869d5bf44e1a1d128b6aaf319eabdd7b4",
+  "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+  "kind": "Bounded design models with reviewed implementation guard correspondence; not a production refinement proof.",
+  "correspondence": "Two local authorization waiters and two same-host refresh processes. Safety, NoDeadlock and conditional termination use the preserved finite domains and fairness assumptions. The source hashes bind the reviewed working-tree bytes, which are not claimed to be part of source_base.",
+  "review_basis": "Imported AuthAcquisition v5 and RefreshRotation v7 from the reviewed AH-1268 design evidence without changing model transitions, complete independent rule inventories or expected counterexamples. Reviewed the independent MCP credential file, config-home lock scope, explicit-token priority, per-waiter presentation lifetime, pre-exchange/commit epoch and current-time guards, marker-before-dispatch, locked reread, same-host dead-owner recovery, atomic token/marker replacement and unknown-outcome no-replay policy. A live pending refresh first waits on the transaction fence and rereads the winner; an abandoned marker refuses automatic authorization. Model scope is not extended to actual OAuth bytes, filesystem durability or Broker admission. Mutation evidence and controlled HTTP/subprocess tests must be rerun against these exact bytes; no earlier design PASS is reused as implementation evidence. Callback-negative and late-store tests capture the actual outcome and assert its typed error fields directly, so omitted guards produce AssertionError rather than Vitest promise-wrapper errors; accepted/rejected behavior and expected counters are unchanged. Post-b03 review reproduced a delayed-timer gap with real loopback HTTP: the absolute waiter deadline had elapsed but the Symbol-only membership set still permitted exchange and grant persistence. AuthFlight now records each signal/deadline; hasLiveAuthorizationOwner is checked before dispatch/commit, and the store invokes the same live predicate immediately before atomic rename after staging/fsync. Each waiter independently rechecks its original deadline on resume. New controlled wall-clock regressions cover pre-exchange expiry, post-exchange/pre-commit expiry and one expired owner beside another live owner; a store regression rejects a retired owner after staging. Three additional real mutations remove these concrete guards. Model transitions, finite bounds and all 31 independent rule inventories remain unchanged. The real-process exclusion regression now waits for an IPC observation from the child after its actual store read has seen pending, then holds the winner while asserting that the successor cannot finish. This removes a prior scheduling gap where a fixed 200ms parent delay could release the winner before the successor had even loaded. The b08 real foreground authorization run exposed a timeout reported as cancellation while the saved grant remained absent. A controlled loopback regression reproduces the production shared-flight timer firing one wall-clock tick before its absolute deadline: abort-only cleanup lost the timer cause and mcpGuard classified the callback interruption as cancellation. The timer now settles both flight promises with MCP_AUTH_TIMEOUT before aborting callback and HTTP work. The five-minute budget, per-waiter ownership, exchange/commit/publication guards, refresh state and explicit cancellation path are unchanged. The regression invokes the actual captured deadline callback, checks the timeout result and closed presentation, then attempts a late callback and verifies zero exchanges and no grant or identity. Error-code selection is an implementation obligation outside the finite state variables; all 31 model configurations/rule inventories and 12 existing mutation targets remain unchanged. This records source review; the affected concrete tests, model correspondence and guard mutations must run against the final frozen candidate. Reviewed the AH-1277 full-check failure on macOS against 992e272643f2eaed2b14e4868261181d7de683e8. The unchanged 500ms caller-deadline regression could expire during real credential fsync, discovery or registration before presentation; its presentation-only latch then ignored an already terminated login and hung until the test runner limit. The test now holds its logical clock and only the captured original caller deadline callback until the real presentation handshake, advances past that same deadline, and invokes the actual callback. It races early operation termination, asserts presentation abort, zero late exchanges and absent grant/identity, and always restores the clock/timer and settles its owned caller. Production authorization, credential storage and all budgets are unchanged. This removes a test setup timing assumption; it does not add a finite-model property. All 31 model configurations/rule inventories and 12 existing mutation targets are unchanged. The reviewed test hash binds this deterministic regression; actual focused and CI execution results remain separate evidence.",
+  "files": {
+    "packages/core/src/notion-mcp-auth.ts": "5e7265e5b11e7ed9920de1680e3b8deb4bb0decfac4c4595d90a882ed953eeca",
+    "packages/core/src/notion-mcp-credential-store.ts": "977d5e735fd281e4ceb4b94e7258c23e4d83bfca2dd3f71d52e24e0a4f0471bf",
+    "packages/core/test/notion-mcp-auth.node.test.ts": "f61508d155471db521e74091833525654c85762f611f0918b3d63650ac91f74d",
+    "packages/core/test/notion-mcp-credential-store.node.test.ts": "0b08a58f2a36f32bfc26804a53378947266dbdf29e3e29b7a9c7aff888eab5a3",
+    "packages/core/src/local-locks.ts": "ac59a06cc15204f66feecde04e2fab60c7bc4e353ad6a75ee0fbca6851f58857"
+  },
+  "models": {
+    "AuthAcquisition": {
+      "kind": "bounded_authorization_acquisition",
+      "source_model": "AH-1268 design AuthAcquisition/v5",
+      "symbols": [
+        "explicit",
+        "waitForFlight",
+        "callbackListener",
+        "authorize",
+        "credential.assertCurrent",
+        "McpCredentialStore.publish"
+      ],
+      "bounds": "Two simultaneously started waiters; one automatic flight; one credential revocation; one host session change; two abstract clock ticks; at most two code exchanges.",
+      "assumptions": "Weak fairness of Start, Tick, each local Timeout and eligible Publish. Browser/network success is not assumed. A terminal request may report an explained failure. The model shares one deadline across flight/waiters; staggered per-waiter deadlines remain concrete test obligations.",
+      "scope": "Token precedence, headless admission, callback acceptance/one-shot use, waiter cancellation, epoch and current-time fences. Callback byte validation is one abstract predicate. Enabled/sessionEpoch are host-owned inputs; this core suite does not establish Broker disabled admission or host ticket correctness."
+    },
+    "RefreshRotation": {
+      "kind": "bounded_same_host_refresh_rotation",
+      "source_model": "AH-1268 design RefreshRotation/v7",
+      "symbols": [
+        "resolveMcpCredential",
+        "refreshGrant",
+        "McpCredentialStore.transaction",
+        "McpCredentialStore.publish",
+        "withLocalLocks"
+      ],
+      "bounds": "Two processes each refresh once, with one extra attempt in the replay negative case; at most one crash and one credential epoch change; independent clocks 0..2 and up to four server rotations.",
+      "assumptions": "Weak fairness only of each local clock/deadline. Durable marker write and token/marker commit are atomic abstract actions; no remote success is assumed. Same-host cooperative lock ownership and filesystem durability require implementation evidence.",
+      "scope": "Exclusivity, fresh locked read, revision/epoch/deadline commit gates, retained ambiguous refresh and abandoned-marker recovery. revision-race deliberately disables both lock and CAS; success-witness intentionally disproves NoSuccessfulPair and is not a safety failure. Parsed known invalid_scope restores the unchanged production grant; the model's Reject abstracts terminal invalid_grant only."
+    }
+  },
+  "cases": [
+    {
+      "model": "AuthAcquisition",
+      "config": "candidate.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": [],
+      "kind": "candidate"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "token-valid.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": [],
+      "kind": "candidate"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "token-invalid.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": [],
+      "kind": "candidate"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "oauth-cached.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": [],
+      "kind": "candidate"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "headless.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": [],
+      "kind": "candidate"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "disabled.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": [],
+      "kind": "candidate"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "negative-token-fallback.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["TokenPrecedence"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "negative-headless-browser.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["HeadlessNeverOpensBrowser"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "negative-disabled-auth.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["DisabledStaysQuiet"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "negative-invalid-callback.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["CallbackMustValidate"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "negative-callback-replay.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["CallbackConsumedOnce"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "negative-late-grant.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["LogoutCannotResurrectGrant"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "negative-late-resume.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["RetiredRequestCannotResume"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "negative-shared-cancel.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["WaiterCancellationIsLocal"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "negative-no-timeout.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["RequestsTerminate"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "negative-retired-exchange.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["RetiredCallbackCannotExchange"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "witness-oauth-pair.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "NoSuccessfulPair",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["NoSuccessfulPair"],
+      "kind": "reachability-witness"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "witness-cancel-isolation.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "NoLocalCancelSuccess",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["NoLocalCancelSuccess"],
+      "kind": "reachability-witness"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "witness-token-pair.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "NoSuccessfulPair",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["NoSuccessfulPair"],
+      "kind": "reachability-witness"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "negative-expired-grant.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["ExpiredFlightCannotCommitGrant"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "AuthAcquisition",
+      "config": "negative-expired-resume.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "TokenPrecedence",
+        "HeadlessNeverOpensBrowser",
+        "DisabledStaysQuiet",
+        "CallbackMustValidate",
+        "CallbackConsumedOnce",
+        "LogoutCannotResurrectGrant",
+        "RetiredRequestCannotResume",
+        "WaiterCancellationIsLocal",
+        "RetiredCallbackCannotExchange",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "ExpiredFlightCannotCommitGrant"
+      ],
+      "expected_broken": ["RetiredRequestCannotResume"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "RefreshRotation",
+      "config": "candidate.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "ExclusiveRefresh",
+        "FreshDispatch",
+        "CurrentGrantCommit",
+        "RevisionCommitSafe",
+        "NoAmbiguousReplay",
+        "NoAbandonedReplay",
+        "RequestsTerminate",
+        "NoDeadlock"
+      ],
+      "expected_broken": [],
+      "kind": "candidate"
+    },
+    {
+      "model": "RefreshRotation",
+      "config": "no-lock.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "ExclusiveRefresh",
+        "FreshDispatch",
+        "CurrentGrantCommit",
+        "RevisionCommitSafe",
+        "NoAmbiguousReplay",
+        "NoAbandonedReplay",
+        "RequestsTerminate",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["ExclusiveRefresh", "FreshDispatch", "NoAbandonedReplay"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "RefreshRotation",
+      "config": "stale-read.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "ExclusiveRefresh",
+        "FreshDispatch",
+        "CurrentGrantCommit",
+        "RevisionCommitSafe",
+        "NoAmbiguousReplay",
+        "NoAbandonedReplay",
+        "RequestsTerminate",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["FreshDispatch"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "RefreshRotation",
+      "config": "late-commit.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "ExclusiveRefresh",
+        "FreshDispatch",
+        "CurrentGrantCommit",
+        "RevisionCommitSafe",
+        "NoAmbiguousReplay",
+        "NoAbandonedReplay",
+        "RequestsTerminate",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["CurrentGrantCommit"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "RefreshRotation",
+      "config": "uncertain-replay.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "ExclusiveRefresh",
+        "FreshDispatch",
+        "CurrentGrantCommit",
+        "RevisionCommitSafe",
+        "NoAmbiguousReplay",
+        "NoAbandonedReplay",
+        "RequestsTerminate",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["NoAmbiguousReplay"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "RefreshRotation",
+      "config": "revision-race.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "ExclusiveRefresh",
+        "FreshDispatch",
+        "CurrentGrantCommit",
+        "RevisionCommitSafe",
+        "NoAmbiguousReplay",
+        "NoAbandonedReplay",
+        "RequestsTerminate",
+        "NoDeadlock"
+      ],
+      "expected_broken": [
+        "ExclusiveRefresh",
+        "FreshDispatch",
+        "RevisionCommitSafe",
+        "NoAbandonedReplay"
+      ],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "RefreshRotation",
+      "config": "success-witness.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "ExclusiveRefresh",
+        "FreshDispatch",
+        "CurrentGrantCommit",
+        "RevisionCommitSafe",
+        "NoAmbiguousReplay",
+        "NoAbandonedReplay",
+        "RequestsTerminate",
+        "NoDeadlock",
+        "NoSuccessfulPair"
+      ],
+      "expected_broken": ["NoSuccessfulPair"],
+      "kind": "reachability-witness"
+    },
+    {
+      "model": "RefreshRotation",
+      "config": "abandoned-replay.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "ExclusiveRefresh",
+        "FreshDispatch",
+        "CurrentGrantCommit",
+        "RevisionCommitSafe",
+        "NoAmbiguousReplay",
+        "NoAbandonedReplay",
+        "RequestsTerminate",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["NoAbandonedReplay"],
+      "kind": "deliberate-defect"
+    },
+    {
+      "model": "RefreshRotation",
+      "config": "single-actor-chart.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "ExclusiveRefresh",
+        "FreshDispatch",
+        "CurrentGrantCommit",
+        "RevisionCommitSafe",
+        "NoAmbiguousReplay",
+        "NoAbandonedReplay",
+        "RequestsTerminate",
+        "NoDeadlock"
+      ],
+      "expected_broken": [],
+      "kind": "candidate"
+    },
+    {
+      "model": "RefreshRotation",
+      "config": "timeout-replay.cfg",
+      "expected_rules": [
+        "TypeOK",
+        "ExclusiveRefresh",
+        "FreshDispatch",
+        "CurrentGrantCommit",
+        "RevisionCommitSafe",
+        "NoAmbiguousReplay",
+        "NoAbandonedReplay",
+        "RequestsTerminate",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["NoAbandonedReplay"],
+      "kind": "deliberate-defect"
+    }
+  ],
+  "implementation_bindings": [
+    {
+      "name": "credential_policy_and_authorization_owners",
+      "files": [
+        "packages/core/src/notion-mcp-auth.ts",
+        "packages/core/test/notion-mcp-auth.node.test.ts"
+      ],
+      "scope": "Explicit environment token overrides stored token, both override cached OAuth and never fall through after invalid identity. Each presentation has a separate cancellation owner; removing one waiter leaves the other eligible. Last-owner release retires the flight. A resolved presentation is not an authorized grant. The deadline regression waits for the real presentation before triggering its observed caller timer and checks closed presentation, late exchange refusal and an absent durable grant; its clock and caller are always released."
+    },
+    {
+      "name": "callback_and_publication_fences",
+      "files": [
+        "packages/core/src/notion-mcp-auth.ts",
+        "packages/core/src/notion-mcp-credential-store.ts",
+        "packages/core/test/notion-mcp-auth.node.test.ts",
+        "packages/core/test/notion-mcp-credential-store.node.test.ts"
+      ],
+      "scope": "Mandatory exact issuer, state, PKCE/resource/redirect and one-shot callback checks precede exchange. Epoch is reread under the transaction lock before code dispatch and before grant commit. Signal and absolute deadline are checked at callback, dispatch, commit, waiter resume and atomic file publication. Timer service is not the liveness proof: each live-owner test uses its actual signal and current absolute deadline, including the final beforePublish boundary. The model shares deadlines; staggered production owners remain concrete regression evidence."
+    },
+    {
+      "name": "same_host_refresh_transaction",
+      "files": [
+        "packages/core/src/notion-mcp-auth.ts",
+        "packages/core/src/notion-mcp-credential-store.ts",
+        "packages/core/src/local-locks.ts",
+        "packages/core/test/notion-mcp-auth.node.test.ts"
+      ],
+      "scope": "Same config-home/profile/resource writers share one lock. The live winner is reread under that lock. The pending marker is fsynced before RT dispatch; the new AT/RT/revision and cleared marker publish together. Unknown response, malformed success, timeout, cancellation and killed process retain the marker and forbid old-RT replay. A 403/429 alone is not evidence of no consumption. The lock-removal mutation detects the live successor failing to wait for and reuse the winner; the pending marker still blocks duplicate HTTP in that replay."
+    }
+  ],
+  "unmodeled_bindings": [
+    {
+      "kind": "implementation_regression_not_modeled",
+      "scope": "Cryptographic byte strength and equality timing, metadata/DCR HTTP parsing and endpoint pinning, real issuer/token behavior, identity tool schemas, browser/UI interaction, public CLI/SDK wiring, Notion source ownership/search/cursor qualification, arbitrary waiter/process counts, cross-machine storage and all OS/power-loss durability guarantees are outside these finite models."
+    },
+    {
+      "kind": "host_owned_inputs",
+      "scope": "AuthAcquisition Enabled and sessionEpoch are abstract host admission/ticket facts. Broker tests and installed Pi acceptance establish them; these CLI source hashes do not claim a cross-repository refinement proof."
+    }
+  ],
+  "maintenance": {
+    "owner_skill": ".cursor/skills/verify-notion-consumption/SKILL.md",
+    "runner": "scripts/verify-formal.mjs --suite notion-mcp-auth",
+    "mutation_runner": "scripts/check-formal-mutations.py --suite notion-mcp-auth",
+    "lock": "verification/models/notion-mcp-auth/tool-lock.json",
+    "routing": "Changes to MCP credential policy, callback/presentation ownership, local grant storage, refresh uncertainty or their tests run both models' full 31 cases, the concrete Node regressions and corresponding real guard mutations. Ordinary REST request-engine/current-lifecycle suites retain their separate ownership.",
+    "model_semantics": "Keep positive, intentional defect and reachability witness cases distinct. Preserve independent expected_rules/expected_broken, current-time guards, separate refresh clocks, retained markers and NoDeadlock. Review actual guards before changing precise source hashes. Never infer implementation or live success from a design-model PASS."
+  }
+}

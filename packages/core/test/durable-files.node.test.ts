@@ -15,7 +15,7 @@ import {Store,StoreLive,sha256} from ${JSON.stringify(core + "store.ts")};
 import {SnapshotSchema} from ${JSON.stringify(core + "model.ts")};
 import {loadSnapshot} from ${JSON.stringify(core + "snapshot.ts")};
 import {fileRef} from ${JSON.stringify(core + "ref.ts")};
-import {sharedSkillId} from ${JSON.stringify(core + "shared-content.ts")};
+import {skillIdentity} from ${JSON.stringify(core + "shared-content.ts")};
 const root=${JSON.stringify(root)};
 const boundary=Layer.effect(FileSystem.FileSystem,Effect.map(FileSystem.FileSystem,fs=>({...fs,${boundary}}))).pipe(Layer.provide(NodeServices.layer));
 const services=Layer.merge(NodeServices.layer,boundary);
@@ -23,12 +23,12 @@ Effect.runPromise(Effect.gen(function*(){
 const store=yield* Store;
 const bytes=new TextEncoder().encode('durable content');
 const hash=yield* sha256(bytes);
-const recordId=sharedSkillId('durable-library','fixture');
+const recordId=skillIdentity('9da21cdf-3065-52cc-adb1-6fb46cd795e6','fixture');
 const id='s_'+(yield* sha256(JSON.stringify(['scope',recordId,hash])));
 const key='snapshots/'+id+'.json';
 const snapshot={snapshot_id:id,scope:'scope',version_id:hash,entrypoint:'SKILL.md',created_at:123,
 record:{id:recordId,kind:'skill',entrypoint:'SKILL.md',
-locator:{type:'shared_skill',library_id:'durable-library',skill_id:'fixture',
+locator:{type:'shared_skill',library_id:'9da21cdf-3065-52cc-adb1-6fb46cd795e6',skill_id:'fixture',
 page_id:'00000000-0000-4000-8000-000000000001',
 database_id:'00000000-0000-4000-8000-000000000003',
 data_source_id:'00000000-0000-4000-8000-000000000004'},

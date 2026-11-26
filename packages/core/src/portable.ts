@@ -12,12 +12,13 @@ import {
   SkillsError,
   type ContentKind,
 } from "./model.ts"
-import { fileRef, normalizePath, parseTarget } from "./ref.ts"
+import { fileRef, normalizePath } from "./ref.ts"
+import { bindSkillRef, formatSkillIdentity, parseSkillRef } from "./skill-ref.ts"
 
 export const MANIFEST = ".ntn-skills.json"
 const encoder = new TextEncoder()
 const decoder = new TextDecoder("utf-8", { fatal: true })
-const PortableRelationsSchema = Schema.Struct({
+export const PortableRelationsSchema = Schema.Struct({
   version: Schema.Literal(1),
   ownership: Schema.Literal("notion"),
   library_id: Schema.String,
@@ -79,34 +80,39 @@ export function validatePortableRelations(input: unknown): PortableRelations {
       "PORTABLE_RELATION_SCOPE",
       "Portable relations require a stable shared library identity.",
     )
-  for (const refs of [value.members, value.requires]) {
+  const selected: { members?: string[]; requires?: string[] } = {}
+  for (const field of ["members", "requires"] as const) {
+    const refs = value[field]
     if (refs === undefined) continue
-    if (new Set(refs).size !== refs.length)
-      throw fail(
-        "PORTABLE_RELATION_INVALID",
-        "Portable relations must select each logical Skill once.",
-      )
-    for (const ref of refs) {
-      const target = parseTarget(ref)
-      const expectedPrefix = `shared_skill:${encodeURIComponent(value.library_id)}:`
-      const skillId = decodeURIComponent(ref.slice(expectedPrefix.length))
-      if (
-        !ref.startsWith(expectedPrefix) ||
-        ref !== expectedPrefix + encodeURIComponent(skillId) ||
-        target.selector !== ref ||
-        target.path ||
-        target.snapshot ||
-        target.file_id ||
-        !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(skillId)
-      )
+    const canonical = refs.map((ref) => {
+      try {
+        const target = bindSkillRef(parseSkillRef(ref), value.library_id)
+        if (
+          target.owner.libraryId !== value.library_id ||
+          target.path !== "" ||
+          target.selection.kind !== "current"
+        )
+          throw fail(
+            "PORTABLE_RELATION_SCOPE",
+            "Relations must be current Skills in their exact Library.",
+          )
+        return formatSkillIdentity(target.owner)
+      } catch {
         throw fail(
           "PORTABLE_RELATION_SCOPE",
-          "Portable relations require unpinned logical Skills in their exact library.",
+          "Portable relations require current root Skill refs in their declared Library, without a file path or snapshot.",
           { ref },
         )
-    }
+      }
+    })
+    if (new Set(canonical).size !== canonical.length)
+      throw fail(
+        "PORTABLE_RELATION_INVALID",
+        "Portable relations must select each complete Skill identity once.",
+      )
+    selected[field] = canonical
   }
-  return value
+  return { ...value, ...selected }
 }
 
 export function portableRelationSelection(
@@ -114,7 +120,17 @@ export function portableRelationSelection(
   libraryId: string,
   explicit: { readonly members?: readonly string[]; readonly requires?: readonly string[] } = {},
 ) {
-  if (relations === undefined) return explicit
+  const selected = validatePortableRelations({
+    version: 1,
+    ownership: "notion",
+    library_id: libraryId,
+    ...explicit,
+  })
+  if (relations === undefined)
+    return {
+      ...(selected.members === undefined ? {} : { members: selected.members }),
+      ...(selected.requires === undefined ? {} : { requires: selected.requires }),
+    }
   const retained = validatePortableRelations(relations)
   if (retained.library_id !== libraryId)
     throw fail(
@@ -123,9 +139,9 @@ export function portableRelationSelection(
     )
   for (const field of ["members", "requires"] as const) {
     if (
-      explicit[field] !== undefined &&
+      selected[field] !== undefined &&
       retained[field] !== undefined &&
-      JSON.stringify([...explicit[field]].sort()) !== JSON.stringify([...retained[field]].sort())
+      JSON.stringify([...selected[field]].sort()) !== JSON.stringify([...retained[field]].sort())
     )
       throw fail(
         "PORTABLE_RELATION_CONFLICT",
@@ -134,12 +150,12 @@ export function portableRelationSelection(
       )
   }
   return {
-    ...((explicit.members ?? retained.members) === undefined
+    ...((selected.members ?? retained.members) === undefined
       ? {}
-      : { members: explicit.members ?? retained.members }),
-    ...((explicit.requires ?? retained.requires) === undefined
+      : { members: selected.members ?? retained.members }),
+    ...((selected.requires ?? retained.requires) === undefined
       ? {}
-      : { requires: explicit.requires ?? retained.requires }),
+      : { requires: selected.requires ?? retained.requires }),
   }
 }
 const PortableManifestSchema = Schema.Struct({

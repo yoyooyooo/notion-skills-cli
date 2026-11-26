@@ -1,3 +1,4 @@
+import { parseTarget } from "../src/ref.ts"
 import { createHash } from "node:crypto"
 import { Effect } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
@@ -262,8 +263,8 @@ export async function currentSourceConsumerFixture() {
     ) =>
       run(
         targetSnapshot(
-          { selector: currentSkillPage, path },
-          { database: sourceLibrary.skills.database_id, ...options },
+          parseTarget(currentSkillPage, path),
+          { library: sourceLibrary.library_id, ...options },
           access,
         ),
       ),

@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { decode, property, SnapshotSchema } from "../src/model.ts"
 import { readSkill, targetSnapshot } from "../src/snapshot.ts"
-import { parseTarget } from "../src/ref.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
+import { fileRef, parseTarget } from "../src/ref.ts"
 import { SHARED_FULL_BODY_MAX_AGE_MS } from "../src/shared-snapshot.ts"
 import {
   currentSnapshotFixture,
@@ -13,9 +14,9 @@ import {
   currentBytes as encode,
 } from "./shared-current-fixture.ts"
 
-const options = { database: library.skills.database_id }
-const stableId = "shared_skill:library-current:demo"
-const stableRef = `skill://${encodeURIComponent(stableId)}/SKILL.md`
+const options = { library: library.library_id }
+const stableId = "skill://demo?library=00000000-0000-4000-8000-000000000002"
+const stableRef = fileRef(stableId, "SKILL.md")
 
 function latestEntries(fixture: ReturnType<typeof currentSnapshotFixture>) {
   return [...fixture.json.entries()]
@@ -84,7 +85,7 @@ describe("standard targetSnapshot shared-library integration", () => {
     ].sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
     // A directory entry without an exact physical binding is invalid even if its bytes hash matches.
     const version = digest(JSON.stringify(["pre-reference-check", first.version_id, files]))
-    const snapshotId = `s_${digest(JSON.stringify([first.scope, first.record.id, version]))}`
+    const snapshotId = `s_${digest(selectionSnapshotIdentityInput({ ...first, version_id: version }))}`
     const historical = decode(SnapshotSchema, {
       ...first,
       files,
@@ -112,9 +113,9 @@ describe("standard targetSnapshot shared-library integration", () => {
     expect(latestEntries(f)).toEqual(observations)
     expect(f.json.get(`snapshots/${snapshotId}.json`)).toEqual(retained)
     const pinned = await f.run(
-      targetSnapshot({ ...parseTarget(stableRef), snapshot: snapshotId }, { offline: true }).pipe(
-        Effect.result,
-      ),
+      targetSnapshot(parseTarget(fileRef(stableId, "SKILL.md", snapshotId)), {
+        offline: true,
+      }).pipe(Effect.result),
     )
     expect(pinned._tag === "Failure" && pinned.failure.code).toBe("STATE_CORRUPT")
     expect(f.objects.get(`objects/${hash}`)).toEqual(bytes)
@@ -235,10 +236,9 @@ describe("standard targetSnapshot shared-library integration", () => {
     f.bodies.set(skillPage, "New current body\n")
     property(f.main.properties)["Enabled"] = { id: "enabled", type: "checkbox", checkbox: false }
     f.clearCalls()
-    const pinned = await f.target(
-      { ...parseTarget(stableRef), snapshot: first.snapshot_id },
-      { offline: true },
-    )
+    const pinned = await f.target(parseTarget(fileRef(stableId, "SKILL.md", first.snapshot_id)), {
+      offline: true,
+    })
     expect(pinned.snapshot_id).toBe(first.snapshot_id)
     expect(pinned.files).toEqual(first.files)
     expect(pinned.source).toBe("local_snapshot")
@@ -266,10 +266,9 @@ describe("standard targetSnapshot shared-library integration", () => {
     expect([...f.json.keys()].filter((key) => key.startsWith("operations/"))).toEqual([])
     expect(f.json.get(`snapshots/${first.snapshot_id}.json`)).toEqual(original)
     f.clearCalls()
-    const selected = await f.target(
-      { ...parseTarget(stableRef), snapshot: first.snapshot_id },
-      { offline: true },
-    )
+    const selected = await f.target(parseTarget(fileRef(stableId, "SKILL.md", first.snapshot_id)), {
+      offline: true,
+    })
     expect(selected.snapshot_id).toBe(first.snapshot_id)
     expect(f.calls).toHaveLength(0)
     f.main.properties["Current State"] = { id: "state", type: "select", select: { name: "ready" } }
@@ -315,13 +314,30 @@ describe("standard targetSnapshot shared-library integration", () => {
     f.clearCalls()
     const current = await f.target(parseTarget(stableRef), options)
     expect(current.record.description).toBe("New metadata description")
-    expect(current.snapshot_id).toBe(first.snapshot_id)
+    expect(current.snapshot_id).not.toBe(first.snapshot_id)
+    expect(current.version_id).toBe(first.version_id)
     expect(current.files).toEqual(first.files)
+    expect(f.selectedBytes(current, current.entrypoint)).toEqual(
+      f.selectedBytes(first, first.entrypoint),
+    )
     expect(new TextDecoder().decode(f.selectedBytes(current, current.entrypoint))).toContain(
       "description: Authored description.",
     )
     expect(f.bodyCalls().length).toBe(1)
     expect(f.semanticWrites().length).toBe(0)
     expect(f.records.size).toBe(recordsBefore)
+    f.clearCalls()
+    for (const selected of [first, current]) {
+      const fixed = await f.target(
+        parseTarget(fileRef(stableId, "SKILL.md", selected.snapshot_id)),
+        { ...options, offline: true },
+      )
+      expect(fixed.record).toEqual(selected.record)
+      expect(fixed.files).toEqual(selected.files)
+      expect(f.selectedBytes(fixed, fixed.entrypoint)).toEqual(
+        f.selectedBytes(selected, selected.entrypoint),
+      )
+    }
+    expect(f.calls).toHaveLength(0)
   })
 })

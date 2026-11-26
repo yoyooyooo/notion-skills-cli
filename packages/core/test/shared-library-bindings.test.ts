@@ -23,9 +23,8 @@ test("binding checks never accept deleted, renamed, rebound or foreign current i
   const files = { ...library.files, property_ids: { ...library.files.property_ids } }
   delete files.property_ids["File ID"]
   for (const changed of [
-    { ...library, library_id: "foreign" },
+    { ...library, library_id: "1fed9b5e-352d-53b8-811b-d62ae58344f8" },
     { ...library, operation_id: "foreign" },
-    { ...library, parent_page_id: id(90) },
     { ...library, skills: { ...library.skills, database_id: id(90) } },
     { ...library, files: { ...library.files, data_source_id: id(90) } },
     { ...library, sources: { ...library.sources, data_source_id: id(90) } },

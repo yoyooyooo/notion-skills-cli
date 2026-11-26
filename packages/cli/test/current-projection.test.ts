@@ -25,7 +25,7 @@ const target = "41b5636c-236e-81d3-ba0f-c5fa3f735808"
 const base = {
   target,
   daily: false,
-  entry: library.skills.database_id,
+  library: library.library_id,
   resume: false,
   dryRun: false,
 }
@@ -62,7 +62,7 @@ test("projection recovery names the observed pending intent and never resumes an
         projection_policy: { include: ["references/**/*.md"], exclude: ["**/tests/**"] },
       },
       target,
-      library.skills.database_id,
+      library.library_id,
       { requests: 7000, bytes: 900000, duration_ms: 3600000 },
     ),
   ).toMatchObject({
@@ -72,8 +72,8 @@ test("projection recovery names the observed pending intent and never resumes an
       "library",
       "projection",
       target,
-      "--entry",
-      library.skills.database_id,
+      "--library",
+      library.library_id,
       "--operation",
       "original-intent",
       "--resume",
@@ -97,7 +97,7 @@ test("projection recovery names the observed pending intent and never resumes an
         owner: { kind: "skill", id: "owned-skill" },
       },
       target,
-      library.skills.database_id,
+      library.library_id,
     ),
   ).toMatchObject({
     argv: [
@@ -108,19 +108,19 @@ test("projection recovery names the observed pending intent and never resumes an
       "owned-skill",
       "--kind",
       "skill",
-      "--entry",
-      library.skills.database_id,
+      "--library",
+      library.library_id,
     ],
     read_only: true,
   })
   expect(
-    currentProjectionRecoveryNext({ path: "missing.md" }, target, library.skills.database_id),
+    currentProjectionRecoveryNext({ path: "missing.md" }, target, library.library_id),
   ).toBeUndefined()
   expect(
     currentProjectionRecoveryNext(
       { projection: true, operation_id: "missing-frozen-policy" },
       target,
-      library.skills.database_id,
+      library.library_id,
     ),
   ).toBeUndefined()
 })
@@ -136,7 +136,7 @@ test("restore recovery uses one public command across both phases with the origi
         projection_policy: policy,
       },
       target,
-      library.skills.database_id,
+      library.library_id,
       { requests: 1234, bytes: 5678, duration_ms: 9000 },
       true,
     )
@@ -146,8 +146,8 @@ test("restore recovery uses one public command across both phases with the origi
       "library",
       "projection",
       target,
-      "--entry",
-      library.skills.database_id,
+      "--library",
+      library.library_id,
       "--restore",
       "--include",
       "references/**/*.md",
@@ -171,7 +171,7 @@ test("restore recovery uses one public command across both phases with the origi
         projection_policy: policy,
       },
       target,
-      library.skills.database_id,
+      library.library_id,
       {},
       true,
     ),
@@ -184,8 +184,8 @@ test("restore recovery uses one public command across both phases with the origi
       "held",
       "--kind",
       "skill",
-      "--entry",
-      library.skills.database_id,
+      "--library",
+      library.library_id,
     ],
     read_only: true,
   })
@@ -229,7 +229,7 @@ test("projection scope is explicit and a batch cannot reinterpret one Skill's re
     { ...base, target: "https://example.com/41b5636c236e81d3ba0fc5fa3f735808" },
     { ...base, target: "statechart" },
     { ...base, operation: "invalid operation" },
-    { ...base, entry: "notion_page:" + target },
+    { ...base, library: "notion_page:" + target },
     { ...base, maxRequests: 0 },
     { ...base, maxBytes: -1 },
     { ...base, timeout: 1.5 },
@@ -280,8 +280,8 @@ test("the same daily CLI command resumes its interrupted Skill then completes th
         const output: string[] = []
         yield* Command.runWith(currentProjectionCommand, { version: "test", renderErrors: false })([
           "--daily",
-          "--entry",
-          library.skills.database_id,
+          "--library",
+          library.library_id,
         ]).pipe(
           Effect.provideService(Stdio.Stdio, {
             ...stdio,
@@ -350,13 +350,7 @@ test.each(["include", "exclude", "both"] as const)(
     let failure: unknown
     try {
       await f.run(
-        projectionCLI([
-          written.page_id,
-          "--restore",
-          "--entry",
-          library.skills.database_id,
-          ...flags,
-        ]),
+        projectionCLI([written.page_id, "--restore", "--library", library.library_id, ...flags]),
       )
     } catch (error) {
       failure = error
@@ -395,8 +389,8 @@ test("restore returns its public coordinates when the shared budget stops betwee
   let restored = false
   const args = [
     written.page_id,
-    "--entry",
-    library.skills.database_id,
+    "--library",
+    library.library_id,
     "--restore",
     "--include",
     "",
@@ -483,20 +477,20 @@ test("reading globs replace their own defaults without changing operation scope"
 test("public projection parsing rejects an ambiguous write scope before any remote request", async () => {
   const f = currentWriteFixture(await mkdtemp(join(tmpdir(), "ntn-cli-projection-")))
   for (const args of [
-    ["--entry", library.skills.database_id],
-    [target, "--daily", "--entry", library.skills.database_id],
-    ["--daily", "--operation", "one-intent", "--entry", library.skills.database_id],
-    [target, "--resume", "--entry", library.skills.database_id],
-    [target, "--cancel", "--entry", library.skills.database_id],
-    ["--daily", "--restore", "--entry", library.skills.database_id],
-    [target, "--restore", "--operation", "old", "--entry", library.skills.database_id],
-    [target, "--restore", "--resume", "--entry", library.skills.database_id],
-    [target, "--restore", "--cancel", "--entry", library.skills.database_id],
-    [target, "--restore", "--dry-run", "--entry", library.skills.database_id],
-    [target, "--include", "", "--include", "**/*.md", "--entry", library.skills.database_id],
-    [target, "--exclude", "**/test/**", "--exclude", "", "--entry", library.skills.database_id],
-    [target, "--cancel", "--operation", "old", "--resume", "--entry", library.skills.database_id],
-    [target, "--max-requests", "0", "--entry", library.skills.database_id],
+    ["--library", library.library_id],
+    [target, "--daily", "--library", library.library_id],
+    ["--daily", "--operation", "one-intent", "--library", library.library_id],
+    [target, "--resume", "--library", library.library_id],
+    [target, "--cancel", "--library", library.library_id],
+    ["--daily", "--restore", "--library", library.library_id],
+    [target, "--restore", "--operation", "old", "--library", library.library_id],
+    [target, "--restore", "--resume", "--library", library.library_id],
+    [target, "--restore", "--cancel", "--library", library.library_id],
+    [target, "--restore", "--dry-run", "--library", library.library_id],
+    [target, "--include", "", "--include", "**/*.md", "--library", library.library_id],
+    [target, "--exclude", "**/test/**", "--exclude", "", "--library", library.library_id],
+    [target, "--cancel", "--operation", "old", "--resume", "--library", library.library_id],
+    [target, "--max-requests", "0", "--library", library.library_id],
   ]) {
     await expect(
       f.run(
@@ -521,7 +515,7 @@ test("the installed projection schema exposes bounded explicit management withou
     "include",
     "exclude",
     "operation",
-    "entry",
+    "library",
   ])
     expect(parameters.some((parameter) => parameter.name === name)).toBe(true)
   for (const name of ["max-requests", "max-bytes", "timeout"])

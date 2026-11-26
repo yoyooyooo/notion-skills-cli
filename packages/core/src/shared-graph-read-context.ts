@@ -10,7 +10,7 @@ import {
 } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
-import { sharedRecordFromPage, sharedSkillId } from "./shared-content.ts"
+import { sharedRecordFromPage, skillIdentity } from "./shared-content.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import type { SharedSkillRelationTarget } from "./shared-router-members.ts"
@@ -407,7 +407,7 @@ export function withSharedGraphReads<A, E, R>(
         identity: (library, skillId) =>
           Effect.gen(function* () {
             yield* checked(() => checkLibrary(library))
-            const id = yield* checked(() => sharedSkillId(library.library_id, skillId))
+            const id = yield* checked(() => skillIdentity(library.library_id, skillId))
             const found = yield* checked(() => find(id, library.skills.database_id))
             if (found !== undefined)
               return {

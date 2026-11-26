@@ -2,6 +2,7 @@
 
 - [Profile rules](#profile-rules)
 - [Current Source](#current-source-boundaries)
+- [Scheduled upstream batches](#scheduled-upstream-batches)
 - [Declaration input](#a-source-management-request)
 - [Daily Notion text](#daily-notion-text)
 - [Restore a trashed Skill](#restore-a-trashed-skill)
@@ -15,9 +16,9 @@ permission boundary.
 ## Profile rules
 
 ```sh
-ntn-skills ctl library profile list --entry ENTRY
-ntn-skills ctl library profile show PROFILE_ID --entry ENTRY
-ntn-skills ctl library profile set PROFILE_ID --entry ENTRY --name NAME --enabled true --expect CURRENT_FINGERPRINT --default-view VIEW_ID
+ntn-skills ctl library profile list --library LIBRARY_ID
+ntn-skills ctl library profile show PROFILE_ID --library LIBRARY_ID
+ntn-skills ctl library profile set PROFILE_ID --library LIBRARY_ID --name NAME --enabled true --expect CURRENT_FINGERPRINT --default-view VIEW_ID
 ```
 
 Use `--expect new` only when no current record exists for that stable Profile ID.
@@ -49,9 +50,9 @@ A long TTL delays visibility of current edits and does not extend independent
 native-body or eligibility deadlines.
 
 ```sh
-ntn-skills ctl library profile freshness PROFILE_ID --entry ENTRY --skill STABLE_SKILL_ID
-ntn-skills list --profile PROFILE_ID --database ENTRY
-ntn-skills ctl library profile bind PROFILE_ID --entry ENTRY
+ntn-skills ctl library profile freshness PROFILE_ID --library LIBRARY_ID --skill STABLE_SKILL_ID
+ntn-skills list --profile PROFILE_ID --library LIBRARY_ID
+ntn-skills ctl library profile bind PROFILE_ID --library LIBRARY_ID
 ntn-skills list --default-view
 ntn-skills ctl library profile unbind
 ```
@@ -99,6 +100,51 @@ Ordinary reads do not follow the latest branch, publish discovered members,
 repair projections or create records. A generated body edit does not transfer
 authority; native ownership is an explicit management choice.
 
+## Scheduled upstream batches
+
+`ctl library source check` and `ctl library source sync` require an exact library
+and one or more repeatable `--source SOURCE_ID` arguments. They share one request,
+byte and elapsed-time budget across the invocation. Use `--max-requests N`,
+`--max-bytes N` and `--timeout MS` to bound it. A Source enumeration must finish
+before any selected item starts; a provider failure is never an empty selection.
+Equal upstream observations can coalesce within the batch. There is no persistent
+ref TTL; the scheduler controls how often it invokes the command.
+
+Check makes no semantic Notion writes. `upstream_unchanged` describes the observed
+upstream and configuration, not target integrity. Unfinished Source or affected
+target work blocks a check, including an old owner's pending projection.
+
+Sync checks and freezes one exact commit before preparing bytes and publishing
+through the existing finite writer. With `--mode changed`, the first run and a
+configuration change require full reconciliation. A later matching successful
+local receipt can skip unchanged upstream. Use `--mode full` for a scheduled
+integrity pass even at the same commit. Disabled Sources, pinned policy and exact
+fixed refs are skipped. Existing native/resource ownership and contribution
+exclusions remain part of the current declaration's normal write rules.
+
+The default `--projection none` publishes consumption content only. With
+`--projection markdown`, the report separately records content publication and
+reading projection completion. A failed projection retains the published content
+and its original recovery input. Sync resumes compatible pending work before
+checking a newer upstream head.
+
+For automation, supply stable `--manager MANAGER_ID` and an `--execution-id` that
+identifies the installed package generation. Keep the same original local Store
+for retries. The CLI defaults manager to manual and derives execution identity
+from its bundled file; a source TypeScript invocation needs an explicit identity.
+The `ntn-skills/management` SDK exposes `checkSources` and `syncSources` with the
+same report contract and requires explicit manager/execution identity for sync.
+The consumption `ntn-skills/sdk` remains read-only.
+
+JSON is always written to stdout; no `--json` flag is needed. Exit 0 means complete,
+75 means every incomplete item is retryable, 1 means another incomplete result,
+and 2 means invalid arguments. Budget exhaustion preserves completed items and
+marks remaining items `not_started`. Repeat a compatible invocation only within
+the scheduler's retry and time limits. An unknown remote outcome, foreign pending
+work or changed execution identity needs inspection; do not clear pending state
+or replay a mutation from the scheduler. The local Store lock serializes cooperating
+writers on one host; it does not provide distributed Notion CAS.
+
 ## A Source-management request
 
 Read existing targets with `ctl library files`, then prepare one complete current
@@ -128,10 +174,10 @@ contributions array when no identity overrides are needed:
 ```
 
 ```sh
-ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --dry-run
-ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --operation OPERATION_ID
-ntn-skills ctl library source refresh SOURCE_ID --entry ENTRY --dry-run
-ntn-skills ctl library source refresh SOURCE_ID --entry ENTRY
+ntn-skills ctl library source apply INPUT_JSON --library LIBRARY_ID --dry-run
+ntn-skills ctl library source apply INPUT_JSON --library LIBRARY_ID --operation OPERATION_ID
+ntn-skills ctl library source refresh SOURCE_ID --library LIBRARY_ID --dry-run
+ntn-skills ctl library source refresh SOURCE_ID --library LIBRARY_ID
 ```
 
 Apply replaces that Source's complete configuration and contributions. Refresh
@@ -140,22 +186,33 @@ must be regular UTF-8 and at most 512 KiB. This writer accepts regular Git files
 from GitHub and credential-free private HTTP(S) Git origins, with manual or pinned
 policy. GitHub SSH repository spellings normalize to the same shared identity.
 Authentication stays on the machine. Unknown providers, options, transformations
-and symlinks fail. Source options.storage are rejected, as are auto policy and
-check_interval_ms. The only current option is accepted_ref for an explicitly fixed discovery
-commit. Do not retain that option for a declaration intended to follow a branch.
+and symlinks fail. Source `options.storage` are rejected, as are auto policy and
+check_interval_ms. Use accepted_ref only for an explicitly fixed discovery commit;
+omit it when the declaration should follow a branch. Set the boolean option
+require_all_included to true when every literal path in Selection.include must
+still contain SKILL.md. A missing required member fails before publication instead
+of removing its targets. This guard does not require wildcard patterns to match.
 Selection.mapping supplies new Skill names; it is not a file mapping.
 
 Discovery reconciles all selected members. Existing contributions retain stable
 target assignments; unassigned members receive identities derived from Source ID
-and member key. Missing members leave the effective declaration. An empty selected
-set is valid only after complete successful discovery. Selection include/exclude
+and member key. Unless protected by require_all_included, missing members leave
+the effective declaration. An empty selected set is valid only after complete
+successful discovery and any required-member checks. Selection include/exclude
 selects member roots. Contribution mapping/exclude uses exact member-relative file
 paths; the effective path is mount_path plus the mapped path. Keep file exclusions
 to prevent a deliberately taken-over file from returning when upstream reintroduces it.
 
+Source-backed cross-Skill relative links keep their original spelling. Resolve them
+from the exact containing file's Source path and revision through the current
+contribution map. A unique target identity is required; cache adjacency and display
+names are not evidence. Cross-Skill links from native or resource files without
+that Source route need explicit stable refs. Source apply/refresh does not infer Requires or replace authored
+Members. A successful relative read inspects the target; it does not activate it.
+
 A desired upstream path replaces matching native/resource authority and preserves
 its File ID. Dry-run reports that overwrite before applying. Exclude the incoming
-SKILL.md when an existing native main should stay authoritative. Unrelated files,
+`SKILL.md` when an existing native main should stay authoritative. Unrelated files,
 other Sources and existing Skill metadata remain preserved; another Source at the
 same desired path is a conflict. When a member disappears, archive its Files and
 Skill only if the complete target is owned by this Source. Retaining unrelated
@@ -187,9 +244,9 @@ equal invocation creates no operation and makes no semantic writes.
 After Source apply/refresh, use the same current content to generate readable pages:
 
 ```sh
-ntn-skills ctl library projection --daily --entry ENTRY --dry-run
-ntn-skills ctl library projection --daily --entry ENTRY
-ntn-skills ctl library projection PAGE_ID --entry ENTRY
+ntn-skills ctl library projection --daily --library LIBRARY_ID --dry-run
+ntn-skills ctl library projection --daily --library LIBRARY_ID
+ntn-skills ctl library projection PAGE_ID --library LIBRARY_ID
 ```
 
 Daily combines current Source 日用 members, Skill 日用 and Default Context, using
@@ -218,7 +275,7 @@ completed and remaining targets and an exact single-Skill recovery command with
 the original policy and requested budgets. Explicit recovery uses:
 
 ```sh
-ntn-skills ctl library projection PAGE_ID --entry ENTRY --operation OPERATION_ID --resume
+ntn-skills ctl library projection PAGE_ID --library LIBRARY_ID --operation OPERATION_ID --resume
 ```
 
 Keep the original state/credential scope. Omitted filters use the unfinished
@@ -236,7 +293,7 @@ invocation shares 1000 HTTP attempts, 512 MiB and 600000 ms by default. Use
 For a completed Skill later moved to Trash, use its original exact page ID or URL:
 
 ```sh
-ntn-skills ctl library projection PAGE_ID --restore --entry ENTRY
+ntn-skills ctl library projection PAGE_ID --restore --library LIBRARY_ID
 ```
 
 Restore that owner through a narrow finite intent, then complete ordinary
@@ -271,9 +328,9 @@ and target path. Source paths include the original member root; contribution
 exclusions remain member-relative. Use exactly one current file:
 
 ```sh
-ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID --as resource --dry-run
-ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID --as native --operation OPERATION_ID
-ntn-skills ctl library source restore-follow SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID --operation OPERATION_ID
+ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --library LIBRARY_ID --skill-id SKILL_ID --file-id FILE_ID --as resource --dry-run
+ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --library LIBRARY_ID --skill-id SKILL_ID --file-id FILE_ID --as native --operation OPERATION_ID
+ntn-skills ctl library source restore-follow SOURCE_ID SOURCE_PATH --library LIBRARY_ID --skill-id SKILL_ID --file-id FILE_ID --operation OPERATION_ID
 ```
 
 Takeover reads the selected Source original, keeps File ID, page, target path and
@@ -295,10 +352,10 @@ Other files and Sources remain preserved. A concurrent change of authority or a
 new resource reference blocks overwrite or cleanup until explicitly resolved.
 
 ```sh
-ntn-skills ctl library source disable SOURCE_ID --entry ENTRY --operation OPERATION_ID
-ntn-skills ctl library source enable SOURCE_ID --entry ENTRY --operation OPERATION_ID
-ntn-skills ctl library source remove SOURCE_ID --entry ENTRY --dry-run
-ntn-skills ctl library source remove SOURCE_ID --entry ENTRY --operation OPERATION_ID
+ntn-skills ctl library source disable SOURCE_ID --library LIBRARY_ID --operation OPERATION_ID
+ntn-skills ctl library source enable SOURCE_ID --library LIBRARY_ID --operation OPERATION_ID
+ntn-skills ctl library source remove SOURCE_ID --library LIBRARY_ID --dry-run
+ntn-skills ctl library source remove SOURCE_ID --library LIBRARY_ID --operation OPERATION_ID
 ```
 
 Disable changes consumption eligibility only. It keeps selected content, files and
@@ -326,7 +383,7 @@ Incomplete pagination, permission failure or exhausted limits cannot prove absen
 Inspect the exact parent before changing an unfinished action:
 
 ```sh
-ntn-skills ctl library operation SOURCE_ID --kind source --entry ENTRY
+ntn-skills ctl library operation SOURCE_ID --kind source --library LIBRARY_ID
 ```
 
 This reads the finite Record, owner state, local lifecycle, in-flight action,
@@ -335,9 +392,9 @@ with operation:null does not establish ready, absence of the owner or retirement
 Keep the actual result and its original credential/state scope.
 
 ```sh
-ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --operation OPERATION_ID --resume
-ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --supersede OLD_OPERATION_ID --operation NEW_OPERATION_ID
-ntn-skills ctl library source remove SOURCE_ID --entry ENTRY --operation OPERATION_ID --resume
+ntn-skills ctl library source apply INPUT_JSON --library LIBRARY_ID --operation OPERATION_ID --resume
+ntn-skills ctl library source apply INPUT_JSON --library LIBRARY_ID --supersede OLD_OPERATION_ID --operation NEW_OPERATION_ID
+ntn-skills ctl library source remove SOURCE_ID --library LIBRARY_ID --operation OPERATION_ID --resume
 ```
 
 Keep the original input, local state and credential scope. Empty state or another

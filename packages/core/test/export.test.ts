@@ -1,3 +1,4 @@
+import { parseTarget } from "../src/ref.ts"
 import { convertPortable } from "../../portable-converter/src/converter.ts"
 import { expect, test } from "bun:test"
 import { randomBytes } from "node:crypto"
@@ -80,7 +81,7 @@ test("current export preserves each selected file byte and mode without recoveri
   )
   await f.resource(1, "assets/original.txt", exact)
   await f.resource(2, "scripts/run.sh", currentBytes("#!/bin/sh\nexit 0\n"), "100755")
-  const snapshot = await f.target({ selector: currentSkillPage })
+  const snapshot = await f.target(parseTarget(currentSkillPage))
   const portable = await f.run(snapshotPortable(snapshot))
   expect(portable.files.map((file) => file.path).sort()).toEqual(
     ["SKILL.md", "references/0.md", "assets/original.txt", "scripts/run.sh"].sort(),
@@ -129,7 +130,7 @@ test("current export preserves each selected file byte and mode without recoveri
 
 test("current display metadata changes never rewrite the selected entrypoint bytes", async () => {
   const f = currentSnapshotFixture()
-  const snapshot = await f.target({ selector: currentSkillPage })
+  const snapshot = await f.target(parseTarget(currentSkillPage))
   const original = await f.run(snapshotPortable(snapshot))
   const renamed = await f.run(
     snapshotPortable({
@@ -149,10 +150,10 @@ test("current display metadata changes never rewrite the selected entrypoint byt
 
 test("current readback exports the new body after an explicit refresh", async () => {
   const f = currentSnapshotFixture()
-  const before = await f.target({ selector: currentSkillPage })
+  const before = await f.target(parseTarget(currentSkillPage))
   f.main.last_edited_time = "2026-11-18T01:00:00.000Z"
   f.bodies.set(currentSkillPage, "# Updated current body\n")
-  const after = await f.target({ selector: currentSkillPage }, { refresh: true })
+  const after = await f.target(parseTarget(currentSkillPage), { refresh: true })
   const portable = await f.run(snapshotPortable(after))
   expect(after.snapshot_id).not.toBe(before.snapshot_id)
   expect(
@@ -163,7 +164,7 @@ test("current readback exports the new body after an explicit refresh", async ()
 
 test("export rejects a corrupt current object before creating any output", async () => {
   const f = currentSnapshotFixture()
-  const snapshot = await f.target({ selector: currentSkillPage })
+  const snapshot = await f.target(parseTarget(currentSkillPage))
   const file = snapshot.files.find((file) => file.path === "references/0.md")!
   f.objects.set(`objects/${file.sha256}`, currentBytes("Corrupt current bytes"))
   let writes = 0
@@ -216,7 +217,7 @@ test("portable content identity includes kind, exact body bytes, execution mode 
       relations: {
         version: 1 as const,
         ownership: "notion" as const,
-        library_id: "library-current",
+        library_id: "00000000-0000-4000-8000-000000000002",
         members: [],
       },
     },

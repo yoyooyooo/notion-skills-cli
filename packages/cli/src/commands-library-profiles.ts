@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect"
 import { Argument, Command } from "effect/cli"
-import { databaseId } from "../../core/src/catalog.ts"
+import { libraryId } from "../../core/src/catalog.ts"
 import { defineCommand } from "../../core/src/command-schema.ts"
 import { fail } from "../../core/src/model.ts"
 import {
@@ -17,18 +17,18 @@ import {
 } from "../../core/src/shared-profile.ts"
 import { emit, requiredSingleton, singleton, switchFlag } from "./command-options.ts"
 
-const entry = requiredSingleton(
-  "entry",
+const libraryFlag = requiredSingleton(
+  "library",
   "Shared library Skills database ID, URL or exact registered alias",
 )
 const profile = Argument.String("profile-id").pipe(
   Argument.withDescription("Exact stable Profile ID; names are display labels"),
 )
-const library = (value: string) => databaseId(value).pipe(Effect.flatMap(loadSharedLibrary))
+const library = (value: string) => libraryId(value).pipe(Effect.flatMap(loadSharedLibrary))
 
-const list = defineCommand("list", { entry }, (options) =>
+const list = defineCommand("list", { library: libraryFlag }, (options) =>
   Effect.gen(function* () {
-    yield* emit(yield* listSharedProfiles(yield* library(options.entry)))
+    yield* emit(yield* listSharedProfiles(yield* library(options.library)))
   }),
 ).pipe(
   Command.withDescription(
@@ -36,10 +36,10 @@ const list = defineCommand("list", { entry }, (options) =>
   ),
 )
 
-const show = defineCommand("show", { profile, entry }, (options) =>
+const show = defineCommand("show", { profile, library: libraryFlag }, (options) =>
   Effect.gen(function* () {
     yield* emit({
-      profile: yield* loadSharedProfile(yield* library(options.entry), options.profile),
+      profile: yield* loadSharedProfile(yield* library(options.library), options.profile),
       metadata_only: true,
     })
   }),
@@ -53,7 +53,7 @@ const set = defineCommand(
   "set",
   {
     profile,
-    entry,
+    library: libraryFlag,
     name: requiredSingleton("name", "Full display name for the current Profile"),
     enabled: requiredSingleton("enabled", "Required full rule value: true or false"),
     expected: requiredSingleton(
@@ -100,7 +100,7 @@ const set = defineCommand(
                 ),
             })
       yield* emit(
-        yield* saveSharedProfile(yield* library(options.entry), {
+        yield* saveSharedProfile(yield* library(options.library), {
           profile: {
             profile_id: options.profile,
             name: options.name,
@@ -120,26 +120,24 @@ const set = defineCommand(
   Command.withExamples([
     {
       command:
-        "ntn-skills ctl library profile set daily --entry LIBRARY_ID --name Daily --enabled true --expect new",
+        "ntn-skills ctl library profile set daily --library LIBRARY_ID --name Daily --enabled true --expect new",
       description: "Create an enabled Profile using the library's first View",
     },
     {
       command:
-        "ntn-skills ctl library profile set daily --entry LIBRARY_ID --name Daily --enabled true --expect CURRENT_FINGERPRINT --default-view VIEW_ID",
+        "ntn-skills ctl library profile set daily --library LIBRARY_ID --name Daily --enabled true --expect CURRENT_FINGERPRINT --default-view VIEW_ID",
       description: "Replace reviewed rules with an explicit default View",
     },
   ]),
 )
 
-const bind = defineCommand("bind", { profile, entry }, (options) =>
+const bind = defineCommand("bind", { profile, library: libraryFlag }, (options) =>
   Effect.gen(function* () {
-    yield* emit(
-      yield* bindSharedProfile({ libraryEntry: options.entry, profileId: options.profile }),
-    )
+    yield* emit(yield* bindSharedProfile({ library: options.library, profileId: options.profile }))
   }),
 ).pipe(
   Command.withDescription(
-    "Validate an enabled shared Profile and store only its library entry and Profile ID on this machine. The binding participates in list --default-view and the default capability directory. Bare list remains complete explicit discovery, and an explicit --view takes precedence. Profile rules and membership remain in Notion.",
+    "Validate an enabled shared Profile and store only its Library root and Profile ID on this machine. The binding participates in list --default-view and the default capability directory. Bare list lists the complete selected Library, and an explicit --view takes precedence. Profile rules and membership remain in Notion.",
   ),
 )
 
@@ -147,12 +145,12 @@ const freshness = defineCommand(
   "freshness",
   {
     profile,
-    entry,
+    library: libraryFlag,
     skill: singleton("skill", "Exact stable Skill ID; omit to inspect Profile defaults"),
   },
   (options) =>
     Effect.gen(function* () {
-      const selected = yield* loadSharedProfile(yield* library(options.entry), options.profile)
+      const selected = yield* loadSharedProfile(yield* library(options.library), options.profile)
       const product = yield* effectiveCachePolicy
       yield* emit({
         profile_id: selected.profile_id,

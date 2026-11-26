@@ -156,6 +156,13 @@ function fileOwner(row: Record<string, unknown>, ids: PropertyIds): string {
   return exactPage(object(owner.relation[0], "File owner").id, "File owner")
 }
 
+/** Decode one exact supporting File without expanding its owner or reading bytes. */
+export function currentFileMetadata(raw: unknown, library: SharedLibrary): CurrentFileBinding {
+  const ids = fileProperties(library.files.property_ids)
+  const owner = fileOwner(object(raw, "Current File page"), ids)
+  return currentFileRecord(raw, owner, library.files.data_source_id, ids)
+}
+
 export function currentFileRecord(
   raw: unknown,
   skillId: string,

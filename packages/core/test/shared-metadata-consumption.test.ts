@@ -17,9 +17,9 @@ import {
   currentSkillPage as skillPage,
 } from "./shared-current-fixture.ts"
 
-const owner = "shared_skill:library-current:demo"
+const owner = "skill://demo?library=00000000-0000-4000-8000-000000000002"
 const rootRef = fileRef(owner, "SKILL.md")
-const options = { database: library.skills.database_id }
+const options = { library: library.library_id }
 const fields = ["title", "description", "kind", "skill-id", "enabled", "default"]
 const claimFields = [
   ...fields,
@@ -227,7 +227,11 @@ function fixture(count = 2, relations = false) {
                   const update = controls.beforeSelectedGet
                   controls.beforeSelectedGet = undefined
                   update?.()
-                } else if (method === "GET" && /^\/v1\/pages\/[^/]+$/u.test(url.pathname)) {
+                } else if (
+                  method === "GET" &&
+                  url.pathname !== "/v1/pages/" + library.library_id &&
+                  /^\/v1\/pages\/[^/]+$/u.test(url.pathname)
+                ) {
                   const row = rows.find((row) => url.pathname === "/v1/pages/" + row.id)
                   return row === undefined
                     ? Effect.fail(
@@ -305,10 +309,10 @@ describe("scalar current metadata consumption", () => {
         })
         expect(f.base.json.get("snapshots/" + physical.snapshot_id + ".json")).toEqual(snapshot)
         expect(result.members?.map((entry) => entry.id)).toEqual([
-          "shared_skill:library-current:other-1",
+          "skill://other-1?library=00000000-0000-4000-8000-000000000002",
         ])
         expect(result.required?.map((entry) => entry.id)).toEqual([
-          "shared_skill:library-current:other-" + (count - 1),
+          `skill://other-${count - 1}?library=00000000-0000-4000-8000-000000000002`,
         ])
         expect(logicalBodies).toEqual(["/v1/pages/" + skillPage + "/markdown"])
         expect(bodies(f).every((path) => path === "/v1/pages/" + skillPage + "/markdown")).toBe(
@@ -461,7 +465,7 @@ describe("scalar current metadata consumption", () => {
         expect(entries.find((entry) => entry.page_id === skillPage)?.id).toBe(owner)
         if (count > 1)
           expect(entries.find((entry) => entry.page_id === f.externalPage)).toMatchObject({
-            id: "shared_skill:library-current:other-" + (count - 1),
+            id: `skill://other-${count - 1}?library=00000000-0000-4000-8000-000000000002`,
             name: "Other " + (count - 1),
             availability: "available",
           })
@@ -481,7 +485,7 @@ describe("scalar current metadata consumption", () => {
     expect(
       result.native_references?.entries.find((entry) => entry.page_id === f.externalPage),
     ).toMatchObject({
-      id: "shared_skill:library-current:other-1",
+      id: "skill://other-1?library=00000000-0000-4000-8000-000000000002",
       availability: "disabled",
     })
     expect(result.native_references?.unresolved).toEqual([])
@@ -611,7 +615,9 @@ describe("scalar current metadata consumption", () => {
       property(f.base.main.properties)["Skill ID"] = rich("skill-id", "replacement-identity")
     }
     const result = await f.run(readSkill(skillPage, options))
-    expect(result.record.id).toBe("shared_skill:library-current:replacement-identity")
+    expect(result.record.id).toBe(
+      "skill://replacement-identity?library=00000000-0000-4000-8000-000000000002",
+    )
     expect(rootGets(f)).toHaveLength(2)
   })
 
