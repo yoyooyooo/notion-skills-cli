@@ -19,6 +19,9 @@ export type ListCatalogDirectoryOptions = Omit<
   readonly view?: never
   readonly defaultView?: never
   readonly profile?: never
+  /** Runs once after the full catalog settles, before View/Profile work. This
+   * notification is not awaited and cannot change the combined result. */
+  readonly onCatalogSettled?: () => void
 }
 const CatalogDirectorySelectionSchema = Schema.Union([
   Schema.Struct({ view: Schema.String }),
@@ -103,6 +106,11 @@ function listCatalogDirectory(options: ListCatalogDirectoryOptions) {
         try: () => {
           validateReadPolicy(options)
           if (
+            options.onCatalogSettled !== undefined &&
+            typeof options.onCatalogSettled !== "function"
+          )
+            throw fail("INVALID_ARGUMENT", "onCatalogSettled must be a function.")
+          if (
             options.view !== undefined ||
             options.defaultView !== undefined ||
             options.profile !== undefined
@@ -137,6 +145,13 @@ function listCatalogDirectory(options: ListCatalogDirectoryOptions) {
         maxAge: options.maxAge,
       }
       const catalog = yield* observeCatalog(listSingleCatalog(policy))
+      yield* Effect.sync(() => {
+        try {
+          void Promise.resolve(options.onCatalogSettled?.()).catch(() => {})
+        } catch {
+          // Notification failures cannot alter catalog or consumption authority.
+        }
+      })
       const directory = yield* observeCatalog(
         listSingleCatalog({
           ...policy,
