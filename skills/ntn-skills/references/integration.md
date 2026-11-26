@@ -1,8 +1,9 @@
 # Discovery and integration
 
 The CLI supplies current metadata and locally selected file trees. Host adapters
-supply startup discovery, activation and native tools. Installing a builtin
-alone does not configure an adapter or inject remote instructions.
+supply startup discovery, activation and native tools. `ntn-skills skills`
+discovers the guides included in the CLI package. Reading those guides does not
+configure an adapter or inject remote instructions.
 
 ## Host consumption
 
@@ -21,8 +22,8 @@ prove actual model delivery; truncated or failed content is not complete.
 
 For product maintenance and Source sync, default to the guidance bundled with
 the task's executable or paired SDK, including with a connected library.
-The CLI reads `ctl builtin read notion/ntn-skills-maintain` or
-`ctl builtin read notion/ntn-skills-sync`; no remote workflow search or Notion
+The CLI reads `skills get ntn-skills-maintain` or
+`skills get ntn-skills-sync`; no remote workflow search or Notion
 copy is required. This does not select a write target or authorize writes.
 Ordinary business Skill discovery remains in the selected Notion library.
 
@@ -41,8 +42,9 @@ In Pi, with an enabled Notion source, Context Broker exposes `$ntn-skills@builti
 `$ntn-skills-maintain@builtin` and `$ntn-skills-sync@builtin` from its paired SDK.
 Without an enabled source, it does not inject that catalog, Notion tools or
 system guidance into Pi; explicit setup can still read the shell CLI's builtin guide.
-Builtin reads need no Notion copy. Keep references with the selected owner:
-ordinary `read --from` for Notion, `ctl builtin read --path` for package content.
+Bundled reads need no credentials, Library, local configuration or cache. The
+guides update with their package. Keep references with the selected owner:
+ordinary `read --from` for Notion, `skills get NAME --path` for package content.
 A native `Read skill://...` route exists only when the host registers it.
 
 This current integration target is the paired CLI/SDK/Broker in Pi. OMP/Tern
@@ -126,10 +128,10 @@ metadata.
 | Current schema required | Keep the precise error and affected entry. Current descriptor conversion is a management task; another reader must not mask it. |
 | Current operation pending | Inspect its current state and operation ID with library files; do not mark ready by hand. |
 | Content appears old | Distinguish host metadata, a bounded observation, an active selection and the Source's selected revision. Ordinary `read --refresh` validates the current descriptor; it does not advance a Git Source or install a newer package. |
-| A Notion workflow differs from package guidance | Check its authority and intended ownership. Native copies are user-owned; do not overwrite them to match the package. Refresh a Source and its reading projection only when requested, preserving task selections and human metadata. |
+| A Notion workflow differs from package guidance | Keep its own authority and exact identity. Package guidance and business workflows have separate owners. Refresh a business Source and its reading projection only when requested, preserving task selections and human metadata. |
 | Selected file is missing | Inspect the selection's directory and current exact descriptor. Re-select when the old local bytes are unavailable; do not substitute a newer file silently. |
 | Native tool rejects skill URI | Check the host adapter; use the supplied CLI until its native route exists. |
-| Builtin missing | Check the paired Broker/package identity and exact @builtin token; no remote publication is required. |
+| Bundled guide missing | Run `skills list` with the task's executable. For Pi, check the paired Broker/package identity and exact `@builtin` token. |
 | Authentication or access fails | Check existing token precedence, intended workspace and sanitized doctor output. Do not expose or silently replace credentials. |
 | Reading page looks complete but bytes differ | Inspect its Content authority. Generated reading pages do not replace the exact Source/resource bytes. |
 

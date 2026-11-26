@@ -31,7 +31,7 @@ import { configCommand } from "./commands-configuration.ts"
 import { authCommand } from "./commands-mcp-auth.ts"
 import { libraryCommand } from "./commands-library.ts"
 import { cacheCommand } from "./commands-cache.ts"
-import { builtinCommand } from "./commands-builtin.ts"
+import { skillsCommand } from "./commands-skills.ts"
 import { doctorCommand } from "./commands-doctor.ts"
 import { apiCommand } from "./commands-api.ts"
 import { prepareCommand } from "./commands-prepare.ts"
@@ -45,7 +45,6 @@ const ctlCommand = defineCommand("ctl").pipe(
     withRuntime(libraryCommand, live),
     withRuntime(configCommand, live),
     withRuntime(cacheCommand, live),
-    builtinCommand,
     withRuntime(doctorCommand, live),
     withRuntime(apiCommand, live),
     withRuntime(viewsCommand.pipe(withConstraints([readPolicyConstraint])), live),
@@ -76,9 +75,10 @@ const schemaCommand = defineCommand(
 const rootDefinition = () =>
   defineCommand("ntn-skills").pipe(
     Command.withDescription(
-      "Read the current Notion Skill library. list discovers candidates; read inspects exact files; use expands Requires; files returns the complete directory; export writes selected current bytes locally. Ordinary consumption never writes Notion. Manage complete trees with ctl library import, Source declarations and lifecycle with ctl library source, and Profiles with ctl library profile. Missing current Content descriptors require an explicit data cutover.",
+      "Start with skills to discover this CLI's bundled instructions, then skills get NAME to read them offline. list discovers Notion library candidates; read inspects exact files; use expands Requires; files returns the complete directory; export writes selected current bytes locally. Ordinary consumption never writes Notion. Manage complete trees with ctl library import, Source declarations and lifecycle with ctl library source, and Profiles with ctl library profile. Missing current Content descriptors require an explicit data cutover.",
     ),
     Command.withSubcommands([
+      skillsCommand,
       withRuntime(
         listCommand.pipe(withConstraints([readPolicyConstraint, viewSelectionConstraint])),
         live,

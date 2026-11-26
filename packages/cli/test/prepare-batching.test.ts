@@ -144,7 +144,6 @@ test("public Node use batches current HTTPS metadata, persists derived directori
             NTN_SKILLS_HOME: join(directory, "state"),
             NTN_SKILLS_CONFIG_HOME: join(directory, "config"),
             NTN_SKILLS_CACHE_HOME: join(directory, "cache"),
-            NTN_SKILLS_DATA_HOME: join(directory, "data"),
           },
         },
       )

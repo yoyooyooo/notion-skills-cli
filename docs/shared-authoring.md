@@ -46,7 +46,6 @@ test_root='/absolute/path/to/notion-skills-integration'
 export NTN_SKILLS_CONFIG_HOME="$test_root/config"
 export NTN_SKILLS_HOME="$test_root/state"
 export NTN_SKILLS_CACHE_HOME="$test_root/cache"
-export NTN_SKILLS_DATA_HOME="$test_root/data"
 export NTN_SKILLS_SCHEDULER_ROOT="$test_root/scheduler"
 test_parent='PASTE_AUTHORIZED_TEST_PARENT_PAGE_ID'
 ntn-skills ctl library init --parent "$test_parent"

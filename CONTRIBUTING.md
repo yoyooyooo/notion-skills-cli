@@ -31,7 +31,7 @@ Read [the current contract](docs/current-contract.md) before changing table fiel
 
 The public SDK is version 2. Source management APIs and the `readOnly` input have been removed. Hosts must require SDK v2 before consuming current content; all consumption is already read only. Consumer and resource result contracts remain version 1. Protocol numbers describe incompatible formats and do not introduce content version management.
 
-The shipped CLI exposes `list`, `read`, `use`, `files`, `export` and the current `ctl` tree. `ctl library skill create/update/register/remove` owns native authorship, partial changes, page registration and scoped deletion cleanup. `ctl library import` replaces one complete resource/native tree and its declared portable relationships. Source apply/refresh, file takeover/restore-follow and enable/disable/remove use the same finite operation kernel. A Source removal requires a complete library metadata census; a missing Origin relation cannot hide a Content reference. Explicit supersede keeps one unfinished handoff and never restores ready by clearing an unresolved action. Inspect `ntn-skills schema` and a specific `schema ctl ...` path for the actual command contract. Do not copy old authoring examples into current guidance.
+The shipped CLI exposes `list`, `read`, `use`, `files`, `export`, the offline `skills` family and the current `ctl` tree. `ctl library skill create/update/register/remove` owns native authorship, partial changes, page registration and scoped deletion cleanup. `ctl library import` replaces one complete resource/native tree and its declared portable relationships. Source apply/refresh, file takeover/restore-follow and enable/disable/remove use the same finite operation kernel. A Source removal requires a complete library metadata census; a missing Origin relation cannot hide a Content reference. Explicit supersede keeps one unfinished handoff and never restores ready by clearing an unresolved action. Inspect `ntn-skills schema` and a specific `schema ctl ...` path for the actual command contract. Do not copy old authoring examples into current guidance.
 
 Keep Effect, platform, SQLite and Effect test integration versions aligned at 4.0.5. Use `effect/cli` for commands and scoped Effect services for external execution. Put validation at the external boundary; preserve authorization, complete pagination, byte checks, request budgets and cancellation cleanup.
 
@@ -53,34 +53,19 @@ owns paired environment isolation and CLI/SDK/Broker identity checks. An isolate
 run does not establish normal daily installation or natural Agent acceptance.
 The formal guards and strict current-`next` delivery requirements remain unchanged.
 
-After updating the authorized Notion Source for the distributed guidance, compare
-the selected installed package with the connected library:
+Product guidance is delivered by the package's `skills list/get/path` commands.
+The installed package check compares the three Skills' main and supporting files
+with the archive, checks raw Markdown and JSON output, and verifies that `path`
+locates the actual packaged files. It also checks offline execution with no
+credentials or usable application directories. Keep these checks in the existing
+package gate; do not add a Skill installation or Notion-copy lifecycle.
+The paired Broker checks its own embedded CLI and file locations through the
+existing integration entry. Installed bytes and actual model delivery remain
+separate observations.
 
-```sh
-node scripts/verify-projected-builtins.mjs --cli /absolute/ntn-skills --library LIBRARY_ID_DATABASE_ID
-```
-
-This read-only check requires complete discovery, reads every packaged main and
-reference through ordinary consumption, and compares exact file bytes, directory
-paths and discovery Description with the package's parsed frontmatter. It emits
-JSON with an explicit `proof_scope` and exits
-nonzero for drift, missing content or incomplete discovery. Source refresh
-preserves existing author metadata; align an intended Description change
-explicitly rather than treating it as a file synchronization side effect.
-For a Source-owned Skill, edit the requested Name/Description author fields in
-Notion. `ctl library skill update` rejects current Source contributions even for
-metadata-only requests.
-
-The comparison does not verify generated Notion reading pages or Source ownership.
-Matching names and bytes do not establish ownership. Installed CLI/Broker pairing
-and model delivery also require their existing verification paths. The controlled
-contract cases run with `bun test packages/cli/test/verify-projected-builtins.test.ts`
-and are included by the root `test:unit` package-test glob; they do not access Notion.
-
-Builtin lifecycle tests use isolated application and agent directories; preserve
-that isolation when extending a test. Retain fixture bytes only while an actual
-test or documented research consumer uses them. Preserve original failure inputs
-and unique evidence before retiring an obsolete fixture.
+Retain fixture bytes only while an actual test or documented research consumer
+uses them. Preserve original failure inputs and unique evidence before retiring
+an obsolete fixture.
 
 ## Compatibility and documentation
 

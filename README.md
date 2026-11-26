@@ -26,6 +26,7 @@ Use Node.js 22.23.5+ in 22.x, 24.22.3+ in 24.x, or 26.13.1+ in 26.x.
 npm install --global ntn-skills --registry https://registry.npmjs.org
 ntn-skills --version
 ntn-skills --help
+ntn-skills skills
 ```
 
 This README describes `next`. The published package may precede this branch.
@@ -256,11 +257,25 @@ behavior](skills/ntn-skills/references/integration.md#current-selection-and-cach
 
 ## Agent setup
 
-An Agent with a shell can use this CLI directly. Before a library exists, read
-the packaged setup guide offline:
+An Agent with a shell can discover the guides shipped with its CLI version:
 
 ```sh
-ntn-skills ctl builtin read notion/ntn-skills-maintain --path references/setup.md
+ntn-skills skills
+ntn-skills skills get ntn-skills
+ntn-skills skills get ntn-skills-maintain --full
+ntn-skills skills path ntn-skills-maintain
+```
+
+`skills` defaults to `skills list`. `get` returns Markdown; `--full` includes
+supporting files, and `--path` reads one exact relative file. `path` returns the
+actual package directory. Add `--json` for structured output. These commands
+work offline without credentials, a Library, local configuration or cache.
+Package upgrades include the matching guides.
+
+Before a library exists, read the packaged setup guide:
+
+```sh
+ntn-skills skills get ntn-skills-maintain --path references/setup.md
 ```
 
 Give the Agent the intended parent page or library entry and the same credential
@@ -268,8 +283,8 @@ environment. For routine maintenance and Source sync, use the same executable's
 packaged guidance, including after connecting a library:
 
 ```sh
-ntn-skills ctl builtin read notion/ntn-skills-maintain
-ntn-skills ctl builtin read notion/ntn-skills-sync
+ntn-skills skills get ntn-skills-maintain
+ntn-skills skills get ntn-skills-sync
 ```
 
 These reads need no Notion copy or remote workflow search and do not choose a
@@ -279,10 +294,6 @@ source/ref and uses `use` to load Requires before applying it. An incomplete
 search, pending content or access error does not switch that selection to the
 package. Inspect edited targets without activating them; keep an active task's
 selected content until explicitly changed.
-
-[Copying packaged workflows into Notion](skills/notion/ntn-skills-maintain/references/setup.md#copy-packaged-workflows-into-notion)
-is optional for team customization. The copies are editable, user-owned native
-Skills with their own identities, and do not update automatically with the package.
 
 For Pi, follow [the Broker setup](https://github.com/yoyooyooo/pi-context-broker/blob/next/README.md).
 The Broker consumes the same library through its paired SDK and owns Pi

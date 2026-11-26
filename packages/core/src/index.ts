@@ -46,11 +46,10 @@ export {
 } from "./cache.ts"
 export {
   defineBuiltin,
+  builtinInfo,
   selectBuiltin,
   readBuiltin,
-  exportBuiltin,
   type BuiltinSkill,
 } from "./builtin.ts"
-export { builtinStatus, installBuiltin, updateBuiltin } from "./builtin-install.ts"
 
 export { resolveLibrary } from "./shared-library.ts"
