@@ -35,6 +35,10 @@ C10/T21 使用 daily-installation 的 plan/run/candidate-plan/candidate-run 公�
 plan 及 candidate-plan 只准备输入，帮助输出也不是场景成绩。
 candidate 是项目级检查，不能替代 Pro/Mini 的普通日用入口；候选实现模块不能直接作为 CLI 调用。
 
+T01 最低执行层是 host。缓存、TTL、库选择、启动/SDK 次序或会话复用变化，必须执行 Broker 的 `notion-sdk-pi.mjs run` 场景 `http-warm-restart` 和 `http-warm-directory-expired`，再沿其 `evidence` 动作重验原件。正文与目录都 fresh 时，新 Pi 的整个暖阶段 HTTP 必须为 0；仅目录到期时允许 list 请求，正文 consume 仍为 0，Library 根结构 children 保留真实物理分类。两者都核新 PID/session、根与 Requires 的原 snapshot/validated_at 和实际 provider 全文。SDK 与助手单测只记录其覆盖的局部。
+
+普通安装和真实 Notion 的缓存复验使用同一 daily 公开入口的 `cache-plan` 与 `cache-run --live`，配置 scope 为 `ordinary-pi-cache-reuse`，保留正常 HOME/agentDir/配置/cache，核实际默认正文策略 1 小时。该动作允许过期目录刷新，并报告现场 Requires 数量；它不替代受控闭包正例、metadata run/aggregate、next 交付或自然模型。`cache-plan` 与其他 plan 一样不构成执行成绩。
+
 自然用户旅程由 Broker 的 verify-notion-agent-workflows 负责，复用 candidate-plan/candidate-run。长期语料在 scripts/notion-agent-scenarios.json；本轮对象绑定和原件分别保存，T编号仍归本索引。日常主环境不带 -ns；对照仅关闭默认原生发现，Broker local仍可能存在。两者正式模型均为 magpie/group/worker。有限事件在同进程轮间等待真实写入与读回完成，恢复/分叉/compact使用Pi公开入口。
 
 T24 分别运行双库管理与消费、跨库完整引用、原 Source 操作续接三条旅程。使用同一凭据下两个不同的 Library 根页，保留同名对象、原 Store 和操作身份；各旅程只证明其实际运行的切片。切换默认库不能改写已采用的任务或完整引用，控制端不能替模型恢复写入，也不能用 T22 的本地充分负例替代双库证明。
