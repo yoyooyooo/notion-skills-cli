@@ -96,7 +96,13 @@ export function readCandidateSnapshot(options: { readonly library?: string } = {
     const configured = yield* configuredSources
     const key = `cache/catalogs/${scope}/${yield* sha256(JSON.stringify(catalogSelection(libraryId, configured)))}.json`
     const observation = yield* store.readJson(key, CatalogObservationSchema)
-    const access = yield* knownAccessDenials(scope)
+    const retained = observation === undefined ? undefined : completeCatalog(observation)
+    const selectedIdentities = new Set([libraryId])
+    for (const record of [...(retained?.records ?? []), ...(observation?.records ?? [])]) {
+      selectedIdentities.add(record.id)
+      if (record.locator.type === "shared_skill") selectedIdentities.add(record.locator.page_id)
+    }
+    const access = yield* knownAccessDenials(scope, selectedIdentities)
     const denials: CandidateDenial[] = access.map((entry) => ({
       ...entry,
       kind:
@@ -116,7 +122,6 @@ export function readCandidateSnapshot(options: { readonly library?: string } = {
         reason: "catalog_unavailable",
         libraryId,
       } satisfies CandidateSnapshotResult
-    const retained = completeCatalog(observation)
     yield* Effect.try({
       try: () => {
         validateCachedCatalog(observation, scope, libraryId)

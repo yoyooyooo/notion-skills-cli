@@ -10,7 +10,7 @@
     "packages/core/test/shared-current-snapshot.test.ts": "e1da621f2243691f1cc67dc530e183d4305ffab3319fc29acb14b8354e7f92ad",
     "packages/core/test/shared-current-operation.test.ts": "aae3e4b6c3bd4b09ab4c279b52c93034cfcd0c9d529b050ee0bf150e80e1c4eb",
     "packages/core/test/shared-current-projection-write.test.ts": "aac29d0c9ef33b35597ffefce6cee9961833110e518082623d89d430e141b1bc",
-    "packages/core/src/cache.ts": "4eb9fc52f978f10eef68bcdb08955da007ec562b38846be2040f0d1050836f82",
+    "packages/core/src/cache.ts": "876f4ac5b69146543efe942be24e1d15544e1080af71363ea7c84a0148fa2d2f",
     "packages/core/src/fixed-snapshot-files.ts": "3f06a96da80d6d0d63515560465cdf0df4bb5f644a384fe1cd8017e535ef86e5",
     "packages/core/src/snapshot.ts": "d35a84d0b3b04ed2929871c6907e3bd9eee15b49f513128121ff4b0ed38ebf5f",
     "packages/core/test/cache.test.ts": "f654ba80d52498df40ee483032fc46f02a656350c9c9803b6d8c4b0e39b1402c",
@@ -56,8 +56,8 @@
     "packages/core/src/shared-native-markdown.ts": "bc87518438cdf16dbdbe2ebe6827c30a3454269466bec84bea240bfe79ddd5c4",
     "packages/core/test/shared-native-markdown.test.ts": "f08676979392f7fabe82ff79921c5b0f186e11cb8661bada66fcd85421978d6a",
     "packages/core/src/catalog-cache.ts": "29c6a14db80b351925818f98364b99b998b41e3d67640e85edeb9a4b32ec8147",
-    "packages/core/src/candidate-snapshot.ts": "aca2512ce04c37946a1d3538daac91281ec5dbbb9b9403ee6e6ecf76329cb5c7",
-    "packages/core/test/candidate-snapshot.node.test.ts": "c1c6a2a50e3e04060e61203ed43db536c8a33720fb526b048e78503754c968cd"
+    "packages/core/src/candidate-snapshot.ts": "94867236366b70add3be20981dfcdebd51b9f3213b7beed899f7a316fc08c4ba",
+    "packages/core/test/candidate-snapshot.node.test.ts": "853874e8e9a41f767e99b86fc7b475a3330a7bc2d527f63ff391642ee8c01fe5"
   },
   "models": {
     "CurrentLifecycle": {
@@ -1305,6 +1305,6 @@
     "baseline": "6727bea",
     "issue": "AH-1324",
     "reviewed_files": ["packages/core/src/cache.ts", "packages/core/src/sqlite-state.ts"],
-    "scope": "Local candidate discovery reuses Store, credential identity and Library selection without constructing Notion transport or scheduler. Catalog validation moved to one shared implementation. SQLite catalog publication retains complete discovery and precise rejection facts under the existing generation and retirement fences. Current consumption, fixed byte access, request scheduler, MCP search and reference-entry guards are unchanged. Existing finite models and mutation inventories are unchanged; new candidate facts are checked by public SDK and real SQLite regressions, not asserted as finite-model coverage."
+    "scope": "Local candidate discovery reuses Store, credential identity and Library selection without constructing Notion transport or scheduler. Catalog validation moved to one shared implementation. SQLite catalog publication retains complete discovery and precise rejection facts under the existing generation and retirement fences. Current consumption, fixed byte access, request scheduler, MCP search and reference-entry guards are unchanged. Existing finite models and mutation inventories are unchanged; new candidate facts are checked by public SDK and real SQLite regressions, not asserted as finite-model coverage. Live daily-cache review found unrelated retired Library observation addresses entering the new denial enumeration. Candidate lookup now forms canonical addresses only for the selected catalog and retained complete stable/physical identities plus Library and scope. It does not decode, migrate, or grant access from unrelated records. The public SQLite regression first reproduces that failure, then verifies isolation while selected corrupt observations still fail; exact latest denial and scope rejection regressions remain unchanged. These are concrete read-boundary obligations, not additional finite-model properties."
   }
 }
