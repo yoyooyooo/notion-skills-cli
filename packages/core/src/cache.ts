@@ -569,16 +569,18 @@ function latestObservation(page: string, scope: string) {
     )
   })
 }
-/** Enumerate observed identities once, rather than probing each candidate.
- * Grants and denials share the existing causal slot and retirement rules. */
-export function knownAccessDenials(scope: string) {
+/** Enumerate only canonical addresses for this selected directory. Unrelated
+ * Library identities cannot enter its discovery or authorization boundary. */
+export function knownAccessDenials(scope: string, selected: ReadonlySet<string>) {
   return Effect.gen(function* () {
     const store = yield* Store
-    const identities = new Set(
-      (yield* store.listKeys(`cache/latest/${scope}`)).map((key) =>
-        identityFromSegment(key.split("/")[3]!),
-      ),
-    )
+    const addresses = new Map([[identitySegment(scopeAccessIdentity), scopeAccessIdentity]])
+    for (const identity of selected) addresses.set(identitySegment(identity), identity)
+    const identities = new Set<string>()
+    for (const key of yield* store.listKeys(`cache/latest/${scope}`)) {
+      const identity = addresses.get(key.split("/")[3]!)
+      if (identity !== undefined) identities.add(identity)
+    }
     const denied: Array<{
       identity: string
       code: AccessDenial

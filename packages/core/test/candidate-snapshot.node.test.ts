@@ -1,6 +1,7 @@
 import { mkdtemp, realpath, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import { Effect } from "effect"
 import { expect, test } from "vitest"
 import {
@@ -123,6 +124,50 @@ test("local candidate miss and warm snapshot acquire no transport, scheduler, Vi
     })
     expect(c.source.requests).toHaveLength(before)
     for (const report of reports) expect(report).toMatchObject({ total_requests: 0, trace: [] })
+  } finally {
+    await finish(c)
+  }
+}, 30_000)
+
+test("unrelated stored identities cannot break a selected Library while its own corrupt observation still fails", async () => {
+  const c = await controlled()
+  try {
+    const catalog = await listCatalog({ ...c.options, refresh: true })
+    const before = await readCandidateSnapshot(c.options)
+    const requests = c.source.requests.length
+    const database = new DatabaseSync(join(c.options.env.NTN_SKILLS_HOME, "state.sqlite"))
+    const insert = (segment: string, identity: string) => {
+      const key = `cache/latest/${catalog.scope}/${segment}/stored-observation.json`
+      const observation = {
+        record_identity: identity,
+        scope: catalog.scope,
+        started_at: catalog.fetched_at,
+        validated_at: catalog.fetched_at,
+        invalidated: true,
+        generation: 1,
+        access_denied: "ACCESS_DENIED",
+      }
+      database
+        .prepare(
+          "INSERT INTO observations(id,scope,record_identity,generation,validated_at,payload) VALUES(?,?,?,?,?,?)",
+        )
+        .run(key, catalog.scope, identity, 1, catalog.fetched_at, JSON.stringify(observation))
+    }
+    try {
+      // A real daily Store retained older, unselected Library addresses. The
+      // current selection must not decode or reinterpret those identities.
+      const unrelated = `shared_skill:library-${currentId(999)}:unselected`
+      insert(unrelated, unrelated)
+      expect(await readCandidateSnapshot(c.options)).toEqual(before)
+      const selected = catalog.records[0]!.id
+      insert(encodeURIComponent(selected), "different-selected-identity")
+      await expect(readCandidateSnapshot(c.options)).rejects.toMatchObject({
+        code: "STATE_CORRUPT",
+      })
+      expect(c.source.requests).toHaveLength(requests)
+    } finally {
+      database.close()
+    }
   } finally {
     await finish(c)
   }
