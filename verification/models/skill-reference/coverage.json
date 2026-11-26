@@ -29,7 +29,7 @@
     "packages/core/test/shared-source-references.test.ts": "bfa32574f86f5a7a1063169ec3d1d70d3d225a16edd96b462d9538bbc2f527cf",
     "packages/core/test/skill-ref.test.ts": "c4ae7d881f7f617c61e3c7386deb35e29e58a20b1a771ff0e091df0b6db30068",
     "packages/core/test/skill-reference-guards.test.ts": "060982d502d1b8fc10298ec41196e44355e11192fe2e635c8e1b39b62640bb40",
-    "packages/core/test/sqlite-state.node.test.ts": "c962b83f3b387f1dfcf10a9fb2fafdfbd47d7f20aac47c43b0b0c73307fad955",
+    "packages/core/test/sqlite-state.node.test.ts": "524c54c3b3586c0159af322f3128856f6d5a313c06c36914104e58b05a87c782",
     "verification/models/skill-reference/mutations.json": "d2cfd8b9ac749c669fa0bd0494c6220fb52508bf8aee7921620b7030243dd182",
     "packages/core/src/catalog.ts": "0423a83b49338ece89b0a9870de3d143b085ef56eec52967b408f0015c2d0eab",
     "packages/core/src/library-selection.ts": "e1cff08feed83b3479566c1a47108d0126552c4bfbb72f0d74ad9e576b081e12",
@@ -707,5 +707,11 @@
     "issue": "AH-1324",
     "reviewed_files": ["packages/core/src/catalog.ts"],
     "scope": "Local candidate discovery reuses Store, credential identity and Library selection without constructing Notion transport or scheduler. Catalog validation moved to one shared implementation. SQLite catalog publication retains complete discovery and precise rejection facts under the existing generation and retirement fences. Current consumption, fixed byte access, request scheduler, MCP search and reference-entry guards are unchanged. Existing finite models and mutation inventories are unchanged; new candidate facts are checked by public SDK and real SQLite regressions, not asserted as finite-model coverage."
+  },
+  "sqlite_fixture_environment_review": {
+    "reviewed_commit": "6b2d53ba311d4f6868db036655bc75ced5eb9935",
+    "file": "packages/core/test/sqlite-state.node.test.ts",
+    "scope": "The sole protected-byte change removes NTN_SKILLS_DATA_HOME from the observation-retirement fixture after the Builtin installer that owned it was removed. StoreLive reads explicit state, config and cache roots; these and the scheduler root remain isolated under the fixture directory. The cross-process complete Library identity test, retirement fences, known-denial race assertions and cleanup are unchanged.",
+    "evidence_boundary": "Rebind only this reviewed test hash. No production guard, model, case, rule or mutation inventory changes. Model and actual SQLite results remain separate run receipts."
   }
 }
