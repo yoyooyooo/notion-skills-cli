@@ -254,7 +254,8 @@ Consumption does not mutate Notion. Current import and Profile commands are CLI 
 the existing credential-to-scope mapping and catalog Store. It cannot verify a
 root, query a View, project a file, retrieve a body, or repair missing cache data.
 `CANDIDATE_SNAPSHOT_CONTRACT_VERSION` is 1. Hosts must check this capability in
-their selected SDK package before invoking it.
+their selected SDK package before invoking it or requesting the notification
+below.
 
 A snapshot carries canonical Skill and physical page identities, `coverage`,
 `stale`, exact `denials`, and the original `verifiedAt`/`fetched_at`. Reading a
@@ -267,8 +268,17 @@ The existing SQLite generation fence rejects late older publications. Scope
 rejection blocks the snapshot; exact physical rejection suppresses only that
 target. A local miss or blocked result never triggers a remote fallback.
 
-Hosts hydrate memory once and read another snapshot after an online refresh
-settles. Keystroke completion filters that memory. A displayed or selected
+Combined `listCatalog({ directory, onCatalogSettled, ...options })` calls the
+optional `onCatalogSettled(): void` once after the full catalog has succeeded or
+failed and its available cache facts are published, before View/Profile work.
+It does not await the callback. A callback throw or rejected Promise cannot
+change the catalog result. Cancellation keeps the original abort behavior;
+hosts can read existing local facts after an earlier failure using their own
+operation completion handler.
+
+Hosts hydrate memory once and read another snapshot at that notification, so a
+slow Default View does not delay new candidates. Keystroke completion filters
+that memory. A displayed or selected
 candidate remains discovery metadata: `consume`/`readSkill` still check current
 authority, Requires, complete manifests, and actual bytes before host delivery.
 

@@ -286,6 +286,63 @@ describe("shared library Views metadata", () => {
     assertMetadataOnly(f)
   })
 
+  test.each(["return", "throw", "reject", "pending"])(
+    "full catalog publication notifies before View work without awaiting observer %s",
+    async (behavior) => {
+      const f = fixture()
+      const notifications: Array<{ stored: boolean; viewStarted: boolean }> = []
+      const result = await f.run(
+        listCatalog({
+          library: library.library_id,
+          directory: {},
+          onCatalogSettled: () => {
+            notifications.push({
+              stored: [...f.base.json].some(
+                ([key, value]) =>
+                  key.startsWith("cache/catalogs/") && property(value).fetched_at !== undefined,
+              ),
+              viewStarted: f.requests.some((request) => request.path.startsWith("v1/views")),
+            })
+            if (behavior === "throw") throw new Error("Observer failed")
+            if (behavior === "reject") return Promise.reject(new Error("Observer rejected"))
+            if (behavior === "pending") return new Promise<void>(() => {})
+          },
+        }),
+      )
+      expect(notifications).toEqual([{ stored: true, viewStarted: false }])
+      expect(result).toMatchObject({ catalog: { ok: true }, directory: { ok: true } })
+      assertMetadataOnly(f)
+    },
+  )
+
+  test("failed full catalog notifies its persisted failure before a valid View proceeds", async () => {
+    const f = fixture()
+    f.members([[skillPage]])
+    f.rows[1] = row(beta, "unrelated", "Unrelated one")
+    f.rows[2] = row(gamma, "unrelated", "Unrelated two")
+    const notifications: unknown[] = []
+    const result = await f.run(
+      listCatalog({
+        library: library.library_id,
+        directory: { view: viewA },
+        onCatalogSettled: () => {
+          notifications.push({
+            failure: [...f.base.json]
+              .filter(([key]) => key.startsWith("cache/catalogs/"))
+              .map(([, value]) => property(property(value).last_failure).code),
+            viewStarted: f.requests.some((request) => request.path.startsWith("v1/views")),
+          })
+        },
+      }),
+    )
+    expect(notifications).toEqual([{ failure: ["SHARED_SKILL_ID_CONFLICT"], viewStarted: false }])
+    expect(result).toMatchObject({
+      catalog: { ok: false, error: { code: "SHARED_SKILL_ID_CONFLICT" } },
+      directory: { ok: true },
+    })
+    assertMetadataOnly(f)
+  })
+
   test.each(["catalog", "directory"])(
     "SC11 combined directory honors a warm %s projection and then both caches",
     async (warm) => {
