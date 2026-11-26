@@ -1,5 +1,9 @@
 import { resolveLibrary as coreResolveLibrary } from "../../core/src/shared-library.ts"
 import { selectedLibraryId } from "../../core/src/library-selection.ts"
+import {
+  readCandidateSnapshot as coreReadCandidateSnapshot,
+  type CandidateSnapshotResult,
+} from "../../core/src/candidate-snapshot.ts"
 import { resolve } from "node:path"
 import { randomUUID } from "node:crypto"
 import { Cause, Effect, Exit, Option } from "effect"
@@ -123,6 +127,19 @@ export type {
 } from "../../core/src/resource-read-model.ts"
 
 export interface SdkOptions extends OperationOptions {}
+
+export type { CandidateSnapshotResult, CandidateDenial } from "../../core/src/candidate-snapshot.ts"
+export const CANDIDATE_SNAPSHOT_CONTRACT_VERSION = 1
+
+/** Local discovery only; stale metadata never authorizes Skill consumption. */
+export function readCandidateSnapshot(
+  options: SdkOptions & { readonly library?: string } = {},
+): Promise<CandidateSnapshotResult> {
+  return runLocalRuntimeOperation(() => {
+    validateSdkOptions(options)
+    return coreReadCandidateSnapshot(options)
+  }, options)
+}
 
 /** Capture the canonical local selection without contacting Notion. */
 export function selectLibrary(

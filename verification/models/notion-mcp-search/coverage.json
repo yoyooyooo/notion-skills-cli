@@ -12,7 +12,7 @@
     "packages/core/src/shared-content.ts": "04c158c5b8e915b95cfcd700bc981cb6f8f4e39bc543062702993027b13c6218",
     "packages/core/test/notion-mcp-search.test.ts": "05247c993ca3939767ecdaee8980d0f8c66be12741efdddf76d5712079f0391e",
     "packages/core/test/shared-current-fixture.ts": "ed69b28c12a69b12dbcc5fbbe6f5dd8015982689734756db4cbcf28ee4f5ccaa",
-    "packages/cli/src/sdk.ts": "44c7c22cd676e543c55f3e425accf7fc385aaf8e296e67ca5ebf7e456b2e8e75",
+    "packages/cli/src/sdk.ts": "2e49185030d2e78669d282cb276959171f5c6f51e46cfb5dd7d7b12e2f22fe6d",
     "packages/cli/src/operation-runtime.ts": "a9c344a05035502216f5ccb355e63f8dac0d61f7d4ba3a035cccc1087648f538",
     "packages/cli/src/commands-content.ts": "12aa116d3f0e7ff13d8c92dfa7b2d9465a98aa072644b0264f2c45d92e9f5b1b",
     "packages/core/src/notion-mcp-client.ts": "e30a584dd1e0f73df0f2876170c84d055b7808100c8c0bb374ac8bf380b4ae46",
@@ -671,5 +671,11 @@
     "scope": "Canonical root UUID selection, SDK3 library options, independently declared physical root/four-DB/four-DS fixtures, complete root readback and full frozen Library bindings. Reviewed the actual 9f9a641 restart checks, 419123f metadata classification, 53240db projection receipts, 53fe6b7 shared durable import address and the subsequent formatting-only changes.",
     "preserved": "No existing finite model, candidate/defect/witness configuration, independent expected_rules or expected_broken inventory is weakened. Request admission, current-read final fences, MCP connection/grant epochs and cancellation remain the original owner contracts.",
     "evidence_boundary": "Source hashes bind reviewed bytes; they are not passing run receipts, remote CAS, cross-machine exclusion, Notion indexing proof or implementation refinement. Real root children stay actual Notion body observations; metadata regressions allow only the exact root page/children and declared schema reads, while Skill/File body reads remain distinct."
+  },
+  "candidate_snapshot_review": {
+    "baseline": "6727bea",
+    "issue": "AH-1324",
+    "reviewed_files": ["packages/cli/src/sdk.ts"],
+    "scope": "Local candidate discovery reuses Store, credential identity and Library selection without constructing Notion transport or scheduler. Catalog validation moved to one shared implementation. SQLite catalog publication retains complete discovery and precise rejection facts under the existing generation and retirement fences. Current consumption, fixed byte access, request scheduler, MCP search and reference-entry guards are unchanged. Existing finite models and mutation inventories are unchanged; new candidate facts are checked by public SDK and real SQLite regressions, not asserted as finite-model coverage."
   }
 }

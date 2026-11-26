@@ -1,5 +1,10 @@
 import { Clock, Effect, Schema } from "effect"
 import {
+  catalogSelection,
+  validateCachedCatalog,
+  type CatalogObservation,
+} from "./catalog-cache.ts"
+import {
   CatalogObservationSchema,
   effectiveCachePolicy,
   freshness,
@@ -18,20 +23,18 @@ import {
   PageSchema,
   SkillsError,
   UserSchema,
-  aliasFor,
   decode,
   fail,
   listSchema,
   property,
   text,
-  validateDescription,
   type Catalog,
   type Source,
   type SourceFailure,
 } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { bindTarget, pageId, type SkillTarget } from "./ref.ts"
-import { sharedMetadataEntryFromPage, validateSharedRecordIdentity } from "./shared-content.ts"
+import { sharedMetadataEntryFromPage } from "./shared-content.ts"
 import { sharedGraphInventory } from "./shared-graph-read-context.ts"
 import { libraryFromDatabase, loadSharedLibrary } from "./shared-library.ts"
 import {
@@ -273,8 +276,8 @@ function readCatalog(
     const scope = selectedScope ?? (yield* authScope)
     const store = yield* Store
     const configured = yield* configuredSources
-    const catalogSelection = ["root-library-directory-v2", selected ?? "all", configured]
-    const key = `cache/catalogs/${scope}/${yield* sha256(JSON.stringify(catalogSelection))}.json`
+    const selection = catalogSelection(selected, configured)
+    const key = `cache/catalogs/${scope}/${yield* sha256(JSON.stringify(selection))}.json`
     const now = yield* Clock.currentTimeMillis
     const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).catalog_max_age_ms
     if (!options.refresh) {
@@ -289,72 +292,25 @@ function readCatalog(
         (options.offline ||
           (!cached.invalidated && Number.isFinite(age) && age >= 0 && age < maxAge))
       ) {
-        const records: ContentRecord[] = []
-        const failed: SourceFailure[] = []
-        const sharedCachedIds = new Set<string>()
-        for (const skill of cached.records) {
-          const checked = yield* Effect.try({
-            try: () => {
-              if (aliasFor(skill.name) !== skill.alias)
-                throw fail(
-                  "INVALID_SKILL_NAME",
-                  "Cached skill name differs from its Notion Name.",
-                  {
-                    page_id: skill.id,
-                    name: skill.name,
-                  },
-                )
-              if (skill.locator.type !== "shared_skill")
-                throw fail("STATE_CORRUPT", "The catalog contains a noncurrent remote record.")
-              validateDescription(skill.description)
-              validateSharedRecordIdentity(skill)
-              if (skill.locator.type === "shared_skill") {
-                const locator = skill.locator
-                if (sharedCachedIds.has(skill.id))
-                  throw fail(
-                    "STATE_CORRUPT",
-                    "Cached shared catalog repeats a stable Skill identity.",
-                    { id: skill.id },
-                  )
-                sharedCachedIds.add(skill.id)
-                const source = cached.databases.find(
-                  (entry) => entry.database_id === locator.database_id,
-                )
-                if (
-                  source?.shared_library === undefined ||
-                  source.shared_library.library_id !== locator.library_id ||
-                  source.shared_library.skills.data_source_id !== locator.data_source_id
-                )
-                  throw fail(
-                    "STATE_CORRUPT",
-                    "Cached shared Skill no longer matches its catalog descriptor.",
-                    { id: skill.id },
-                  )
-              }
-            },
-            catch: (error) =>
-              error instanceof SkillsError
-                ? fail(error.code, error.message, {
-                    page_id: skill.id,
-                    name: skill.name,
-                  })
-                : fail("STATE_CORRUPT", "Cached Skill title failed validation.", {
-                    page_id: skill.id,
-                  }),
-          }).pipe(Effect.result)
-          if (checked._tag === "Success") {
-            if (skill.enabled !== false) records.push(skill)
-          } else return yield* Effect.fail(checked.failure)
-        }
-        const { invalidated, ...retained } = cached
+        yield* Effect.try({
+          try: () => validateCachedCatalog(cached, scope, selected),
+          catch: (error) =>
+            error instanceof SkillsError
+              ? error
+              : fail("STATE_CORRUPT", "Cached catalog failed validation."),
+        })
+        const {
+          invalidated,
+          last_complete: _complete,
+          last_failure: _failure,
+          rejected_records: _rejected,
+          denied_sources: _denied,
+          generation: _generation,
+          ...retained
+        } = cached
         return {
           ...retained,
-          records,
-          coverage: {
-            ...cached.coverage,
-            exhaustive: cached.coverage.exhaustive && !failed.length,
-            failed_sources: failed,
-          },
+          records: cached.records.filter((record) => record.enabled !== false),
           source: "local_cache" as const,
           freshness: {
             ...freshness(options, cached.fetched_at, now, maxAge),
@@ -372,166 +328,234 @@ function readCatalog(
     }
     // A local token mapping authorizes cache selection only. Online discovery always validates identity.
     const validatedScope = selectedScope ? yield* authScope : scope
-    const catalogIdentity = yield* sha256(JSON.stringify(catalogSelection))
+    const catalogIdentity = yield* sha256(JSON.stringify(selection))
     const catalogGeneration = yield* store.reserveCacheGeneration(
       validatedScope,
       `catalog-${catalogIdentity}`,
     )
-    const databases = new Map<string, Source>()
-    const failures: SourceFailure[] = []
-    if (selected !== undefined) {
-      const db = yield* explicitSource(selected, configured)
-      databases.set(db.database_id, db)
-    } else {
-      const discovered = yield* discoverLibraries()
-      for (const source of discovered.databases) databases.set(source.database_id, source)
-      failures.push(...discovered.failures)
-    }
-    const skills = new Map<string, ContentRecord>()
-    const sharedIdentities = new Map<string, string>()
-    const sharedLibraries = new Map<string, string>()
-    // Retain parent identity alongside the decoded metadata for shared Router validation.
-    const inventory = new Map<
-      string,
-      { page: unknown; database_id: string; data_source_id: string }
-    >()
-    const InventoryPageSchema = Schema.Struct({
-      ...PageSchema.fields,
-      object: Schema.optional(Schema.String),
-      parent: Schema.optional(Schema.Unknown),
-      archived: Schema.optional(Schema.Boolean),
-      is_archived: Schema.optional(Schema.Boolean),
-      last_edited_time: Schema.optional(Schema.String),
-    })
-    const queried: string[] = []
-    for (const db of databases.values()) {
-      if (db.shared_library !== undefined) {
-        const previous = sharedLibraries.get(db.shared_library.library_id)
-        if (previous !== undefined && previous !== db.database_id)
-          return yield* Effect.fail(
-            fail(
-              "SHARED_LIBRARY_ID_CONFLICT",
-              "Several database entries claim the same shared library identity.",
-              {
-                library_id: db.shared_library.library_id,
-                database_ids: [previous, db.database_id],
-              },
-            ),
-          )
-        sharedLibraries.set(db.shared_library.library_id, db.database_id)
+    yield* recordScope(validatedScope)
+    const refreshed = yield* Effect.gen(function* () {
+      const databases = new Map<string, Source>()
+      const failures: SourceFailure[] = []
+      if (selected !== undefined) {
+        const db = yield* explicitSource(selected, configured)
+        databases.set(db.database_id, db)
+      } else {
+        const discovered = yield* discoverLibraries()
+        for (const source of discovered.databases) databases.set(source.database_id, source)
+        failures.push(...discovered.failures)
       }
-      for (const id of new Set(db.data_source_ids)) {
-        const result = yield* Effect.gen(function* () {
-          if (db.shared_library === undefined)
+      const skills = new Map<string, ContentRecord>()
+      const sharedIdentities = new Map<string, string>()
+      const rejected: Omit<
+        NonNullable<CatalogObservation["rejected_records"]>[number],
+        "observed_at" | "generation"
+      >[] = []
+      const sharedLibraries = new Map<string, string>()
+      // Retain parent identity alongside the decoded metadata for shared Router validation.
+      const inventory = new Map<
+        string,
+        { page: unknown; database_id: string; data_source_id: string }
+      >()
+      const InventoryPageSchema = Schema.Struct({
+        ...PageSchema.fields,
+        object: Schema.optional(Schema.String),
+        parent: Schema.optional(Schema.Unknown),
+        archived: Schema.optional(Schema.Boolean),
+        is_archived: Schema.optional(Schema.Boolean),
+        last_edited_time: Schema.optional(Schema.String),
+      })
+      const queried: string[] = []
+      for (const db of databases.values()) {
+        if (db.shared_library !== undefined) {
+          const previous = sharedLibraries.get(db.shared_library.library_id)
+          if (previous !== undefined && previous !== db.database_id)
             return yield* Effect.fail(
-              fail("CURRENT_SCHEMA_REQUIRED", "The current library descriptor is missing."),
+              fail(
+                "SHARED_LIBRARY_ID_CONFLICT",
+                "Several database entries claim the same shared library identity.",
+                {
+                  library_id: db.shared_library.library_id,
+                  database_ids: [previous, db.database_id],
+                },
+              ),
             )
-          const shared =
-            (yield* sharedGraphInventory(db.shared_library)) ??
-            (yield* directorySkillMetadata(db.shared_library, validatedScope, maxAge, "catalog"))
-              .inventory
-          const rows = yield* Effect.try({
-            try: () => shared.pages.map((row) => decode(InventoryPageSchema, row)),
-            catch: () => fail("INVALID_RESPONSE", "Invalid shared metadata inventory."),
-          })
-          observations?.set(id, {
-            scope: validatedScope,
-            library: structuredClone(db.shared_library),
-            inventory: shared,
-          })
-          return rows
-        }).pipe(Effect.result)
-        if (result._tag === "Failure") {
-          failures.push({
-            id,
-            code: result.failure.code,
-            database_id: db.database_id,
-            alias: db.alias,
-            title: db.title,
-            data_source_id: id,
-          })
-          continue
+          sharedLibraries.set(db.shared_library.library_id, db.database_id)
         }
-        queried.push(id)
-        for (const row of result.success) {
-          if (db.shared_library !== undefined && inventory.has(row.id))
-            return yield* Effect.fail(
-              fail("SHARED_SKILL_ID_CONFLICT", "Shared metadata query repeated a page identity.", {
-                page_id: row.id,
-              }),
-            )
-          inventory.set(row.id, { page: row, database_id: db.database_id, data_source_id: id })
-          if (row.in_trash || row.archived || row.is_archived) continue
-          const checked = yield* Effect.try({
-            try: () => {
-              if (db.shared_library === undefined)
-                throw fail("CURRENT_SCHEMA_REQUIRED", "The current library descriptor is missing.")
-              const entry = sharedMetadataEntryFromPage(row, db, id)
-              return entry.state === "registered" ? entry.record : undefined
-            },
-            catch: (error) =>
-              error instanceof SkillsError
-                ? error
-                : fail("INVALID_RESPONSE", "Invalid content metadata."),
+        for (const id of new Set(db.data_source_ids)) {
+          const result = yield* Effect.gen(function* () {
+            if (db.shared_library === undefined)
+              return yield* Effect.fail(
+                fail("CURRENT_SCHEMA_REQUIRED", "The current library descriptor is missing."),
+              )
+            const shared =
+              (yield* sharedGraphInventory(db.shared_library)) ??
+              (yield* directorySkillMetadata(db.shared_library, validatedScope, maxAge, "catalog"))
+                .inventory
+            const rows = yield* Effect.try({
+              try: () => shared.pages.map((row) => decode(InventoryPageSchema, row)),
+              catch: () => fail("INVALID_RESPONSE", "Invalid shared metadata inventory."),
+            })
+            observations?.set(id, {
+              scope: validatedScope,
+              library: structuredClone(db.shared_library),
+              inventory: shared,
+            })
+            return rows
           }).pipe(Effect.result)
-          if (checked._tag === "Failure") {
-            if (checked.failure.code !== "INVALID_SKILL") return yield* Effect.fail(checked.failure)
+          if (result._tag === "Failure") {
             failures.push({
-              id: row.id,
-              code: checked.failure.code,
+              id,
+              code: result.failure.code,
               database_id: db.database_id,
-              data_source_id: id,
               alias: db.alias,
               title: db.title,
+              data_source_id: id,
             })
             continue
           }
-          const record = checked.success
-          if (record === undefined) continue
-          if (record.locator.type === "shared_skill") {
-            const previous = sharedIdentities.get(record.id)
-            if (previous !== undefined)
+          queried.push(id)
+          for (const row of result.success) {
+            if (db.shared_library !== undefined && inventory.has(row.id))
               return yield* Effect.fail(
                 fail(
                   "SHARED_SKILL_ID_CONFLICT",
-                  "Several pages claim the same stable Skill identity.",
-                  { id: record.id, page_ids: [previous, record.locator.page_id] },
+                  "Shared metadata query repeated a page identity.",
+                  {
+                    page_id: row.id,
+                  },
                 ),
               )
-            sharedIdentities.set(record.id, record.locator.page_id)
-            // A private scalar-read handoff preserves the exact registered
-            // identity, including disabled records. Public discovery still
-            // excludes them; their body/permission gate remains authoritative.
-            exactSharedRecords?.set(record.id, record)
-            if (record.enabled !== false) skills.set(record.id, record)
-          } else skills.set(row.id, record)
+            inventory.set(row.id, { page: row, database_id: db.database_id, data_source_id: id })
+            if (row.in_trash || row.archived || row.is_archived) {
+              rejected.push({ page_id: row.id, reason: "unavailable" })
+              continue
+            }
+            const checked = yield* Effect.try({
+              try: () => {
+                if (db.shared_library === undefined)
+                  throw fail(
+                    "CURRENT_SCHEMA_REQUIRED",
+                    "The current library descriptor is missing.",
+                  )
+                const entry = sharedMetadataEntryFromPage(row, db, id)
+                return entry.state === "registered" ? entry.record : undefined
+              },
+              catch: (error) =>
+                error instanceof SkillsError
+                  ? error
+                  : fail("INVALID_RESPONSE", "Invalid content metadata."),
+            }).pipe(Effect.result)
+            if (checked._tag === "Failure") {
+              if (checked.failure.code !== "INVALID_SKILL")
+                return yield* Effect.fail(checked.failure)
+              rejected.push({ page_id: row.id, reason: "unavailable" })
+              failures.push({
+                id: row.id,
+                code: checked.failure.code,
+                database_id: db.database_id,
+                data_source_id: id,
+                alias: db.alias,
+                title: db.title,
+              })
+              continue
+            }
+            const record = checked.success
+            if (record === undefined) {
+              rejected.push({ page_id: row.id, reason: "unavailable" })
+              continue
+            }
+            if (record.locator.type === "shared_skill") {
+              const previous = sharedIdentities.get(record.id)
+              if (previous !== undefined)
+                return yield* Effect.fail(
+                  fail(
+                    "SHARED_SKILL_ID_CONFLICT",
+                    "Several pages claim the same stable Skill identity.",
+                    { id: record.id, page_ids: [previous, record.locator.page_id] },
+                  ),
+                )
+              sharedIdentities.set(record.id, record.locator.page_id)
+              // A private scalar-read handoff preserves the exact registered
+              // identity, including disabled records. Public discovery still
+              // excludes them; their body/permission gate remains authoritative.
+              exactSharedRecords?.set(record.id, record)
+              if (record.enabled !== false) skills.set(record.id, record)
+              else
+                rejected.push({
+                  page_id: record.locator.page_id,
+                  id: record.id,
+                  reason: "disabled",
+                })
+            } else skills.set(row.id, record)
+          }
         }
       }
+      const output: Catalog = {
+        scope: validatedScope,
+        ...(selected === undefined ? {} : { library_id: selected }),
+        fetched_at: yield* Clock.currentTimeMillis,
+        databases: [...databases.values()],
+        records: [...skills.values()].sort(
+          (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+        ),
+        coverage: {
+          method: selected !== undefined ? "explicit_library" : "search_and_registered",
+          exhaustive: selected !== undefined && failures.length === 0,
+          queried_data_sources: queried,
+          failed_sources: failures,
+          search_index_limited: selected === undefined,
+        },
+      }
+      const validatedKey = `cache/catalogs/${validatedScope}/${catalogIdentity}.json`
+      yield* store.writeJson(validatedKey, {
+        ...output,
+        generation: catalogGeneration,
+        rejected_records: rejected.map((entry) => ({
+          ...entry,
+          observed_at: output.fetched_at,
+          generation: catalogGeneration,
+        })),
+        denied_sources: failures
+          .filter((entry) => entry.code === "AUTH_REQUIRED" || entry.code === "ACCESS_DENIED")
+          .map((entry) => ({
+            ...entry,
+            observed_at: output.fetched_at,
+            generation: catalogGeneration,
+          })),
+      })
+      return {
+        ...output,
+        source: "notion" as const,
+        freshness: freshness(options, output.fetched_at, output.fetched_at, maxAge),
+      }
+    }).pipe(Effect.result)
+    if (refreshed._tag === "Success") return refreshed.success
+    if (refreshed.failure.code !== "CANCELLED") {
+      const failed: CatalogObservation = {
+        scope: validatedScope,
+        ...(selected === undefined ? {} : { library_id: selected }),
+        fetched_at: 0,
+        databases: [],
+        records: [],
+        coverage: {
+          method: selected === undefined ? "search_and_registered" : "explicit_library",
+          exhaustive: false,
+          queried_data_sources: [],
+          failed_sources: [],
+          search_index_limited: selected === undefined,
+        },
+        generation: catalogGeneration,
+        invalidated: true,
+        last_failure: { code: refreshed.failure.code, observed_at: yield* Clock.currentTimeMillis },
+      }
+      // The original remote failure remains the operation result even if this
+      // best-effort discovery observation was concurrently retired.
+      yield* store
+        .writeJson(`cache/catalogs/${validatedScope}/${catalogIdentity}.json`, failed)
+        .pipe(Effect.result)
     }
-    const output: Catalog = {
-      scope: validatedScope,
-      ...(selected === undefined ? {} : { library_id: selected }),
-      fetched_at: yield* Clock.currentTimeMillis,
-      databases: [...databases.values()],
-      records: [...skills.values()].sort(
-        (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
-      ),
-      coverage: {
-        method: selected !== undefined ? "explicit_library" : "search_and_registered",
-        exhaustive: selected !== undefined && failures.length === 0,
-        queried_data_sources: queried,
-        failed_sources: failures,
-        search_index_limited: selected === undefined,
-      },
-    }
-    const validatedKey = `cache/catalogs/${validatedScope}/${catalogIdentity}.json`
-    yield* store.writeJson(validatedKey, { ...output, generation: catalogGeneration })
-    yield* recordScope(validatedScope)
-    return {
-      ...output,
-      source: "notion" as const,
-      freshness: freshness(options, output.fetched_at, output.fetched_at, maxAge),
-    }
+    return yield* Effect.fail(refreshed.failure)
   })
 }
 
