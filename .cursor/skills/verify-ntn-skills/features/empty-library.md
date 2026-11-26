@@ -12,13 +12,13 @@
 2. 用 `ctl library init --library LIBRARY_ID` 验证四表结构，再用 `ctl library inspect --library LIBRARY_ID` 核对 Skills、Files、Records、Sources 的绑定。空业务表应明确为空；缺表或初始化中断不得标为 ready。
 3. 对同一根通过 `init --library` 重复验证/检查；另一次新 `init --parent` 必须分配独立根，确认不会另建一组表。
 4. 在明确的独立 client config/state/cache 中执行当前 `list`，确认完整分页、空结果和远端零语义写。
-5. 核未复制 Builtin、未创建业务 Skill／Source、未改 default_library／host 配置或本地安装。
+5. 核未创建业务 Skill／Source、未改 default_library 或 host 配置。
    未配置消费默认库也能通过显式 LIBRARY_ID 完成后续流程；已有 default_library 不提供管理写目标。
 
 结构就绪仅证明上述初始化。首次业务使用另沿
 [原生管理与实际 Pi](skill-maintenance.md#原生日常管理与实际-pi)：Agent 默认读取执行包的
-Builtin 指引，创建一个真实业务 Skill，发现并完整读取、按其方法完成任务，再以保存的
-LIBRARY_ID 在新会话重连。无需先把产品指引复制到 Notion；各阶段分别记录结果。
+随包指引，创建一个真实业务 Skill，发现并完整读取、按其方法完成任务，再以保存的
+LIBRARY_ID 在新会话重连。产品指引通过 `skills get` 读取，各阶段分别记录结果。
 
 ## 有限初始化续建
 

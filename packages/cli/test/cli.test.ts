@@ -1,16 +1,7 @@
 import { currentLibrary } from "../../core/test/shared-current-fixture.ts"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { createHttpProbe } from "./http-probe.ts"
-import {
-  access,
-  chmod,
-  mkdir,
-  mkdtemp,
-  readlink,
-  realpath,
-  symlink,
-  writeFile,
-} from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -76,7 +67,6 @@ async function invoke(
       NOTION_WORKSPACE_ID: "",
       NOTION_API_BASE_URL: http.origin,
       HOME: join(root, "home"),
-      NTN_SKILLS_DATA_HOME: "",
       XDG_DATA_HOME: join(root, "xdg-data"),
       NTN_SKILLS_HOME: join(selectedRoot, "state"),
       NTN_SKILLS_CONFIG_HOME: join(selectedRoot, "config"),
@@ -222,10 +212,7 @@ test("read schema exposes official parameter types and requiredness offline", as
 
 test("current management and export schemas contain no historical compatibility routes", async () => {
   for (const [path, names] of [
-    [
-      ["ctl"],
-      ["api", "builtin", "cache", "config", "doctor", "library", "prepare", "resolve", "views"],
-    ],
+    [["ctl"], ["api", "cache", "config", "doctor", "library", "prepare", "resolve", "views"]],
     [
       ["ctl", "library"],
       [
@@ -260,10 +247,7 @@ test("current management and export schemas contain no historical compatibility 
         "takeover",
       ],
     ],
-    [
-      ["ctl", "builtin"],
-      ["export", "install", "list", "read", "status", "update"],
-    ],
+    [["skills"], ["get", "list", "path"]],
   ] satisfies Array<[string[], string[]]>) {
     const result = await invoke(["schema", ...path], {
       inaccessible: true,
@@ -534,6 +518,7 @@ test("current help and schema expose the same small command tree", async () => {
     "list",
     "read",
     "schema",
+    "skills",
     "use",
   ])
   const ctl = tree.commands.find((command: { name: string }) => command.name === "ctl")
@@ -749,154 +734,123 @@ test("explicit help takes precedence over repeated singleton values", async () =
   expect(result.onlineCalled).toBe(false)
 })
 
-test("built-ins are explicit offline package identities and cannot capture remote name lookup", async () => {
-  const ids = ["notion/ntn-skills", "notion/ntn-skills-maintain", "notion/ntn-skills-sync"]
-  const listed = await invoke(["ctl", "builtin", "list"], {
-    traceOnline: true,
-  })
+test("bundled skills are discoverable offline without installing or creating application state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ntn-skills-bundled-"))
+  const options = { root, inaccessible: true, traceOnline: true }
+  const listed = await invoke(["skills", "list", "--json"], options)
   expect(listed.exit).toBe(0)
   expect(listed.onlineCalled).toBe(false)
-  for (const id of ids) {
-    const name = id.slice("notion/".length)
-    const item = JSON.parse(listed.stdout).skills.find((skill: { id: string }) => skill.id === id)
-    expect(item).toMatchObject({
-      origin: "builtin",
-      publisher: "ntn-skills",
-      name,
-    })
-    jsonFailure(await invoke(["ctl", "builtin", "read", name]), "BUILTIN_NOT_FOUND", 1)
-    jsonFailure(
-      await invoke(["ctl", "builtin", "read", id, "--path", "../private"]),
-      "INVALID_PATH",
-      1,
-    )
-    jsonFailure(await invoke(["read", name]), "LIBRARY_CONTEXT_REQUIRED", 1)
+  const skills = JSON.parse(listed.stdout).skills
+  expect(skills.map((skill: { name: string }) => skill.name)).toEqual([
+    "ntn-skills",
+    "ntn-skills-maintain",
+    "ntn-skills-sync",
+  ])
+  for (const skill of skills) {
+    expect(skill).toMatchObject({ origin: "builtin", publisher: "ntn-skills" })
+    expect(skill.installation).toBeUndefined()
   }
-  await invalid(["ctl", "builtin", "publish", ids[1]!, "--target", "Ntn Skills Maintain"])
-  await invalid(["ctl", "builtin", "publish", ids[1]!, "--library", "a", "--library", "b"])
+  for (const args of [["skills"], ["skills", "list"], ["skills", "--json"]]) {
+    const result = await invoke(args, options)
+    expect(result.exit).toBe(0)
+    expect(result.onlineCalled).toBe(false)
+    for (const skill of skills) expect(result.stdout).toContain(skill.name)
+  }
+  expect(await readdir(root)).toEqual([])
 }, 30000)
 
-test("built-in management defaults to central storage and persists repeated agent targets under Node", async () => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "ntn-skills-cli-builtin-")))
-  const bundle = await Bun.build({
-    entrypoints: [main],
-    outdir: join(root, "bundle"),
-    naming: "ntn-skills.mjs",
-    target: "node",
-    format: "esm",
-    external: [
-      "effect",
-      "effect/*",
-      "@effect/platform-node",
-      "@effect/platform-node/*",
-      "@effect/sql-sqlite-node",
-      "@effect/sql-sqlite-node/*",
-    ],
-  })
-  if (!bundle.success) throw new AggregateError(bundle.logs, "CLI regression bundle failed")
-  const entrypoint = join(root, "bundle", "ntn-skills.mjs")
-  await symlink(
-    new URL("../node_modules", import.meta.url).pathname,
-    join(root, "bundle", "node_modules"),
-    "dir",
-  )
-  const id = "notion/ntn-skills-maintain"
-  const name = "ntn-skills-maintain"
-  const dataDir = join(root, "xdg-data", "ntn-skills")
-  const canonical = join(dataDir, "skills", name)
-  const agents = [join(root, "home", ".agents"), join(root, "agent-one"), join(root, "agent two")]
-  const targets = agents.slice(1).flatMap((directory) => ["--agent-dir", directory])
-  const call = async (args: string[]) => {
-    const result = await invoke(["ctl", "builtin", ...args], {
-      root,
-      traceOnline: true,
-      runtime: node,
-      entrypoint,
+test("bundled get returns exact Markdown, complete supporting files and real package paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ntn-skills-bundled-read-"))
+  const options = { root, inaccessible: true, traceOnline: true }
+  for (const name of ["ntn-skills", "ntn-skills-maintain", "ntn-skills-sync"]) {
+    const pathResult = await invoke(["skills", "path", name], options)
+    expect(pathResult.exit).toBe(0)
+    expect(pathResult.onlineCalled).toBe(false)
+    const directory = pathResult.stdout.trim()
+    const expected = await readFile(join(directory, "SKILL.md"), "utf8")
+    const read = await invoke(["skills", "get", name], options)
+    expect(read.exit).toBe(0)
+    expect(read.onlineCalled).toBe(false)
+    expect(read.stdout).toBe(expected)
+    const json = await invoke(["skills", "get", name, "--json"], options)
+    expect(JSON.parse(json.stdout)).toMatchObject({
+      source: "builtin",
+      path: "SKILL.md",
+      content: expected,
     })
-    if (result.exit !== 0)
-      throw new Error(
-        `Builtin Node ${JSON.stringify(args)} exited ${result.exit}: ${result.stderr || result.stdout}`,
-      )
-    expect(result.exit).toBe(0)
-    expect(result.stderr).toBe("")
-    expect(result.onlineCalled).toBe(false)
-    return JSON.parse(result.stdout)
+    const full = await invoke(["skills", "get", name, "--full", "--json"], options)
+    expect(full.exit).toBe(0)
+    expect(full.onlineCalled).toBe(false)
+    const files = JSON.parse(full.stdout).files
+    expect(files.length).toBeGreaterThan(1)
+    for (const file of files) {
+      expect(file.content).toBe(await readFile(join(directory, file.path), "utf8"))
+      expect(file.bytes).toBe(Buffer.byteLength(file.content))
+    }
+    const reference = files.find((file: { path: string }) => file.path !== "SKILL.md")
+    const selected = await invoke(["skills", "get", name, "--path", reference.path], options)
+    expect(selected.exit).toBe(0)
+    expect(selected.stdout).toBe(reference.content)
+    const rendered = await invoke(["skills", "get", name, "--full"], options)
+    expect(rendered.exit).toBe(0)
+    for (const file of files) {
+      expect(rendered.stdout).toContain(`## ${file.path}`)
+      expect(rendered.stdout).toContain(file.content)
+    }
   }
-
-  const listed = await call(["list"])
-  expect(listed.data_dir).toBe(dataDir)
-  expect(listed.skills.find((skill: { id: string }) => skill.id === id).installation).toMatchObject(
-    {
-      state: "not_installed",
-      data_dir: dataDir,
-      path: canonical,
-      distributions: [
-        {
-          agent_dir: agents[0],
-          path: join(agents[0]!, "skills", name),
-          state: "missing",
-        },
-      ],
-    },
+  const all = await invoke(["skills", "get", "--all", "--json"], options)
+  expect(all.exit).toBe(0)
+  expect(JSON.parse(all.stdout).count).toBe(3)
+  const multiple = await invoke(
+    ["skills", "get", "ntn-skills", "ntn-skills-sync", "--json"],
+    options,
   )
-  const absent = await call(["status", id, ...targets])
-  expect(absent.skills[0].installation.distributions).toHaveLength(3)
-  for (const path of [dataDir, ...agents])
-    expect(
-      await access(path).then(
-        () => true,
-        () => false,
-      ),
-    ).toBe(false)
+  expect(multiple.exit).toBe(0)
+  expect(
+    JSON.parse(multiple.stdout).skills.map(
+      (result: { builtin: { name: string } }) => result.builtin.name,
+    ),
+  ).toEqual(["ntn-skills", "ntn-skills-sync"])
+  const packageDirectory = await invoke(["skills", "path", "--json"], options)
+  expect(packageDirectory.exit).toBe(0)
+  expect(JSON.parse(packageDirectory.stdout).path).toContain("skills")
+  expect(await readdir(root)).toEqual([])
+}, 60000)
+
+test("bundled selection rejects invalid requests before output and keeps Notion discovery separate", async () => {
+  for (const args of [
+    ["get"],
+    ["get", "ntn-skills", "--all"],
+    ["get", "ntn-skills", "--full", "--path", "SKILL.md"],
+    ["get", "ntn-skills", "--json", "--json"],
+    ["get", "ntn-skills", "--full", "--full"],
+    ["get", "ntn-skills", "--path", "SKILL.md", "--path", "SKILL.md"],
+    ["list", "--agent-dir", "somewhere"],
+    ["install", "ntn-skills"],
+    ["update", "ntn-skills"],
+    ["status"],
+    ["export", "ntn-skills"],
+  ])
+    await invalid(["skills", ...args])
+  for (const name of ["missing", "notion/ntn-skills", "../ntn-skills"]) {
+    const result = await invoke(["skills", "get", "ntn-skills", name], { traceOnline: true })
+    jsonFailure(result, "BUILTIN_NOT_FOUND", 1)
+    expect(result.onlineCalled).toBe(false)
+    jsonFailure(await invoke(["skills", "path", name]), "BUILTIN_NOT_FOUND", 1)
+  }
   jsonFailure(
-    await invoke(["ctl", "builtin", "update", id], {
-      root,
-      runtime: node,
-      entrypoint,
-    }),
-    "BUILTIN_NOT_INSTALLED",
+    await invoke(["skills", "get", "ntn-skills", "--path", "../private"]),
+    "INVALID_PATH",
     1,
   )
-
-  const installed = await call(["install", id])
-  expect(installed.reused).toBe(false)
-  expect(installed.installation).toMatchObject({
-    state: "current",
-    data_dir: dataDir,
-    path: canonical,
-  })
-  expect(await readlink(join(agents[0]!, "skills", name))).toBe(canonical)
-  const distributed = await call(["install", id, ...targets])
-  expect(distributed.reused).toBe(true)
-  expect(distributed.installation.path).toBe(canonical)
-  for (const agent of agents) {
-    const path = join(agent, "skills", name)
-    expect(distributed.installation.distributions).toContainEqual({
-      agent_dir: agent,
-      path,
-      state: "linked",
-    })
-    expect(await readlink(path)).toBe(canonical)
-    expect(await realpath(path)).toBe(canonical)
-  }
-  for (const command of [
-    ["list", ...targets],
-    ["list"],
-    ["status", id, ...targets],
-    ["status", id],
-  ]) {
-    const status = await call(command)
-    const installation = status.skills.find((skill: { id: string }) => skill.id === id).installation
-    expect(installation.state).toBe("current")
-    expect(installation.distributions).toHaveLength(3)
-    expect(
-      installation.distributions.every((target: { state: string }) => target.state === "linked"),
-    ).toBe(true)
-  }
-  for (const flags of [targets, []]) {
-    const updated = await call(["update", id, ...flags])
-    expect(updated.reused).toBe(true)
-    expect(updated.installation.distributions).toHaveLength(3)
+  jsonFailure(
+    await invoke(["skills", "get", "ntn-skills", "--path", "missing.md"]),
+    "FILE_NOT_FOUND",
+    1,
+  )
+  jsonFailure(await invoke(["read", "ntn-skills"]), "LIBRARY_CONTEXT_REQUIRED", 1)
+  for (const command of ["list", "read", "status", "install", "update", "export"]) {
+    await invalid(["ctl", "builtin", command])
   }
 }, 60000)
 

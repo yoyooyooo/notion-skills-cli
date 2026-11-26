@@ -4,6 +4,21 @@
 
 Changes since the published [0.3.0 release](https://github.com/yoyooyooo/notion-skills-cli/releases/tag/v0.3.0).
 
+### Bundled Skills through the CLI
+
+- Add the top-level `skills` command with `list`, `get` and `path`. Bare `skills`
+  lists the catalog; `get` emits Markdown and supports selected references,
+  complete files, multiple names and `--all`. Each action supports `--json`.
+- Read the guides supplied by the installed CLI version without Notion access,
+  configuration, cache or application-state writes. Package upgrades update
+  the guides together with the executable.
+- Remove `ctl builtin` and its independent installation, update, status and
+  export lifecycle, including distribution links and installation receipts.
+  Retire the instructions and verifier for copying product guides into Notion.
+- Migrate the paired Broker's guidance and package checks to the same commands.
+  Business Skills and explicitly selected Notion workflows keep their existing
+  library identities and management commands.
+
 ### Skill references and explicit batch import
 
 - Use one `skill://<stable-skill-id>[/path]?library=<logical-library-id>` protocol across Core, CLI, SDK

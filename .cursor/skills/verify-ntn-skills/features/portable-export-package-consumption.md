@@ -10,7 +10,7 @@
 bun run package:check
 ```
 
-该入口在新的外部目录构建 CLI、SDK 与实际声明闭包，再打 tarball 并通过 npm 独立安装。它检查包内文档链接、依赖、公开命令 schema、三个 builtin 的完整内容与本地 install/update。旧 writer 路由及 `readOnly` 参数应明确拒绝。
+该入口在新的外部目录构建 CLI、SDK 与实际声明闭包，再打 tarball 并通过 npm 独立安装。它检查包内文档链接、依赖、公开命令 schema，以及 `skills list/get/path` 的目录、完整主文和支持文件。检查默认 Markdown、JSON、`--full` 和实际目录路径，核对离线读取不依赖凭据或应用状态。退役命令及 `readOnly` 参数应明确拒绝。
 
 CI 接线由 `packages/cli/test/installed-package-ci.test.ts` 检查：每条矩阵路径都执行现有 package check，CLI 与 SDK 使用同一 archive，失败不被忽略；报告和请求日志始终上传，排除 node_modules。该静态检查不代替实际 package:check，也不要求启动 Pi。
 

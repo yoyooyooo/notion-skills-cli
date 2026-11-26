@@ -117,19 +117,21 @@ do not grant access or activate workflows.
 | Source takeover, restore-follow or removal | `ntn-skills-sync` |
 | Complete installed/App tree replacement or native recovery | `ntn-skills-maintain` |
 | Shared Profile/View/freshness rules | `ntn-skills-sync` |
-| Package-supplied Skills | `ctl builtin list/read/status/install/update`; see [commands](references/commands.md#local-builtins) |
+| Package-supplied Skills | `skills list/get/path`; see [commands](references/commands.md#bundled-product-guides) |
 | Discovery, authentication or resource failure | [Integration and diagnosis](references/integration.md#diagnose-discovery-and-loading) |
 
 For product maintenance and Source sync, use the task's executable and its
 bundled guidance by default, including with a connected library:
 
 ```sh
-ntn-skills ctl builtin read notion/ntn-skills-maintain
-ntn-skills ctl builtin read notion/ntn-skills-sync
+ntn-skills skills get ntn-skills-maintain
+ntn-skills skills get ntn-skills-sync
 ```
 
 A supporting host can select the corresponding exact `@builtin` identity.
-Read package references with `ctl builtin read ID --path RELATIVE_PATH`.
+Read package references with `skills get NAME --path RELATIVE_PATH`.
+`ntn-skills skills` discovers the guides. Use `--full` to include every supporting
+file or `--json` for structured output. The guides update with the CLI package.
 This route needs no Notion copy or remote workflow search. It does not choose
 the target library or authorize writes. Ordinary business Skill discovery stays
 in the selected Notion library.
@@ -146,8 +148,7 @@ activate it.
 
 Same-name Notion content has its own identity and cannot replace the package
 default. Keep an already selected task's identity and content until explicitly
-changed. An npm update does not refresh a Notion Source or its projection, or
-overwrite a user-owned native copy.
+changed. An npm update does not refresh a Notion Source or its projection.
 
 Use the existing connection. Saved token configuration takes precedence over
 `NOTION_API_TOKEN`; `ctl config show` reports presence without exposing secrets.

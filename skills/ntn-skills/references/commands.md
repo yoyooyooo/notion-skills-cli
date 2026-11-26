@@ -2,7 +2,7 @@
 
 Use the executable and scope supplied by the host. Command names and exact
 flags come from `ntn-skills schema COMMAND...` or that command's help.
-The public root is `list/read/use/files/export/schema/ctl`.
+The public root is `list/read/use/files/export/skills/schema/ctl/auth`.
 
 ## Discovery and selection
 
@@ -67,7 +67,7 @@ ntn-skills list --default-view
 
 Views retain native API ordering and filters. Explicit View selection wins over
 Profile rules. Profiles and Views do not grant access. For their management,
-default to the same executable's `ctl builtin read notion/ntn-skills-sync`.
+default to the same executable's `skills get ntn-skills-sync`.
 If the user explicitly selected a Notion workflow, inspect its exact source/ref
 and apply it with `use REF --library LIBRARY_ID --json` or Pi `notion_use(ref)` to load
 Requires unless already prepared. Inspect the edited target without activating it.
@@ -101,19 +101,27 @@ mappings/exclusions and exact file takeover/restore-follow. Use
 `ntn-skills-maintain` to generate missing daily Notion text through
 `ctl library projection`; ordinary consumption never writes those bodies.
 
-## Local builtins
+## Bundled product guides
 
 ```sh
-ntn-skills ctl builtin list
-ntn-skills ctl builtin read notion/ntn-skills
-ntn-skills ctl builtin read notion/ntn-skills --path references/integration.md
-ntn-skills ctl builtin read notion/ntn-skills-maintain
-ntn-skills ctl builtin read notion/ntn-skills-sync
-ntn-skills ctl builtin status
+ntn-skills skills
+ntn-skills skills list --json
+ntn-skills skills get ntn-skills
+ntn-skills skills get ntn-skills --path references/integration.md
+ntn-skills skills get ntn-skills-maintain --full
+ntn-skills skills get ntn-skills-sync
+ntn-skills skills path ntn-skills
 ```
 
+`skills` defaults to `list`. Select names returned by that catalog. `get` emits
+the selected Markdown unchanged; `--full` includes all supporting files and
+`--path` selects one relative file. `get` also accepts several names or `--all`.
+Use `--json` for structured output. `path` returns the actual Skill directory,
+or the bundled catalog directory when no name is supplied.
+
 Use the task's executable and its bundled maintenance/sync guidance by default,
-including with a connected library. These reads need no Notion request or copy.
+including with a connected library. These reads need no credentials, Library,
+local configuration or cache, and create no application state.
 Package guidance does not select a write target or authorize a write. Ordinary
 business discovery still uses the selected Notion library.
 
@@ -121,14 +129,11 @@ An explicitly chosen Notion/team workflow keeps its exact source/ref and uses
 the ordinary `read/use` routes, including `read --from` for its references.
 Failed or partial discovery, pending content and denied access remain errors;
 never silently substitute the package. Same names do not establish identity.
-Optional native copies are user-owned editable Skills, not automatically
-upgraded package installations or Source reading projections.
 
 In a supporting Broker, an exact `@builtin` identity selects package content.
-Local install/update is a separate requested action. Read its current help and
-preserve unrelated host roots. Installing or upgrading a package does not refresh
-its Notion Source, project reading pages, overwrite native copies or replace an
-active task's selected content.
+The guides update with the CLI package. A package upgrade does not refresh a
+business Source, project its reading pages or replace an active task's selected
+content.
 
 ## Errors
 

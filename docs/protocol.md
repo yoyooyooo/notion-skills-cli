@@ -14,6 +14,8 @@ A failure may also include `error.details`, request metrics, and a suggested `ne
 
 Help and version return text. `read --raw` returns successful UTF-8 content as text.
 `use` has its own instruction-text output; use `--json` for its structured result.
+The `skills` actions return text by default and accept `--json` for structured
+results. Their typed failures follow the same JSON error contract.
 Stderr can contain runtime warnings. It is not a second stable result channel.
 
 Exit status is 0 for success, 1 for an operation failure, 2 for invalid arguments, and 130 for interruption.
@@ -23,6 +25,7 @@ The installed parser is the command reference:
 
 ```bash
 ntn-skills schema
+ntn-skills schema skills get
 ntn-skills schema ctl library import
 ntn-skills schema ctl library members-plan
 ntn-skills schema ctl library projection
@@ -42,6 +45,9 @@ The root schema is shallow; query an exact command path for its full definition.
 | `use` | Instructions and Requires expansion |
 | `files` | Complete selected file directory and returned refs |
 | `export` | Complete selected bytes in a local ZIP or directory |
+| `skills` / `skills list` | Offline catalog of the product Skills shipped with this package |
+| `skills get NAME` | Exact bundled Markdown; `--full` includes supporting files and `--path` selects one file |
+| `skills path [NAME]` | Actual bundled catalog or Skill directory |
 | `ctl library init/inspect/files` | Current descriptor, initialization, or selected-owner directory |
 | `ctl library import` | Complete current Skill replacement, dry run, or same-operation resume |
 | `ctl library import-batch` | Explicit local root/file mapping, frozen batch import and relation application |
@@ -49,9 +55,17 @@ The root schema is shallow; query an exact command path for its full definition.
 | `ctl library source apply/refresh` | Explicit Git contribution changes and same-parent finite recovery |
 | `ctl library projection` | Complete Notion text for one current Skill or the daily set, with read-only preview and single-Skill resume |
 | `ctl library profile` | Current shared Profile rules and machine selection |
-| `ctl config/cache/builtin/doctor` | Local configuration, cache, packaged Skills, or scoped diagnostics |
+| `ctl config/cache/doctor` | Local configuration, cache, or scoped diagnostics |
 | `ctl views/prepare/resolve` | View discovery, graph preparation, or relative-reference resolution |
 | `ctl api` | A scoped read-only Notion API request |
+
+The `skills` family reads the executable's package without Notion credentials,
+Library resolution, configuration, cache or state writes. Names come from
+`skills list`, and `--json` is available for each action. A single-file `get`
+emits its original Markdown by default; multiple selections and `--full`
+include file labels. `get --all` selects every bundled Skill. `--full` and
+`--path` are mutually exclusive. Package upgrades replace the bundled guides
+together with the CLI; there is no independent Skill installation or registry.
 
 ## Identity and selected reads
 
@@ -384,7 +398,6 @@ Configuration output omits the token.
 | Configuration | `NTN_SKILLS_CONFIG_HOME` | `XDG_CONFIG_HOME/ntn-skills` | `~/.config/ntn-skills` |
 | Local state | `NTN_SKILLS_HOME` | `XDG_STATE_HOME/ntn-skills` | `~/.local/state/ntn-skills` |
 | Cache | `NTN_SKILLS_CACHE_HOME` | `XDG_CACHE_HOME/ntn-skills` | `~/.cache/ntn-skills` |
-| Builtin data | `NTN_SKILLS_DATA_HOME` | `XDG_DATA_HOME/ntn-skills` | `~/.local/share/ntn-skills` |
 
 An explicit root names the application directory itself.
 Pending current operations belong to local state and are not cache entries.

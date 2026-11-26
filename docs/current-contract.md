@@ -28,15 +28,17 @@ package guidance. Inspecting the edited target does not activate it. Same-name
 Notion content cannot claim package identity or override the default. An existing
 task keeps its selected identity and content until explicitly changed.
 
-Copying bundled guidance into Notion is optional. Native copies are user-owned,
-editable Skills with independent identities; they are not Source reading
-projections and do not follow package upgrades. Updating the package does not
-advance a Notion Source, regenerate reading pages or overwrite native copies.
-An explicitly requested Source refresh preserves human Name/Description choices.
-When distributing selected package bytes, compare their full consumed files and
-discovery descriptions. That comparison does not prove reading-page generation,
-Source ownership, installed CLI/Broker pairing or model delivery; each needs its
-own evidence.
+Bundled product Skills belong to the installed package. `skills` lists them,
+`skills get NAME` reads their Markdown, and `skills path NAME` locates their
+actual directory. `--full` includes supporting files; `--path` selects one file;
+`--json` selects structured output. These reads require no Notion credentials,
+Library, configuration or cache and create no application state. The package
+version supplies both the CLI and its guidance. There is no separate Skill
+installation, distribution registry, update or Notion projection lifecycle.
+Updating the package does not advance a business Source, regenerate its reading
+pages or change an active task's selection. Source refresh preserves human
+Name/Description choices. Verify packaged bytes, CLI/Broker pairing and model
+delivery at their respective boundaries.
 
 | Table | Current responsibility | Authoritative writer | Rebuildable display |
 | --- | --- | --- | --- |

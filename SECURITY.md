@@ -160,8 +160,8 @@ retirement or removal of a remote row as local data erasure. Stop active hosts a
 identify the exact data before deliberately reclaiming it. Do not discard unresolved
 pending state as a cache cleanup shortcut.
 
-Explicit `ctl builtin install/update` also writes local Skill files and distribution
-links. Its ownership and content checks do not make package provenance a signature,
-Notion endorsement or permission to replace a remote Skill. Builtin discovery and
-reading do not install those files automatically. Protect local installations,
-exports and any backups with the same care as the original content.
+The `skills list/get/path` commands read only the installed package. They do not
+write application state, install Skill copies or create distribution links.
+Package metadata is not a signature, Notion endorsement or permission to write
+to a library. Preserve the selected package identity when passing guidance to a
+host, and protect exported business content with the same care as its originals.

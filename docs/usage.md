@@ -26,6 +26,30 @@ npm install --global /absolute/path/ntn-skills-VERSION.tgz
 A project-local install uses `npm install ntn-skills`. Invoke that copy with
 `npx --no-install ntn-skills`. Source builds follow [Contributing](../CONTRIBUTING.md#development-setup).
 
+## Read the bundled guides
+
+Discover the product Skills included in the executable you will use:
+
+```bash
+ntn-skills skills
+ntn-skills skills list --json
+ntn-skills skills get ntn-skills
+ntn-skills skills get ntn-skills-maintain --full
+ntn-skills skills get ntn-skills-sync --path references/synchronization.md
+ntn-skills skills path ntn-skills
+```
+
+The names are `ntn-skills`, `ntn-skills-maintain` and `ntn-skills-sync`.
+`skills` defaults to `list`; `get` emits the selected Markdown unchanged.
+Use `--full` to include the complete bundled file tree, or `--path` to select one
+relative file. `get` also accepts multiple names or `--all`. Add `--json` to
+`list`, `get` or `path` for structured output. `path` without a name returns the
+bundled catalog directory; with a name it returns that Skill's actual directory.
+
+These commands work offline before any Notion setup. They need no token,
+Library, local configuration or cache and create no application state.
+The guides update with the CLI package.
+
 ## Select the credential and library
 
 Use an existing `NOTION_API_TOKEN`, or pipe a token from your secret source into
@@ -64,7 +88,7 @@ Reading requires content access. Import and Profile changes also require the rel
 For guided setup, read from the same executable you will use for management:
 
 ```bash
-ntn-skills ctl builtin read notion/ntn-skills-maintain --path references/setup.md
+ntn-skills skills get ntn-skills-maintain --path references/setup.md
 ntn-skills ctl library init --parent AUTHORIZED_PARENT_PAGE
 ```
 
@@ -78,10 +102,10 @@ ntn-skills ctl library init --library LIBRARY_ID
 ```
 
 Successful init means the structure is ready. Its `next.argv` is a read-only
-`list`; an empty result before your first Skill is normal. Init does not copy
-Builtins, create business content, save defaults, install Skills, register a
-Source, or configure Pi. Create or import your first business Skill, read its
-full body, and apply its method to a real task to verify first use. Interrupted
+`list`; an empty result before your first Skill is normal. Init does not seed
+content, save defaults, register a Source, or configure Pi. Create or import your
+first business Skill, read its full body, and apply its method to a real task to
+verify first use. Interrupted
 initialization uses the original operation and retained state; follow the setup
 guide's reconciliation and explicit `--resume` steps.
 
@@ -94,8 +118,8 @@ Routine maintenance and Source sync default to the task executable's Builtins,
 including with a connected library:
 
 ```bash
-ntn-skills ctl builtin read notion/ntn-skills-maintain
-ntn-skills ctl builtin read notion/ntn-skills-sync
+ntn-skills skills get ntn-skills-maintain
+ntn-skills skills get ntn-skills-sync
 ```
 
 These reads need no Notion copy or remote workflow search and do not authorize
@@ -104,10 +128,6 @@ An explicitly selected Notion/team workflow keeps its exact source/ref: inspect
 with `read`, apply with `use` and complete Requires. Failed or incomplete
 discovery, pending content and denied access remain errors; do not substitute
 the package. Keep an active task's selected identity and content.
-
-The setup guide also covers optional export/create into Notion for team
-customization. These are user-owned native Skills with independent identities,
-not automatically updated package copies or Source reading projections.
 
 ## Find and read a Skill
 
@@ -383,10 +403,11 @@ budgets, projection and exit codes.
 
 ## Upgrade or uninstall
 
-Install the desired package version or matching candidate tarball.
+Install the desired package version or matching candidate tarball. Its bundled
+guides update with that package.
 Use `npm uninstall --global ntn-skills` for a global installation,
 or `npm uninstall ntn-skills` in a consuming project.
 
-Uninstalling leaves configuration, local state, cache, and builtin data in place.
+Uninstalling leaves configuration, local state and cache in place.
 Use `ctl config clear-token` before uninstalling if you want to remove a saved token.
 See [local storage](protocol.md#environment-and-local-storage) for the effective roots.
