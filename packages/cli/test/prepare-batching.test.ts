@@ -216,7 +216,7 @@ test("public Node use batches current HTTPS metadata, persists derived directori
     const warm = await invoke("warm")
     expect(warm.result.graph_lock).toEqual(cold.result.graph_lock)
     expect(warm.result.preparation_metrics.derived_cache_hits).toBe(4)
-    expect(warm.actual.map((call) => call.path)).toEqual(["v1/users/me"])
+    expect(warm.actual).toEqual([])
     await Bun.sleep(1_100)
     const revalidated = await invoke("metadata_revalidate", ["--max-age", "1s"])
     expect(revalidated.result.graph_lock).toEqual(cold.result.graph_lock)
