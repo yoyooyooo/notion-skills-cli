@@ -21,6 +21,9 @@ Changes since the published [0.3.0 release](https://github.com/yoyooyooo/notion-
 
 ### Cross-process Skill cache reuse
 
+- Increase the default Skill content observation TTL from five minutes to one
+  hour after verifying cross-process reuse under the original five-minute policy.
+  Keep catalog freshness at 60 seconds and preserve explicit read/Profile rules.
 - Select an existing credential scope locally before preparing a Skill graph.
   Complete, unexpired main and Requires bodies can be reused by a new process
   without an unconditional account request. Preserve original validation times,

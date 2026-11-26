@@ -36,7 +36,7 @@ export interface ReadPolicyOptions {
   readonly maxAge?: number
 }
 export const DEFAULT_CACHE_POLICY = {
-  read_max_age_ms: 300_000,
+  read_max_age_ms: 3_600_000,
   catalog_max_age_ms: 60_000,
 } as const
 export function parseDuration(input: string): number {
