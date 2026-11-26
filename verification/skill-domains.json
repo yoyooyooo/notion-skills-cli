@@ -566,17 +566,22 @@
       "contracts": ["C01", "C02", "C05"],
       "owner": "verify-notion-consumer-state",
       "issue": "AH-1191",
-      "precondition": "选A并记录catalog/eligibility/body三个观察时间。",
+      "precondition": "选A并记录catalog/eligibility/body三个观察时间、snapshot与完整正文；跨进程复用使用同一scope与持久cache，不继承原session选择。",
       "events": [
         "Notion改正文、名称或Requires；分别停在catalog TTL前后与read eligibility前后。",
-        "新会话普通选择、原会话重复use、显式refresh并行读取。"
+        "新会话普通选择、原会话重复use、显式refresh并行读取。",
+        "实际Pi冷读根与Requires后退出；正文与目录均5分钟时启动新PID/session，再以正文5分钟、目录1秒并真实等目录过期重放。",
+        "普通Pi安装保留正常配置与cache，经find/doctor诊断后用两个独立空session读取同一实际Skill，核默认正文策略1小时。"
       ],
       "oracle": [
         "TTL内可复用A但必须准确标freshness；新会话不自动等于冷读。",
         "eligibility到期若返回last_edited_time变更即拉该body，否则按独立body规则。",
-        "固定session pin仍A；不能一部分上下文A、一部分未声明地换B。"
+        "固定session pin仍A；不能一部分上下文A、一部分未声明地换B。",
+        "正文和目录均fresh时，实际新Pi整个暖阶段HTTP为0，含启动与后台；目录过期时只允许list解释全部暖HTTP，consume HTTP仍为0，根结构children保留真实物理分类。",
+        "根与Requires均来自local_cache，原snapshot、validated_at与完整正文不变，完整闭包进入实际provider请求；SDK或助手单测不能代填host结果。",
+        "普通安装分别报告目录、consume与其他HTTP及实际Requires数量；无Requires的现场目标不代替受控闭包正例，受控provider不证明自然任务或真实模型完成。"
       ],
-      "minimum_layer": "sdk",
+      "minimum_layer": "host",
       "live_required": true,
       "entrypoints": [
         {
@@ -588,6 +593,34 @@
           "repository": "broker",
           "command": "bun test packages/context-broker/scripts/session-active.test.ts packages/context-broker/scripts/native-read-session.test.ts",
           "required_inputs": []
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/notion-sdk-pi.mjs run --package /absolute/selected/broker --fixture /absolute/owned/current-fixture/fixture.json --source-http-helper /absolute/selected/cli/scripts/sdk-source-fixture.mjs --pi /absolute/installed/pi/dist/bundle/cli.js --scenario http-warm-restart --out /absolute/owned/warm-restart",
+          "required_inputs": [
+            "同一CLI/Broker配对的实际独立安装包、current HTTP fixture和源码HTTP helper",
+            "实际Pi入口与本轮未占用的绝对输出目录；fixture含根与Requires完整正文",
+            "正文与目录5分钟，先冷Pi后新PID/session；以现有evidence动作重验输出"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/notion-sdk-pi.mjs run --package /absolute/selected/broker --fixture /absolute/owned/current-fixture/fixture.json --source-http-helper /absolute/selected/cli/scripts/sdk-source-fixture.mjs --pi /absolute/installed/pi/dist/bundle/cli.js --scenario http-warm-directory-expired --out /absolute/owned/warm-directory-expired",
+          "required_inputs": [
+            "同一CLI/Broker配对的实际独立安装包、current HTTP fixture和源码HTTP helper",
+            "实际Pi入口与本轮未占用的绝对输出目录；fixture含根与Requires完整正文",
+            "正文5分钟、目录1秒，冷Pi退出后真实等目录过期再启动新PID/session；以现有evidence动作重验输出"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/verify-pi-daily-installation.mjs cache-run --config /absolute/owned/current-cache.json --live",
+          "required_inputs": [
+            "version:1、scope:ordinary-pi-cache-reuse；brokerRoot为正常Pi实际加载的独立安装包",
+            "library为canonical根UUID，query为一个实际Skill名，evidenceRoot为本轮未占用的自有绝对路径，expectedMaxAgeMs:3600000",
+            "保留正常HOME、agentDir、配置与cache；可选pi为普通pi或实际入口绝对路径，cwd为绝对工作目录",
+            "先沿同入口cache-plan审阅输入；本动作不替代metadata run/aggregate或next交付"
+          ]
         }
       ]
     },
