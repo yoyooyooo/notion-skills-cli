@@ -379,8 +379,12 @@ ntn-skills ctl config show
 NTN_SKILLS_REQUEST_TRACE_LIMIT=10000 ntn-skills read 'REF_FROM_LIST' --metrics --json
 ```
 
-Content observations default to five minutes and catalog observations to 60 seconds.
+Content observations default to one hour and catalog observations to 60 seconds.
 Profile rules or explicit read options can change the effective age.
+New processes can reuse complete, unexpired content in the same credential scope
+and Library without HTTP. Cache reads retain the original validation time;
+they do not extend the TTL. Refresh, expired or missing content and unknown
+credential scopes still use online validation. Known exact denials remain binding.
 The [protocol](protocol.md#requests-and-limits) separates cache age, pagination, and HTTP limits.
 
 To retire disposable observations deliberately:

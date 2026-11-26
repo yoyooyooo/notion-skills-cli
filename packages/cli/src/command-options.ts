@@ -130,7 +130,7 @@ export const readPolicyFlags = {
   offline: switchFlag("offline", "Read local observations only, including expired content"),
   maxAge: singleton(
     "max-age",
-    "Maximum observation age: 0, Ns, Nm, Nh or Nd; default 5m (list 60s)",
+    "Maximum observation age: 0, Ns, Nm, Nh or Nd; default 1h (list 60s)",
   ),
 }
 export function readPolicy(config: {

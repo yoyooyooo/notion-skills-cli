@@ -194,7 +194,7 @@ test("body and relation-derived changes replace current index while exact parent
   f.bodies.set(skillPage, mention(id(101)))
   f.main.last_edited_time = new Date(Date.now() - 500).toISOString()
   for (const [key, value] of f.json)
-    if (key.startsWith("cache/latest/")) property(value).validated_at = Date.now() - 300_001
+    if (key.startsWith("cache/latest/")) property(value).validated_at = Date.now() - 3_600_001
   f.clearCalls()
   const current = await f.target(parseTarget(skillPage), options)
   expect(current.native_references?.index_sha256).not.toBe(first.native_references?.index_sha256)

@@ -162,7 +162,7 @@ describe("shared Router snapshot integration", () => {
     const first = await f.target()
     const original = structuredClone(f.json.get(`snapshots/${first.snapshot_id}.json`))
     for (const [key, value] of f.json)
-      if (key.startsWith("cache/latest/")) property(value).validated_at = Date.now() - 300_001
+      if (key.startsWith("cache/latest/")) property(value).validated_at = Date.now() - 3_600_001
     property(f.member.properties)["Description"] = rich("description", "Updated member description")
     f.clearCalls()
     const current = await f.target()
