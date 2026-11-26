@@ -90,7 +90,7 @@ test("strict consume proof retains the effective shared freshness evidence", asy
       max_age_ms: 10_000,
       policy_source: "skill",
       full_body_max_age_ms: 86_400_000,
-      current_eligibility_max_age_ms: 300_000,
+      current_eligibility_max_age_ms: 3_600_000,
     },
   })
 })
@@ -102,7 +102,7 @@ test("the real current consumer resolves the stable Skill override and a warm hi
     max_age_ms: 10_000,
     policy_source: "skill",
     full_body_max_age_ms: 86_400_000,
-    current_eligibility_max_age_ms: 300_000,
+    current_eligibility_max_age_ms: 3_600_000,
   })
   const retained = structuredClone(observations(f))
   f.clearCalls()
@@ -127,7 +127,7 @@ test("the real current consumer resolves the stable Skill override and a warm hi
 test("a day-long Skill body policy cannot postpone independent current eligibility checks", async () => {
   const f = await consumer(86_400_000)
   const first = await f.target(parseTarget(skillPage), options)
-  for (const observation of observations(f)) observation.validated_at = Date.now() - 300_001
+  for (const observation of observations(f)) observation.validated_at = Date.now() - 3_600_001
   property(f.main.properties).Enabled = { id: "enabled", type: "checkbox", checkbox: false }
   f.clearCalls()
   await expect(f.target(current, options)).rejects.toThrow("disabled")

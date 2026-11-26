@@ -245,7 +245,7 @@ test("C1/C3 warm complete reads add zero requests without moving validation or c
   f.json.set("config.json", { sources: [], default_library: database })
   const first = await f.run(readSkill(page))
   const requests = f.requests.length
-  for (const time of [1_000_010, 1_030_000, 1_299_999]) {
+  for (const time of [1_000_010, 1_030_000, 1_299_999, 2_800_000, 4_599_999]) {
     f.time(time)
     const warm = await f.run(readSkill(page))
     expect(warm.snapshot_id).toBe(first.snapshot_id)
@@ -258,8 +258,12 @@ test("C1/C3 warm complete reads add zero requests without moving validation or c
 
 for (const [offset, online] of [
   [299_999, false],
-  [300_000, true],
-  [300_001, true],
+  [300_000, false],
+  [300_001, false],
+  [1_800_000, false],
+  [3_599_999, false],
+  [3_600_000, true],
+  [3_600_001, true],
   [-1, true],
 ] as const) {
   test(`C2/C3 exact age ${offset} validates online=${online}`, async () => {
@@ -308,7 +312,9 @@ test("current eligibility and the native body deadline do not advance a fixed se
   f.change("Changed body with unchanged metadata.")
   for (const [age, source] of [
     [299_999, "local_cache"],
-    [300_000, "notion"],
+    [300_000, "local_cache"],
+    [3_599_999, "local_cache"],
+    [3_600_000, "notion"],
     [24 * 60 * 60 * 1000 - 1, "notion"],
   ] as const) {
     f.time(1_000_000 + age)
@@ -339,7 +345,7 @@ test("current eligibility and the native body deadline do not advance a fixed se
 test("C6/C7 unknown transport failure has no online fallback; explicit offline retains the original observation", async () => {
   const f = fixture()
   const first = await f.run(readSkill(page))
-  f.time(1_300_000)
+  f.time(4_600_000)
   f.deny("NOTION_UNAVAILABLE")
   const failure = await f.run(readSkill(page).pipe(Effect.result))
   expect(failure._tag === "Failure" && failure.failure.code).toBe("NOTION_UNAVAILABLE")
@@ -348,7 +354,7 @@ test("C6/C7 unknown transport failure has no online fallback; explicit offline r
   expect(offline.source).toBe("local_cache")
   expect(offline.freshness).toMatchObject({
     stale: true,
-    age_ms: 300_000,
+    age_ms: 3_600_000,
     validated_at: first.freshness?.validated_at,
   })
   expect(f.requests.length).toBe(before)

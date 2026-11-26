@@ -631,7 +631,7 @@ test("cache duration configuration persists across processes and preserves other
   expect(clear.exit).toBe(0)
   const show = JSON.parse((await invoke(["ctl", "config", "show"], { root })).stdout)
   expect(show.config.effective_cache_policy).toEqual({
-    read_max_age_ms: 300000,
+    read_max_age_ms: 3600000,
     catalog_max_age_ms: 60000,
   })
   expect(show.config.default_library).toBe(original.default_library)
@@ -873,11 +873,11 @@ test("ctl configuration accepts only supported keys and preserves independent se
     (await call(["set", "cache_policy.catalog_max_age_ms", "5678"])).effective_cache_policy,
   ).toEqual({ read_max_age_ms: 1234, catalog_max_age_ms: 5678 })
   expect((await call(["unset", "cache_policy.read_max_age_ms"])).effective_cache_policy).toEqual({
-    read_max_age_ms: 300000,
+    read_max_age_ms: 3600000,
     catalog_max_age_ms: 5678,
   })
   expect((await call(["unset", "cache_policy.catalog_max_age_ms"])).effective_cache_policy).toEqual(
-    { read_max_age_ms: 300000, catalog_max_age_ms: 60000 },
+    { read_max_age_ms: 3600000, catalog_max_age_ms: 60000 },
   )
   for (const args of [
     ["set", "token", "secret"],

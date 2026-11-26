@@ -169,7 +169,7 @@ describe("standard targetSnapshot shared-library integration", () => {
   test("expired metadata revalidates with batched queries and no body download or state write", async () => {
     const f = currentSnapshotFixture()
     const first = await f.target(parseTarget(skillPage), options)
-    for (const entry of latestEntries(f)) entry.validated_at = Date.now() - 300_001
+    for (const entry of latestEntries(f)) entry.validated_at = Date.now() - 3_600_001
     f.clearCalls()
     const checked = await f.target(parseTarget(stableRef), options)
     expect(checked.snapshot_id).toBe(first.snapshot_id)
@@ -310,7 +310,7 @@ describe("standard targetSnapshot shared-library integration", () => {
     const recordsBefore = f.records.size
     property(f.main.properties)["Description"] = rich("description", "New metadata description")
     f.main.last_edited_time = new Date(Date.now() - 1).toISOString()
-    for (const entry of latestEntries(f)) entry.validated_at = Date.now() - 300_001
+    for (const entry of latestEntries(f)) entry.validated_at = Date.now() - 3_600_001
     f.clearCalls()
     const current = await f.target(parseTarget(stableRef), options)
     expect(current.record.description).toBe("New metadata description")
