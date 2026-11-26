@@ -31,7 +31,7 @@
     "packages/core/test/skill-reference-guards.test.ts": "060982d502d1b8fc10298ec41196e44355e11192fe2e635c8e1b39b62640bb40",
     "packages/core/test/sqlite-state.node.test.ts": "c962b83f3b387f1dfcf10a9fb2fafdfbd47d7f20aac47c43b0b0c73307fad955",
     "verification/models/skill-reference/mutations.json": "d2cfd8b9ac749c669fa0bd0494c6220fb52508bf8aee7921620b7030243dd182",
-    "packages/core/src/catalog.ts": "b2beb45bf3794492fd442eb35e5024d4b646fedf30d1b96243b53d6680940383",
+    "packages/core/src/catalog.ts": "0423a83b49338ece89b0a9870de3d143b085ef56eec52967b408f0015c2d0eab",
     "packages/core/src/library-selection.ts": "e1cff08feed83b3479566c1a47108d0126552c4bfbb72f0d74ad9e576b081e12",
     "packages/core/src/shared-library.ts": "90adf217346484735fd24d377261d3468068b93a4f03fc8f2a9df2197915445a",
     "packages/core/src/shared-library-model.ts": "331dfe22a7fb88cf97236dd860bceae280022e5473c7bc0d591bd8295bd04f1c",
@@ -701,5 +701,11 @@
     "change": "Add a cold full-reference versus explicit foreign-root rejection with zero Notion calls, then prove the same reference reads successfully under its own root. Route the unchanged actual product mutation to that assertion. Keep all warm/fixed/resource regressions and the original surviving result.",
     "evidence_boundary": "No product, model, finite bounds or expected rule changes. The development baseline/mutant/restored diagnostic is separate from the required final frozen-candidate reference wrapper."
   },
-  "synchronized_commit": "642c8a7110038bc5d22d51391d002264978be60c"
+  "synchronized_commit": "642c8a7110038bc5d22d51391d002264978be60c",
+  "candidate_snapshot_review": {
+    "baseline": "6727bea",
+    "issue": "AH-1324",
+    "reviewed_files": ["packages/core/src/catalog.ts"],
+    "scope": "Local candidate discovery reuses Store, credential identity and Library selection without constructing Notion transport or scheduler. Catalog validation moved to one shared implementation. SQLite catalog publication retains complete discovery and precise rejection facts under the existing generation and retirement fences. Current consumption, fixed byte access, request scheduler, MCP search and reference-entry guards are unchanged. Existing finite models and mutation inventories are unchanged; new candidate facts are checked by public SDK and real SQLite regressions, not asserted as finite-model coverage."
+  }
 }

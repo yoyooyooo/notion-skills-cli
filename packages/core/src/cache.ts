@@ -1,4 +1,6 @@
 import { libraryId } from "./library-selection.ts"
+import { CatalogObservationSchema } from "./catalog-cache.ts"
+export { CatalogObservationSchema } from "./catalog-cache.ts"
 import { Clock, Crypto, Effect, FileSystem, Path, Schema } from "effect"
 import { bindEntryTarget, catalog } from "./catalog.ts"
 import { identitySegment, identityFromSegment } from "./cache-address.ts"
@@ -110,11 +112,6 @@ export const clearCachePolicy = Effect.gen(function* () {
 })
 
 export const ScopeSchema = Schema.Struct({ scope: Schema.String })
-/** Directory invalidation is cache state; public catalogs expose freshness instead. */
-export const CatalogObservationSchema = Schema.Struct({
-  ...CatalogSchema.fields,
-  invalidated: Schema.optional(Schema.Boolean),
-})
 export const ObservationSchema = Schema.Struct({
   record_identity: Schema.String,
   scope: Schema.String,
@@ -180,11 +177,17 @@ export function freshness(
 }
 export const localIdentity = Effect.gen(function* () {
   const credential = yield* (yield* Notion).credentialIdentity
-  const origin = yield* notionApiOrigin
-  // Keep the default identity tuple stable for existing token-backed snapshots.
-  const key = yield* sha256(JSON.stringify([credential, "", origin]))
-  return { key }
+  return yield* credentialLocalIdentity(credential)
 })
+/** Shared with the local discovery boundary; constructing Notion is unnecessary. */
+export function credentialLocalIdentity(credential: string) {
+  return Effect.gen(function* () {
+    const origin = yield* notionApiOrigin
+    // Keep the default identity tuple stable for existing token-backed snapshots.
+    const key = yield* sha256(JSON.stringify([credential, "", origin]))
+    return { key }
+  })
+}
 export function recordScope(scope: string) {
   return Effect.gen(function* () {
     const identity = yield* localIdentity
@@ -564,6 +567,35 @@ function latestObservation(page: string, scope: string) {
     return yield* Effect.fail(
       fail("CACHE_INVALIDATED", "The cache observation kept changing during its local read."),
     )
+  })
+}
+/** Enumerate observed identities once, rather than probing each candidate.
+ * Grants and denials share the existing causal slot and retirement rules. */
+export function knownAccessDenials(scope: string) {
+  return Effect.gen(function* () {
+    const store = yield* Store
+    const identities = new Set(
+      (yield* store.listKeys(`cache/latest/${scope}`)).map((key) =>
+        identityFromSegment(key.split("/")[3]!),
+      ),
+    )
+    const denied: Array<{
+      identity: string
+      code: AccessDenial
+      generation: number
+      verifiedAt: number
+    }> = []
+    for (const identity of identities) {
+      const latest = yield* latestObservation(identity, scope)
+      if (latest?.access_denied !== undefined)
+        denied.push({
+          identity,
+          code: latest.access_denied,
+          generation: latest.generation,
+          verifiedAt: latest.validated_at,
+        })
+    }
+    return denied
   })
 }
 /** Reserve before authentication so an older response cannot erase a newer denial. */

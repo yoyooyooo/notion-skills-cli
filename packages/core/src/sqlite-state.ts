@@ -7,6 +7,7 @@ import {
   type CacheCapacity,
 } from "./cache-retention-model.ts"
 import { identitySegment, identityFromSegment } from "./cache-address.ts"
+import { retainCompleteCatalog } from "./catalog-cache.ts"
 import { trashPath } from "./local-locks.ts"
 import { fail, property, SkillsError } from "./model.ts"
 import { skillIdentity } from "./shared-content.ts"
@@ -1080,8 +1081,26 @@ export function sqliteState(
                     yield* sql`INSERT INTO observations(id,scope,record_identity,generation,validated_at,snapshot_id,payload) VALUES(${key},${scope},${identity},${v.generation},${v.validated_at},${v.snapshot_id ?? null},${json(value)}) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload WHERE observations.payload=excluded.payload`
                 } else if (parts[1] === "views")
                   yield* sql`INSERT INTO view_observations(scope,selection,generation,payload) VALUES(${scope},${parts[3]!.replace(/\.json$/, "")},${v.generation},${json(value)}) ON CONFLICT(scope,selection) DO UPDATE SET generation=excluded.generation,payload=excluded.payload WHERE excluded.generation>=view_observations.generation`
-                else
-                  yield* sql`INSERT INTO catalogs(scope,selection,generation,payload) VALUES(${scope},${parts[3]!.replace(/\.json$/, "")},${v.generation},${json(value)}) ON CONFLICT(scope,selection) DO UPDATE SET generation=excluded.generation,payload=excluded.payload WHERE excluded.generation>=catalogs.generation`
+                else {
+                  const selection = parts[3]!.replace(/\.json$/, "")
+                  // Hold the same writer slot for reading retained discovery
+                  // facts and replacing this generation. No second cache owns it.
+                  yield* sql`UPDATE catalogs SET generation=generation WHERE scope=${scope} AND selection=${selection}`
+                  const prior = yield* sql<{
+                    generation: number
+                    payload: string
+                  }>`SELECT generation,payload FROM catalogs WHERE scope=${scope} AND selection=${selection}`
+                  if (prior[0] !== undefined && Number(v.generation) < prior[0].generation) return
+                  const merged = yield* Effect.try({
+                    try: () =>
+                      retainCompleteCatalog(
+                        value,
+                        prior[0] === undefined ? undefined : JSON.parse(prior[0].payload),
+                      ),
+                    catch: storageError,
+                  })
+                  yield* sql`INSERT INTO catalogs(scope,selection,generation,payload) VALUES(${scope},${selection},${v.generation},${json(merged)}) ON CONFLICT(scope,selection) DO UPDATE SET generation=excluded.generation,payload=excluded.payload WHERE excluded.generation>=catalogs.generation`
+                }
               } else
                 return yield* Effect.fail(
                   fail("INVALID_ARGUMENT", "Unknown SQLite domain address.", { key }),

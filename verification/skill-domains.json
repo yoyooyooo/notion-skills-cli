@@ -50,7 +50,8 @@
         "packages/core/test/request-engine-contract.test.ts",
         "packages/core/test/shared-read-coalescing.test.ts",
         "packages/core/test/bounded-graph-metadata.test.ts",
-        "packages/core/test/sdk-bounded-metadata.node.test.ts"
+        "packages/core/test/sdk-bounded-metadata.node.test.ts",
+        "packages/core/test/candidate-snapshot.node.test.ts"
       ],
       "installed_recipe": ".cursor/skills/verify-ntn-skills/features/portable-export-package-consumption.md",
       "excludes": ["原作者写入权限", "实际 Pi/自然模型通过"]

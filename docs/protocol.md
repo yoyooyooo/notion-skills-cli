@@ -235,6 +235,7 @@ The package exports the Node ESM module `ntn-skills/sdk` and its TypeScript decl
 | Export | Result or behavior |
 | --- | --- |
 | `selectLibrary` | Capture the canonical root from the explicit selector or current local `default_library`; no Notion requests |
+| `readCandidateSnapshot` | Contract version 1 local discovery snapshot, known rejections and original observation time; no transport or scheduler |
 | `resolveLibrary` | Read-only resolution of one root and all four actual table bindings, including an empty Library |
 | `listCatalog`, `listSkills` | Directory metadata and bounded list pages |
 | `readSkill`, `listSkill` | Selected file read or complete file directory |
@@ -247,6 +248,29 @@ The package exports the Node ESM module `ntn-skills/sdk` and its TypeScript decl
 SDK calls accept an optional environment, working directory, abort signal, and request-metrics callback.
 They use the same credential provider, Store, and request engine as the CLI.
 Consumption does not mutate Notion. Current import and Profile commands are CLI management entrypoints.
+
+`readCandidateSnapshot({ library, ...options })` returns `kind: "miss"`,
+`"blocked"`, or `"snapshot"`. It resolves the selected Library locally and uses
+the existing credential-to-scope mapping and catalog Store. It cannot verify a
+root, query a View, project a file, retrieve a body, or repair missing cache data.
+`CANDIDATE_SNAPSHOT_CONTRACT_VERSION` is 1. Hosts must check this capability in
+their selected SDK package before invoking it.
+
+A snapshot carries canonical Skill and physical page identities, `coverage`,
+`stale`, exact `denials`, and the original `verifiedAt`/`fetched_at`. Reading a
+snapshot does not renew its age. The existing catalog slot retains the last
+complete directory separately from a later partial observation or failed
+attempt. Partial results may add confirmed candidates and suppress known
+disabled, unavailable, or denied targets. They do not become complete. A newer
+complete result replaces the directory, including a complete empty result.
+The existing SQLite generation fence rejects late older publications. Scope
+rejection blocks the snapshot; exact physical rejection suppresses only that
+target. A local miss or blocked result never triggers a remote fallback.
+
+Hosts hydrate memory once and read another snapshot after an online refresh
+settles. Keystroke completion filters that memory. A displayed or selected
+candidate remains discovery metadata: `consume`/`readSkill` still check current
+authority, Requires, complete manifests, and actual bytes before host delivery.
 
 `resolveReference(relative, { from, ...options })` returns
 `{ version: 1, from, ref, effects }`. `from` is the exact fixed canonical reference

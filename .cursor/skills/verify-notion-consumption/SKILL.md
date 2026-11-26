@@ -45,6 +45,13 @@ bun test packages/cli/test/sdk.test.ts packages/core/test/source-git-runtime.tes
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-bounded-metadata.node.test.ts packages/core/test/sdk-immutable-read.node.test.ts packages/core/test/sqlite-state.node.test.ts
 ~~~
 
+快速补全的 SDK 本地边界沿 `packages/core/test/candidate-snapshot.node.test.ts`
+验收。公开 `readCandidateSnapshot` 必须在无 HTTP transport/scheduler、View 或正文
+获取的情况下返回 miss/blocked/snapshot，并保留原观察时间。用真实 SQLite 核完整目录
+经历 partial、failure、exact deny 后仍正确保留；后到旧 generation 不得覆盖新事实，
+complete empty 必须撤掉旧项。两库、换凭据、disabled 与精确 physical 拒绝分别隔离。
+这里不证明 Pi 下拉首帧、同屏更新、高亮或排队输入；这些仍由 Broker integration 验。
+
 安装层复用 [portable-export-package-consumption](../verify-ntn-skills/features/portable-export-package-consumption.md) 的实际包入口。旧远端恢复或已退出命令的步骤不可继承；包未切换记缺口。Pi 由 Broker integration 沿 AH-1197/AH-637/AH-1198 验；AH-1063 仅为历史基线，不扩 OMP/Tern。
 
 ## Evidence
