@@ -530,6 +530,15 @@ partial page or exhausted budget cannot establish absence, authorize deletion or
 claim a complete inventory. Fetch only changed/requested bodies after metadata
 admission; do not scan Records history to answer a current read.
 
+A new process may reuse a complete, unexpired Skill and Requires graph from the
+shared local Store when its credential, API origin, account scope and Library
+match. A valid cache hit performs no HTTP request and retains the original
+`validated_at`; reading it does not extend its TTL. Local scope selection only
+identifies a cache candidate. Each node still checks freshness, complete selected
+bytes and known exact denials. Explicit refresh, expired observations, missing
+bytes or an unknown credential scope use normal online admission. A known denial
+continues to block the corresponding selection, including fixed cached reads.
+
 The implementation proceeds on `next` without compatibility readers, dual writers,
 legacy flags or a parallel daily protocol:
 
