@@ -65,7 +65,7 @@ const cacheIdentityCommand = defineCommand("identity", { library: libraryFlag },
     "Identify the locally selected catalog credentials without network access",
   ),
   Command.withDescription(
-    "Returns an opaque identity digest for the selected credentials and current catalog scope, plus the effective catalog TTL. --library resolves a registered alias, ID or URL locally. Working directory, command spelling, cache policy and request timeout do not change identity. Uses the project's configured token or NOTION_API_TOKEN without a network request. No token, account identity or current authorization is returned; ordinary reads retain online scope validation.",
+    "Returns an opaque identity digest for the selected credentials and current catalog scope, plus the effective catalog TTL. --library resolves a registered alias, ID or URL locally. Working directory, command spelling, cache policy and request timeout do not change identity. Uses the project's configured token or NOTION_API_TOKEN without a network request. No token, account identity or current authorization is returned. Ordinary reads may reuse complete, unexpired observations in the same credential scope; expired or missing data and explicit refresh still require online validation.",
   ),
 )
 

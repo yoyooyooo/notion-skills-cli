@@ -19,6 +19,15 @@ Changes since the published [0.3.0 release](https://github.com/yoyooyooo/notion-
   Business Skills and explicitly selected Notion workflows keep their existing
   library identities and management commands.
 
+### Cross-process Skill cache reuse
+
+- Select an existing credential scope locally before preparing a Skill graph.
+  Complete, unexpired main and Requires bodies can be reused by a new process
+  without an unconditional account request. Preserve original validation times,
+  exact denials and online admission for refresh, expiry or missing content.
+- Verify the public SDK with independent Node processes sharing SQLite and a real
+  HTTP fixture, including zero-request warm reads and invalidation boundaries.
+
 ### Skill references and explicit batch import
 
 - Use one `skill://<stable-skill-id>[/path]?library=<logical-library-id>` protocol across Core, CLI, SDK

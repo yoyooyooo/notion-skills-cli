@@ -225,12 +225,23 @@ await writeFile(process.argv[3],JSON.stringify({rows,explicitCalls,inherited}));
   }
 })
 
-async function sample(currentSource?: Record<string, unknown>) {
+async function sample(currentSource?: Record<string, unknown>, required = false) {
   const f = currentSnapshotFixture({ fileCount: 1 })
   await f.resource(0, "scripts/read-only.sh", raw, "100755")
   const main = {
     ...structuredClone(f.main),
     parent: { ...f.main.parent, database_id: library.skills.database_id },
+  }
+  const skills = [structuredClone(main)]
+  if (required) {
+    const child = structuredClone(main)
+    child.id = currentId(902)
+    child.properties["Skill ID"] = currentRich("skill-id", "required")
+    child.properties["Main File ID"] = currentRich("main-id", "main-required")
+    main.properties.requires.relation = [{ id: child.id }]
+    skills[0] = structuredClone(main)
+    skills.push(child)
+    f.bodies.set(child.id, "# Required body\n\nThe complete required instruction.\n")
   }
   return {
     notion: {
@@ -246,7 +257,7 @@ async function sample(currentSource?: Record<string, unknown>) {
         librarySchemaResponse("v1/data_sources/" + library[role].data_source_id, library),
       ),
       main,
-      skills: [structuredClone(main)],
+      skills,
       files: structuredClone(f.files),
       records: structuredClone([...f.records.values()]),
       sources: currentSource === undefined ? [] : [currentSource],
@@ -294,7 +305,7 @@ async function setup(
   }
 }
 
-async function bootstrap(source: Source, root: string, name: string) {
+function sdkOptions(source: Source, root: string, name: string) {
   const directory = join(root, name)
   const env = {
     NOTION_API_TOKEN: "immutable-controlled-token",
@@ -307,7 +318,12 @@ async function bootstrap(source: Source, root: string, name: string) {
     NTN_SKILLS_NOTION_INTERVAL_MS: "100",
     NTN_SKILLS_REQUEST_TRACE_LIMIT: "10000",
   }
-  const options = { env, library: library.library_id, metrics: true }
+  return { env, library: library.library_id, metrics: true }
+}
+
+async function bootstrap(source: Source, root: string, name: string) {
+  const options = sdkOptions(source, root, name)
+  const { env } = options
   const main = await readSkill(skillPage, options)
   const directoryRef = new URL(main.ref)
   directoryRef.pathname = "/"
@@ -735,7 +751,7 @@ for (const code of ["ACCESS_DENIED", "AUTH_REQUIRED"] as const)
             expect("preparation" in prepared).toBe(false)
             expect(await decodeConsumeResult(prepared)).toEqual(prepared)
           }
-          if (offline) expect(source.requests).toHaveLength(before)
+          expect(source.requests).toHaveLength(before)
         }
       }
       expect(
@@ -816,51 +832,236 @@ test("public SDK reports the retired cache generation when clear races a current
   })
 })
 
+async function processConsumer(root: string, options: ReturnType<typeof sdkOptions>) {
+  let serial = 0
+  const sdk = new URL("../../cli/src/sdk.ts", import.meta.url).pathname
+  const workerSource = join(root, "selection-worker.ts"),
+    worker = join(root, "selection-worker.mjs")
+  await writeFile(
+    workerSource,
+    `import {readFile} from 'node:fs/promises';
+  import {consume} from ${JSON.stringify(sdk)};
+  import {Effect,ConfigProvider} from ${JSON.stringify(fileURLToPath(import.meta.resolve("effect")))};
+  import {clearCache} from ${JSON.stringify(new URL("../src/cache.ts", import.meta.url).pathname)};
+  import {nodeRuntime} from ${JSON.stringify(new URL("../../cli/src/runtime.ts", import.meta.url).pathname)};
+  const request=JSON.parse(await readFile(process.argv[2],'utf8'));
+  const result=request.clear
+  ? await Effect.runPromise(clearCache(undefined,{all:true}).pipe(Effect.provide(nodeRuntime(process.cwd()).live),Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(request.options.env))),Effect.scoped))
+  : await consume(request.input,request.options);
+  console.log(JSON.stringify(result));`,
+  )
+  const build = spawnSync(
+    "bun",
+    ["build", workerSource, "--target=node", "--format=esm", "--outfile", worker],
+    { encoding: "utf8" },
+  )
+  expect(build.status, build.stderr).toBe(0)
+  return async (input: unknown, clear = false, selectedOptions = options) => {
+    const requestFile = join(root, `selection-${serial++}.json`)
+    await writeFile(requestFile, JSON.stringify({ input, options: selectedOptions, clear }))
+    const child = spawn(process.execPath, [worker, requestFile], {
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+    let stdout = "",
+      stderr = ""
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      stdout += chunk
+    })
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+      stderr += chunk
+    })
+    const exit = await new Promise<number | null>((resolve, reject) => {
+      child.once("error", reject)
+      child.once("close", resolve)
+    })
+    await writeFile(requestFile + ".stdout", stdout)
+    await writeFile(requestFile + ".stderr", stderr)
+    expect(exit, stderr).toBe(0)
+    return JSON.parse(stdout) as Awaited<ReturnType<typeof consume>>
+  }
+}
+
+function readyConsumption(result: Awaited<ReturnType<typeof consume>>) {
+  expect(result.status, JSON.stringify(result)).toBe("ready")
+  if (result.status !== "ready") throw new Error("Expected a complete public consumption")
+  return result
+}
+
+function currentObservations(options: ReturnType<typeof sdkOptions>) {
+  const database = new DatabaseSync(join(options.env.NTN_SKILLS_HOME, "state.sqlite"))
+  try {
+    return database
+      .prepare(
+        "SELECT id, generation, validated_at, snapshot_id, payload FROM observations ORDER BY id",
+      )
+      .all()
+  } finally {
+    database.close()
+  }
+}
+
+function expireCurrentObservations(options: ReturnType<typeof sdkOptions>, ageMs: number) {
+  const database = new DatabaseSync(join(options.env.NTN_SKILLS_HOME, "state.sqlite"))
+  try {
+    const validatedAt = Date.now() - ageMs
+    const observations = database
+      .prepare("SELECT id, payload FROM observations WHERE snapshot_id IS NOT NULL")
+      .all()
+    expect(observations.length).toBeGreaterThan(0)
+    const update = database.prepare(
+      "UPDATE observations SET validated_at = ?, payload = ? WHERE id = ?",
+    )
+    for (const observation of observations) {
+      if (typeof observation.payload !== "string") throw new Error("Expected a stored observation")
+      const payload = JSON.parse(observation.payload)
+      update.run(
+        validatedAt,
+        JSON.stringify({ ...payload, validated_at: validatedAt }),
+        observation.id!,
+      )
+    }
+  } finally {
+    database.close()
+  }
+}
+
+const fiveMinuteUse = {
+  version: 1 as const,
+  targets: [skillPage],
+  purpose: "use" as const,
+  freshness: { policy: "max_age" as const, max_age_ms: 300_000 },
+}
+
+test("public SDK reuses complete five-minute online graphs across independent processes with zero HTTP", async () => {
+  const root = await mkdtemp(join(await realpath(tmpdir()), "sdk-hot-graph-"))
+  const source = await startSdkSourceFixture(
+    await sample(undefined, true),
+    join(root, "requests.jsonl"),
+  )
+  const options = sdkOptions(source, root, "shared")
+  try {
+    const invoke = await processConsumer(root, options)
+    const cold = readyConsumption(await invoke(fiveMinuteUse))
+    expect(cold.preparation.session_bindings).toHaveLength(2)
+    expect(cold.preparation.required).toHaveLength(1)
+    expect(
+      source.requests.filter((row: { path: string }) => row.path === "/v1/users/me"),
+    ).toHaveLength(1)
+    const observations = currentObservations(options)
+    const originalNodes = cold.preparation.nodes.filter((node) => node.state === "prepared")
+    expect(originalNodes).toHaveLength(2)
+    source.setPhase("warm")
+    const before = source.requests.length
+    // Every invocation is a new Node process and a new SDK runtime, with no
+    // sessionBindings. Only the actual shared SQLite Store can carry this hit.
+    for (const [purpose, target] of [
+      ["use", skillPage],
+      ["use", `skill://demo/SKILL.md?library=${library.library_id}`],
+      ["inspect", `skill://demo/SKILL.md?library=${library.library_id}`],
+    ] as const) {
+      const warm = readyConsumption(await invoke({ ...fiveMinuteUse, purpose, targets: [target] }))
+      const expectedNodes =
+        purpose === "use"
+          ? originalNodes
+          : originalNodes.filter((node) => node.roles.includes("root"))
+      expect(warm.preparation.session_bindings).toEqual(expectedNodes.map((node) => node.binding))
+      const nodes = warm.preparation.nodes.filter((node) => node.state === "prepared")
+      expect(nodes.map((node) => node.content)).toEqual(expectedNodes.map((node) => node.content))
+      expect(nodes.map((node) => node.source)).toEqual(expectedNodes.map(() => "local_cache"))
+      expect(nodes.map((node) => node.freshness?.validated_at)).toEqual(
+        expectedNodes.map((node) => node.freshness?.validated_at),
+      )
+      if (purpose === "inspect") expect(warm.preparation.required_closure).toEqual([])
+      for (const node of nodes) expect(node.freshness).toMatchObject({ max_age_ms: 300_000 })
+      expect(source.requests).toHaveLength(before)
+      // Cache reuse is not a fresh authorization observation or a sliding TTL.
+      expect(currentObservations(options)).toEqual(observations)
+    }
+    expect(source.unexpected).toEqual([])
+    noConsumerWrites(source)
+  } finally {
+    await source.close()
+    console.info(JSON.stringify({ publicSdkHotGraphEvidence: root }))
+  }
+})
+
+test("public SDK online graph cache still authenticates expired, forced, missing and foreign-credential reads", async () => {
+  const root = await mkdtemp(join(await realpath(tmpdir()), "sdk-hot-boundaries-"))
+  const source = await startSdkSourceFixture(await sample(), join(root, "requests.jsonl"))
+  const options = sdkOptions(source, root, "shared")
+  try {
+    const invoke = await processConsumer(root, options)
+    const cold = readyConsumption(await invoke(fiveMinuteUse))
+    const expectedContent = cold.preparation.nodes
+      .filter((node) => node.state === "prepared")
+      .map((node) => node.content)
+    for (const freshness of [{ policy: "refresh" }, { policy: "max_age", max_age_ms: 0 }]) {
+      const before = source.requests.length
+      const forced = readyConsumption(await invoke({ ...fiveMinuteUse, freshness }))
+      expect(forced.preparation.session_bindings).toEqual(cold.preparation.session_bindings)
+      expect(
+        source.requests
+          .slice(before)
+          .filter((row: { path: string }) => row.path === "/v1/users/me"),
+      ).toHaveLength(1)
+      expect(
+        source.requests
+          .slice(before)
+          .some((row: { path: string }) => row.path.endsWith("/markdown")),
+      ).toBe(true)
+    }
+    // Move only this fixture's persisted current observations past the unchanged
+    // five-minute policy; immutable bytes and their full-body deadline remain.
+    expireCurrentObservations(options, 300_001)
+    const beforeExpired = source.requests.length
+    const expired = readyConsumption(await invoke(fiveMinuteUse))
+    expect(expired.preparation.nodes[0]).toMatchObject({ source: "notion" })
+    expect(
+      source.requests
+        .slice(beforeExpired)
+        .filter((row: { path: string }) => row.path === "/v1/users/me"),
+    ).toHaveLength(1)
+    expect(
+      source.requests
+        .slice(beforeExpired)
+        .some((row: { path: string }) => row.path === `/v1/pages/${skillPage}`),
+    ).toBe(true)
+    const binding = expired.preparation.session_bindings[0]!
+    const object = join(options.env.NTN_SKILLS_HOME, "objects", binding.body_sha256)
+    await rename(object, `${object}.retained-by-hot-cache-test`)
+    const beforeMissing = source.requests.length
+    const missing = readyConsumption(await invoke(fiveMinuteUse))
+    expect(
+      missing.preparation.nodes
+        .filter((node) => node.state === "prepared")
+        .map((node) => node.content),
+    ).toEqual(expectedContent)
+    expect(source.requests.length).toBeGreaterThan(beforeMissing)
+    expect(await readFile(object, "utf8")).toBe(expectedContent[0])
+    const beforeOther = source.requests.length
+    const other = readyConsumption(
+      await invoke(fiveMinuteUse, false, {
+        ...options,
+        env: { ...options.env, NOTION_API_TOKEN: "independent-controlled-credential" },
+      }),
+    )
+    expect(other.preparation.scope).not.toBe(cold.preparation.scope)
+    expect(
+      source.requests
+        .slice(beforeOther)
+        .filter((row: { path: string }) => row.path === "/v1/users/me"),
+    ).toHaveLength(1)
+    expect(source.unexpected).toEqual([])
+    noConsumerWrites(source)
+  } finally {
+    await source.close()
+    console.info(JSON.stringify({ publicSdkHotGraphBoundaryEvidence: root }))
+  }
+})
+
 test("public SDK metadata selections survive independent processes and cache clear with exact original bindings", async () => {
   await setup(async ({ source, root, options }) => {
-    let serial = 0
-    const sdk = new URL("../../cli/src/sdk.ts", import.meta.url).pathname
-    const workerSource = join(root, "selection-worker.ts"),
-      worker = join(root, "selection-worker.mjs")
-    await writeFile(
-      workerSource,
-      `import {readFile} from 'node:fs/promises';
-import {consume} from ${JSON.stringify(sdk)};
-import {Effect,ConfigProvider} from ${JSON.stringify(fileURLToPath(import.meta.resolve("effect")))};
-import {clearCache} from ${JSON.stringify(new URL("../src/cache.ts", import.meta.url).pathname)};
-import {nodeRuntime} from ${JSON.stringify(new URL("../../cli/src/runtime.ts", import.meta.url).pathname)};
-const request=JSON.parse(await readFile(process.argv[2],'utf8'));
-const result=request.clear
-? await Effect.runPromise(clearCache(undefined,{all:true}).pipe(Effect.provide(nodeRuntime(process.cwd()).live),Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(request.options.env))),Effect.scoped))
-: await consume(request.input,request.options);
-console.log(JSON.stringify(result));`,
-    )
-    const build = spawnSync(
-      "bun",
-      ["build", workerSource, "--target=node", "--format=esm", "--outfile", worker],
-      { encoding: "utf8" },
-    )
-    expect(build.status, build.stderr).toBe(0)
-    const invoke = async (input: unknown, clear = false) => {
-      const requestFile = join(root, `selection-${serial++}.json`)
-      await writeFile(requestFile, JSON.stringify({ input, options, clear }))
-      const child = spawn(process.execPath, [worker, requestFile], {
-        stdio: ["ignore", "pipe", "pipe"],
-      })
-      let stdout = "",
-        stderr = ""
-      child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
-        stdout += chunk
-      })
-      child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
-        stderr += chunk
-      })
-      const exit = await new Promise<number | null>((resolve) => child.once("close", resolve))
-      await writeFile(requestFile + ".stdout", stdout)
-      await writeFile(requestFile + ".stderr", stderr)
-      expect(exit, stderr).toBe(0)
-      return JSON.parse(stdout) as Awaited<ReturnType<typeof consume>>
-    }
+    const invoke = await processConsumer(root, options)
     const inspect = {
       version: 1,
       targets: [skillPage],
