@@ -57,7 +57,10 @@
     "packages/core/test/shared-native-markdown.test.ts": "f08676979392f7fabe82ff79921c5b0f186e11cb8661bada66fcd85421978d6a",
     "packages/core/src/catalog-cache.ts": "29c6a14db80b351925818f98364b99b998b41e3d67640e85edeb9a4b32ec8147",
     "packages/core/src/candidate-snapshot.ts": "94867236366b70add3be20981dfcdebd51b9f3213b7beed899f7a316fc08c4ba",
-    "packages/core/test/candidate-snapshot.node.test.ts": "853874e8e9a41f767e99b86fc7b475a3330a7bc2d527f63ff391642ee8c01fe5"
+    "packages/core/test/candidate-snapshot.node.test.ts": "853874e8e9a41f767e99b86fc7b475a3330a7bc2d527f63ff391642ee8c01fe5",
+    "packages/core/src/catalog-consumption.ts": "61e19c988ee9d75715cc245294ed1de677b1b25d3a1f11973c744eada62801a7",
+    "packages/core/test/shared-views.test.ts": "694d3286458612cd0c211bba1c18440e6ed7c8f52fb8335f776cc0dda5f5a3b4",
+    "packages/core/test/config.node.test.ts": "b0c47c5345dc00a57950a5766b09e342634dded0f7b70040300e44cd0ab82c1d"
   },
   "models": {
     "CurrentLifecycle": {
@@ -1304,7 +1307,13 @@
   "candidate_snapshot_review": {
     "baseline": "6727bea",
     "issue": "AH-1324",
-    "reviewed_files": ["packages/core/src/cache.ts", "packages/core/src/sqlite-state.ts"],
-    "scope": "Local candidate discovery reuses Store, credential identity and Library selection without constructing Notion transport or scheduler. Catalog validation moved to one shared implementation. SQLite catalog publication retains complete discovery and precise rejection facts under the existing generation and retirement fences. Current consumption, fixed byte access, request scheduler, MCP search and reference-entry guards are unchanged. Existing finite models and mutation inventories are unchanged; new candidate facts are checked by public SDK and real SQLite regressions, not asserted as finite-model coverage. Live daily-cache review found unrelated retired Library observation addresses entering the new denial enumeration. Candidate lookup now forms canonical addresses only for the selected catalog and retained complete stable/physical identities plus Library and scope. It does not decode, migrate, or grant access from unrelated records. The public SQLite regression first reproduces that failure, then verifies isolation while selected corrupt observations still fail; exact latest denial and scope rejection regressions remain unchanged. These are concrete read-boundary obligations, not additional finite-model properties."
+    "reviewed_files": [
+      "packages/core/src/cache.ts",
+      "packages/core/src/sqlite-state.ts",
+      "packages/core/src/catalog-consumption.ts",
+      "packages/core/test/shared-views.test.ts",
+      "packages/core/test/config.node.test.ts"
+    ],
+    "scope": "Local candidate discovery reuses Store, credential identity and Library selection without constructing Notion transport or scheduler. Catalog validation moved to one shared implementation. SQLite catalog publication retains complete discovery and precise rejection facts under the existing generation and retirement fences. Current consumption, fixed byte access, request scheduler, MCP search and reference-entry guards are unchanged. Existing finite models and mutation inventories are unchanged; new candidate facts are checked by public SDK and real SQLite regressions, not asserted as finite-model coverage. Live daily-cache review found unrelated retired Library observation addresses entering the new denial enumeration. Candidate lookup now forms canonical addresses only for the selected catalog and retained complete stable/physical identities plus Library and scope. It does not decode, migrate, or grant access from unrelated records. The public SQLite regression first reproduces that failure, then verifies isolation while selected corrupt observations still fail; exact latest denial and scope rejection regressions remain unchanged. These are concrete read-boundary obligations, not additional finite-model properties. The same-runtime combined catalog now emits one non-authoritative onCatalogSettled notification after the ordinary catalog result/cache publication and before View/Profile work. It does not await observers; synchronous throws and rejected observer Promises cannot change the two projection outcomes. Cancellation retains its existing abort behavior. Existing shared-view regressions cover cached publication order, failure publication, callback failures and never-settling callbacks. The prior config retirement fixture wrote Config payloads into a catalog address; it now uses valid Catalog facts with distinct original times while retaining its generation and retirement assertions. No production fence was weakened. These notification and fixture obligations do not add finite-model properties."
   }
 }
