@@ -7,6 +7,7 @@ import { Schema } from "effect"
 const root = fileURLToPath(new URL("../../../", import.meta.url))
 const featureRoot = ".cursor/skills/verify-ntn-skills/features"
 const ordinaryWorkflowPi = "pi --provider magpie --model group/worker --thinking high"
+const cacheReuseScenarios = ["http-warm-restart", "http-warm-directory-expired"]
 const domainSchema = Schema.Struct({
   id: Schema.String,
   skill: Schema.String,
@@ -217,6 +218,35 @@ function check(input: unknown): void {
       if (id.startsWith("C07")) covered.add("C07")
     }
     inspectEntrypoints(scenario.entrypoints)
+    if (scenario.id === "T01") {
+      if (scenario.minimum_layer !== "host") throw new Error("CACHE_REUSE_HOST_REQUIRED")
+      for (const name of cacheReuseScenarios) {
+        if (
+          !scenario.entrypoints.some((entry) => {
+            const args = entry.command.trim().split(/\s+/u)
+            return (
+              entry.repository === "broker" &&
+              args[0] === "node" &&
+              args[1] === "scripts/notion-sdk-pi.mjs" &&
+              args[2] === "run" &&
+              args.includes("--scenario") &&
+              args[args.indexOf("--scenario") + 1] === name
+            )
+          })
+        )
+          throw new Error(`CACHE_REUSE_PI_ROUTE_MISSING: ${name}`)
+      }
+      if (
+        !scenario.entrypoints.some(
+          (entry) =>
+            entry.repository === "broker" &&
+            /^node scripts\/verify-pi-daily-installation\.mjs cache-run --config \/absolute\/\S+ --live$/u.test(
+              entry.command,
+            ),
+        )
+      )
+        throw new Error("CACHE_REUSE_DAILY_ROUTE_MISSING")
+    }
     if (scenario.id === "T22") {
       if (scenario.owner !== "verify-notion-agent-workflows")
         throw new Error("NATURAL_WORKFLOW_OWNER_MISSING")
@@ -325,6 +355,60 @@ test("current contracts and timeline seeds cannot lose their owner, oracle or ex
         ),
       }),
     ).toThrow("LOCAL_SKILL_DISCOVERY_REQUIRED")
+  }
+})
+
+test("T01 cannot report SDK coverage as host or lose actual Pi cache execution", () => {
+  const original = load()
+  const changeT01 = (
+    change: (scenario: typeof scenarioSchema.Type) => typeof scenarioSchema.Type,
+  ) => ({
+    ...original,
+    scenarios: original.scenarios.map((scenario) =>
+      scenario.id === "T01" ? change(scenario) : scenario,
+    ),
+  })
+  expect(() => check(changeT01((scenario) => ({ ...scenario, minimum_layer: "sdk" })))).toThrow(
+    "CACHE_REUSE_HOST_REQUIRED",
+  )
+  for (const name of cacheReuseScenarios) {
+    expect(() =>
+      check(
+        changeT01((scenario) => ({
+          ...scenario,
+          entrypoints: scenario.entrypoints.filter(
+            (entry) => !entry.command.includes("--scenario " + name),
+          ),
+        })),
+      ),
+    ).toThrow("CACHE_REUSE_PI_ROUTE_MISSING")
+  }
+  expect(() =>
+    check(
+      changeT01((scenario) => ({
+        ...scenario,
+        entrypoints: scenario.entrypoints.map((entry) => ({
+          ...entry,
+          command: entry.command.replace("notion-sdk-pi.mjs run", "notion-sdk-pi.mjs doctor"),
+        })),
+      })),
+    ),
+  ).toThrow("CACHE_REUSE_PI_ROUTE_MISSING")
+  for (const replacement of ["cache-plan", "cache-run-without-live"]) {
+    expect(() =>
+      check(
+        changeT01((scenario) => ({
+          ...scenario,
+          entrypoints: scenario.entrypoints.map((entry) => ({
+            ...entry,
+            command:
+              replacement === "cache-plan"
+                ? entry.command.replace("cache-run", "cache-plan")
+                : entry.command.replace(" --live", ""),
+          })),
+        })),
+      ),
+    ).toThrow("CACHE_REUSE_DAILY_ROUTE_MISSING")
   }
 })
 
