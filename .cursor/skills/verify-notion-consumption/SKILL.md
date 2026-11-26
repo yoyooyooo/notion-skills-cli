@@ -52,6 +52,8 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 complete empty 必须撤掉旧项。两库、换凭据、disabled 与精确 physical 拒绝分别隔离。
 这里不证明 Pi 下拉首帧、同屏更新、高亮或排队输入；这些仍由 Broker integration 验。
 
+缓存、TTL、库选择、启动/SDK 次序或跨会话复用变化，按 [T01 合同入口](../../../verification/skill-domains.json) 交接 Broker integration：执行 `notion-sdk-pi.mjs` 的 `http-warm-restart` 与 `http-warm-directory-expired`，再沿 `verify-pi-daily-installation.mjs cache-plan/cache-run` 复验普通安装。核新 PID/session、原 snapshot/校验时间、完整根与 Requires 的实际 provider 全文，并将目录 HTTP 与正文 consume 分开；这里的 SDK 通过只记局部覆盖，不能记作 T01 host 通过。
+
 安装层复用 [portable-export-package-consumption](../verify-ntn-skills/features/portable-export-package-consumption.md) 的实际包入口。旧远端恢复或已退出命令的步骤不可继承；包未切换记缺口。Pi 由 Broker integration 沿 AH-1197/AH-637/AH-1198 验；AH-1063 仅为历史基线，不扩 OMP/Tern。
 
 ## Evidence
