@@ -11,7 +11,7 @@ RUN="$(mktemp -d "${TMPDIR:-/tmp}/ntn-skills-verification-XXXXXX")"
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts init --run "$RUN"
 ~~~
 
-init 要求空的自有目录，建立独立 config/state/cache/data、builtin-home 和 evidence。产品子进程使用这些应用根和 XDG 根；本地 builtin 命令另用自有 HOME。source CLI 沿现有 scripts/dev.ts 运行实际 Node.js 入口，清除继承的开发 checkout override。它不证明 npm 安装态。
+init 要求空的自有目录，建立独立 config/state/cache 和 evidence。产品子进程使用这些应用根和 XDG 根；`skills` 只读取随包文件，不读取或写入这些目录。source CLI 沿现有 scripts/dev.ts 运行实际 Node.js 入口，清除继承的开发 checkout override。它不证明 npm 安装态。
 
 Bun 启动器可能在 helper 启动前使用继承的 XDG cache。需要核对宿主写入范围时，为父 Bun 进程单独提供自有临时 XDG_CACHE_HOME，并纳入系统 Trash；不要在 init 前向空 run 中写入启动器 cache。
 

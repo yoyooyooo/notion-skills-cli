@@ -121,7 +121,7 @@ ntn-skills ctl library import INPUT --library LIBRARY_ID --skill-id SKILL_ID --d
 First import infers Members only from exact refs; existing sets and `[]` win.
 Requires stays explicit. Follow [import and Members planning](references/operations.md#import-a-complete-current-tree)
 or [projection/recovery](references/operations.md#generate-notion-text).
-Source/Profile management defaults to `ctl builtin read notion/ntn-skills-sync`.
-For package-selected instructions, use `ctl builtin read notion/ntn-skills-maintain
+Source/Profile management defaults to `skills get ntn-skills-sync`.
+For package-selected instructions, use `skills get ntn-skills-maintain
 --path RELATIVE_PATH`; for Notion use
 `ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF`.

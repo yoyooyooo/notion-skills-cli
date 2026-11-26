@@ -113,17 +113,12 @@ hash/bytes/completeness/effects，保留失败原件与复验关联。只分析�
 同时核实际加载范围：已连接库的基础 how-to 由维护主文直接回答，不提前读 setup；
 只有直接 REST 工作才采用通用 API Skill，不能因最终创建成功忽略无关正文加载。
 
-包内指引和 Notion 工作流分别保留身份。同名远端内容不能声明包身份或覆盖默认路由；
-原生副本属于用户，不要求随包升级。只有明确分发选定包字节到 Notion 时，才用现有安装包运行
-`node scripts/verify-projected-builtins.mjs --cli CLI --library LIBRARY_ID`，
-核消费返回的全部主文/附件字节、目录和发现 Description。脚本只读；它不验证生成的
-Notion 阅读正文或 Source ownership，也不证明安装配对或模型投递。相同名称和字节
-不足以证明来源归属；这些边界仍沿原有领域入口验证。Source refresh 不覆盖人工描述。
-受控正反例由 `bun test packages/cli/test/verify-projected-builtins.test.ts` 执行，
-根 `test:unit` 的 `packages/*/test` 已收集它；受控子 CLI 成绩不代表真实库通过。
+包内指引和 Notion 工作流分别保留身份。同名远端内容不能声明包身份或覆盖默认路由。
+包内主文与支持文件沿 `skills get` 读取，随 CLI 升级；其字节和实际目录由独立安装包
+检查验证。用户业务 Skill 的正文、Source 权威、阅读投影与实际模型投递保持各自验证范围。
 目录晚到或 View 未含显式选择的远端工作流时仍查询当前库，不能把不完整发现当作改选理由。
 初始化另核只建四表与关系、仅需保存 Skills ENTRY、next.argv 只读 list 且空结果正常，
-无隐式 Builtin／业务内容、default_library、host 或本地安装写入。default_library
+无隐式业务内容、default_library 或 host 配置写入。default_library
 仅消费；管理仍需 --library。建立业务 Skill 后再核全文、实际应用及新会话重连，
 结构就绪不计作首次业务完成。不新增 onboarding 状态机或 runner。
 

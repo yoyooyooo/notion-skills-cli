@@ -454,7 +454,6 @@ it.live("explicit retirement during observation reads never returns a partial ol
               NTN_SKILLS_HOME: join(root, "state"),
               NTN_SKILLS_CONFIG_HOME: join(root, "config"),
               NTN_SKILLS_CACHE_HOME: join(root, "cache"),
-              NTN_SKILLS_DATA_HOME: join(root, "data"),
               NTN_SKILLS_SCHEDULER_ROOT: join(root, "scheduler"),
             }),
           ),

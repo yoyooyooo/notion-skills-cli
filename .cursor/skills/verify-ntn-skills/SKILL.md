@@ -47,6 +47,8 @@ bun test packages/cli/test/verification-skill-map.test.ts packages/cli/test/buil
 
 安装检查复用 [portable-export-package-consumption](features/portable-export-package-consumption.md) 的当前 archive/bin/SDK 设施与全部当前用例。受控安装通过不能替代真实 Notion 清理或 Pi 日用。未执行的边界明确 blocked/not_run，只沿现有领域入口补必要检查。
 
+随包产品指引沿 [skills 命令检查](features/builtin-management.md) 核目录、主文、支持文件和实际包路径。`skills list/get/path` 离线只读，指引随 CLI 更新；不建立独立 Skill 安装或 Notion 副本来验证该命令。
+
 原生日常管理沿 [skill-maintenance](features/skill-maintenance.md#原生日常管理与实际-pi)
 覆盖公开四动作、语义规范化、局部更新与自动清理。真实 magpie/group/worker
 用自然任务验证维护和 Source sync 默认选择实际执行包的 Builtin，已连接库也不先搜

@@ -83,13 +83,11 @@ const env: Record<string, string | undefined> & {
   NTN_SKILLS_CONFIG_HOME: string
   NTN_SKILLS_HOME: string
   NTN_SKILLS_CACHE_HOME: string
-  NTN_SKILLS_DATA_HOME: string
 } = {
   ...process.env,
   NTN_SKILLS_CONFIG_HOME: join(scratch, "config"),
   NTN_SKILLS_HOME: join(scratch, "state"),
   NTN_SKILLS_CACHE_HOME: join(scratch, "cache"),
-  NTN_SKILLS_DATA_HOME: join(scratch, "data"),
   XDG_CONFIG_HOME: join(scratch, "xdg", "config"),
   XDG_STATE_HOME: join(scratch, "xdg", "state"),
   XDG_CACHE_HOME: join(scratch, "xdg", "cache"),
@@ -98,7 +96,7 @@ const env: Record<string, string | undefined> & {
 // A controlled command must not inherit an unrelated source checkout launcher.
 delete env.NTN_SKILLS_DEV_ROOT
 // The project's direct HTTP engine consumes inherited token configuration in place.
-async function command(args: string[], cwd = repo, childEnv = env) {
+async function command(args: string[]) {
   if (args.includes("set-token") || args.some((arg) => /^(?:Bearer |secret_|ntn_)/.test(arg)))
     throw new Error("Do not pass credentials to the verification harness.")
   const commandId = randomUUID()
@@ -108,14 +106,14 @@ async function command(args: string[], cwd = repo, childEnv = env) {
   if (timingFile) await mkdir(dirname(timingFile), { recursive: true, mode: 0o700 })
   const started = new Date().toISOString()
   const child = Bun.spawn(args, {
-    cwd,
+    cwd: repo,
     env: timingFile
       ? {
-          ...childEnv,
+          ...env,
           NTN_SKILLS_VERIFY_CLI_TIMING_FILE: timingFile,
           NTN_SKILLS_VERIFY_CLI_TIMING_ID: commandId,
         }
-      : childEnv,
+      : env,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
@@ -191,7 +189,7 @@ async function command(args: string[], cwd = repo, childEnv = env) {
     }
     await save(record, {
       command: args,
-      cwd,
+      cwd: repo,
       started,
       finished: new Date().toISOString(),
       exit,
@@ -266,8 +264,6 @@ async function main() {
     await mkdir(env.NTN_SKILLS_CONFIG_HOME, { recursive: true, mode: 0o700 })
     await mkdir(env.NTN_SKILLS_HOME, { recursive: true, mode: 0o700 })
     await mkdir(env.NTN_SKILLS_CACHE_HOME, { recursive: true, mode: 0o700 })
-    await mkdir(env.NTN_SKILLS_DATA_HOME, { recursive: true, mode: 0o700 })
-    await mkdir(join(scratch, "builtin-home"), { recursive: true, mode: 0o700 })
     await mkdir(evidence, { recursive: true, mode: 0o700 })
     await save(marker, { repo, root, scratch, evidence, created: new Date().toISOString() })
     return { ready: true, run: root, evidence }
@@ -348,7 +344,6 @@ async function main() {
         config: env.NTN_SKILLS_CONFIG_HOME,
         state: env.NTN_SKILLS_HOME,
         cache: env.NTN_SKILLS_CACHE_HOME,
-        data: env.NTN_SKILLS_DATA_HOME,
       },
       ...(values.live
         ? {
@@ -366,15 +361,7 @@ async function main() {
   if (mode === "cli") {
     check(split >= 0 && process.argv.length > split + 1, "cli requires -- CLI_ARGS")
     const cliArgs = process.argv.slice(split + 1)
-    // Offline builtin commands isolate native Skill roots; online commands inherit the project token.
-    // Both paths always use the scratch application and XDG data roots above.
-    const childEnv =
-      cliArgs[0] === "ctl" &&
-      cliArgs[1] === "builtin" &&
-      ["list", "read", "export", "status", "install", "update"].includes(cliArgs[2] ?? "")
-        ? { ...env, HOME: join(scratch, "builtin-home") }
-        : env
-    const result = await command([...sourceLaunch, ...cliArgs], repo, childEnv)
+    const result = await command([...sourceLaunch, ...cliArgs])
     return { exit: result.exit, evidence: result.record, output: result.output }
   }
   throw new Error(`Unknown mode: ${mode}`)

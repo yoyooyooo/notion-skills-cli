@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { exportPortable, portableIdentity } from "./export.ts"
+import { portableIdentity } from "./export.ts"
 import { aliasFor, fail } from "./model.ts"
 import type { SkillsError } from "./model.ts"
 import { normalizePath } from "./ref.ts"
@@ -46,12 +46,12 @@ export function defineBuiltin(
   }
 }
 
-export function selectBuiltin(skills: readonly BuiltinSkill[], id: string): BuiltinSkill {
-  const skill = skills.find((skill) => skill.id === id)
+export function selectBuiltin(skills: readonly BuiltinSkill[], name: string): BuiltinSkill {
+  const skill = skills.find((skill) => skill.portable.name === name)
   if (!skill)
-    throw fail("BUILTIN_NOT_FOUND", "Use an exact built-in ID returned by builtin list.", {
-      id,
-      candidates: skills.map((skill) => skill.id),
+    throw fail("BUILTIN_NOT_FOUND", "Use an exact bundled Skill name returned by skills list.", {
+      name,
+      candidates: skills.map((skill) => skill.portable.name),
     })
   return skill
 }
@@ -63,7 +63,7 @@ export function builtinInfo(skill: BuiltinSkill) {
       origin: "builtin" as const,
       publisher: "ntn-skills" as const,
       package_version: skill.version,
-      name: skill.id.split("/").at(-1)!,
+      name: skill.portable.name,
       notion_name: skill.portable.name,
       description: skill.portable.description,
       content_id: yield* portableIdentity(skill.portable),
@@ -86,16 +86,6 @@ export function readBuiltin(skill: BuiltinSkill, inputPath = "SKILL.md") {
       path,
       content: new TextDecoder().decode(file.bytes),
       files: skill.portable.files.map((file) => ({ path: file.path, bytes: file.bytes.length })),
-    }
-  })
-}
-
-export function exportBuiltin(skill: BuiltinSkill, output: string) {
-  return Effect.gen(function* () {
-    return {
-      ...(yield* exportPortable(skill.portable, { output })),
-      source: "builtin",
-      builtin: yield* builtinInfo(skill),
     }
   })
 }

@@ -15,8 +15,7 @@ consumption never updates Source content. Reading a script does not authorize
 executing it. Complete local imports belong to ntn-skills-maintain.
 
 Use the executable's bundled sync guidance by default, even with a connected
-library. Complete local imports default to `ctl builtin read
-notion/ntn-skills-maintain` from the same executable. Package guidance neither
+library. Complete local imports default to `skills get ntn-skills-maintain` from the same executable. Package guidance neither
 chooses the write target nor authorizes writes.
 
 If the user explicitly selected a Notion workflow, retain its exact source/ref.
@@ -25,10 +24,10 @@ Read inspects; apply it via Pi `notion_use(ref)` or CLI `ntn-skills use REF
 Report unavailable adoption or failed/incomplete discovery; never substitute a
 package workflow. Inspect the edited target without activating it. Read its
 references with `ntn-skills read RELATIVE_PATH --from CONTAINING_FILE_REF`.
-Package references stay with `ctl builtin read notion/ntn-skills-sync --path
+Package references stay with `skills get ntn-skills-sync --path
 RELATIVE_PATH`. Keep an active task's selected identity and content.
-An npm update does not refresh a Notion Source or overwrite user-owned native
-copies. Refresh a selected Git ref and generate reading pages only when
+An npm update supplies the matching product guides. Refresh a selected Git ref
+and generate its reading pages only when
 requested; preserve human discovery metadata.
 
 ## Source declarations

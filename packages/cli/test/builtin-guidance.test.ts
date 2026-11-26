@@ -38,12 +38,21 @@ test("bundled current instructions include every relative reference without chec
 })
 
 test("executable builtin examples stay within the public current command surface", () => {
-  const roots = new Set(["list", "read", "use", "files", "export", "schema", "ctl", "auth"])
+  const roots = new Set([
+    "list",
+    "read",
+    "use",
+    "files",
+    "export",
+    "schema",
+    "skills",
+    "ctl",
+    "auth",
+  ])
   const controls = new Set([
     "library",
     "config",
     "cache",
-    "builtin",
     "doctor",
     "api",
     "views",
@@ -150,7 +159,7 @@ test("maintenance routes daily native management through public commands and kee
   expect(setup).toContain("ctl library skill create INPUT --library LIBRARY_ID --skill-id SKILL_ID")
   expect(setup).toContain("Legacy libraries require a separately reviewed cutover")
   expect(setup).toContain("The one-time executor is retired")
-  expect(setup).toContain("PASTE_LIBRARY_ROOT_PAGE_ID")
+  expect(setup).toContain("the root page UUID")
   expect(setup).not.toContain("PASTE_LIBRARY_SKILLS_DATABASE_ID")
   expect(setup).toContain("/context-broker connect SOURCE LIBRARY_ID")
   expect(operations).toContain("metadata-only")
@@ -225,8 +234,8 @@ test("product guidance defaults to the execution package and preserves explicit 
   const commands = prose("notion/ntn-skills", "references/commands.md")
   const integration = prose("notion/ntn-skills", "references/integration.md")
   for (const guidance of [consumer, commands, integration]) {
-    expect(guidance).toContain("ctl builtin read notion/ntn-skills-maintain")
-    expect(guidance).toContain("ctl builtin read notion/ntn-skills-sync")
+    expect(guidance).toContain("skills get ntn-skills-maintain")
+    expect(guidance).toContain("skills get ntn-skills-sync")
     expect(guidance).toContain("including with a connected library")
     expect(guidance).toContain("Ordinary business")
     expect(guidance).toContain("pending content")

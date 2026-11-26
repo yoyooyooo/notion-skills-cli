@@ -99,7 +99,6 @@ test("real source mode opens current SQLite cache offline without building or ch
       NTN_SKILLS_HOME: join(dir, "state"),
       NTN_SKILLS_CONFIG_HOME: join(dir, "config"),
       NTN_SKILLS_CACHE_HOME: join(dir, "cache"),
-      NTN_SKILLS_DATA_HOME: join(dir, "data"),
       NTN_SKILLS_VERIFY_CLI_TIMING_FILE: join(dir, "source-execution.json"),
       NOTION_API_TOKEN: "",
       NOTION_API_BASE_URL: "http://127.0.0.1:1",

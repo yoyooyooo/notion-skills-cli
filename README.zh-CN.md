@@ -26,6 +26,7 @@
 npm install --global ntn-skills --registry https://registry.npmjs.org
 ntn-skills --version
 ntn-skills --help
+ntn-skills skills
 ```
 
 本 README 描述 `next` 的实现，已发布包可能早于本分支。
@@ -234,18 +235,31 @@ Git 来源获取还要求当前 Git 支持 `--no-lazy-fetch`，
 
 ## Agent 接入
 
-有 shell 的 Agent 可以直接使用 CLI。库还没有创建时，先离线读取包内设置指引：
+有 shell 的 Agent 可以直接发现当前 CLI 版本随包提供的指引：
 
 ```sh
-ntn-skills ctl builtin read notion/ntn-skills-maintain --path references/setup.md
+ntn-skills skills
+ntn-skills skills get ntn-skills
+ntn-skills skills get ntn-skills-maintain --full
+ntn-skills skills path ntn-skills-maintain
+```
+
+`skills` 默认执行 `skills list`。`get` 直接输出 Markdown，`--full` 包含支持文件，
+`--path` 读取一个精确相对路径。`path` 返回实际包内目录。需要结构化输出时加 `--json`。
+这些命令完全离线，不依赖凭据、Library、本地配置或缓存；CLI 升级时指引一起更新。
+
+库还没有创建时，先读取包内设置指引：
+
+```sh
+ntn-skills skills get ntn-skills-maintain --path references/setup.md
 ```
 
 把目标父页面或库入口交给 Agent，并让它继承同一凭据环境。
 日常管理和 Source 同步默认使用同一执行包的指引，连接库后也一样：
 
 ```sh
-ntn-skills ctl builtin read notion/ntn-skills-maintain
-ntn-skills ctl builtin read notion/ntn-skills-sync
+ntn-skills skills get ntn-skills-maintain
+ntn-skills skills get ntn-skills-sync
 ```
 
 读取这些指引无需 Notion 副本或远端工作流搜索，也不会决定写入目标或授予写权限。
@@ -253,10 +267,6 @@ ntn-skills ctl builtin read notion/ntn-skills-sync
 精确 source/ref，应用前通过 `use` 加载 Requires。搜索不完整、内容 pending 或
 访问错误都不能让它自动改选包内指引。被编辑目标只做检查，不激活；
 当前任务已选内容保留到明确重新选择为止。
-
-[把包内工作流复制到 Notion](skills/notion/ntn-skills-maintain/references/setup.md#copy-packaged-workflows-into-notion)
-是团队定制的可选操作。副本是用户拥有、可编辑的原生 Skill，有独立身份，
-不会随包升级自动更新。
 
 Pi 接入见 [Broker 指南](https://github.com/yoyooyooo/pi-context-broker/blob/next/README.zh-CN.md)。
 Broker 通过配对 SDK 消费同一个库，并负责 Pi 连接配置。

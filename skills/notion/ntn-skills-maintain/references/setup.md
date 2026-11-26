@@ -49,7 +49,8 @@ ntn-skills ctl library inspect --library LIBRARY_ID
 Both commands verify the root and four-table ownership read-only. They do not
 save a default or repair an older layout. Init success means the structure is
 ready; its next list can be empty. A new `init --parent` creates a new root.
-Use the same executable's Builtin guidance without copying it into Notion.
+Read the same executable's product guides with `ntn-skills skills get NAME`.
+They are available offline and update with the CLI package.
 Legacy libraries require a separately reviewed cutover; the current runtime does not attach old descriptors. See the preserved [migration requirements](https://github.com/yoyooyooo/notion-skills-cli/blob/next/docs/library-root-migration.md). The one-time executor is retired.
 
 If requested, `ctl config set default_library LIBRARY_ID` saves the consumption
@@ -165,55 +166,7 @@ load Requires. Inspect an edited target without activating it.
 For first business use, apply the user's selected Skill to a real task and check
 the result against its method. Table readiness, discovery, body delivery and
 business use are separate observations. In a fresh session, reconnect with the
-saved ENTRY and repeat the read; copying product guidance is not a prerequisite.
-
-## Copy packaged workflows into Notion
-
-Use this optional route only for requested team customization or a Notion-owned
-workflow. Product management already uses the execution package's Builtins.
-The exported workflows become user-owned editable native Skills with their own
-Notion identities; they do not establish a Git Source, become reading projections,
-or follow future package updates. Copy only the workflows needed. Use a new
-library or choose stable IDs not already owned by different content.
-
-Set `library_id` to the canonical Library root page UUID. Create only the parent export
-directory; each export creates its own new child directory:
-
-```sh
-library_id='PASTE_LIBRARY_ROOT_PAGE_ID'
-bootstrap_dir=$(mktemp -d "${TMPDIR:-/tmp}/ntn-bootstrap.XXXXXX")
-bootstrap_dir=$(cd "$bootstrap_dir" && pwd -P)
-
-ntn-skills ctl builtin export notion/ntn-skills \
-	--output "$bootstrap_dir/ntn-skills"
-ntn-skills ctl library skill create "$bootstrap_dir/ntn-skills" \
-	--library "$library_id" --skill-id ntn-skills
-
-ntn-skills ctl builtin export notion/ntn-skills-maintain \
-	--output "$bootstrap_dir/ntn-skills-maintain"
-ntn-skills ctl library skill create "$bootstrap_dir/ntn-skills-maintain" \
-	--library "$library_id" --skill-id ntn-skills-maintain
-
-ntn-skills ctl builtin export notion/ntn-skills-sync \
-	--output "$bootstrap_dir/ntn-skills-sync"
-ntn-skills ctl library skill create "$bootstrap_dir/ntn-skills-sync" \
-	--library "$library_id" --skill-id ntn-skills-sync
-```
-
-All Markdown main files and references become native. Verify the actual results
-with scoped `list --refresh`, read each returned ref, and inspect its file
-directory. Read supporting references from the same selection. No projection
-is needed for these native copies.
-
-Repeating `skill create` with the same ID and unchanged complete input reports
-`unchanged`. If the Notion copy was edited, creation rejects the different
-existing content with `CURRENT_SKILL_EXISTS`; it does not overwrite those edits.
-Inspect that copy and use an authorized `skill update` for selected changes.
-Upgrading the package does not update these Notion copies.
-
-For byte-exact package originals instead, use the separate
-[complete import](operations.md#import-a-complete-current-tree) resource route
-and generate its reading projection. Choose that authority before writing.
+saved LIBRARY_ID and repeat the read.
 
 ## Connect Pi
 
