@@ -140,7 +140,16 @@ export function withLocalLocks<T, E, R>(
                   (error): Effect.Effect<void, SkillsError | PlatformError.PlatformError> => {
                     if (error.reason._tag !== "AlreadyExists") return Effect.fail(error)
                     return Effect.gen(function* () {
-                      const identity = yield* fenceIdentity(location)
+                      // The owner can retire this fence after mkdir saw EEXIST.
+                      // Absence still requires a new exclusive acquisition.
+                      const identity = yield* lstatNoFollow(location)
+                      if (identity === undefined)
+                        return yield* Effect.fail(
+                          fail("SYNC_LOCKED", "Lock ownership changed before inspection.", {
+                            key,
+                            lock_path: location,
+                          }),
+                        )
                       const owner = yield* fs
                         .readFileString(path.join(location, "owner.json"))
                         .pipe(
