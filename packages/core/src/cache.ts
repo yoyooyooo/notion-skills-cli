@@ -655,7 +655,22 @@ export function recordScopeAccess(scope: string, generation: number, denied?: Ac
 /** Called only after the current exact owner fence. The reservation predates
  * dependent I/O, so an older success cannot erase a newer physical rejection. */
 export function recordPhysicalPageGrant(scope: string, page: string, generation: number) {
-  return recordAccessObservation(scope, page, generation)
+  return Effect.gen(function* () {
+    yield* recordAccessObservation(scope, page, generation)
+    // A surviving newer rejection must keep its authority error before the
+    // current-evidence publication guard can report a generic stale candidate.
+    const scopeAccess = yield* latestObservation(scopeAccessIdentity, scope)
+    const physical = yield* latestObservation(page, scope)
+    const denied = scopeAccess?.access_denied ?? physical?.access_denied
+    if (denied !== undefined)
+      return yield* Effect.fail(
+        fail(denied, "A newer known rejection defeats this current access grant.", {
+          phase: "current_access",
+          scope,
+          page_id: page,
+        }),
+      )
+  })
 }
 /** Require the selected credential's known scope, then honor known denials.
  * Neither content hashes nor a fixed reference grant access to another scope. */

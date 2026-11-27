@@ -78,7 +78,7 @@ export const authScope = Effect.gen(function* () {
   }
   if (authenticated.success === previous && generation !== undefined)
     yield* recordScopeAccess(authenticated.success, generation)
-  yield* recordScope(authenticated.success)
+  if ((yield* Store).currentEvidence !== undefined) yield* recordScope(authenticated.success)
   return authenticated.success
 })
 
