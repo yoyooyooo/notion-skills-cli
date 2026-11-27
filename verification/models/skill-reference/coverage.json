@@ -12,7 +12,7 @@
     "packages/cli/src/commands-current-members.ts": "371f509d8fb5537929a516c8a503d76b9c11dfc53783c103787a93cacb52510d",
     "packages/cli/test/current-import-batch.test.ts": "57df9f38cfef73a61eb147e04f19d7373f65ddb5e8202761851d60cd2cd1d42d",
     "packages/cli/test/current-import.test.ts": "6298d26090068c3ab71d476d21640a04975461a4cc2354a22938a9fbcbb75278",
-    "packages/cli/test/current-members.test.ts": "d784a957c9e24564bbbef5e689d24e9782cab31d3b83bb747a5d415a049baf64",
+    "packages/cli/test/current-members.test.ts": "f92ef6ec095c5ae7efa2e934569264d5aad291e463cbf25b21c12d29d96c23f3",
     "packages/core/src/cache-address.ts": "55cdc63aea7fbd2751e3a550d2b2e086c1f0f6b753c9ae136a4632dbf46cfaea",
     "packages/core/src/shared-current-import-plan-model.ts": "2f06171a957bbf35699a0a07c733e9fc1d9e7e83218ac25540942fcea76b5f42",
     "packages/core/src/shared-current-member-discovery.ts": "1d7f1b4725dfc624824bef5b9a9d8a1d8ca0b61b5a1e646d5796b2233789e8f5",
@@ -738,5 +738,8 @@
       "packages/core/test/shared-current-operation.test.ts"
     ],
     "result": "correspondence_only; actual run receipts are separate"
+  },
+  "current_review": {
+    "unknown_relation_resume": "The public automatic Members regression preserves its original frozen input and blocks an accepted relation PATCH whose ACK is unknown. Matching current relations is not settlement; resume performs zero mutations and no rediscovery while both journals remain. Existing local-completion ACK replay retains its independent successful recovery case."
   }
 }

@@ -257,7 +257,7 @@ test("explicit empty Members and explicit Requires survive automatic import admi
   expect(members(f, "owner")).toEqual([])
 })
 
-test("automatic Members resume the frozen input without rediscovering target links", async () => {
+test("automatic Members keep frozen input fenced after an unknown relation PATCH without rediscovery", async () => {
   const { input, f } = await setup()
   await writeFile(join(input, "SKILL.md"), header + `[target](${canonical})`)
   const command = Command.runWith(currentImportCommand, { version: "0" })
@@ -267,9 +267,14 @@ test("automatic Members resume the frozen input without rediscovering target lin
   ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
   const frozen = [...f.json].find(([key]) => key.startsWith("operations/import-plan/"))
   expect(frozen).toBeDefined()
-  expect(JSON.stringify(frozen?.[1])).toContain(member)
+  const frozenInput = JSON.stringify(frozen?.[1])
+  expect(frozenInput).toContain(member)
   f.clearCalls()
-  await f.run(command([input, ...base, "--operation", "resume-auto", "--resume"]))
+  await expect(
+    f.run(command([input, ...base, "--operation", "resume-auto", "--resume"])),
+  ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+  expect(f.mutations()).toEqual([])
+  expect(JSON.stringify(f.json.get(frozen![0]))).toBe(frozenInput)
   expect(members(f, "owner")).toHaveLength(1)
   expect(f.table("skills")).toHaveLength(2)
   expect(
@@ -285,7 +290,7 @@ test("automatic Members resume the frozen input without rediscovering target lin
         key.startsWith("operations/import-plan/") ||
         key.startsWith("operations/current-write-pending/"),
     ),
-  ).toEqual([])
+  ).toHaveLength(2)
 })
 
 test("a concurrent manual creation cannot receive automatic Members selected while the identity was absent", async () => {
