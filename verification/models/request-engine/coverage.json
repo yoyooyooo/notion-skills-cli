@@ -35,8 +35,8 @@
     "packages/cli/src/sdk.ts": "7fbe46c5d8b3103ed6984c210005a09b40f0c130e75155d47275e0ed4df41a3d",
     "packages/cli/src/operation-runtime.ts": "a9c344a05035502216f5ccb355e63f8dac0d61f7d4ba3a035cccc1087648f538",
     "packages/cli/test/sdk.test.ts": "71fe42ac3cee2aec463f32a6f32ff8532335326d18e848bcba5e6e73d7d86af3",
-    "packages/core/src/upstream-source.ts": "1828e60deb42607b328bc1520c6c5a8273fae51693bf6e9d6391016672058c26",
-    "packages/core/test/source-git-runtime.test.ts": "2502378487ee73e7bbee17ef6dd3f1fee3f0a44cbeef30b8e98228b3b37ac0d5",
+    "packages/core/src/upstream-source.ts": "a20acf3f675c7c023ae04ab63b820ec88da9c38463833a7e8fa9314f0cd80b62",
+    "packages/core/test/source-git-runtime.test.ts": "2687b96d0bfba82ed3f5f454454ae50d84e5aad90f4fe694c2b1a136a8f02165",
     "packages/core/node_modules/@effect/platform-node-shared/src/NodeChildProcessSpawner.ts": "0e1b55d9e2a52d8d05b720098f485f9d427fa41100795c340bf1ffa1406e1ee3",
     "packages/core/node_modules/@effect/platform-node-shared/src/internal/nodeChildProcessSpawner.ts": "01c3a18cbb62c17952ff1c28e1011ac6fb4bbb04b9be532ad06467032d2093f4",
     "packages/core/src/shared-source-member-discovery.ts": "1056beb323e3a6d55b6edbfb1e87c7b63891962dae7e638b21b1527790b6c5c9",
@@ -526,7 +526,7 @@
         "terminateProcessGroup",
         "awaitProcessExit"
       ],
-      "scope": "SDK options.env is a complete operation snapshot used by ConfigProvider and inherited child processes; explicit command environments retain their policy and safe Git scrub wins. Concurrent callers do not mutate process.env. Public consume wiring is exercised against owned loopback metadata and actual Git shims, with no real origin fetch. POSIX cancellation owns a process group and waits for leader and descendants; SIGTERM-resistant descendants are force-killed after the existing two-second bound. The frozen platform implementation is bound by exact bytes, not claimed as fully verified. Bun and Node process tests are distinct from external Git/auth/network performance. RequestEngine finite variables do not model environment maps, OS groups, signals, Git wire bytes, credential waits, Source cold success, or ordinary Pi deadlines."
+      "scope": "SDK options.env is a complete operation snapshot used by ConfigProvider and inherited child processes; explicit command environments retain their policy and safe Git scrub wins. Concurrent callers do not mutate process.env. Public consume wiring is exercised against owned loopback metadata and actual Git shims, with no real origin fetch. POSIX cancellation owns a process group and waits for leader and descendants; SIGTERM-resistant descendants are force-killed after the existing two-second bound. The frozen platform implementation is bound by exact bytes, not claimed as fully verified. Bun and Node process tests are distinct from external Git/auth/network performance. RequestEngine finite variables do not model environment maps, OS groups, signals, Git wire bytes, credential waits, Source cold success, or ordinary Pi deadlines. The real Git loopback HTTP regression also checks that removing the presence-tested GIT_CURL_VERBOSE variable suppresses raw response-header diagnostics even when enabled in the caller environment; ordinary HTTP/Git failures retain their original classification. This output/environment property is not a finite-model claim."
     },
     {
       "kind": "implementation_regression_not_modeled",
@@ -635,5 +635,14 @@
     "scope": "The sole production SDK Source-directory entry installs the existing whole-invocation RequestBudget before the first Library read. Its default allowance remains 1000 HTTP requests, 512 MiB payload bytes and 600000 ms; an enclosing caller cancellation or shorter Pi preparation budget remains effective. Core directory fibers share this same service and do not each receive a new ten-minute allowance. The pure core export requires its caller to own the overall deadline. Provider and Notion paths retain existing admission and process-group cleanup. RequestBudget checks before candidate-cache read and publication prevent a caught provider exhaustion from becoming a completed partial cache observation. A real controlled HTTP case holds four Git fetches under one three-second parent budget, verifies the other two Sources never start, observes each original process handle termination and an empty final process-group inventory, and requires REQUEST_BUDGET_EXHAUSTED with no candidate cache or semantic write. Signal termination is recorded as the actual platform result, not fabricated as exit zero. These are concrete implementation regressions; the existing RequestAdmission and SharedProducer models do not model Git process groups, wire/object bytes, directory schemas, SQLite publication or wall-clock deadlines.",
     "models_cases_rules_and_mutation_targets": "unchanged",
     "proof_boundary": "Source hashes record reviewed implementation inputs. Model and mutation run results are recorded separately; real remote completeness and ordinary Pi delivery require separate accepted-package execution."
+  },
+  "git_curl_diagnostics_review": {
+    "reviewed_base": "b1413cb1304beb051811f71a6e82b13399b4d5ea",
+    "reviewed_files": [
+      "packages/core/src/upstream-source.ts",
+      "packages/core/test/source-git-runtime.test.ts"
+    ],
+    "boundary": "presence-tested GIT_CURL_VERBOSE is removed; Git authority, requests, deadlines, cancellation and directory completeness are unchanged",
+    "proof_scope": "real Git plus owned HTTP regression; model definitions, case/rule inventories and mutation guards unchanged"
   }
 }

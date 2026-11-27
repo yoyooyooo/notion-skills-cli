@@ -119,10 +119,11 @@
     "packages/cli/test/source-manager-transport.test.ts": "9ba786a3386c1981c22f683392bad077699406560f82ce6078ba6f0322f5002b",
     "packages/core/src/shared-source-definition-options.ts": "9851840edbe44e6bee271adb0f17c4c8986e51e95762b7a530a5976f28c020bb",
     "packages/core/test/shared-source-registration-compat.test.ts": "4c659e6f07a01e1ff6d5afc719220c86f4db331787c5b4af8f527dfb8a518e7e",
-    "packages/core/src/upstream-source.ts": "1828e60deb42607b328bc1520c6c5a8273fae51693bf6e9d6391016672058c26",
+    "packages/core/src/upstream-source.ts": "a20acf3f675c7c023ae04ab63b820ec88da9c38463833a7e8fa9314f0cd80b62",
     "packages/core/src/portable.ts": "6691c58eb2a55f108bcc907cff640ca7587afaa429aec55c86c0b7d124f22b49",
     "packages/cli/src/sdk.ts": "7fbe46c5d8b3103ed6984c210005a09b40f0c130e75155d47275e0ed4df41a3d",
-    "packages/core/test/shared-source-directory.test.ts": "2b58a8f96ff7c6cdf48df1071297e0e5a711006d888851e20e95830533827362"
+    "packages/core/test/shared-source-directory.test.ts": "2b58a8f96ff7c6cdf48df1071297e0e5a711006d888851e20e95830533827362",
+    "packages/core/test/source-git-runtime.test.ts": "2687b96d0bfba82ed3f5f454454ae50d84e5aad90f4fe694c2b1a136a8f02165"
   },
   "models": {
     "CurrentLifecycle": {
@@ -2124,6 +2125,15 @@
         "discoverSourceMembers"
       ],
       "scope": "Registered Source discovery enumerates every selected fixed Git tree before applying an alias query. The independent SourceDirectory carries names, descriptions, canonical main paths and exact member identities, without full content bytes or invented content hashes. It shares strict importDocument, portable manifest, mapping and metadata-patch semantics with complete acquisition, preserves duplicate aliases for caller ambiguity and never upgrades an incomplete observation to complete. Only metadata blobs and required metadata-link targets are read by the directory; the exact manager target still validates and acquires its full resources. Complete-tree path and source identity guards remain, and duplicate Source IDs are rejected before acquisition. Four independent provider fibers return in registration order under one parent invocation budget; an expired budget cannot publish a late candidate cache. Actual controlled Git HTTP regressions cover large unread resources, broken unselected links, full target resource preparation, metadata equivalence, duplicate identities and aliases, and four active process groups followed by two unstarted Sources at a shared deadline. These concrete byte, process, timing and cache-publication obligations are not added finite-model properties and do not establish complete discovery of the live 61-Source library or ordinary Pi delivery."
+    },
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "git_curl_diagnostic_environment",
+      "files": [
+        "packages/core/src/upstream-source.ts",
+        "packages/core/test/source-git-runtime.test.ts"
+      ],
+      "scope": "The shared real Git boundary removes inherited GIT_CURL_VERBOSE rather than assigning the still-enabled string 0. An owned loopback HTTP response proves its original header marker is absent from stderr while the same Git failure code is preserved. Real process environment and libcurl output are concrete regression obligations, not properties of the current lifecycle finite models. This does not establish external Source availability, filter support or complete remote directory discovery."
     }
   ],
   "maintenance": {
@@ -2367,5 +2377,14 @@
     "scope": "Registered Source discovery enumerates every selected fixed Git tree before applying an alias query. The independent SourceDirectory carries names, descriptions, canonical main paths and exact member identities, without full content bytes or invented content hashes. It shares strict importDocument, portable manifest, mapping and metadata-patch semantics with complete acquisition, preserves duplicate aliases for caller ambiguity and never upgrades an incomplete observation to complete. Only metadata blobs and required metadata-link targets are read by the directory; the exact manager target still validates and acquires its full resources. Complete-tree path and source identity guards remain, and duplicate Source IDs are rejected before acquisition. Four independent provider fibers return in registration order under one parent invocation budget; an expired budget cannot publish a late candidate cache. Actual controlled Git HTTP regressions cover large unread resources, broken unselected links, full target resource preparation, metadata equivalence, duplicate identities and aliases, and four active process groups followed by two unstarted Sources at a shared deadline. These concrete byte, process, timing and cache-publication obligations are not added finite-model properties and do not establish complete discovery of the live 61-Source library or ordinary Pi delivery.",
     "models_cases_rules_and_mutation_targets": "unchanged",
     "proof_boundary": "Source hashes record reviewed implementation inputs. Model and mutation run results are recorded separately; real remote completeness and ordinary Pi delivery require separate accepted-package execution."
+  },
+  "git_curl_diagnostics_review": {
+    "reviewed_base": "b1413cb1304beb051811f71a6e82b13399b4d5ea",
+    "reviewed_files": [
+      "packages/core/src/upstream-source.ts",
+      "packages/core/test/source-git-runtime.test.ts"
+    ],
+    "boundary": "presence-tested GIT_CURL_VERBOSE is removed; Git authority, requests, deadlines, cancellation and directory completeness are unchanged",
+    "proof_scope": "real Git plus owned HTTP regression; model definitions, case/rule inventories and mutation guards unchanged"
   }
 }

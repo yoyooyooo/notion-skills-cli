@@ -67,6 +67,11 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
     分别核目录成本、精确管理的完整资源、坏资源拒绝、并发范围和共享期限到期收束；远端不支持 filter 时
     Git 可退回其正常 pack 获取，不能把 cat-file/object-storage 统计说成传输字节上限。
 
+    Git 环境回归须使用真实本机 HTTP 响应，确认禁用 curl diagnostics 后原响应头不会
+    进入 stderr，父环境启用同名变量也不能穿过清理边界。`GIT_CURL_VERBOSE` 按存在性
+    启用，字符串 `0` 仍会打开追踪；需移除变量并保留原 Git 失败分类。该项不证明
+    外部 provider 可达、支持 filter 或完整多 Source 名字发现成功。
+
 [resource-sources](../verify-ntn-skills/features/resource-sources.md) 连接当前测试、精确原件与实际安装边界。来源读取、Source 写入和实库全文覆盖分别验收；未支持 provider 明确拒绝，没执行的真实范围记 not_run。
 
 ## Evidence
