@@ -122,7 +122,7 @@
     "packages/core/src/upstream-source.ts": "1828e60deb42607b328bc1520c6c5a8273fae51693bf6e9d6391016672058c26",
     "packages/core/src/portable.ts": "6691c58eb2a55f108bcc907cff640ca7587afaa429aec55c86c0b7d124f22b49",
     "packages/cli/src/sdk.ts": "7fbe46c5d8b3103ed6984c210005a09b40f0c130e75155d47275e0ed4df41a3d",
-    "packages/core/test/shared-source-directory.test.ts": "cf335df954cf2793fb9efdc46a8112f872b8e8b1aff95f7568c650a60b0ff785"
+    "packages/core/test/shared-source-directory.test.ts": "2b58a8f96ff7c6cdf48df1071297e0e5a711006d888851e20e95830533827362"
   },
   "models": {
     "CurrentLifecycle": {

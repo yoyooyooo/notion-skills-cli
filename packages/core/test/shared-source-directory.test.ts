@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
-import { copyFile, mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises"
+import { copyFile, mkdtemp, mkdir, realpath, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createServer } from "node:http"
@@ -31,7 +31,7 @@ import {
 const { startSdkGitFixture } = await import(
   new URL("../../../scripts/sdk-source-fixture.mjs", import.meta.url).href
 )
-const root = await mkdtemp(join(tmpdir(), "source-directory-"))
+const root = await realpath(await mkdtemp(join(tmpdir(), "source-directory-")))
 afterAll(async () => {
   if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
 })
