@@ -210,7 +210,7 @@ lifecycle_cases = [
      "packages/core/test/library-lifecycle-guards.test.ts",
      "unchanged declarations cannot conceal a foreign Files data-source parent", "ReadyDataSourcesBelongToTables"),
     ("library-complete-readback", "packages/core/src/shared-library.ts",
-     [('return yield* inspectLibrary(library, children)', 'return library')],
+     [('yield* inspectLibrary(library, children)', 'void inspectLibrary(library, children)')],
      "packages/core/test/library-lifecycle-guards.test.ts",
      "a descriptor cannot become Ready before the Sources schema", "ReadyHasCompleteReadback"),
     ("library-complete-root-inventory", "packages/core/src/shared-library.ts",
