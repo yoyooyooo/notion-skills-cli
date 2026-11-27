@@ -3,7 +3,8 @@ import {
   sourceMemberCacheKey,
 } from "./shared-source-materialization-state.ts"
 import { readMaterializationClosure } from "./shared-source-materialization-closure.ts"
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
+import { RequestBudget } from "./request-budget.ts"
 import { authScope } from "./catalog.ts"
 import { aliasFor, fail, type ContentRecord } from "./model.ts"
 import { Notion } from "./notion.ts"
@@ -19,7 +20,7 @@ import { uninitializedSourceSkill } from "./shared-current-source-adoption.ts"
 import { readCurrentSourceGitOrigin } from "./shared-current-source.ts"
 import { sourceDiscoveryInput } from "./shared-source-adapters.ts"
 import { sourceDefinitionOptions } from "./shared-source-definition-options.ts"
-import { discoverSource } from "./upstream-source.ts"
+import { discoverSourceDirectory } from "./upstream-source.ts"
 import { Store } from "./store.ts"
 import {
   type SourceMemberCandidate,
@@ -161,180 +162,204 @@ function discoverDirectSourceMembers(
     )
     const candidates: SourceMemberCandidate[] = [],
       failures: { source_id: string; code: string }[] = []
-    const seenSources = new Set<string>()
-    for (const row of sourceRows) {
-      if (
-        exactRows[0] !== undefined &&
-        !(yield* currentSourceOriginContains(
-          library,
-          String((exactRows[0] as { id: unknown }).id),
-          exactRows[0],
-          String((row as { id: unknown }).id),
-        ))
-      )
-        continue
-      const identity = yield* materializationChecked(() =>
-        parseCurrentSourceIdentity(library, row),
-      ).pipe(Effect.result)
-      if (identity._tag === "Failure") {
-        failures.push({ source_id: input.source_id ?? "unresolved", code: identity.failure.code })
-        continue
-      }
-      const source_id = identity.success.source_id
-      const result = yield* Effect.gen(function* () {
-        const registration = yield* materializationChecked(() =>
-          parseMaterializationRegistration(library, row),
-        )
-        if (seenSources.has(source_id))
-          return yield* Effect.fail(
-            fail("CURRENT_SOURCE_DUPLICATE", "Several registrations share one Source ID."),
-          )
-        seenSources.add(source_id)
-        if (!registration.definition.enabled) return []
-        const digest = yield* sourceRegistrationDigest(registration)
-        const bindings = yield* sourceMemberBindings(library, registration, skillRows)
-        const found: SourceMemberCandidate[] = []
-        const git =
-          registration.current === undefined
-            ? undefined
-            : yield* readCurrentSourceGitOrigin(library, { ...registration.current, source_id })
-        const acceptedCommit =
-          git?.commit || registration.legacy_registration?.last_revision || undefined
-        const available =
-          registration.state.state === "ready" || registration.state.state === "uninitialized"
-        const writable = yield* materializationChecked(() =>
-          validateCurrentSourceInput({
-            version: 1,
-            definition: registration.definition,
-            contributions: [],
-          }),
-        ).pipe(Effect.result)
+    // Identity and duplicates are resolved before any concurrent provider work.
+    // Each fiber returns its own result; Effect.forEach retains registration order.
+    const observations = yield* Effect.forEach(sourceRows, (row) =>
+      Effect.gen(function* () {
         if (
-          writable._tag === "Failure" &&
-          ![
-            "CURRENT_SOURCE_WRITE_UNSUPPORTED",
-            "SOURCE_COMPOSITION_REVIEW_REQUIRED",
-            "SOURCE_STORAGE_REVIEW_REQUIRED",
-          ].includes(writable.failure.code)
+          exactRows[0] !== undefined &&
+          !(yield* currentSourceOriginContains(
+            library,
+            String((exactRows[0] as { id: unknown }).id),
+            exactRows[0],
+            String((row as { id: unknown }).id),
+          ))
         )
-          return yield* Effect.fail(writable.failure)
-        const writeReason = writable._tag === "Failure" ? writable.failure.code : undefined
-        const base = {
-          type: "source_member" as const,
-          library_id: library.library_id,
-          scope,
-          source_id,
-          registration_digest: digest,
-          ...(acceptedCommit === undefined ? {} : { expected_source_commit: acceptedCommit }),
-          ...(registration.current === undefined
-            ? {}
-            : { expected_source_revision: registration.current.revision }),
-        }
-        for (const [member_key, entries] of bindings)
-          for (const entry of entries) {
-            if (entry.record === undefined) continue
-            if (entry.record.kind !== "skill") {
-              if (
-                matches(input.query, {
-                  ...entry.record,
+          return undefined
+        const identity = yield* materializationChecked(() =>
+          parseCurrentSourceIdentity(library, row),
+        ).pipe(Effect.result)
+        return { row, identity }
+      }),
+    )
+    const selected = observations.filter((entry) => entry !== undefined)
+    const identityCounts = new Map<string, number>()
+    for (const { identity } of selected)
+      if (identity._tag === "Success") {
+        const id = identity.success.source_id
+        identityCounts.set(id, (identityCounts.get(id) ?? 0) + 1)
+      }
+    const results = yield* Effect.forEach(
+      selected,
+      ({ row, identity }) =>
+        Effect.gen(function* () {
+          const source_id =
+            identity._tag === "Success"
+              ? identity.success.source_id
+              : (input.source_id ?? "unresolved")
+          const result = yield* Effect.gen(function* () {
+            if (identity._tag === "Failure") return yield* Effect.fail(identity.failure)
+            if (identityCounts.get(source_id) !== 1)
+              return yield* Effect.fail(
+                fail("CURRENT_SOURCE_DUPLICATE", "Several registrations share one Source ID."),
+              )
+            const registration = yield* materializationChecked(() =>
+              parseMaterializationRegistration(library, row),
+            )
+            if (!registration.definition.enabled) return []
+            const digest = yield* sourceRegistrationDigest(registration)
+            const bindings = yield* sourceMemberBindings(library, registration, skillRows)
+            const found: SourceMemberCandidate[] = []
+            const git =
+              registration.current === undefined
+                ? undefined
+                : yield* readCurrentSourceGitOrigin(library, { ...registration.current, source_id })
+            const acceptedCommit =
+              git?.commit || registration.legacy_registration?.last_revision || undefined
+            const available =
+              registration.state.state === "ready" || registration.state.state === "uninitialized"
+            const writable = yield* materializationChecked(() =>
+              validateCurrentSourceInput({
+                version: 1,
+                definition: registration.definition,
+                contributions: [],
+              }),
+            ).pipe(Effect.result)
+            if (
+              writable._tag === "Failure" &&
+              ![
+                "CURRENT_SOURCE_WRITE_UNSUPPORTED",
+                "SOURCE_COMPOSITION_REVIEW_REQUIRED",
+                "SOURCE_STORAGE_REVIEW_REQUIRED",
+              ].includes(writable.failure.code)
+            )
+              return yield* Effect.fail(writable.failure)
+            const writeReason = writable._tag === "Failure" ? writable.failure.code : undefined
+            const base = {
+              type: "source_member" as const,
+              library_id: library.library_id,
+              scope,
+              source_id,
+              registration_digest: digest,
+              ...(acceptedCommit === undefined ? {} : { expected_source_commit: acceptedCommit }),
+              ...(registration.current === undefined
+                ? {}
+                : { expected_source_revision: registration.current.revision }),
+            }
+            for (const [member_key, entries] of bindings)
+              for (const entry of entries) {
+                if (entry.record === undefined) continue
+                if (entry.record.kind !== "skill") {
+                  if (
+                    matches(input.query, {
+                      ...entry.record,
+                      member_key,
+                      expected_skill_id: entry.skill_id,
+                    })
+                  )
+                    return yield* Effect.fail(
+                      fail(
+                        "SOURCE_MATERIALIZATION_UNSUPPORTED",
+                        "A registered Git member must retain the Skill content kind.",
+                      ),
+                    )
+                  continue
+                }
+                const uninitialized =
+                  entry.record.enabled !== false && available
+                    ? yield* materializationChecked(() =>
+                        uninitializedSourceSkill(library, entry.raw),
+                      )
+                    : false
+                const blocked = uninitialized && writeReason !== undefined
+                const candidate = {
+                  ...base,
                   member_key,
                   expected_skill_id: entry.skill_id,
-                })
-              )
-                return yield* Effect.fail(
-                  fail(
-                    "SOURCE_MATERIALIZATION_UNSUPPORTED",
-                    "A registered Git member must retain the Skill content kind.",
-                  ),
-                )
-              continue
-            }
-            const uninitialized =
-              entry.record.enabled !== false && available
-                ? yield* materializationChecked(() => uninitializedSourceSkill(library, entry.raw))
-                : false
-            const blocked = uninitialized && writeReason !== undefined
-            const candidate = {
-              ...base,
-              member_key,
-              expected_skill_id: entry.skill_id,
-              name: entry.record.name,
-              alias: entry.record.alias,
-              description: entry.record.description,
-              enabled: entry.record.enabled !== false,
-              record: entry.record,
-              readiness:
-                entry.record.enabled === false
-                  ? ("blocked" as const)
-                  : !available
-                    ? ("preparing" as const)
-                    : uninitialized
-                      ? blocked
-                        ? ("blocked" as const)
-                        : ("materializable" as const)
-                      : ("ready" as const),
-              ...(blocked && available && entry.record.enabled !== false
-                ? { reason: writeReason }
-                : {}),
-            }
-            if (matches(input.query, candidate)) found.push(candidate)
-          }
-        // Exact stable physical selection needs no upstream scan. It is still
-        // only a candidate; the manager re-reads configuration and original bytes.
-        if (
-          input.query !== undefined &&
-          found.some((entry) => entry.expected_skill_id === input.query)
-        )
-          return found
-        const definition =
-          acceptedCommit === undefined
-            ? registration.definition
-            : {
-                ...registration.definition,
-                options: {
-                  ...sourceDefinitionOptions(registration.definition.options),
-                  accepted_ref: acceptedCommit,
-                },
+                  name: entry.record.name,
+                  alias: entry.record.alias,
+                  description: entry.record.description,
+                  enabled: entry.record.enabled !== false,
+                  record: entry.record,
+                  readiness:
+                    entry.record.enabled === false
+                      ? ("blocked" as const)
+                      : !available
+                        ? ("preparing" as const)
+                        : uninitialized
+                          ? blocked
+                            ? ("blocked" as const)
+                            : ("materializable" as const)
+                          : ("ready" as const),
+                  ...(blocked && available && entry.record.enabled !== false
+                    ? { reason: writeReason }
+                    : {}),
+                }
+                if (matches(input.query, candidate)) found.push(candidate)
               }
-        const observation = yield* discoverSource(
-          { ...sourceDiscoveryInput(definition), allow_empty: true },
-          { metrics: (yield* Notion).metrics },
-        )
-        const assigned = yield* resolveCurrentSourceContributions({
-          source_id,
-          members: observation.members.map((member) => member.member_key),
-          overrides: registration.contributions,
-        })
-        for (const member of observation.members) {
-          if (bindings.get(member.member_key)?.some((entry) => entry.record !== undefined)) continue
-          const rows = assigned.filter((entry) => entry.member_key === member.member_key)
-          for (const entry of rows) {
-            const candidate = {
-              ...base,
-              expected_source_commit: observation.revision,
-              member_key: member.member_key,
-              expected_skill_id: entry.skill_id,
-              name: member.portable.name,
-              alias: aliasFor(member.portable.name),
-              description: member.portable.description,
-              enabled: true,
-              readiness: !available
-                ? ("preparing" as const)
-                : writeReason === undefined
-                  ? ("materializable" as const)
-                  : ("blocked" as const),
-              ...(available && writeReason !== undefined ? { reason: writeReason } : {}),
+            // Exact stable physical selection needs no upstream scan. It is still
+            // only a candidate; the manager re-reads configuration and original bytes.
+            if (
+              input.query !== undefined &&
+              found.some((entry) => entry.expected_skill_id === input.query)
+            )
+              return found
+            const definition =
+              acceptedCommit === undefined
+                ? registration.definition
+                : {
+                    ...registration.definition,
+                    options: {
+                      ...sourceDefinitionOptions(registration.definition.options),
+                      accepted_ref: acceptedCommit,
+                    },
+                  }
+            const observation = yield* discoverSourceDirectory(
+              { ...sourceDiscoveryInput(definition), allow_empty: true },
+              { metrics: (yield* Notion).metrics },
+            )
+            const assigned = yield* resolveCurrentSourceContributions({
+              source_id,
+              members: observation.members.map((member) => member.member_key),
+              overrides: registration.contributions,
+            })
+            for (const member of observation.members) {
+              if (bindings.get(member.member_key)?.some((entry) => entry.record !== undefined))
+                continue
+              const rows = assigned.filter((entry) => entry.member_key === member.member_key)
+              for (const entry of rows) {
+                const candidate = {
+                  ...base,
+                  expected_source_commit: observation.revision,
+                  member_key: member.member_key,
+                  expected_skill_id: entry.skill_id,
+                  name: member.name,
+                  alias: aliasFor(member.name),
+                  description: member.description,
+                  enabled: true,
+                  readiness: !available
+                    ? ("preparing" as const)
+                    : writeReason === undefined
+                      ? ("materializable" as const)
+                      : ("blocked" as const),
+                  ...(available && writeReason !== undefined ? { reason: writeReason } : {}),
+                }
+                if (matches(input.query, candidate)) found.push(candidate)
+              }
             }
-            if (matches(input.query, candidate)) found.push(candidate)
-          }
-        }
-        return found
-      }).pipe(Effect.result)
+            return found
+          }).pipe(Effect.result)
+          return { source_id, result }
+        }),
+      { concurrency: 4 },
+    )
+    for (const { source_id, result } of results)
       if (result._tag === "Success") candidates.push(...result.success)
       else failures.push({ source_id, code: result.failure.code })
-    }
     const store = yield* Store,
       key = sourceMemberCacheKey(scope, library.library_id)
+    const budget = yield* Effect.serviceOption(RequestBudget)
+    if (Option.isSome(budget)) yield* budget.value.check
     const previous = yield* store.readJson(key, SourceMemberCacheSchema)
     const cached = new Map(
       (previous?.candidates ?? []).map((entry) => [
@@ -347,6 +372,9 @@ function discoverDirectSourceMembers(
         JSON.stringify([entry.source_id, entry.member_key, entry.expected_skill_id]),
         entry,
       )
+    // Provider failures may be partial directory facts; a spent parent budget
+    // is not a completed observation and must not publish a late candidate slot.
+    if (Option.isSome(budget)) yield* budget.value.check
     yield* store.writeJson(key, {
       version: 1,
       library_id: library.library_id,

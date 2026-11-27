@@ -22,6 +22,7 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/catalog-retirement.node.test.ts packages/core/test/source-materialization-finalization.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/candidate-snapshot.node.test.ts packages/core/test/shared-sqlite.node.test.ts -t "actual SDK Source discovery|Source candidate metadata|unfinished materialization input"
 bun test packages/core/test/shared-source-registration-compat.test.ts packages/core/test/shared-source-member-discovery.test.ts packages/core/test/shared-source-materialization-management.test.ts packages/core/test/shared-source-materialization-receipt.test.ts packages/core/test/shared-source-materialization-legacy-registration.test.ts packages/cli/test/management.test.ts packages/cli/test/source-manager-transport.test.ts packages/core/test/shared-current-source-writer.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-source-write.test.ts --timeout 60000
+bun test packages/core/test/shared-source-directory.test.ts packages/core/test/upstream-source.test.ts packages/core/test/upstream-source-batch.test.ts packages/core/test/source-git-runtime.test.ts packages/core/test/shared-current-portable.test.ts --timeout 60000
 ~~~
 
 这些命令分别证明 fixture 机制、实际 core 管理和恢复，不代表 Pi 已取得正文。 fixture 预检必须经过生产 Source、current owner、Members 和 Requires parser；惰性 Members 保持 enabled 但缺正文，另保留 disabled 关系拒绝反例。新增持久地址必须通过真实 SQLite 与另一 Node 进程：候选缓存可更新、清理且不能跨 scope；冻结物化输入不可替换、不能被 cache retirement 清掉，完成才物理退役。只用 Map Store 的管理单测无法覆盖地址分类和 schema，不能替代这一层。正式命令按仓库当前测试入口执行，不能把未找到测试、编译错误或超时算作反例杀死。
@@ -40,6 +41,39 @@ manager 重读声明后独立拒绝；已有 ready 物理记录仍可按普通�
 仍拒绝。每个失败绑定已验证的 Source ID；不能因无匹配候选而隐藏 partial，不能跳过
 一个未完成的 Source 来证明名字全库唯一。新回归使用实际注册 parser、只读发现和
 core manager 的远端写账本；真实 Git/包/宿主和多 Source 覆盖另验，不扩大有限模型结论。
+
+## 固定树上的完整名字目录
+
+首次名字发现不获取所有已登记成员的完整资源。独立 `SourceDirectory` 绑定真实固定
+commit/tree，完整枚举 configured roster，保留每个 member 的 name/description/main，
+没有 files、正文或 content hash。它不能通过完整 `SourceSnapshot` 的 schema，管理端
+仍用原完整获取、原件 hash、资源与引用校验准备精确目标。
+
+目录与完整读取共用 Git runtime、安全环境、pin、完整 tree、批量对象获取和 scoped
+取消边界，以及 portable 元数据 schema、frontmatter、mapping 和元数据 patch 解释。
+只取 SKILL.md、存在的 .ntn-skills.json 及这些元数据实际引用的固定树链接；main 路径
+必须能在该 member 的固定树内解析为普通 blob，但查名字不要求读取其正文。
+非元数据附件与资源 patch 的内容验证留在完整 preparation；未知 manifest/schema、
+不可解析元数据或缺 entrypoint 仍使该 Source 失败，保留 Source ID 并返回 partial。
+
+同 Source 内重复 alias 是完整目录中的多个候选，不能自动去重，也不能使另一个名字
+的查询失去完整性。注册身份与 duplicate Source ID 在任何并发 Git 获取之前核验；
+最多四个 Source 共享原 invocation budget 和取消，独立返回结果后按注册顺序合并。
+该限制不增加 Pi 的 180 秒 Source 准备额度，也不为每个 Source 或 member 重开时限。
+生产 `discoverSourceMembers` 在 Library 读取之前安装一次现役整次 RequestBudget，
+默认上限仍为 600000ms；它包含这次完整目录与 Requires 查询，并继承原取消 signal。
+纯 core 的 `discoverSourceDirectory` 由调用者持有期限，不自行创建 per-Source timer。
+公共 SDK 已经耗尽的预算必须以错误结束，不能只把预算失败塞入 partial 并晚写候选。
+
+`shared-source-directory.test.ts` 使用真实过滤 Git HTTP、实际 core 目录入口和既有
+Notion/Store fixture：目录不取大附件，无关坏资源与 alias 冲突不吞掉完整名字集合；
+精确 `prepareCurrentSource` 仍取得目标全部资源并拒绝坏资源。另核 portable/mapping/
+patch 同义、metadata link、未知元数据、重复注册与四路并发。共享父期限反例保留
+四个实际 pending Git HTTP 请求、真实 process handle 退出观察及 PGID 前后；后两项
+不能重新启动 fetch，候选 cache 和管理写均为零。signal 退出保持其真实异常观察，
+不伪造退出码；这层不宣称实际 Pi 取消。保存 cat-file、object
+storage 和真实 HTTP 分层证据；它不证明真实 61 个远端可达、实库或 Pi 已完成交付，
+也不把不支持 filter 的 Git 服务端正常 pack 回退说成元数据传输上限。
 
 ## 幂等管理回执
 

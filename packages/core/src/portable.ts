@@ -175,6 +175,8 @@ export interface PortableSkill {
   readonly files: readonly ImportFile[]
   readonly relations?: PortableRelations
 }
+/** Manifest metadata is not a portable tree or proof that its resources exist. */
+export type PortableMetadata = Omit<PortableSkill, "files">
 export const fileOrder = (a: ImportFile, b: ImportFile) =>
   a.path < b.path ? -1 : a.path > b.path ? 1 : 0
 
@@ -248,7 +250,7 @@ export function portableZip(skill: PortableSkill) {
   return zipSync(entries)
 }
 
-export function readPortable(input: readonly ImportFile[]): PortableSkill | undefined {
+export function readPortableMetadata(input: readonly ImportFile[]): PortableMetadata | undefined {
   const file = input.find((file) => file.path === MANIFEST)
   if (!file) return undefined
   if (input.filter((file) => file.path === MANIFEST).length !== 1)
@@ -267,19 +269,37 @@ export function readPortable(input: readonly ImportFile[]): PortableSkill | unde
     const manifest = Schema.decodeUnknownSync(PortableManifestSchema)(raw, {
       onExcessProperty: "error",
     })
-    const files = input.filter((file) => file.path !== MANIFEST).sort(fileOrder)
-    if (!files.some((file) => file.path === manifest.main))
-      throw fail("INVALID_ARCHIVE", "Portable entrypoint is missing.")
-    const portable: PortableSkill = {
+    validateDisplayName(manifest.name)
+    validateDescription(manifest.description)
+    if (
+      !manifest.main ||
+      normalizePath(manifest.main) !== manifest.main ||
+      manifest.main === MANIFEST
+    )
+      throw fail("INVALID_ARCHIVE", "Portable entrypoint requires a safe resource path.")
+    return {
       kind: manifest.kind,
       name: manifest.name,
       description: manifest.description,
       main: manifest.main,
-      files,
       ...(manifest.relations === undefined
         ? {}
         : { relations: validatePortableRelations(raw.relations) }),
     }
+  } catch (error) {
+    if (error instanceof SkillsError) throw error
+    throw fail("INVALID_ARCHIVE", "Could not decode the portable Skill manifest.")
+  }
+}
+
+export function readPortable(input: readonly ImportFile[]): PortableSkill | undefined {
+  try {
+    const metadata = readPortableMetadata(input)
+    if (metadata === undefined) return undefined
+    const files = input.filter((file) => file.path !== MANIFEST).sort(fileOrder)
+    if (!files.some((file) => file.path === metadata.main))
+      throw fail("INVALID_ARCHIVE", "Portable entrypoint is missing.")
+    const portable: PortableSkill = { ...metadata, files }
     portableFiles(portable)
     return portable
   } catch (error) {
