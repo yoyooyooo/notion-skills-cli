@@ -19,6 +19,7 @@ bun test packages/core/test/shared-current-source-check.test.ts packages/core/te
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-source-ref-cache.node.test.ts
 bun test packages/core/test/shared-source-member-discovery.test.ts packages/core/test/shared-source-materialization-management.test.ts packages/core/test/shared-source-materialization-legacy-registration.test.ts packages/core/test/shared-source-materialization-invalidation.test.ts packages/core/test/shared-current-source-writer.test.ts --timeout 60000
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-source-fixture.node.test.ts
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-source-manager-dispatch.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/candidate-snapshot.node.test.ts packages/core/test/shared-sqlite.node.test.ts -t "actual SDK Source discovery|Source candidate metadata|unfinished materialization input"
 ~~~
 
@@ -41,7 +42,7 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 
     `shared-source-ref-cache.node.test.ts` 使用实际 Node/SQLite/Git 和新 PID 核上述边界；`shared-current-source-check.test.ts` 另核同一 ref hint 仍逐项比较各自 Notion declaration，以及旧批次结果不能隐藏后来新 ref。ref 未变只提供上游提示，不证明 Notion 当前授权、完整 plan、Files/Contributions 或成员已发布；普通 Pi 消费固定对象，不因此探 HEAD 或切换选定 Source revision。
 
-11. 首次明确 `$` 引用的消费准备沿 [Source 物化](../verify-ntn-skills/features/source-materialization.md)。覆盖旧行缺 schema、仅 Source 无 Skill、Source Content/Contributions 全空和 manifest 增长四初态。固定 manager 在同一 Store fence 内追加已 ready 的 M 与本次 R，保留全部声明但不初始化未请求 sibling；use 包含真实 Requires，Members 惰性。受影响事实失效后仍走普通 readonly consume，Notion 阅读投影调用为 0。真实 Pi 新 PID 五分钟缓存、独立第二客户端和最终完整 provider 字节必须分别取得证据。
+11. 首次明确 `$` 引用的消费准备沿 [Source 物化](../verify-ntn-skills/features/source-materialization.md)。覆盖旧行缺 schema、仅 Source 无 Skill、Source Content/Contributions 全空和 manifest 增长四初态。固定 manager 在同一 Store fence 内追加已 ready 的 M 与本次 R，保留全部声明但不初始化未请求 sibling；use 包含真实 Requires，Members 惰性。受影响事实失效后仍走普通 readonly consume，Notion 阅读投影调用为 0。真实 Pi 新 PID 五分钟缓存、独立第二客户端和最终完整 provider 字节必须分别取得证据。 真实 fixed-manager/SQLite/HTTP 迟到派发走标准 Node suite；业务 PATCH、控制 Record PATCH/retire 和子未决时不同父请求的零写拒绝分别核验。该层不代表 Pi 取消，也不替代 kernel supersede 的 unit/有限模型。
 
 [resource-sources](../verify-ntn-skills/features/resource-sources.md) 连接当前测试、精确原件与实际安装边界。来源读取、Source 写入和实库全文覆盖分别验收；未支持 provider 明确拒绝，没执行的真实范围记 not_run。
 

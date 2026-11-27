@@ -5,7 +5,9 @@ import { request } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { promisify } from "node:util"
+import { fileURLToPath } from "node:url"
 import { expect, test, vi } from "vitest"
+import { parseMaterializationRegistration } from "../src/shared-source-materialization-registration.ts"
 
 // The verification fixture is deliberately standalone JavaScript, shared by the
 // installed SDK smoke and the actual Pi driver without importing product state.
@@ -203,12 +205,8 @@ test("materialization facts preserve two missing-owner initial states and an unt
   expect(
     legacySource.sample.notion.sources[0].properties["Last Revision"].rich_text[0].text.content,
   ).toBe(fixture.source_materialization.commit)
-  expect(legacySource.sample.notion.sources[0].properties.Content.rich_text[0].text.content).toBe(
-    "",
-  )
-  expect(
-    legacySource.sample.notion.sources[0].properties.Contributions.rich_text[0].text.content,
-  ).toBe("")
+  expect(legacySource.sample.notion.sources[0].properties.Content.rich_text).toEqual([])
+  expect(legacySource.sample.notion.sources[0].properties.Contributions.rich_text).toEqual([])
   expect(
     legacySource.sample.notion.skills.find((row: { id: string }) => row.id === "old-page-root")
       .properties["Source Member"].rich_text[0].text.content,
@@ -269,6 +267,76 @@ test("materialization facts preserve two missing-owner initial states and an unt
   ])
   expect(native.contributions).toHaveLength(3)
   expect(fixture).toEqual(original)
+})
+
+test("the real materialization generator produces Source facts accepted by the production parser", async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "sdk-materialization-parser-")))
+  const output = join(directory, "fixture")
+  const generated = await promisify(execFile)(
+    process.execPath,
+    [
+      fileURLToPath(new URL("../../../scripts/sdk-fixture.ts", import.meta.url)),
+      "--outdir",
+      output,
+      "--catalog",
+      "--materialization",
+    ],
+    { env: process.env, timeout: 30_000 },
+  )
+  await writeFile(join(directory, "generator.stdout.log"), generated.stdout)
+  await writeFile(join(directory, "generator.stderr.log"), generated.stderr)
+  const sample = JSON.parse(await readFile(join(output, "fixture.json"), "utf8"))
+  const description = "完整说明 😀".repeat(400)
+  sample.source_materialization.members[0].description = description
+  for (const initial of [
+    "source-only",
+    "legacy-members",
+    "legacy-source",
+    "manifest-growth",
+    "native-root",
+  ]) {
+    const facts = materializationServiceFacts(
+      sample,
+      "http://127.0.0.1:43210/upstream.git",
+      initial,
+    )
+    const source = facts.sample.notion.sources.find(
+      (row: { id: string }) => row.id === facts.source_page_id,
+    )
+    const registration = parseMaterializationRegistration(facts.sample.notion.library, source)
+    expect(registration.definition.source_id).toBe(facts.source_id)
+    expect(registration.state.state).toBe(initial === "legacy-source" ? "uninitialized" : "ready")
+    for (const row of [...facts.sample.notion.sources, ...facts.sample.notion.skills]) {
+      for (const value of Object.values(row.properties) as Array<{
+        rich_text?: Array<{ text?: { content?: string }; plain_text?: string }>
+        title?: Array<{ text?: { content?: string }; plain_text?: string }>
+      }>) {
+        for (const fragment of value.rich_text ?? value.title ?? []) {
+          const text = fragment.plain_text ?? fragment.text?.content ?? ""
+          expect(text.length).toBeLessThanOrEqual(2000)
+          expect(text).not.toMatch(/[\ud800-\udbff]$/u)
+        }
+      }
+    }
+    if (initial === "source-only") {
+      const parts = source.properties.Content.rich_text
+      expect(parts.length).toBeGreaterThan(1)
+      expect(
+        JSON.parse(parts.map((part: { text: { content: string } }) => part.text.content).join("")),
+      ).toEqual({ version: 1, plan: facts.plan })
+    }
+    if (initial === "legacy-members") {
+      const root = facts.sample.notion.skills.find(
+        (row: { id: string }) => row.id === facts.members[0].legacy_page_id,
+      )
+      expect(
+        root.properties.Description.rich_text
+          .map((part: { text: { content: string } }) => part.text.content)
+          .join(""),
+      ).toBe(description)
+    }
+  }
+  console.info(JSON.stringify({ controlledMaterializationParserEvidence: directory }))
 })
 
 test("Source contribution contains queries return complete candidates with normal pagination", async () => {

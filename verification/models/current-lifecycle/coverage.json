@@ -101,9 +101,10 @@
     "packages/core/src/shared-source-member-discovery.ts": "0371aa6d08a85485056c03d21f6ee6ee0bfbe96a72e8e0a70e56bf6d3dd162a9",
     "packages/core/test/shared-source-materialization-legacy-registration.test.ts": "16366199dd23b3f227e8aabfa4bd8a9e11e3c3237a4f385532444b021ace33c7",
     "packages/core/test/shared-source-materialization-invalidation.test.ts": "8e5e48b1cf392bfd5949fa8363148c19d0007f4155269e2a7d15a2ee2f615252",
-    "packages/core/test/sdk-source-fixture.node.test.ts": "7a4b10fdc3bd43379b3e69be98008ac3882fd07b99cc5dfb584d103665f0a6e3",
-    "scripts/sdk-source-fixture.mjs": "c1e0b61623919483616b6b0f849b5efe90e2f7dd2ef60511e774e8b1a5e83318",
-    "scripts/sdk-fixture.ts": "a0fb7ec3dd9c49ba02514f2f83e92957b1a13f098f9cd2985974fbbf020dd9d6"
+    "packages/core/test/sdk-source-fixture.node.test.ts": "66260d3644fa8485eaad7e9d89a4874740ed8623b1f542c3c8a275880f2f84d7",
+    "scripts/sdk-source-fixture.mjs": "3f8f2c318a072a3f3ec51cc30bd3abe03bd31dca48eb36f789e7574a63910fa3",
+    "scripts/sdk-fixture.ts": "a0fb7ec3dd9c49ba02514f2f83e92957b1a13f098f9cd2985974fbbf020dd9d6",
+    "packages/core/test/shared-source-manager-dispatch.node.test.ts": "c77d51d24c909fba012b3203a56a7f76349be8a9cca456181990a7f3101e9abc"
   },
   "models": {
     "CurrentLifecycle": {
@@ -2038,9 +2039,10 @@
         "packages/core/src/sqlite-state.ts",
         "packages/core/src/cache-retention-model.ts",
         "packages/core/test/candidate-snapshot.node.test.ts",
-        "packages/core/test/shared-sqlite.node.test.ts"
+        "packages/core/test/shared-sqlite.node.test.ts",
+        "packages/core/test/shared-source-manager-dispatch.node.test.ts"
       ],
-      "scope": "Actual SDK discovery writes the registered scope/Library Source-member cache and local candidate snapshots read it through real SQLite. Cross-process tests retain metadata, reject another credential address, preserve immutable unfinished input through cache retirement and physically retire completed journal state. The exact legacy applied registration permits only management initialization, preserving historical accepted Git commit and rechecking frozen physical/schema/provider/revision evidence before the existing Record/applying writes; current consume remains strict. Legacy recovery distinguishes definitive rejection from unknown dispatch and refuses changed registration without new writes. A blocked stale candidate invalidates its exact target plus catalog facts while retaining unrelated candidates. Controlled Git fixtures advertise a newer HEAD with different root bytes and retain the selected older commit. These concrete regressions, independent Store authentication, fixed-manager transport and actual Pi/provider-byte checks are not additional finite-state claims."
+      "scope": "Actual SDK discovery writes the registered scope/Library Source-member cache and local candidate snapshots read it through real SQLite. Cross-process tests retain metadata, reject another credential address, preserve immutable unfinished input through cache retirement and physically retire completed journal state. The exact legacy applied registration permits only management initialization, preserving historical accepted Git commit and rechecking frozen physical/schema/provider/revision evidence before the existing Record/applying writes; current consume remains strict. Legacy recovery distinguishes definitive rejection from unknown dispatch and refuses changed registration without new writes. A blocked stale candidate invalidates its exact target plus catalog facts while retaining unrelated candidates. Controlled Git fixtures advertise a newer HEAD with different root bytes and retain the selected older commit. These concrete regressions, independent Store authentication, fixed-manager transport and actual Pi/provider-byte checks are not additional finite-state claims. The standard Node suite launches the actual packed fixed manager against a complete consumer installation, canonical SQLite and real HTTP. It retains arrived requests across manager process termination, performs fresh-process resumes before and after late application, and checks exact request ledgers and copied SQLite originals. Source business PATCH equality cannot settle unknown writes; unique original control Record nonce/retirement evidence and an unsettled child blocking a different parent request are checked separately. This is not actual Pi cancellation or a public kernel supersede command. The fixture uses legal codepoint-safe rich-text fragments and exact method/path/body controls; the actual production parser regression covers all five materialization initial states."
     }
   ],
   "maintenance": {
@@ -2177,6 +2179,16 @@
       "packages/core/test/shared-current-write.test.ts",
       "packages/core/test/shared-sqlite.node.test.ts"
     ],
-    "result": "correspondence_only; actual run receipts are separate"
+    "result": "correspondence_only; actual run receipts are separate",
+    "fixed_manager_dispatch_review": {
+      "files": [
+        "scripts/sdk-source-fixture.mjs",
+        "packages/core/test/sdk-source-fixture.node.test.ts",
+        "packages/core/test/shared-source-manager-dispatch.node.test.ts"
+      ],
+      "scope": "Concrete fixed-manager/SQLite/HTTP implementation regression; no additional finite-state property, bounds or expected failures.",
+      "fixture_review": "1900 UTF-16-unit codepoint-safe rich-text chunks preserve complete Source Content under the production 2000-unit fragment limit. matchBody only narrows an already-declared exact method/path control.",
+      "evidence_contract": "Retain original HTTP request/event ledgers, actual manager PIDs/exits, immutable full installation inventory and original/copy SQLite snapshots. Public distinct-request admission is separate from kernel supersede. actual_pi_cancellation remains not_run."
+    }
   }
 }

@@ -50,7 +50,19 @@ export function materializationServiceFacts(sample, gitUrl, initial) {
   delete result.view_dynamics
   assert.equal(members.length, 3)
   const [root, required, sibling] = members
-  const rich = (value) => [{ type: "text", plain_text: value, text: { content: value } }]
+  const rich = (value) => {
+    const chunks = []
+    let chunk = ""
+    for (const char of value) {
+      if (chunk.length + char.length > 1_900) {
+        chunks.push({ type: "text", plain_text: chunk, text: { content: chunk } })
+        chunk = ""
+      }
+      chunk += char
+    }
+    if (chunk) chunks.push({ type: "text", plain_text: chunk, text: { content: chunk } })
+    return chunks
+  }
   const field = (binding, name, type, value) => {
     const id = binding.property_ids[name]
     assert.equal(typeof id, "string", "Declare the actual registered property: " + name)
@@ -1021,12 +1033,25 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     assert.ok(!closing && !pendingControl, "Only one next HTTP control may be armed")
     const allowed =
       kind === "hold"
-        ? ["method", "path", "afterHeaders", "applyAfterDisconnect"]
+        ? ["method", "path", "afterHeaders", "applyAfterDisconnect", "matchBody"]
         : kind === "reject"
           ? ["method", "path", "status", "retryAfterSeconds"]
           : ["method", "path"]
     assert.ok(options && Object.keys(options).every((key) => allowed.includes(key)))
     assert.ok(knownRoute(options.method, options.path), "Controls require one exact declared route")
+    if (Object.hasOwn(options, "matchBody")) {
+      const match = options.matchBody
+      assert.ok(match && typeof match === "object" && !Array.isArray(match))
+      assert.ok(Object.keys(match).every((key) => ["path", "exists", "value"].includes(key)))
+      assert.ok(Array.isArray(match.path) && match.path.length > 0 && match.path.length <= 8)
+      assert.ok(
+        match.path.every(
+          (part) => typeof part === "string" && part.length > 0 && part.length <= 200,
+        ),
+      )
+      assert.notEqual(Object.hasOwn(match, "exists"), Object.hasOwn(match, "value"))
+      if (Object.hasOwn(match, "exists")) assert.equal(match.exists, true)
+    }
     if (kind === "hold" && Object.hasOwn(options, "afterHeaders"))
       assert.equal(typeof options.afterHeaders, "boolean")
     if (kind === "hold" && Object.hasOwn(options, "applyAfterDisconnect")) {
@@ -1060,6 +1085,17 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       closed: next.closed.promise,
       release: () => next.release.resolve(),
     }
+  }
+
+  const matchesBody = (match, body) => {
+    if (match === undefined) return true
+    let selected = body
+    for (const part of match.path) {
+      if (selected === null || typeof selected !== "object" || !Object.hasOwn(selected, part))
+        return false
+      selected = selected[part]
+    }
+    return match.exists === true || canonicalJson(selected) === canonicalJson(match.value)
   }
 
   const server = createServer(async (request, response) => {
@@ -1156,7 +1192,11 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       call.request_sha256 = hash(bytes)
       const body = bytes.length === 0 ? undefined : JSON.parse(bytes.toString("utf8"))
       call.body = body ?? null
-      if (pendingControl?.method === request.method && pendingControl.path === url.pathname) {
+      if (
+        pendingControl?.method === request.method &&
+        pendingControl.path === url.pathname &&
+        matchesBody(pendingControl.matchBody, body)
+      ) {
         next = pendingControl
         pendingControl = undefined
         record.next = next
