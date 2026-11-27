@@ -4,18 +4,30 @@ import {
   invalidateSnapshotCache,
   publishSnapshotObservation,
   recordPhysicalPageGrant,
+  type ObservedSnapshot,
 } from "./cache.ts"
 import {
   localContentRestrictedHashes,
   markLocalContentRestriction,
 } from "./content-restrictions.ts"
+import type { CurrentFact } from "./current-evidence-model.ts"
+import {
+  assertCurrentEvidence,
+  captureCurrentEvidence,
+  currentPageFact,
+  currentRelationFact,
+} from "./current-evidence.ts"
 import { decode, fail, SkillsError, SnapshotSchema, type Snapshot, type Source } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { withReadOnlyNotion } from "./notion-readonly.ts"
 import { normalizePath, pageId } from "./ref.ts"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { sharedRecordFromPage } from "./shared-content.ts"
-import { queryCurrentSkillIndex, type CurrentSkillIndex } from "./shared-current-index.ts"
+import {
+  currentFilesFact,
+  queryCurrentSkillIndex,
+  type CurrentSkillIndex,
+} from "./shared-current-index.ts"
 import {
   resolveCurrentSkillConsumption,
   type CurrentSkillConsumption,
@@ -144,6 +156,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const physicalGeneration = yield* store.reserveCacheGeneration(input.scope, selected)
     const raw =
       input.rawPage === undefined ? yield* api.request(`v1/pages/${selected}`) : input.rawPage
+    const rootFact = yield* currentPageFact(raw)
     const source: Source = {
       alias: input.library.library_id,
       title: "",
@@ -508,12 +521,16 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     // boundary again after all body/provider requests, including a writer that
     // completed and returned to ready. This is a change detector, not a CAS.
     const finalRaw = yield* api.request(`v1/pages/${selected}`)
+    const finalRootFact = yield* currentPageFact(finalRaw)
     const finalIndex = yield* queryCurrentSkillIndex(input.library, selected, finalRaw)
     yield* checked(() => requireCurrentSkillReady(finalIndex.state, finalIndex.page_id))
     const finalConsumption = yield* resolveCurrentSkillConsumption(input.library, finalIndex, {
       sourceOptions: input.sourceOptions,
     })
-    if (consumptionFence(finalIndex, finalConsumption) !== consumptionFence(index, consumption))
+    if (
+      rootFact?.fingerprint !== finalRootFact?.fingerprint ||
+      consumptionFence(finalIndex, finalConsumption) !== consumptionFence(index, consumption)
+    )
       return yield* Effect.fail(
         fail(
           "CURRENT_TREE_CHANGED",
@@ -521,6 +538,56 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           { skill_page_id: selected, next: "reselect_current" },
         ),
       )
+    let expectedFacts: CurrentFact[] | undefined
+    if (store.currentEvidence !== undefined) {
+      if (rootFact === undefined || consumption.current_facts === undefined)
+        return yield* Effect.fail(
+          fail("CACHE_INVALIDATED", "The selected current metadata has no complete evidence."),
+        )
+      expectedFacts = [
+        rootFact,
+        yield* currentFilesFact(input.library.files.data_source_id, selected, index.files),
+        ...consumption.current_facts,
+      ]
+      for (const [field, targets] of [
+        ["Members", members],
+        ["Requires", required],
+      ] as const) {
+        if (targets === undefined) continue
+        const propertyId = input.library.skills.property_ids[field]
+        if (propertyId === undefined)
+          return yield* Effect.fail(
+            fail("CACHE_INVALIDATED", "A selected current relation has no property identity."),
+          )
+        expectedFacts.push(
+          yield* currentRelationFact(
+            selected,
+            propertyId,
+            targets.map((target) => target.metadata.page_id),
+          ),
+        )
+      }
+      for (const file of index.files) {
+        // currentFileRecord already rejected archived, trashed and foreign rows.
+        // These are the timestamps actually read, never the latest stored values.
+        const fact = yield* currentPageFact({
+          id: file.page_id,
+          last_edited_time: file.last_edited_time,
+        })
+        if (fact === undefined)
+          return yield* Effect.fail(
+            fail("CACHE_INVALIDATED", "A selected current File has no page evidence."),
+          )
+        expectedFacts.push(fact)
+      }
+    }
+    // Restore only this physically revalidated owner, using the attempt reserved
+    // before its remote reads. A newer denial still defeats this grant.
+    yield* recordPhysicalPageGrant(input.scope, selected, physicalGeneration)
+    const currentEvidence =
+      expectedFacts === undefined
+        ? undefined
+        : yield* captureCurrentEvidence(input.scope, expectedFacts, [record.id])
     const fileBindings = bindings
       .filter((file) => file.content.kind !== "source")
       .map(({ file_id, page_id, path }) => ({ file_id, page_id, path }))
@@ -598,9 +665,11 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         : Math.min(
             ...observations.map((file) => file.body_verified_at + SHARED_FULL_BODY_MAX_AGE_MS),
           )
-    if (!record.enabled)
-      return {
+    if (!record.enabled) {
+      yield* assertCurrentEvidence(currentEvidence)
+      const observed: ObservedSnapshot = {
         ...current,
+        ...(currentEvidence === undefined ? {} : { current_evidence: currentEvidence }),
         source: "notion" as const,
         freshness: {
           policy: "refresh" as const,
@@ -608,12 +677,14 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           age_ms: 0,
         },
       }
+      return observed
+    }
     const published = yield* publishSnapshotObservation(current, input.startedAt, generation, {
       ...(bodyReads === 0 ? { metadataOnly: true as const } : {}),
       sharedBodyValidUntil: bodyValidUntil,
       sharedMaterializedPaths: [...materialized.keys()].sort(compare),
+      currentEvidence,
     })
-    yield* recordPhysicalPageGrant(input.scope, selected, physicalGeneration)
     return published
   }).pipe(
     withReadOnlyNotion,

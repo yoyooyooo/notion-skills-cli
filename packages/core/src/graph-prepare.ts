@@ -1,6 +1,11 @@
 import { Clock, Crypto, Effect, FileSystem, Path, Schema } from "effect"
 import { HttpClient } from "effect/http"
-import { locallySelectedScope, type ObservedSnapshot, type ReadPolicyOptions } from "./cache.ts"
+import {
+  assertKnownSnapshotAccess,
+  locallySelectedScope,
+  type ObservedSnapshot,
+  type ReadPolicyOptions,
+} from "./cache.ts"
 import { authScope } from "./catalog.ts"
 import {
   currentConsumptionEffects,
@@ -34,6 +39,8 @@ import { canonicalSharedJson } from "./shared-records.ts"
 import { observedRelationPageDenial } from "./shared-skill-targets.ts"
 import { targetSnapshot } from "./snapshot.ts"
 import { sha256, Store } from "./store.ts"
+import { assertCurrentEvidenceSet } from "./current-evidence.ts"
+import type { CurrentEvidence } from "./current-evidence-model.ts"
 
 type Services =
   | Notion
@@ -238,6 +245,7 @@ function prepareSelectedInScope(
     const pins = new Map<string, string>()
     const session = new Map<string, PrepareBinding>()
     const nodes = new Map<string, PrepareNode>()
+    const currentReadSets: (CurrentEvidence | undefined)[] = []
     const snapshots = new Map<string, ObservedSnapshot>()
     const errorsById = new Map<string, SkillsError>()
     const heights = new Map<string, number>()
@@ -441,6 +449,8 @@ function prepareSelectedInScope(
             depth,
           )
           id = snapshot.record.id
+          if (selected.snapshot === undefined && snapshot.record.locator.type === "shared_skill")
+            currentReadSets.push(snapshot.current_evidence)
           yield* checked(() => register(snapshot!.record, snapshot!.snapshot_id))
           attempted.delete(key)
           attempted.add(id)
@@ -716,6 +726,8 @@ function prepareSelectedInScope(
         }),
       )
     }
+    for (const snapshot of snapshots.values()) yield* assertKnownSnapshotAccess(snapshot)
+    yield* assertCurrentEvidenceSet(currentReadSets)
     return {
       preparation: {
         ...ready,

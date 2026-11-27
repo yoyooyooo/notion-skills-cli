@@ -51,7 +51,9 @@
         "packages/core/test/shared-read-coalescing.test.ts",
         "packages/core/test/bounded-graph-metadata.test.ts",
         "packages/core/test/sdk-bounded-metadata.node.test.ts",
-        "packages/core/test/candidate-snapshot.node.test.ts"
+        "packages/core/test/candidate-snapshot.node.test.ts",
+        "packages/core/test/current-evidence.node.test.ts",
+        "packages/core/test/shared-current-evidence.node.test.ts"
       ],
       "installed_recipe": ".cursor/skills/verify-ntn-skills/features/portable-export-package-consumption.md",
       "excludes": ["原作者写入权限", "实际 Pi/自然模型通过"]
@@ -62,6 +64,8 @@
       "features": ["resource-sources.md"],
       "regressions": [
         "packages/core/test/shared-current-source.test.ts",
+        "packages/core/test/shared-current-source-check.test.ts",
+        "packages/core/test/shared-source-ref-cache.node.test.ts",
         "packages/core/test/shared-acquisition-contract.test.ts",
         "packages/core/test/shared-current-resource.test.ts"
       ],
@@ -287,11 +291,12 @@
     },
     {
       "id": "C07a",
-      "title": "SDK generation 与迟到发布",
+      "title": "SDK generation、持久事实与最终全图准入",
       "owner": "verify-notion-consumption",
       "issue": "AH-1190",
       "state_owners": [
         "Store generation",
+        "persistent current evidence and complete dependency read sets",
         "qualification cache",
         "physical page access observations and stable identity aliases"
       ],
@@ -300,14 +305,15 @@
         "clear",
         "publish",
         "deny",
+        "known changed then unknown, unchanged repetition and final root/Requires admission",
         "exact physical rejection after alias retirement or alias-read/stable-write failure"
       ],
-      "observation": "保留原验证时间；clear 退役 generation",
+      "observation": "缓存命中保留原验证时间；metadata续证不延长全文期限；clear退役generation，事实epoch按实际变化推进",
       "ordinary": "已有精确固定 bytes 不等于 current grant",
       "explicit": "新 current 重新验证",
-      "failure": "迟到结果不复活 retired generation，不冲掉较新 deny",
+      "failure": "迟到结果不复活retired generation，不冲掉较新deny或dirty；全图依赖的事实/权限/退休变化拒绝发布",
       "recovery": "精确 current 合法时补 Source/resource 原 bytes",
-      "linearization": "Store 原子 generation/deny publication",
+      "linearization": "Store 原子 generation/deny/current-fact publication 与最终完整依赖读集检查",
       "not_proven": [
         "清 observations 不等于空 Store",
         "未建模 physical↔stable alias 的有限模型不能代填。Store seam 的旧A/当前B构造与公开SQLite层级分开；SQLite退休alias仍拒绝改绑，公开SDK用同stable双正文版本验证拒绝、clear与fresh恢复。"
@@ -562,7 +568,7 @@
   "scenarios": [
     {
       "id": "T01",
-      "title": "目录与current TTL边界遇到正文或元数据编辑",
+      "title": "目录、current证据与TTL兜底遇到正文或依赖编辑",
       "contracts": ["C01", "C02", "C05"],
       "owner": "verify-notion-consumer-state",
       "issue": "AH-1191",
@@ -571,14 +577,18 @@
         "Notion改正文、名称或Requires；分别停在catalog TTL前后与read eligibility前后。",
         "新会话普通选择、原会话重复use、显式refresh并行读取。",
         "实际Pi冷读根与Requires后退出；正文与目录均5分钟时启动新PID/session，再以正文5分钟、目录1秒并真实等目录过期重放。",
+        "正文和目录1秒后新PID以完整metadata复核重用正文；Required单独变化后新Pi观察、取消，下一PID遇429恢复完整闭包。",
+        "新current与Requires全集变化后原pin继续；再开新Pi采用替换后的完整依赖集合。",
         "普通Pi安装保留正常配置与cache，经find/doctor诊断后用两个独立空session读取同一实际Skill，核默认正文策略1小时。"
       ],
       "oracle": [
-        "TTL内可复用A但必须准确标freshness；新会话不自动等于冷读。",
+        "TTL内且无已知变化才可复用A，准确标freshness；新会话不自动等于冷读，known dirty遇unknown不恢复旧资格。",
         "eligibility到期若返回last_edited_time变更即拉该body，否则按独立body规则。",
         "固定session pin仍A；不能一部分上下文A、一部分未声明地换B。",
         "正文和目录均fresh时，实际新Pi整个暖阶段HTTP为0，含启动与后台；目录过期时只允许list解释全部暖HTTP，consume HTTP仍为0，根结构children保留真实物理分类。",
         "根与Requires均来自local_cache，原snapshot、validated_at与完整正文不变，完整闭包进入实际provider请求；SDK或助手单测不能代填host结果。",
+        "metadata续证记source:notion/validation:metadata和新validated_at，独立body_verified_at不续；实际Skill Markdown下载0，不能将根children隐藏为零body请求。",
+        "Required-only变化后取消不交付旧current，429后新Pi恢复完整闭包；根正文不重复下载，后到current不改已接纳pin，新Requires全集不含移除项。",
         "普通安装分别报告目录、consume与其他HTTP及实际Requires数量；无Requires的现场目标不代替受控闭包正例，受控provider不证明自然任务或真实模型完成。"
       ],
       "minimum_layer": "host",
@@ -587,6 +597,11 @@
         {
           "repository": "cli",
           "command": "bun test packages/core/test/graph-prepare.test.ts --timeout 60000",
+          "required_inputs": []
+        },
+        {
+          "repository": "cli",
+          "command": "node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/current-evidence.node.test.ts packages/core/test/shared-current-evidence.node.test.ts",
           "required_inputs": []
         },
         {
@@ -610,6 +625,24 @@
             "同一CLI/Broker配对的实际独立安装包、current HTTP fixture和源码HTTP helper",
             "实际Pi入口与本轮未占用的绝对输出目录；fixture含根与Requires完整正文",
             "正文5分钟、目录1秒，冷Pi退出后真实等目录过期再启动新PID/session；以现有evidence动作重验输出"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/notion-sdk-pi.mjs run --package /absolute/selected/broker --fixture /absolute/owned/current-fixture/fixture.json --source-http-helper /absolute/selected/cli/scripts/sdk-source-fixture.mjs --pi /absolute/installed/pi/dist/bundle/cli.js --scenario http-smart-revalidate --out /absolute/owned/smart-revalidate",
+          "required_inputs": [
+            "同一CLI/Broker配对的实际独立安装包、current HTTP fixture和源码HTTP helper",
+            "实际Pi入口与本轮未占用的绝对输出目录；正文与目录1秒，真实等过期后完整metadata复核",
+            "Skill Markdown下载0、完整root/Requires原件与真实续证时间；以现有evidence动作重验输出"
+          ]
+        },
+        {
+          "repository": "broker",
+          "command": "node scripts/notion-sdk-pi.mjs run --package /absolute/selected/broker --fixture /absolute/owned/current-fixture/fixture.json --source-http-helper /absolute/selected/cli/scripts/sdk-source-fixture.mjs --pi /absolute/installed/pi/dist/bundle/cli.js --scenario http-smart-current --out /absolute/owned/smart-current",
+          "required_inputs": [
+            "同一CLI/Broker配对的实际独立安装包、current HTTP fixture和源码HTTP helper",
+            "实际Pi入口与本轮未占用的绝对输出目录；四个独立PID/session共享自有Store而不继承pin",
+            "Required变更、真实取消/429、后续恢复、pin稳定与Requires全集替换；以现有evidence动作重验输出"
           ]
         },
         {

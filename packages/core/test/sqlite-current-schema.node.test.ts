@@ -153,6 +153,7 @@ test("two first-run processes share one complete current schema and retain both 
       "cache_admissions",
       "cache_fences",
       "catalogs",
+      "current_facts",
       "identities",
       "local_content_restrictions",
       "observations",

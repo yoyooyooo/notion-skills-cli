@@ -1,5 +1,6 @@
 import { Clock, Effect } from "effect"
 import {
+  assertKnownSnapshotAccess,
   cachedRemoteObservation,
   effectiveCachePolicy,
   freshness,
@@ -48,6 +49,7 @@ import { sharedGraphTarget, sharedGraphSkillIdentity } from "./shared-graph-read
 import { sharedReadFreshness } from "./shared-read-freshness.ts"
 import { resolveCurrentSourceReference } from "./shared-source-references.ts"
 import { sha256, Store } from "./store.ts"
+import { assertCurrentEvidence, currentEvidenceMatches } from "./current-evidence.ts"
 
 export { loadSnapshot, loadSnapshotManifest } from "./fixed-snapshot-files.ts"
 
@@ -321,6 +323,8 @@ function acquireTargetSnapshot(
       const locator = observed?.snapshot.record.locator
       let useObserved =
         observed !== undefined &&
+        (locator?.type !== "shared_skill" ||
+          (yield* currentEvidenceMatches(observed.current_evidence))) &&
         (options.offline ||
           (Number.isFinite(age) &&
             age >= 0 &&
@@ -392,6 +396,9 @@ function acquireTargetSnapshot(
         }
         snapshot = {
           ...observed.snapshot,
+          ...(observed.current_evidence === undefined
+            ? {}
+            : { current_evidence: observed.current_evidence }),
           ...(materialization === undefined ? {} : { materialization }),
           ...(observed.shared_body_valid_until === undefined
             ? {}
@@ -502,6 +509,9 @@ function acquireTargetSnapshot(
       try: () => assertSnapshotTarget(snapshot, target, pinnedDatabase),
       catch: (error) => error as SkillsError,
     })
+    yield* assertKnownSnapshotAccess(snapshot)
+    if (!target.snapshot && snapshot.record.locator.type === "shared_skill")
+      yield* assertCurrentEvidence(snapshot.current_evidence)
     return { snapshot, files }
   })
 }

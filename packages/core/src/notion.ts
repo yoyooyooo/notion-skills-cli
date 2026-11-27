@@ -19,6 +19,7 @@ import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
 import { HttpClient } from "effect/http"
 import { ApiErrorSchema, decode, fail, property, SkillsError } from "./model.ts"
 import { sha256 } from "./store.ts"
+import { withNotionChangeEvidence } from "./current-evidence.ts"
 import {
   NOTION_ADMISSION_BUDGET_MS,
   NotionRequestScheduler,
@@ -493,7 +494,9 @@ export const NotionTransport = Layer.effect(
         })
         return yield* coalescer.run(
           { key: requestKey, path, method, file: options?.file, content: options?.content },
-          execute,
+          withNotionChangeEvidence(credential.identity, origin, path, execute).pipe(
+            Effect.provideService(Crypto.Crypto, crypto),
+          ),
         )
       })
     const detachedReadContext: Effect.Effect<DetachedNotionReadContext, SkillsError> = Effect.gen(
