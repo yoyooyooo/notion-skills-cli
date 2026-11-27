@@ -36,7 +36,7 @@ import { Notion } from "./notion.ts"
 import { bindTarget, pageId, type SkillTarget } from "./ref.ts"
 import { sharedMetadataEntryFromPage } from "./shared-content.ts"
 import { sharedGraphInventory } from "./shared-graph-read-context.ts"
-import { libraryFromDatabase, loadSharedLibrary } from "./shared-library.ts"
+import { libraryFromDatabase, loadSharedLibraryObservation } from "./shared-library.ts"
 import {
   directorySkillMetadata,
   type SharedSkillMetadataObservation,
@@ -119,12 +119,11 @@ export function explicitSource(input: string, sources?: readonly Source[]) {
     const configured = sources ?? (yield* configuredSources)
     const id = yield* libraryId(input, configured)
     const registered = configured.find((source) => source.shared_library?.library_id === id)
-    const library = yield* loadSharedLibrary(id)
-    const raw = yield* (yield* Notion).request(`v1/databases/${library.skills.database_id}`)
+    const { library, skillsTitle } = yield* loadSharedLibraryObservation(id)
     return {
       alias: registered?.alias ?? id,
       database_id: library.skills.database_id,
-      title: text(property(raw).title),
+      title: skillsTitle,
       data_source_ids: [library.skills.data_source_id],
       role: "content" as const,
       shared_library: library,
