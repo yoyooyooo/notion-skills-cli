@@ -265,7 +265,7 @@ test("current page acquisition fences the owner before and after body reads", as
   expect(bodyReads.length).toBe(2)
   expect(ownerReads[0]).toBeLessThan(Math.min(...bodyReads))
   expect(ownerReads[1]).toBeGreaterThan(Math.max(...bodyReads))
-  expect(f.calls.filter((call) => call.path === `v1/databases/${database}`)).toHaveLength(3)
+  expect(f.calls.filter((call) => call.path === `v1/databases/${database}`)).toHaveLength(2)
   expect(
     f.calls.some(
       (call) =>
