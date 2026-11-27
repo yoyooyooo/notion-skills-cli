@@ -1,6 +1,6 @@
 import packageManifest from "../package.json" with { type: "json" }
 import { Effect, Schema } from "effect"
-import { fail } from "../../core/src/model.ts"
+import { fail, SkillsError } from "../../core/src/model.ts"
 import { authScope, libraryId } from "../../core/src/catalog.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { canonicalSharedJson } from "../../core/src/shared-records.ts"
@@ -61,6 +61,20 @@ export type { RequestMetricsSnapshot } from "../../core/src/request-metrics.ts"
 export interface ManagementOptions extends OperationOptions {}
 export type SourceCheckInput = CurrentSourceCheckRequest & { readonly library: string }
 export type SourceSyncInput = CurrentSourceSyncRequest & { readonly library: string }
+
+/** A verified manager result is evidence, not successful consumer preparation. */
+export type SourceMaterializationFinalizationDetails = {
+  readonly phase: "consumer_finalization"
+  readonly local_error_code: string
+  readonly verified_management: {
+    readonly request_id: string
+    readonly execution_id: string
+    readonly library: string
+    /** Original authenticated manager scope; no consumer scope is synthesized. */
+    readonly receipt: SourceMaterializationReceipt
+  }
+  readonly local_error_details?: unknown
+}
 
 function checkedEntry(input: { readonly library: string }, options: ManagementOptions): string {
   if (Object.hasOwn(options, "readOnly"))
@@ -182,27 +196,49 @@ export async function materializeSource(
         "SOURCE_MATERIALIZATION_RECEIPT_INVALID",
         "The manager receipt belongs to a different request or target.",
       )
-    return await runRuntimeOperation(
-      () =>
-        libraryId(selected).pipe(
-          Effect.flatMap(loadSharedLibrary),
-          Effect.flatMap((library) =>
-            Effect.gen(function* () {
-              // The manager proves its own authenticated result. Delivery and local
-              // cache facts belong to this consumer's independently verified scope.
-              const scope = yield* authScope
-              const receipt: SourceMaterializationReceipt = {
-                ...result,
-                manager_scope: result.scope,
-                scope,
-              }
-              yield* invalidateMaterializationFacts(library, receipt)
-              return receipt
-            }),
+    try {
+      return await runRuntimeOperation(
+        () =>
+          libraryId(selected).pipe(
+            Effect.flatMap(loadSharedLibrary),
+            Effect.flatMap((library) =>
+              Effect.gen(function* () {
+                // The manager proves its own authenticated result. Delivery and local
+                // cache facts belong to this consumer's independently verified scope.
+                const scope = yield* authScope
+                const receipt: SourceMaterializationReceipt = {
+                  ...result,
+                  manager_scope: result.scope,
+                  scope,
+                }
+                yield* invalidateMaterializationFacts(library, receipt)
+                return receipt
+              }),
+            ),
           ),
-        ),
-      { ...options, onRequestMetrics: undefined },
-    )
+        { ...options, onRequestMetrics: undefined },
+      )
+    } catch (error) {
+      const local =
+        error instanceof SkillsError
+          ? error
+          : fail(
+              "SOURCE_MATERIALIZATION_FINALIZATION_FAILED",
+              "The verified manager result could not be prepared for this consumer.",
+            )
+      const details: SourceMaterializationFinalizationDetails = {
+        phase: "consumer_finalization",
+        local_error_code: local.code,
+        verified_management: {
+          request_id: input.request_id,
+          execution_id: binding.execution_id,
+          library: binding.library,
+          receipt: result,
+        },
+        ...(local.details === undefined ? {} : { local_error_details: local.details }),
+      }
+      throw fail(local.code, local.message, details)
+    }
   } finally {
     options.onRequestMetrics?.(null)
   }

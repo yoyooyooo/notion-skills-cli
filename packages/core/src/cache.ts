@@ -857,10 +857,20 @@ export function cachedRemoteObservation(
     }
   })
 }
+// Retirement needs only the directory's scope and complete database inventory.
+// Old record/Library descriptors are not consumption authority and need not be
+// decoded by today's consumer schema merely to retire a disposable cache slot.
+const CatalogRetirementOwnerSchema = Schema.Struct({
+  scope: Schema.NonEmptyString,
+  databases: Schema.Array(Schema.Struct({ database_id: Schema.NonEmptyString })),
+  coverage: Schema.Struct({ exhaustive: Schema.Boolean }),
+})
+
 /** Retire current library directory and View observations, including cached absence. */
 export function invalidateCurrentLibraryCatalog(scope: string, targetDatabase: string) {
   return Effect.gen(function* () {
     const store = yield* Store
+    const target = pageId(targetDatabase)
     const keys = new Set(yield* store.listKeys(`cache/catalogs/${scope}`))
     for (const key of yield* store.listKeys(`cache-generations/${scope}`)) {
       const identity = identityFromSegment(key.split("/")[2]!.replace(/\.json$/, ""))
@@ -875,11 +885,17 @@ export function invalidateCurrentLibraryCatalog(scope: string, targetDatabase: s
         affected.push(key)
         continue
       }
-      const cached = yield* store.readJson(key, CatalogSchema)
+      const stored = yield* store.readJson(key, Schema.Unknown)
+      const owner = Schema.decodeUnknownResult(CatalogRetirementOwnerSchema)(stored)
       if (
-        !cached ||
-        !cached.coverage.exhaustive ||
-        cached.databases.some((db) => db.database_id === targetDatabase)
+        owner._tag === "Failure" ||
+        target === undefined ||
+        owner.success.scope !== scope ||
+        !owner.success.coverage.exhaustive ||
+        owner.success.databases.some((db) => {
+          const id = pageId(db.database_id)
+          return id === undefined || id === target
+        })
       )
         affected.push(key)
     }

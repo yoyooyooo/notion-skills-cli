@@ -19,6 +19,7 @@ node scripts/sdk-fixture.ts --outdir /absolute/owned/materialization-fixture --c
 ~~~sh
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-source-fixture.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-source-manager-dispatch.node.test.ts
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/catalog-retirement.node.test.ts packages/core/test/source-materialization-finalization.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/candidate-snapshot.node.test.ts packages/core/test/shared-sqlite.node.test.ts -t "actual SDK Source discovery|Source candidate metadata|unfinished materialization input"
 bun test packages/core/test/shared-source-member-discovery.test.ts packages/core/test/shared-source-materialization-management.test.ts packages/core/test/shared-source-materialization-receipt.test.ts packages/core/test/shared-source-materialization-legacy-registration.test.ts packages/cli/test/management.test.ts packages/cli/test/source-manager-transport.test.ts packages/core/test/shared-current-source-writer.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-source-write.test.ts --timeout 60000
 ~~~
@@ -30,6 +31,21 @@ bun test packages/core/test/shared-source-member-discovery.test.ts packages/core
 用 `shared-source-materialization-receipt.test.ts` 核验真实 writer 返回值：另一 request 已完成后，原候选的新 request 返回 `already_ready`、零写和真实 target Source revision；目标已 ready、仅另一 Source 的 Requires 发生写时，回执同时保留目标与写入 Source 的 revision。成功回执缺 target revision 必须同时被 CLI 与 Broker decoder 拒绝，pending/blocked 仍可没有 revision。矛盾的 Source Content/plan/hash 不得产生成功回执。
 
 跨 SDK 边界另留实际消费者鉴权、scope 重绑定、SQLite 失效和严格 Broker 解码的原始证据。普通暖 Pi 的 management=0 证明未调用管理端，不能替代 `already_ready` 管理回执验证。有限模型中的成功事件是抽象，不证明真实 JSON 字段完整。
+
+严格校验管理 envelope、request、execution、Library、target 与 authorization_root 后，
+消费者 Library/身份读取、缓存退休或取消仍可能失败。此时公共管理 SDK 继续抛原错误，
+在 `details.phase=consumer_finalization` 中分别保留原 `local_error_code` 和
+`verified_management`。后者包含原 request_id、execution_id、library 与管理 receipt；
+receipt.scope 始终是管理端身份，不能冒充尚未完成验证的消费者 scope。已有错误 details
+保存在 `local_error_details`，非领域异常只返回固定安全错误码。
+
+`source-materialization-finalization.node.test.ts` 使用真实本地传输子进程发送受控回执，
+记录子进程提交的回执内容、输入与退出回调，结合 loopback HTTP 和 SQLite 核 ready 后本地失效失败、
+blocked 后消费者鉴权失败，以及取得回执后的实际 abort。实际 stdout/stderr/close 由 Broker 全链路观测。
+传输或回执验证前的失败没有这份证明；远端 error.details
+即使伪造相同字段也不能升级为已验证结果。管理事实的保留不允许进入后续完整目录、
+普通 consume 或 provider 发布。非领域 defect 通过 runtime 边界单点注入；这条反例不代表
+实际远端 writer 故障。实际宿主诊断和取消会话边界仍由 Broker integration 核验。
 
 ## 真实管理进程的未决派发
 
@@ -65,6 +81,9 @@ bun test packages/core/test/shared-source-member-discovery.test.ts packages/core
 2. 真正用户输入的字面 `$name` 才签发当前 input receipt。引用/代码围栏里的美元名、模型生成文本、旧分支、旧 session、取消或过期 receipt 不得派发管理。候选不唯一、停用、未知、native 权威、注册改变均明确拒绝。
 3. 固定管理端在 canonical Store 的同一 fence 内完成完整 read–plan–write；apply、refresh、sync、materialize、相关 Source 文件/生命周期命令都受该边界约束。配置了 manager 的客户端不得落回本地 writer。SSH 断开、前台取消或超时不能释放未知写或转给新主机。
 4. 管理回执绑定 request、scope、Library、Source/member、accepted commit/revision 和真实物理 records。SDK 必须用消费者自身实际鉴权得到公共 scope，原管理 scope 保存在 manager_scope；不同凭据的真实 SQLite identities 要与回执逐项相符。ready 只说明管理目标已落地；它不能替代消费、正文或 provider 证据。回执先失效受影响事实，再完成并持久化同一 Library/消费者 scope 的真实完整 SDK catalog，最后走普通 SDK consume。仅有目标闭包的局部目录不能标成全量缓存；目录失败、非完整或 scope 改变时不能继续发布 ready 正文。use 包含全部真实 Requires，Members 保持惰性；旧 pins 不被回执直接替换。
+   这一链路须包含已有日用缓存升级的初态：同 scope 存在旧 v1 和当前 v2 目录，管理后的
+   退休不能依赖解码旧目录的全部消费字段。沿 Broker 的 `source-materialize-cache-upgrade`
+   运行真实首次引用、完整 provider 和新 PID 零远端暖读，不能用空 Store 成功替代。
 5. 对响应丢失的业务 mutation、Operation Record PATCH/retire 和父 Source/子 Skill 分别验证。未知原请求不因 desired 值相等或 idempotent 标签重发；只有原唯一写的终结证据才可放行。已知 ACK 与内容校验成功分开：ACK 可以终结派发，内容仍可能不合格。任何一个 child 仍可晚到时，父 successor 必须在首个 mutation 前拒绝。缺 dispatch 协议标记的旧 pending 保留并报告 unresolved。
 6. 用上述 Node suite 覆盖真实管理进程断连与原请求迟到应用，核原 pending/owner applying、零重放和后继拒绝。另沿实际 Pi `source-materialize-cancel-late` 场景，在精确业务 HTTP 已到达后执行真实 RPC abort 与 new_session；释放原请求后，以原 manager stdout/exit 和 Store 核验结清，证明迟到 receipt 没有向已取消回合或新 session 发布正文、绑定和选中图。新的明确 `$` 仍可正常消费，且不重复业务写。未执行该 Pi 场景时记录 `actual_pi_cancellation:not_run`。不能清空 Store、强写 ready 或启动另一操作来获得成功。
 7. 真 Pi 第一次 `$` 管理后核普通 consume 的 remote_writes=none、完整 root + Requires provider 字节、独立 management effects、固定 ref 和 session。全部 Notion markdown/blocks 投影写尝试为 0，既有阅读正文保持不变。

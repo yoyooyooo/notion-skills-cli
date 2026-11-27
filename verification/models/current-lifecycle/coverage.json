@@ -10,7 +10,7 @@
     "packages/core/test/shared-current-snapshot.test.ts": "e1da621f2243691f1cc67dc530e183d4305ffab3319fc29acb14b8354e7f92ad",
     "packages/core/test/shared-current-operation.test.ts": "658c02198ad05a8194e17be272e21545ffaaa26f66d5c635c0c43ca0fcd93bcd",
     "packages/core/test/shared-current-projection-write.test.ts": "ce71e2e9494ef53961043a5dd3746cd4b8a66eb7db79163d0eaabeda29f9faf1",
-    "packages/core/src/cache.ts": "eb06f7332254ee7c5eb1196274a5a4d7a17cfc5a173ba1cf34586c573d9705f3",
+    "packages/core/src/cache.ts": "e0adc2ec814d2f4b43105a8317e2e3bbf62fe15e47f8ff9e1980e700405faa03",
     "packages/core/src/fixed-snapshot-files.ts": "3f06a96da80d6d0d63515560465cdf0df4bb5f644a384fe1cd8017e535ef86e5",
     "packages/core/src/snapshot.ts": "430cbded058870a1297999b4c4cb577ff5c23b4f39aea4364b562e6169071552",
     "packages/core/test/cache.test.ts": "2e6928423cbc76e00f831175696178a710cee9940fd80fdc6a2b042d1f7ccd0a",
@@ -111,7 +111,12 @@
     "packages/core/test/shared-current-skill-remove.test.ts": "a39b804e85e25a4cb24a2660e29c0049d055b8ed0ac7ce3f271903a26eed0e50",
     "packages/core/test/shared-current-write-fixture.ts": "4587b4090123049071d74d14b4de93746f1487bf94e68428d77f77eff1e2c631",
     "packages/core/test/shared-source-materialization-receipt.test.ts": "c88adb592a6f9a1fbdcf1daace04a64a742dacb57d495f6cf2e17d3d4ef5caa1",
-    "packages/core/test/shared-current-observation.test.ts": "ee24d6716a7cd81bfd3fe0014c8e82d3a21b861d55c6f8c1ab4ea0b251549239"
+    "packages/core/test/shared-current-observation.test.ts": "ee24d6716a7cd81bfd3fe0014c8e82d3a21b861d55c6f8c1ab4ea0b251549239",
+    "packages/cli/src/management.ts": "dd9fd3d578edecebfb63871efca5ba9df50e153bb7a1a97c0326d438f961b09d",
+    "packages/core/test/catalog-retirement.node.test.ts": "78b92cf3d89fa84f6afb1039ac9faa8ca0647c9f2914db4637058043d1a34058",
+    "packages/core/test/source-materialization-finalization.node.test.ts": "90215fac2ebb8daf40cadbd078523e02013e33a11d10e3e5100bfb5f04b56658",
+    "packages/cli/test/management.test.ts": "16960d0458497ca7238738f90f96b3bd164f407ae697e2b26c13e1680d345020",
+    "packages/cli/test/source-manager-transport.test.ts": "9ba786a3386c1981c22f683392bad077699406560f82ce6078ba6f0322f5002b"
   },
   "models": {
     "CurrentLifecycle": {
@@ -2069,6 +2074,19 @@
         "actual Store immutable first-writer result"
       ],
       "scope": "The content proof hashes the complete actual stored manifest, while the current observation preserves its independently validated metadata, acquisition and freshness. Same snapshot ID does not imply equal created_at, related-record metadata or resource acquisition locators. Current and stored manifests must agree on the existing selected identity, record, complete file hashes/bytes/modes and file-id/path bindings; both manifest/acquisition/path/reference obligations remain required. Three independent Node SDK calls share one real SQLite Store for refresh, refresh and a five-minute local read. Both unchanged and changed-Required-metadata cases require complete bodies/bindings, the second real validated_at, zero warm HTTP and an unselected resource that remains absent. A real Store barrier lets both first writers observe the same slot missing, then verifies the first persisted winner, the follower fresh observation and the final full-manifest proof. Publication with a missing or mismatched persisted winner fails without changing latest or proof. Existing object/reference, denial, generation and independent-body-deadline negatives remain. The finite models do not enumerate JSON fields, hash algorithms, SQLite first-writer behavior or OS process lifetimes; these are concrete regressions, not a new refinement or atomic remote snapshot proof."
+    },
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "catalog_retirement_and_verified_management_finalization",
+      "files": [
+        "packages/core/src/cache.ts",
+        "packages/cli/src/management.ts",
+        "packages/core/test/catalog-retirement.node.test.ts",
+        "packages/core/test/source-materialization-finalization.node.test.ts",
+        "packages/cli/test/management.test.ts",
+        "packages/cli/test/source-manager-transport.test.ts"
+      ],
+      "scope": "Disposable directory retirement reads a minimal ownership envelope rather than the current consumption payload schema. Real SQLite regressions cover mixed v1/v2 directories, canonical and compact Notion IDs, conservative retirement of unknown/incomplete/wrong-scope payloads in the selected cache namespace, preservation of proven unrelated complete catalogs and foreign scopes, reserved missing-slot generations and late publication fences. Current CatalogSchema consumption remains strict; malformed JSON and Store I/O errors are not hidden; authoritative journal rows are unchanged. The public management SDK preserves an original strictly validated manager receipt only when subsequent consumer finalization fails, retaining the original error and manager scope without returning ready or publishing a consumer result. A real local transport child sends controlled receipts; the tests record its submitted response, input and exit callback, combine loopback HTTP and SQLite with actual cancellation, and separately inject one generic runtime defect. Remote error details and envelope/receipt/target/authorization failures cannot create this proof. These are concrete implementation obligations, not finite-model properties or claims about live Notion, fixed-manager writer completion, passive parent stdout/close observation or Pi publication. Broker integration owns those separate actual-host observations."
     }
   ],
   "maintenance": {
@@ -2281,5 +2299,18 @@
       "publication rejects a missing/mismatched immutable winner without changing current or its proof"
     ],
     "result": "correspondence_only; actual run receipts, installed Pi acceptance and final-head CI are separate"
+  },
+  "catalog_retirement_finalization_review": {
+    "reviewed_base": "e2fa61517efd1c8784d2695973c4e7dbc8b18877",
+    "reviewed_files": [
+      "packages/core/src/cache.ts",
+      "packages/cli/src/management.ts",
+      "packages/core/test/catalog-retirement.node.test.ts",
+      "packages/core/test/source-materialization-finalization.node.test.ts",
+      "packages/cli/test/management.test.ts",
+      "packages/cli/test/source-manager-transport.test.ts"
+    ],
+    "boundary": "Reviewed the F03 failure after a successful manager transport response: consumer finalization decoded all scoped old catalog records using the new CatalogSchema and failed before any retirement. Retirement now proves only scope and exhaustive database ownership; malformed ownership is retired, not consumed. pageId normalization prevents an alternate Notion ID spelling from being mistaken for an unrelated Library. The generation and cache-namespace boundaries are unchanged. Verified manager results are preserved solely after strict envelope and complete request/Library/target/authorization-root checks; pre-verification failures cannot attach trusted management facts, and post-verification errors still fail the consumer. Existing management test configuration is explicitly private, and the transport cancellation fixture waits for nonempty evidence and actual child process disappearance before cleanup. No production transport behavior, finite model, configuration, rule inventory or mutation guard changed.",
+    "result": "correspondence_only; source hashes bind reviewed bytes, not model execution, installed-package or actual-Pi success"
   }
 }

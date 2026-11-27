@@ -53,6 +53,7 @@
         "packages/core/test/sdk-bounded-metadata.node.test.ts",
         "packages/core/test/sdk-immutable-read.node.test.ts",
         "packages/core/test/candidate-snapshot.node.test.ts",
+        "packages/core/test/catalog-retirement.node.test.ts",
         "packages/core/test/current-evidence.node.test.ts",
         "packages/core/test/shared-current-evidence.node.test.ts"
       ],
@@ -77,6 +78,7 @@
         "packages/core/test/shared-sqlite.node.test.ts",
         "packages/core/test/shared-source-materialization-legacy-registration.test.ts",
         "packages/core/test/shared-source-materialization-invalidation.test.ts",
+        "packages/core/test/source-materialization-finalization.node.test.ts",
         "packages/core/test/shared-source-manager-dispatch.node.test.ts"
       ],
       "installed_recipe": ".cursor/skills/verify-ntn-skills/features/resource-sources.md",

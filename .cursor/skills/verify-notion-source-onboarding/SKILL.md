@@ -20,10 +20,11 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 bun test packages/core/test/shared-source-member-discovery.test.ts packages/core/test/shared-source-materialization-management.test.ts packages/core/test/shared-source-materialization-receipt.test.ts packages/core/test/shared-source-materialization-legacy-registration.test.ts packages/core/test/shared-source-materialization-invalidation.test.ts packages/core/test/shared-current-source-writer.test.ts --timeout 60000
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-source-fixture.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-source-manager-dispatch.node.test.ts
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/source-materialization-finalization.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/candidate-snapshot.node.test.ts packages/core/test/shared-sqlite.node.test.ts -t "actual SDK Source discovery|Source candidate metadata|unfinished materialization input"
 ~~~
 
-这些检查覆盖当前 plan、Git 声明、批量管理范围、真实协调 writer/HTTP、逐文件获取与原件资源。受控成员写入通过仍不能替代实库全量 Files 和阅读覆盖。
+这些检查覆盖当前 plan、Git 声明、批量管理范围、真实协调 writer/HTTP、逐文件获取与原件资源。消费端收尾失败时，只有已完成严格验证的管理回执才可作为独立事实保留；调用仍失败，不能据此发布正文。`source-materialization-finalization.node.test.ts` 使用实际本地 transport、受控回执、loopback HTTP 和 SQLite 核此边界，不把受控回执当成真实远端 writer 证明。受控成员写入通过仍不能替代实库全量 Files 和阅读覆盖。
 
 ## Drive
 
