@@ -79,7 +79,8 @@
         "packages/core/test/shared-source-materialization-legacy-registration.test.ts",
         "packages/core/test/shared-source-materialization-invalidation.test.ts",
         "packages/core/test/source-materialization-finalization.node.test.ts",
-        "packages/core/test/shared-source-manager-dispatch.node.test.ts"
+        "packages/core/test/shared-source-manager-dispatch.node.test.ts",
+        "packages/core/test/shared-source-registration-compat.test.ts"
       ],
       "installed_recipe": ".cursor/skills/verify-ntn-skills/features/resource-sources.md",
       "excludes": ["已绑定正文自动更新", "部分报告替代全库分母"]

@@ -99,9 +99,23 @@ function rich(library: SharedLibrary, row: unknown, name: string, kind = "rich_t
 
 /** Read current configuration by registered identities. Status and Operation
  * describe the finite writer; they are not declaration input. */
-export function parseCurrentSourceConfiguration(library: SharedLibrary, input: unknown) {
+export function parseCurrentSourceIdentity(library: SharedLibrary, input: unknown) {
   const { id } = livePage(library, input)
   const source_id = validateCurrentSourceId(rich(library, input, "Source ID"))
+  return { page_id: id, source_id }
+}
+
+function registeredSelection(input: unknown) {
+  if (input !== null && typeof input === "object" && !Array.isArray(input) && "version" in input) {
+    const { version, ...selection } = input
+    if (version !== 1) throw invalid("Unsupported historical Source Selection version.")
+    return selection
+  }
+  return input
+}
+
+export function parseCurrentSourceConfiguration(library: SharedLibrary, input: unknown) {
+  const { page_id, source_id } = parseCurrentSourceIdentity(library, input)
   const provider = property(field(library, input, "Provider", "select").select).name
   if (provider !== "git")
     throw fail(
@@ -122,10 +136,10 @@ export function parseCurrentSourceConfiguration(library: SharedLibrary, input: u
       url: rich(library, input, "Location"),
       ref: rich(library, input, "Ref"),
     },
-    selection: JSON.parse(rich(library, input, "Selection")),
+    selection: registeredSelection(JSON.parse(rich(library, input, "Selection"))),
     options: JSON.parse(rich(library, input, "Options")),
   })
-  return { page_id: id, definition }
+  return { page_id, definition }
 }
 
 export function parseCurrentSourceRegistration(library: SharedLibrary, input: unknown) {

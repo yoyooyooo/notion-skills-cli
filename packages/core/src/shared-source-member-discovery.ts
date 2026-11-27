@@ -7,8 +7,14 @@ import { Effect } from "effect"
 import { authScope } from "./catalog.ts"
 import { aliasFor, fail, type ContentRecord } from "./model.ts"
 import { Notion } from "./notion.ts"
-import { currentSourceOriginContains } from "./shared-current-source-management.ts"
-import { resolveCurrentSourceContributions } from "./shared-current-source-input.ts"
+import {
+  currentSourceOriginContains,
+  parseCurrentSourceIdentity,
+} from "./shared-current-source-management.ts"
+import {
+  resolveCurrentSourceContributions,
+  validateCurrentSourceInput,
+} from "./shared-current-source-input.ts"
 import { uninitializedSourceSkill } from "./shared-current-source-adoption.ts"
 import { readCurrentSourceGitOrigin } from "./shared-current-source.ts"
 import { sourceDiscoveryInput } from "./shared-source-adapters.ts"
@@ -167,11 +173,18 @@ function discoverDirectSourceMembers(
         ))
       )
         continue
+      const identity = yield* materializationChecked(() =>
+        parseCurrentSourceIdentity(library, row),
+      ).pipe(Effect.result)
+      if (identity._tag === "Failure") {
+        failures.push({ source_id: input.source_id ?? "unresolved", code: identity.failure.code })
+        continue
+      }
+      const source_id = identity.success.source_id
       const result = yield* Effect.gen(function* () {
         const registration = yield* materializationChecked(() =>
           parseMaterializationRegistration(library, row),
         )
-        const source_id = registration.definition.source_id
         if (seenSources.has(source_id))
           return yield* Effect.fail(
             fail("CURRENT_SOURCE_DUPLICATE", "Several registrations share one Source ID."),
@@ -189,6 +202,23 @@ function discoverDirectSourceMembers(
           git?.commit || registration.legacy_registration?.last_revision || undefined
         const available =
           registration.state.state === "ready" || registration.state.state === "uninitialized"
+        const writable = yield* materializationChecked(() =>
+          validateCurrentSourceInput({
+            version: 1,
+            definition: registration.definition,
+            contributions: [],
+          }),
+        ).pipe(Effect.result)
+        if (
+          writable._tag === "Failure" &&
+          ![
+            "CURRENT_SOURCE_WRITE_UNSUPPORTED",
+            "SOURCE_COMPOSITION_REVIEW_REQUIRED",
+            "SOURCE_STORAGE_REVIEW_REQUIRED",
+          ].includes(writable.failure.code)
+        )
+          return yield* Effect.fail(writable.failure)
+        const writeReason = writable._tag === "Failure" ? writable.failure.code : undefined
         const base = {
           type: "source_member" as const,
           library_id: library.library_id,
@@ -219,6 +249,11 @@ function discoverDirectSourceMembers(
                 )
               continue
             }
+            const uninitialized =
+              entry.record.enabled !== false && available
+                ? yield* materializationChecked(() => uninitializedSourceSkill(library, entry.raw))
+                : false
+            const blocked = uninitialized && writeReason !== undefined
             const candidate = {
               ...base,
               member_key,
@@ -233,11 +268,14 @@ function discoverDirectSourceMembers(
                   ? ("blocked" as const)
                   : !available
                     ? ("preparing" as const)
-                    : (yield* materializationChecked(() =>
-                          uninitializedSourceSkill(library, entry.raw),
-                        ))
-                      ? ("materializable" as const)
+                    : uninitialized
+                      ? blocked
+                        ? ("blocked" as const)
+                        : ("materializable" as const)
                       : ("ready" as const),
+              ...(blocked && available && entry.record.enabled !== false
+                ? { reason: writeReason }
+                : {}),
             }
             if (matches(input.query, candidate)) found.push(candidate)
           }
@@ -280,7 +318,12 @@ function discoverDirectSourceMembers(
               alias: aliasFor(member.portable.name),
               description: member.portable.description,
               enabled: true,
-              readiness: available ? ("materializable" as const) : ("preparing" as const),
+              readiness: !available
+                ? ("preparing" as const)
+                : writeReason === undefined
+                  ? ("materializable" as const)
+                  : ("blocked" as const),
+              ...(available && writeReason !== undefined ? { reason: writeReason } : {}),
             }
             if (matches(input.query, candidate)) found.push(candidate)
           }
@@ -288,7 +331,7 @@ function discoverDirectSourceMembers(
         return found
       }).pipe(Effect.result)
       if (result._tag === "Success") candidates.push(...result.success)
-      else failures.push({ source_id: input.source_id ?? "unresolved", code: result.failure.code })
+      else failures.push({ source_id, code: result.failure.code })
     }
     const store = yield* Store,
       key = sourceMemberCacheKey(scope, library.library_id)

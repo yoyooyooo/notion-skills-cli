@@ -85,8 +85,8 @@
     "packages/core/src/graph-derived-directory.ts": "662a50cea39abbf1f006203651b03ec51e2310c098afcdd6a430e8d7ad7b62c1",
     "packages/core/src/shared-source-materialization-management.ts": "7729e12bc3dfdd73eb0868ad55af9f8c5f0f4fd156314a950d2aa60a01ce68bf",
     "packages/core/src/shared-current-source-adoption.ts": "ba45175b18f6f19cfd57e844fc2457d1a33cd917617deb41d892d399a63ad6dc",
-    "packages/core/src/shared-current-source-input.ts": "450b8f2c98a53bd8a1f4bbfc910436a038e5d6e1a3007a0c94a75a960eed10f5",
-    "packages/core/src/shared-current-source-management.ts": "b60424aca78fd1b83f9d8516650c75a6808b442916646405d7a5944fcf9c6bb1",
+    "packages/core/src/shared-current-source-input.ts": "9349a43786b70f3b432f1c78d7250f4ba1959ed71b2ccd652dd3e4ac25236791",
+    "packages/core/src/shared-current-source-management.ts": "3ca74e3185f11702429fc411ae19f8c8c5a19032889fbaab5200f140c0af624f",
     "packages/core/src/shared-current-source-writer.ts": "9811294067e072b7c2168e02cb3c9e5a2b2aed97994eacdfdccbd92f1dab803f",
     "packages/core/src/shared-source-materialization-registration.ts": "34a500e271fafce88dfd622b00ef31d471cb3ef930298cd0271522facba9ffcb",
     "packages/core/test/shared-source-materialization-management.test.ts": "af5884841fa91627ccc9e33551dee52582eaa9e4f3e5097a50f16efd525cf28d",
@@ -98,7 +98,7 @@
     "packages/core/src/shared-current-source-action.ts": "a0067e9684992b1ddc8e7ae73e31dd39b24d420ec900f1c64d2265591ac00af5",
     "packages/core/src/shared-source-materialization-state.ts": "ad2c1907d1cf7f7f6d19f57970f9c910322d128f5b8b0bff20251755345a2cc9",
     "packages/core/src/shared-source-materialization-model.ts": "30fbd5b9953465a4ef0f0c8dc2988092035f646a49246f6939edfbc0cfcceb7a",
-    "packages/core/src/shared-source-member-discovery.ts": "0371aa6d08a85485056c03d21f6ee6ee0bfbe96a72e8e0a70e56bf6d3dd162a9",
+    "packages/core/src/shared-source-member-discovery.ts": "43449affb79a6c3b5266f96c152d895513860adb52d325842a315b153c4c7c2d",
     "packages/core/test/shared-source-materialization-legacy-registration.test.ts": "16366199dd23b3f227e8aabfa4bd8a9e11e3c3237a4f385532444b021ace33c7",
     "packages/core/test/shared-source-materialization-invalidation.test.ts": "8e5e48b1cf392bfd5949fa8363148c19d0007f4155269e2a7d15a2ee2f615252",
     "packages/core/test/sdk-source-fixture.node.test.ts": "4a05f8d7c91c77e16f96aee88ce8f6d05b080f634f13c3f94c669660a2d544c0",
@@ -116,7 +116,9 @@
     "packages/core/test/catalog-retirement.node.test.ts": "78b92cf3d89fa84f6afb1039ac9faa8ca0647c9f2914db4637058043d1a34058",
     "packages/core/test/source-materialization-finalization.node.test.ts": "90215fac2ebb8daf40cadbd078523e02013e33a11d10e3e5100bfb5f04b56658",
     "packages/cli/test/management.test.ts": "16960d0458497ca7238738f90f96b3bd164f407ae697e2b26c13e1680d345020",
-    "packages/cli/test/source-manager-transport.test.ts": "9ba786a3386c1981c22f683392bad077699406560f82ce6078ba6f0322f5002b"
+    "packages/cli/test/source-manager-transport.test.ts": "9ba786a3386c1981c22f683392bad077699406560f82ce6078ba6f0322f5002b",
+    "packages/core/src/shared-source-definition-options.ts": "9851840edbe44e6bee271adb0f17c4c8986e51e95762b7a530a5976f28c020bb",
+    "packages/core/test/shared-source-registration-compat.test.ts": "4c659e6f07a01e1ff6d5afc719220c86f4db331787c5b4af8f527dfb8a518e7e"
   },
   "models": {
     "CurrentLifecycle": {
@@ -2087,6 +2089,18 @@
         "packages/cli/test/source-manager-transport.test.ts"
       ],
       "scope": "Disposable directory retirement reads a minimal ownership envelope rather than the current consumption payload schema. Real SQLite regressions cover mixed v1/v2 directories, canonical and compact Notion IDs, conservative retirement of unknown/incomplete/wrong-scope payloads in the selected cache namespace, preservation of proven unrelated complete catalogs and foreign scopes, reserved missing-slot generations and late publication fences. Current CatalogSchema consumption remains strict; malformed JSON and Store I/O errors are not hidden; authoritative journal rows are unchanged. The public management SDK preserves an original strictly validated manager receipt only when subsequent consumer finalization fails, retaining the original error and manager scope without returning ready or publishing a consumer result. A real local transport child sends controlled receipts; the tests record its submitted response, input and exit callback, combine loopback HTTP and SQLite with actual cancellation, and separately inject one generic runtime defect. Remote error details and envelope/receipt/target/authorization failures cannot create this proof. These are concrete implementation obligations, not finite-model properties or claims about live Notion, fixed-manager writer completion, passive parent stdout/close observation or Pi publication. Broker integration owns those separate actual-host observations."
+    },
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "registered_source_read_and_write_capabilities",
+      "files": [
+        "packages/core/src/shared-source-definition-options.ts",
+        "packages/core/src/shared-current-source-management.ts",
+        "packages/core/src/shared-current-source-input.ts",
+        "packages/core/src/shared-source-member-discovery.ts",
+        "packages/core/test/shared-source-registration-compat.test.ts"
+      ],
+      "scope": "Historical Notion registration metadata has an explicit reading interpretation, while the raw Options remain in the declaration fingerprint. Bounded target labels and auto/fixed-git storage retain exact acquisition settings; valid shared publication metadata and retained storage permit read-only enumeration but cannot authorize the current single-Source writer. Fresh manager declaration validation independently rejects these write policies even when a caller submits an otherwise valid target and digest. Ready physical records are not downgraded. Only the historical Notion boundary removes an exact Selection version-one envelope; current schemas still reject unknown versions, excess properties and unsafe paths. Partial failures retain the verified Source identity. Actual parser, read-only metadata and core manager write-ledger regressions cover these boundaries, not real Git network completeness, live Notion, provider delivery or wall-clock performance. Existing finite models, cases, rules and mutation targets are unchanged."
     }
   ],
   "maintenance": {
@@ -2312,5 +2326,17 @@
     ],
     "boundary": "Reviewed the F03 failure after a successful manager transport response: consumer finalization decoded all scoped old catalog records using the new CatalogSchema and failed before any retirement. Retirement now proves only scope and exhaustive database ownership; malformed ownership is retired, not consumed. pageId normalization prevents an alternate Notion ID spelling from being mistaken for an unrelated Library. The generation and cache-namespace boundaries are unchanged. Verified manager results are preserved solely after strict envelope and complete request/Library/target/authorization-root checks; pre-verification failures cannot attach trusted management facts, and post-verification errors still fail the consumer. Existing management test configuration is explicitly private, and the transport cancellation fixture waits for nonempty evidence and actual child process disappearance before cleanup. No production transport behavior, finite model, configuration, rule inventory or mutation guard changed.",
     "result": "correspondence_only; source hashes bind reviewed bytes, not model execution, installed-package or actual-Pi success"
+  },
+  "source_registration_compatibility_review": {
+    "reviewed_base": "97791af8f6a5a013c6a3912f23b65a392a67086c",
+    "reviewed_files": [
+      "packages/core/src/shared-source-definition-options.ts",
+      "packages/core/src/shared-current-source-management.ts",
+      "packages/core/src/shared-current-source-input.ts",
+      "packages/core/src/shared-source-member-discovery.ts",
+      "packages/core/test/shared-source-registration-compat.test.ts"
+    ],
+    "boundary": "A complete member directory is separate from current write capability. Interpretation of the known historical envelope does not erase publication/storage intent from the registration digest and cannot bypass the fresh management guard. Private live metadata reproduced 42 supported pre-Git registrations, 18 historical option failures and one Selection version error; after interpretation all 61 pass local acquisition-input validation, while three retain explicit unsupported write capability. This offline fact does not claim complete remote repository enumeration. Seven permanent regressions failed before the change and passed after it.",
+    "result": "correspondence_only; reviewed source hashes do not constitute model execution or actual Git/Pi success"
   }
 }
