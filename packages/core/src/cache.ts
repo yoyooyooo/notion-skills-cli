@@ -322,21 +322,28 @@ function validationPaths(snapshot: Snapshot, paths?: readonly string[]) {
   return selected
 }
 
-/** Content proof only: this never renews a current observation or its body deadline. */
-function validateSharedCurrentTree(
-  snapshot: Snapshot,
-  reuseReceipt = false,
-  selectedPaths?: readonly string[],
-) {
+function sameSnapshotSelection(current: Snapshot, stored: Snapshot) {
+  const fileIdentities = (value: Snapshot) =>
+    value.file_bindings?.map(({ file_id, path }) => ({ file_id, path })) ?? []
+  return (
+    current.snapshot_id === stored.snapshot_id &&
+    current.scope === stored.scope &&
+    current.version_id === stored.version_id &&
+    canonicalSharedJson(current.record) === canonicalSharedJson(stored.record) &&
+    canonicalSharedJson(current.record.locator) === canonicalSharedJson(stored.record.locator) &&
+    canonicalSharedJson(fileIdentities(current)) === canonicalSharedJson(fileIdentities(stored)) &&
+    canonicalSharedJson(current.files) === canonicalSharedJson(stored.files)
+  )
+}
+
+function sharedCurrentTreeReceipt(snapshot: Snapshot) {
   return Effect.gen(function* () {
-    yield* validateSnapshotManifest(snapshot)
-    const store = yield* Store
     const manifest = yield* Effect.try({
       // Bind every persisted manifest field, excluding runtime freshness/materialization fields.
       try: () => canonicalSharedJson(Schema.decodeUnknownSync(SnapshotSchema)(snapshot)),
       catch: () => fail("STATE_CORRUPT", "Shared snapshot manifest could not be fingerprinted."),
     })
-    const receipt = {
+    return {
       version: 1 as const,
       scope: snapshot.scope,
       record_identity: snapshot.record.id,
@@ -345,8 +352,23 @@ function validateSharedCurrentTree(
       materialization_version: CURRENT_MATERIALIZATION_VERSION,
       manifest_sha256: yield* sha256(manifest),
     }
+  })
+}
+
+/** Content proof only: this never renews a current observation or its body deadline. */
+function validateSharedCurrentTree(
+  snapshot: Snapshot,
+  options:
+    | { readonly kind: "cached" }
+    | { readonly kind: "publication"; readonly selectedPaths?: readonly string[] },
+) {
+  return Effect.gen(function* () {
+    yield* validateSnapshotManifest(snapshot)
+    const store = yield* Store
     const key = `cache/shared-current-tree-validation/${snapshot.scope}/${snapshot.snapshot_id}.json`
-    if (reuseReceipt) {
+    let receipt: Effect.Success<ReturnType<typeof sharedCurrentTreeReceipt>> | undefined
+    if (options.kind === "cached") {
+      receipt = yield* sharedCurrentTreeReceipt(snapshot)
       const previous = yield* store
         .readJson(key, SharedCurrentTreeValidationSchema)
         .pipe(Effect.catch(() => Effect.succeed(undefined)))
@@ -365,7 +387,11 @@ function validateSharedCurrentTree(
       }
     }
     const paths = yield* Effect.try({
-      try: () => validationPaths(snapshot, selectedPaths),
+      try: () =>
+        validationPaths(
+          snapshot,
+          options.kind === "publication" ? options.selectedPaths : undefined,
+        ),
       catch: (error) =>
         error instanceof SkillsError
           ? error
@@ -373,19 +399,42 @@ function validateSharedCurrentTree(
     })
     const files: Array<{ readonly path: string; readonly bytes: Uint8Array }> = []
     yield* validateSnapshotObjects(snapshot, files, paths)
-    // Source bytes retain their repository-relative links; current author content
-    // is checked against the complete Skill directory.
-    yield* Effect.try({
-      try: () =>
-        assertSelectedSharedFileReferences(
-          currentAuthoredReferenceFiles(files, snapshot.shared_acquisition?.files),
-          snapshot.files.map((file) => file.path),
-        ),
-      catch: (error) =>
-        error instanceof SkillsError
-          ? error
-          : fail("STATE_CORRUPT", "Shared snapshot references failed validation."),
-    })
+    const checkReferences = (selection: Snapshot) =>
+      Effect.try({
+        try: () =>
+          assertSelectedSharedFileReferences(
+            currentAuthoredReferenceFiles(files, selection.shared_acquisition?.files),
+            selection.files.map((file) => file.path),
+          ),
+        catch: (error) =>
+          error instanceof SkillsError
+            ? error
+            : fail("STATE_CORRUPT", "Shared snapshot references failed validation."),
+      })
+    yield* checkReferences(snapshot)
+    if (options.kind === "publication") {
+      // Repeated or concurrent observations can share one immutable selection.
+      // Its first persisted manifest owns the proof; current metadata and
+      // acquisition observations retain their independently verified values.
+      const stored = yield* store.readJson(`snapshots/${snapshot.snapshot_id}.json`, SnapshotSchema)
+      if (stored === undefined || !sameSnapshotSelection(snapshot, stored))
+        return yield* Effect.fail(
+          fail("STATE_CORRUPT", "Current cache metadata differs from its selected content."),
+        )
+      yield* validateSnapshotManifest(stored)
+      yield* Effect.try({
+        try: () => validationPaths(stored, paths),
+        catch: (error) =>
+          error instanceof SkillsError
+            ? error
+            : fail("STATE_CORRUPT", "Invalid shared validation selection."),
+      })
+      // Equal complete file identities permit the verified objects above to
+      // serve both manifests. Their acquisition/reference obligations still
+      // apply separately, including every omitted resource route.
+      yield* checkReferences(stored)
+      receipt = yield* sharedCurrentTreeReceipt(stored)
+    }
     // Only these bodies have been verified against the complete directory.
     // Omitted bytes need a still-current route and validation when acquired.
     yield* store.writeJson(key, {
@@ -398,7 +447,7 @@ function validateSharedCurrentTree(
 /** Verify a selected current candidate only after its caller has checked cache eligibility. */
 export function validateCachedSharedCurrentTree(snapshot: Snapshot) {
   return snapshot.record.locator.type === "shared_skill"
-    ? validateSharedCurrentTree(snapshot, true)
+    ? validateSharedCurrentTree(snapshot, { kind: "cached" })
     : validateSnapshot(snapshot)
 }
 export function publishSnapshotObservation(
@@ -414,7 +463,10 @@ export function publishSnapshotObservation(
 ) {
   return Effect.gen(function* () {
     if (snapshot.record.locator.type === "shared_skill")
-      yield* validateSharedCurrentTree(snapshot, false, options.sharedMaterializedPaths)
+      yield* validateSharedCurrentTree(snapshot, {
+        kind: "publication",
+        selectedPaths: options.sharedMaterializedPaths,
+      })
     else yield* validateSnapshot(snapshot)
     const store = yield* Store
     const validatedAt = yield* Clock.currentTimeMillis
@@ -785,20 +837,10 @@ export function cachedRemoteObservation(
     // using their exact local manifest and do not enter this freshness path.
     if (current.snapshot_id !== `s_${yield* sha256(selectionSnapshotIdentityInput(current))}`)
       return undefined
-    const fileIdentities = (value: Snapshot) =>
-      value.file_bindings?.map(({ file_id, path }) => ({ file_id, path })) ?? []
     if (
-      current.snapshot_id !== snapshot.snapshot_id ||
-      current.scope !== snapshot.scope ||
-      current.version_id !== snapshot.version_id ||
-      canonicalSharedJson(current.record) !== canonicalSharedJson(snapshot.record) ||
+      !sameSnapshotSelection(current, snapshot) ||
       (latest.default_context !== undefined &&
-        latest.default_context !== current.record.default_context) ||
-      canonicalSharedJson(current.record.locator) !==
-        canonicalSharedJson(snapshot.record.locator) ||
-      canonicalSharedJson(fileIdentities(current)) !==
-        canonicalSharedJson(fileIdentities(snapshot)) ||
-      canonicalSharedJson(current.files) !== canonicalSharedJson(snapshot.files)
+        latest.default_context !== current.record.default_context)
     )
       return yield* Effect.fail(
         fail("STATE_CORRUPT", "Current cache metadata differs from its selected content."),

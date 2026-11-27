@@ -57,7 +57,7 @@ bun test packages/core/test/shared-source-member-discovery.test.ts packages/core
 
 已有 Contributions 是声明集合，不能当成全部 ready。管理写集合是已有可消费成员 M 与本次 R；未初始化但已声明的 sibling 仍保留其声明和原行。完整 apply/refresh 仍按其完整集合合同工作，不能拿一次局部物化覆盖 Source 的其他贡献。
 
-另以 `native-root` 变体验证原生 Skill 明确根：真实 Requires 指向未初始化的 Source root，再指向 required。只读 `requires_of` 返回完整 root/page/scope/requires_digest 证明，管理请求保持该授权；普通 consume 最终交付三篇完整正文，native 权威和 Members sibling 不变。
+另以 `native-root` 变体验证原生 Skill 明确根：真实 Requires 指向未初始化的 Source root，再指向 required。只读 `requires_of` 返回完整 root/page/scope/requires_digest 证明，管理请求保持该授权；普通 consume 最终交付三篇完整正文，native 权威和 Members sibling 不变。 管理前已选过的原生快照须经历管理后的强制 consume，再以不同 PID/空 session 验证同 ID 快照和 tree proof 一致；原生根与两个 Source 节点全部命中本地，不能只检查 Source 节点或以较短响应时间替代 0 HTTP。
 
 ## Drive
 

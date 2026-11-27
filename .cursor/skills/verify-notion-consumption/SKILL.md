@@ -23,6 +23,8 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 
 1. 核对完整目录和 binding。Skills 主文唯一，Files 只含 supporting；所有来源共享相同当前 descriptor。精确 owner/Requires/Members 按 physical target 与 stable claim 有界读取，局部结果不能标 complete。Disabled 重复声明仍拒绝；显式 catalog/name 与 native 外部引用保留完整 inventory。目录完整与 Notion 全文投影分别验。
 2. native 冷读、无变化 metadata 复核、单文件直接编辑、缺本地正文及独立全文期限各走一次。三份 native 文件的固定 fixture 冷读为 9 请求、3 body；无变化 metadata 复核为 6 请求、0 body。前后 owner 与完整目录 fence 均计入；以 shared-current-snapshot.test.ts 的当前 oracle 为准，不推广为所有 live 请求数。外层有效 TTL 直接命中才是 0 HTTP。
+   同一原生选择连续两次 `refresh` 后，使用同一真实 SQLite 的第三个独立 Node SDK 进程按 `maxAge: 300000` 读取；核完整正文、固定 snapshot/ref、第二次真实 `validated_at` 均保留，整个暖读 0 HTTP，未选 supporting 资源仍未物化。`sdk-immutable-read.node.test.ts` 持有这条公开 SDK 回归。不可变 manifest 的 `created_at` 保持首次存储值，不能把它当作最近校验时间；tree proof 必须绑定磁盘中实际 manifest 的全部字段，不能删除时间戳参与摘要来消除失配。
+   `shared-current-evidence.node.test.ts` 另用真实 Store/SQLite 和可控交错检查两个首次写者都观察到同 ID 缺失后，后写者重新读取实际不可变赢家。该回归保持当前 metadata、acquisition 和独立 freshness；不能用 Map Store 或全量预载资源替代。
 3. stable claim query 只选择身份；正文前的精确 owner GET 决定当前权限与 metadata，不能复用 query 行替代。Name/Description 变化返回当前 metadata，但不改 bytes 或内容身份。原任务选择仍保留其 metadata。改路径或删当前行不被旧 cache 复活。正文/provider 后的 owner/Files/Source fence 须重新观察，不复用本轮局部 claim。
 4. 同任务内保持一份完整选定目录。缺 Source/resource bytes 只可使用仍相符的当前 owner/descriptor；缺 native 旧选择字节或当前声明变化要求重选，不恢复远端历史。
 5. 每文件 acquisition v5 支持多 Source、native 和 resource。Source/resource 核 exact hash/bytes/mode；native 核实际当前正文加显式 frontmatter/mode，不承诺写入前 Markdown 字节。检查按需获取、offline 不发请求及权限拒绝；generated body 编辑不自动接管。 已观察到的 target `ACCESS_DENIED` 或 scope `AUTH_REQUIRED` 对 offline 正文同样生效；历史目录不授予正文权限。保留未知网络失败下的离线正例，以及业务 Enabled 关闭后的完整旧字节正例。T05 必须从公开 SDK 实际观察 401/403 后检查 scalar、batch、use/inspect 与 clear 后行为，不以直接构造失败对象代替这条边界。
@@ -59,7 +61,7 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 complete empty 必须撤掉旧项。两库、换凭据、disabled 与精确 physical 拒绝分别隔离。
 这里不证明 Pi 下拉首帧、同屏更新、高亮或排队输入；这些仍由 Broker integration 验。
 
-缓存、变化证据、TTL、库选择、启动/SDK 次序或跨会话复用变化，按 [T01 合同入口](../../../verification/skill-domains.json) 交接 Broker integration：执行 `notion-sdk-pi.mjs` 的 `http-warm-restart`、`http-warm-directory-expired`、`http-smart-revalidate` 和 `http-smart-current`，再沿 `verify-pi-daily-installation.mjs cache-plan/cache-run` 复验普通安装。核新 PID/session、准确的 snapshot/校验时间、完整根与 Requires 的实际 provider 全文，并将目录 HTTP、metadata 续证和正文下载分开；已观察 Required 变化后取消/429 不得回退旧 current，原已接纳 pin 不升级。这里的 SDK 通过只记局部覆盖，不能记作 T01 host 通过。
+缓存、变化证据、TTL、库选择、启动/SDK 次序或跨会话复用变化，按 [T01 合同入口](../../../verification/skill-domains.json) 交接 Broker integration：执行 `notion-sdk-pi.mjs` 的 `http-warm-restart`、`http-warm-directory-expired`、`http-smart-revalidate` 和 `http-smart-current`，再沿 `verify-pi-daily-installation.mjs cache-plan/cache-run` 复验普通安装。核新 PID/session、准确的 snapshot/校验时间、完整根与 Requires 的实际 provider 全文，并将目录 HTTP、metadata 续证和正文下载分开；已观察 Required 变化后取消/429 不得回退旧 current，原已接纳 pin 不升级。这里的 SDK 通过只记局部覆盖，不能记作 T01 host 通过。 原生根引用待物化 Source Requires 的交错还必须沿 `source-materialize-native-root` 检查：管理前已选过原生正文、管理后强制 consume，再在五分钟内启动新 Pi，原生根与 Source Requires 都须复用，且该暖读阶段的全部前后台远端请求为 0。
 
 安装层复用 [portable-export-package-consumption](../verify-ntn-skills/features/portable-export-package-consumption.md) 的实际包入口。旧远端恢复或已退出命令的步骤不可继承；包未切换记缺口。Pi 由 Broker integration 沿 AH-1197/AH-637/AH-1198 验；AH-1063 仅为历史基线，不扩 OMP/Tern。
 

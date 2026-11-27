@@ -51,6 +51,7 @@
         "packages/core/test/shared-read-coalescing.test.ts",
         "packages/core/test/bounded-graph-metadata.test.ts",
         "packages/core/test/sdk-bounded-metadata.node.test.ts",
+        "packages/core/test/sdk-immutable-read.node.test.ts",
         "packages/core/test/candidate-snapshot.node.test.ts",
         "packages/core/test/current-evidence.node.test.ts",
         "packages/core/test/shared-current-evidence.node.test.ts"
