@@ -326,26 +326,32 @@ export function sqliteState(
     const filename = `${root}/state.sqlite`
     const client = SqliteClient.layer({ filename, busyTimeout: "2 seconds" })
     const context = yield* Effect.gen(function* () {
-      if (!(yield* fs.exists(filename))) {
-        {
-          for (const entry of [
-            "sync/bases",
-            "sync/plans",
-            "sync/receipts",
-            "publications",
-            "cache-generations",
-            "snapshots",
-            "config.json",
-            "sqlite-migration.json",
-          ])
-            if (yield* fs.exists(`${root}/${entry}`))
-              return yield* Effect.fail(
-                fail(
-                  "STATE_CUTOVER_REQUIRED",
-                  "This root contains state from the retired protocol. Initialize an explicitly selected new current state root; the old root and its objects remain available for read-only extraction.",
-                ),
-              )
+      const initialize = yield* Effect.gen(function* () {
+        if (yield* fs.exists(filename)) return false
+        for (const entry of [
+          "sync/bases",
+          "sync/plans",
+          "sync/receipts",
+          "publications",
+          "cache-generations",
+          "snapshots",
+          "config.json",
+          "sqlite-migration.json",
+        ]) {
+          if (!(yield* fs.exists(`${root}/${entry}`))) continue
+          // A first-run peer may have published the current database and its
+          // snapshots since the initial absence check. Verify that winner below.
+          if (yield* fs.exists(filename)) return false
+          return yield* Effect.fail(
+            fail(
+              "STATE_CUTOVER_REQUIRED",
+              "This root contains state from the retired protocol. Initialize an explicitly selected new current state root; the old root and its objects remain available for read-only extraction.",
+            ),
+          )
         }
+        return true
+      })
+      if (initialize) {
         yield* fs.makeDirectory(root, { recursive: true, mode: 0o700 })
         yield* Effect.scoped(
           Effect.gen(function* () {
