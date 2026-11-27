@@ -308,6 +308,8 @@ function acquireTargetSnapshot(
       if (observedResult?._tag === "Failure" && options.offline)
         return yield* Effect.fail(observedResult.failure)
       const observed = observedResult?._tag === "Success" ? observedResult.success : undefined
+      // Known rejection outranks freshness; offline reads cannot revalidate that authority.
+      if (options.offline && observed) yield* assertKnownSnapshotAccess(observed.snapshot)
       if (observed?.snapshot.record.locator.type === "shared_skill") {
         resolvedPolicy = yield* sharedReadFreshness(observed.snapshot.record, options)
         maxAge = resolvedPolicy.read_max_age_ms

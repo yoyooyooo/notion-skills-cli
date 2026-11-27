@@ -18,7 +18,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
 import { HttpClient } from "effect/http"
 import { ApiErrorSchema, decode, fail, property, SkillsError } from "./model.ts"
-import { sha256 } from "./store.ts"
+import { sha256, Store } from "./store.ts"
 import { withNotionChangeEvidence } from "./current-evidence.ts"
 import {
   NOTION_ADMISSION_BUDGET_MS,
@@ -563,12 +563,17 @@ export const NotionTransport = Layer.effect(
               }
               return yield* effect.pipe(Effect.provideService(Notion, readOnly))
             }).pipe(
-              Effect.provide(runtime),
+              // Rebuild this transport even when the caller already has NotionTransport.
+              Effect.provide(runtime, { local: true }),
               Effect.provide(NodeServices.layer),
               Effect.provide(NodeHttpClient.layerFetch),
               Effect.provideService(ConfigProvider.ConfigProvider, configProvider),
               Effect.provideService(NetworkMetrics, metrics),
               Effect.scoped,
+              // A shared immutable producer can outlive any one caller's Store scope.
+              Effect.updateContext((context: Context.Context<never>) =>
+                Context.omit(Store)(context),
+              ),
             ),
         } satisfies DetachedNotionReadContext
       },
