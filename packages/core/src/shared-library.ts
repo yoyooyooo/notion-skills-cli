@@ -216,7 +216,7 @@ export function libraryFromDatabase(raw: unknown): SharedLibrary | undefined {
 }
 
 /** Resolve a root through its complete direct-child inventory and verify every binding. */
-export function loadSharedLibrary(root: string) {
+export function loadSharedLibraryObservation(root: string) {
   return Effect.gen(function* () {
     const id = yield* checked(() => exactId(root))
     yield* inspectRoot(id)
@@ -255,8 +255,16 @@ export function loadSharedLibrary(root: string) {
             { role },
           ),
         )
-    return yield* inspectLibrary(library, children)
+    yield* inspectLibrary(library, children)
+    return {
+      library,
+      skillsTitle: text(property(children.get(library.skills.database_id)).title),
+    }
   })
+}
+
+export function loadSharedLibrary(root: string) {
+  return loadSharedLibraryObservation(root).pipe(Effect.map(({ library }) => library))
 }
 
 export function resolveLibrary(options: { readonly library?: string } = {}) {
