@@ -75,9 +75,11 @@ function program(root: string, phase: "write" | "resume" | "consume") {
 import assert from 'node:assert/strict';
 import {readFile,writeFile,stat} from 'node:fs/promises';
 import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
-import {ConfigProvider,Effect,Layer,Schema} from ${JSON.stringify(import.meta.resolve("effect"))};
+import {ConfigProvider,Crypto,Effect,Layer,Schema} from ${JSON.stringify(import.meta.resolve("effect"))};
 import {Store,StoreLive} from ${from("store.ts")};
 import {authScope} from ${from("catalog.ts")};
+import {Notion} from ${from("notion.ts")};
+import {withNotionChangeEvidence} from ${from("current-evidence.ts")};
 import {clearCache} from ${from("cache.ts")};
 import {prepareCurrentSkillWrite,writeCurrentSkill} from ${from("shared-current-write.ts")};
 import {openSharedSnapshot} from ${from("shared-snapshot.ts")};
@@ -88,7 +90,10 @@ const base=root+(phase==='consume'?'/consumer':'/writer');
 process.env.NTN_SKILLS_HOME=base+'/state';
 process.env.NTN_SKILLS_CONFIG_HOME=base+'/config';
 process.env.NTN_SKILLS_CACHE_HOME=base+'/cache';
+process.env.NOTION_API_BASE_URL='https://current-writer.fixture';
 const f=currentWriteFixture(root);
+const rawApi=await f.run(Notion);
+assert.equal(rawApi.apiOrigin,process.env.NOTION_API_BASE_URL);
 const files=samples.map(({text,...file})=>({...file,bytes:new TextEncoder().encode(text)}));
 const input={skill_id:'current-complete',kind:'skill',name:'Current complete tree',description:'Exact current content',files};
 if(phase!=='write'){
@@ -97,9 +102,11 @@ if(phase!=='write'){
   for(const [key,value] of saved.blocks)f.blocks.set(key,value);
 }
 await Effect.runPromise(Effect.gen(function*(){
- const store=yield* Store;
+ const store=yield* Store,crypto=yield* Crypto.Crypto;
  return yield* Effect.promise(async()=>{
- const run=effect=>f.run(effect.pipe(Effect.provideService(Store,store)));
+ // The fake transport must record the same page evidence as production for this real Store.
+ const api={...rawApi,request:(path,body,options)=>Effect.flatMap(rawApi.credentialIdentity,credential=>withNotionChangeEvidence(credential,rawApi.apiOrigin??'https://api.notion.com',path,rawApi.request(path,body,options))).pipe(Effect.provideService(Store,store),Effect.provideService(Crypto.Crypto,crypto))};
+ const run=effect=>f.run(effect.pipe(Effect.provideService(Store,store),Effect.provideService(Notion,api)));
  const pending=()=>run(store.listKeys('operations/current-write-pending'));
  const plan=await run(prepareCurrentSkillWrite(input));
  if(phase==='write'){

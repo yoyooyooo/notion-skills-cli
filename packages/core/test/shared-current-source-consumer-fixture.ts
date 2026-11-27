@@ -54,15 +54,21 @@ export async function currentSourceConsumerFixture() {
     }),
   )
   const base = currentSnapshotFixture({ fileCount: 0, httpClient: client })
+  let sourceEditedAt = Date.parse(base.main.last_edited_time)
   const source: Record<string, unknown> = {
     object: "page",
     id: id(22),
+    last_edited_time: new Date(sourceEditedAt).toISOString(),
     parent: {
       type: "data_source_id",
       data_source_id: sourceLibrary.sources.data_source_id,
       database_id: sourceLibrary.sources.database_id,
     },
     properties: {},
+  }
+  const touchSource = () => {
+    sourceEditedAt += 1000
+    source.last_edited_time = new Date(sourceEditedAt).toISOString()
   }
   base.sources.set(sourceId, source)
   let sourceFiles: readonly SourceFile[] = []
@@ -101,6 +107,7 @@ export async function currentSourceConsumerFixture() {
       Status: { id: sourceFields.Status, type: "select", select: { name: "ready" } },
       Operation: rich(sourceFields.Operation!, ""),
     }
+    touchSource()
     return revision
   }
   const select = async (
@@ -230,6 +237,7 @@ export async function currentSourceConsumerFixture() {
         ...property(source.properties),
         Contributions: sourceText("Contributions", JSON.stringify(contributions)),
       }
+      touchSource()
     },
     get revision() {
       return revision
