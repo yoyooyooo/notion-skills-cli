@@ -51,6 +51,15 @@ test("apply and sync enter the same manager Store fence before reading or planni
   )
   await entered
   try {
+    const overlappingEffects: string[] = []
+    const overlap = await f.run(
+      withCurrentSourceWriter(
+        library,
+        Effect.sync(() => overlappingEffects.push("second writer entered")),
+      ).pipe(Effect.result),
+    )
+    expect(overlappingEffects).toEqual([])
+    expect(overlap).toMatchObject({ _tag: "Failure", failure: { code: "SYNC_LOCKED" } })
     await expect(
       f.run(applyCurrentSource(library, { operation_id: "apply-overlap", declaration: {} })),
     ).rejects.toMatchObject({ code: "SYNC_LOCKED" })
@@ -78,6 +87,18 @@ test("a configured client cannot bypass its manager through Source lifecycle, fi
   const f = currentWriteFixture(root)
   const store = await f.run(Store)
   await writeFile(join(store.configRoot, "source-manager.json"), "{}", { mode: 0o600 })
+  const bypassEffects: string[] = []
+  const bypass = await f.run(
+    withCurrentSourceWriter(
+      library,
+      Effect.sync(() => bypassEffects.push("client entered without manager")),
+    ).pipe(Effect.result),
+  )
+  expect(bypassEffects).toEqual([])
+  expect(bypass).toMatchObject({
+    _tag: "Failure",
+    failure: { code: "SOURCE_MANAGER_REQUIRED" },
+  })
   await expect(
     f.run(applyCurrentSource(library, { operation_id: "local-apply", declaration: {} })),
   ).rejects.toMatchObject({ code: "SOURCE_MANAGER_REQUIRED" })

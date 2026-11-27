@@ -91,7 +91,7 @@
     "packages/core/src/shared-source-materialization-registration.ts": "34a500e271fafce88dfd622b00ef31d471cb3ef930298cd0271522facba9ffcb",
     "packages/core/test/shared-source-materialization-management.test.ts": "8ac26869f719748ec35df95c284de43263f7b3746e028b691ff1a0b546878d8f",
     "packages/core/test/shared-source-materialization-fixture.ts": "28c57d4f75f636f97812fbe47408463cd26f13e84aaadb667ade912a263522fd",
-    "packages/core/test/shared-current-source-writer.test.ts": "187c85f32bffb83c35f5b1766487cc3a1f40009f86e1646455f308be651f6ee5",
+    "packages/core/test/shared-current-source-writer.test.ts": "2f589df4cf77dbfc5d51d706beeccee5a1bf0784aedddb3402bce92cbfedfca9",
     "packages/core/src/shared-current-records.ts": "0481b1e73d11c18efeaf7e4614543de2d747c380b7415ce641219cc02fced4a2",
     "packages/core/test/shared-current-source-write.test.ts": "636ae614aa92f565458f0dc86d29ec19de5bbbef954719f43de008698295d4e9",
     "packages/core/src/shared-current-source-legacy-registration.ts": "18a8611e7c8c87a618ccee701035ce1be4653c9430378c93940ff6df03d19eee",
@@ -2154,7 +2154,8 @@
     ],
     "scope_boundary": "Manager and consumer credentials may differ. The public receipt scope is locally authenticated by the SDK; manager_scope preserves the server scope. Real independent SQLite and actual Pi tests, rather than these finite variables, own this boundary.",
     "actual_mutations": 13,
-    "source_pins_status": "Final SQLite, finite legacy registration and blocked-target invalidation delta reviewed and hash-bound. Run results are recorded separately."
+    "source_pins_status": "Final SQLite, finite legacy registration and blocked-target invalidation delta reviewed and hash-bound. Run results are recorded separately.",
+    "manager_guard_witness": "The manager-fence tests independently observe entry into a valid protected Effect before checking the retained public API input/error regressions. A changed error for an invalid declaration is insufficient as a SingleSourceWriter counterexample. Removing either guard must actually admit the second writer or the unmanaged client effect."
   },
   "source_materialization_boundary_review": {
     "reviewed_base": "31f30db8f960cc4f36d1e02f8e279d641b660718",
