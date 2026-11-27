@@ -2,7 +2,7 @@
 """Replay current formal guards in retained, isolated source/dependency fixtures."""
 from pathlib import Path
 import argparse, hashlib, json, shutil, subprocess, sys, time
-from formal_mutation_result import failed_assertion
+from formal_mutation_result import failed_assertion, immutable_runtime_scope_failures
 from formal_source_identity import source_identity
 
 parser = argparse.ArgumentParser()
@@ -467,6 +467,7 @@ for name, filename, replacements, test, pattern, rule in cases:
     baseline, baseline_seconds = run(name + "-baseline", test, pattern)
     assert baseline.returncode == 0, (name, "baseline failed", baseline.stderr)
     assert passed_test(baseline), (name, "no baseline test ran")
+    lifecycle_failures = None
     try:
         for _, target, _, mutated in mutations:
             target.write_bytes(mutated)
@@ -475,9 +476,9 @@ for name, filename, replacements, test, pattern, rule in cases:
         assert broken.returncode != 0, (name, "real mutation escaped")
         assert failed_assertion(broken), (name, "not an assertion failure", output)
         if name == "immutable-runtime-scope":
-            assert any("NOTION_SCHEDULER_UNAVAILABLE" in message
-                       for message in broken.assertion_failures), (
-                name, "survivor must encounter the creator's closed scheduler", output)
+            lifecycle_failures = immutable_runtime_scope_failures(broken)
+            assert lifecycle_failures is not None, (
+                name, "both survivors must encounter the creator's closed scheduler or SQLite connection", output)
     finally:
         unchanged = all(target.read_bytes() == mutated for _, target, _, mutated in mutations)
         for _, target, original, _ in mutations:
@@ -498,6 +499,8 @@ for name, filename, replacements, test, pattern, rule in cases:
         "restored_exit": restored.returncode,
         "seconds": [baseline_seconds, broken_seconds, restored_seconds],
     }
+    if lifecycle_failures is not None:
+        row["lifecycle_failures"] = lifecycle_failures
     results.append(row)
     save()
     print(json.dumps({"case": name, "rule": rule, "caught": True}), flush=True)

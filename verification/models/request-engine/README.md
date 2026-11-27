@@ -59,7 +59,7 @@ runner 先核对受保护源文件、工具字节和独立规则清单，再执�
 | `ServiceIsolated` / `SharedProducer.service.cfg` | factory 内独立 `Cache.make` | 不同 service 只创建一个 producer |
 | `SettledResultNotReused` / `SharedProducer.cache.cfg` | `timeToLive: 0` | 后续读取复用已完成结果 |
 | `ReplacementSurvivesOldCleanup` / `SharedProducer.cleanup.cfg` | Effect `Cache.removeEntry` 的 `current.value === entry` | 旧 finalizer 删除替代 entry |
-| `SurvivingWaiterKeepsProducer` / `SharedProducer.runtime.cfg` | `shared-current-resource.ts` 的 `detached.run(read)` | creator 关闭后继续完整分页，绑回 creator 的 producer 因 scheduler 已关闭而使 survivor 读取失败 |
+| `SurvivingWaiterKeepsProducer` / `SharedProducer.runtime.cfg` | `shared-current-resource.ts` 的 `detached.run(read)` | creator 关闭后继续完整分页，绑回 creator 的 producer 因其 scheduler 或 SQLite connection 已关闭而使 survivor 读取失败 |
 | `SharedAdmissionBounded` / `SharedProducer.capacity.cfg` | immutable coalescer 的 entry / byte admission | 超额读取错误进入共享 registry |
 | `SharedAdmissionBounded` / `SharedProducer.cleanup-capacity.cfg` | 已启动 producer 等自己的 finalizer 才 finish | 慢清理尚未完成就释放容量并共享替代读取 |
 | `CooldownBeforeAdmission` / `RequestAdmission.cooldown.cfg` | scheduler 的 `!decision.admitted` | cooldown 结束前派发真实 attempt |
@@ -71,7 +71,7 @@ runner 先核对受保护源文件、工具字节和独立规则清单，再执�
 | `CancelledQueueReleasesLease` / `RequestAdmission.lease.cfg` | release 调用 `state.remove(ticket.id)` | 取消后队列表仍保留 owned entry |
 | `AttemptDeadlineRespected` / `RequestAdmission.timeout.cfg` | transport 的 `Effect.timeout(timeoutMs)` | 超过单次 HTTP timeout 的写入仍返回成功 |
 
-这些 guard 的对应文件和实际回归由 `coverage.json.files` 固定。更新调用路径时，突变必须改到实际执行的 owner，并跨过实际生命周期边界。只等已开始的单页响应结束，无法检查关闭 runtime 后的后续读取。该突变保留全部必要 service，并要求实际失败为 `NOTION_SCHEDULER_UNAVAILABLE`。
+这些 guard 的对应文件和实际回归由 `coverage.json.files` 固定。更新调用路径时，突变必须改到实际执行的 owner，并跨过实际生命周期边界。只等已开始的单页响应结束，无法检查关闭 runtime 后的后续读取。该突变保留全部必要 service，要求两个 eligibility delay 的 survivor 都在 `ready` 断言处失败，并解析实际 SDK 错误：`NOTION_SCHEDULER_UNAVAILABLE`，或 `STATE_CONFIG_ERROR` 且 `phase=sqlite_state`、`error_tag=SqlError`、`operation=execute`、`native_code=ERR_INVALID_STATE`。后者是 current-evidence hook 先触到 creator 已关闭连接的现役反例。任意配置错误、缺 service、模块加载失败、语法错误或超时均不算检出；报告逐例保留实际关闭的 owner。
 
 ### Effect 依赖的窄边界
 
