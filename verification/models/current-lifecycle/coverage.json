@@ -29,7 +29,7 @@
     "packages/core/src/shared-current-source-sync-batch-helper.ts": "8f322b138db56dc2c94a24df73b9d9160b6cd2964203c92808aa54f2e0fcd100",
     "packages/core/test/shared-current-source-sync-batch-model.test.ts": "931dde10bf83bac81bf29eade338608fa4354cdaed9ab5dd50b24d5f3cfdc6a0",
     "packages/core/test/shared-current-source-sync-batch.test.ts": "197aa05d1e640e268d750dec72aaaf713fb6985c9d5bf955e0eab3afe2960e51",
-    "packages/core/src/sqlite-state.ts": "fcf0902d00e2e15bb86fc59af84191ea0fd8d4818af44043c540f22bb0971fa5",
+    "packages/core/src/sqlite-state.ts": "dbc48820aad7afbfbb11fe090f4a94c49a213d4a8f586ee01ac699950c3f20d7",
     "packages/core/test/shared-sqlite.node.test.ts": "b1f0284f41f4631ad6e27861c11d517b58b26134ba89878ea2be8c1a8ca50f14",
     "packages/core/src/shared-native-plain-text.ts": "a3d6b8e9ce7f08b513b92c762b5e688ca25f847562f33f00b106b4cd5ba4861a",
     "packages/core/test/shared-native-plain-text.test.ts": "d39a975c685abe59bff4b51c7c016b9975f2fdff27a0cc62ec4f42df8d063da4",
