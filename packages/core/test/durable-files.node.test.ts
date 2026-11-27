@@ -4,11 +4,12 @@ import { once } from "node:events"
 import { mkdtemp, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { createInterface } from "node:readline"
 import { Effect } from "effect"
 import { trashPath } from "../src/local-locks.ts"
 
 const core = new URL("../src/", import.meta.url).pathname
-function launch(root: string, body: string, boundary = "", preamble = "") {
+function launch(root: string, body: string, boundary = "", preamble = "", input = false) {
   const code = `${preamble}import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
 import {Effect,FileSystem,Layer,ConfigProvider} from ${JSON.stringify(import.meta.resolve("effect"))};
 import {Store,StoreLive,sha256} from ${JSON.stringify(core + "store.ts")};
@@ -35,15 +36,16 @@ data_source_id:'00000000-0000-4000-8000-000000000004'},
 name:'fixture',alias:'fixture',description:'fixture',ref:fileRef(recordId,'SKILL.md'),enabled:true,default_context:false},
 files:[{path:'SKILL.md',bytes:bytes.length,sha256:hash,mode:'100644'}]};
 ${body}}).pipe(Effect.provide(StoreLive.pipe(Layer.provideMerge(services))),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(e=>{console.error(String(e));process.exitCode=1});`
-  const worker = spawn(process.execPath, ["--input-type=module", "-e", code], {
-    env: {
-      ...process.env,
-      NTN_SKILLS_HOME: root,
-      NTN_SKILLS_CONFIG_HOME: root + "-config",
-      NTN_SKILLS_CACHE_HOME: root + "-cache",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  })
+  const args = ["--input-type=module", "-e", code]
+  const env = {
+    ...process.env,
+    NTN_SKILLS_HOME: root,
+    NTN_SKILLS_CONFIG_HOME: root + "-config",
+    NTN_SKILLS_CACHE_HOME: root + "-cache",
+  }
+  const worker = input
+    ? spawn(process.execPath, args, { env, stdio: ["pipe", "pipe", "pipe"] })
+    : spawn(process.execPath, args, { env, stdio: ["ignore", "pipe", "pipe"] })
   let stdout = "",
     stderr = ""
   worker.stdout.setEncoding("utf8").on("data", (chunk: string) => {
@@ -226,6 +228,65 @@ test("concurrent snapshot publishers with different clocks retain one canonical 
       .done
     expect(recovered.exit, recovered.stderr).toBe(0)
     expect(JSON.parse(recovered.stdout.trim())).toEqual(published[0])
+  }))
+
+test("a delayed first initializer reuses a peer's current snapshot without restaging", () =>
+  temporary(async (directory) => {
+    const root = join(directory, "state")
+    const first = launch(
+      root,
+      `snapshot.created_at=111;${publish};${consume}`,
+      `exists:(p)=>Effect.gen(function*(){
+const present=yield* fs.exists(p);
+if(p===root+'/state.sqlite'&&!present&&!pausedInitialization){
+pausedInitialization=true;
+yield* Effect.promise(()=>new Promise((resolve,reject)=>{
+const input=createInterface({input:process.stdin});
+input.once('line',command=>{command==='continue'?resolve():reject(new Error('Unexpected initialization release'));input.close()});
+input.once('close',()=>reject(new Error('Initialization input closed before release')));
+console.log('initial-state-absent');
+}));
+}
+return present;
+}),
+link:(from,to)=>to===root+'/state.sqlite'?Effect.die(new Error('Delayed initializer must not restage the published winner')):fs.link(from,to)`,
+      `import {createInterface} from 'node:readline';let pausedInitialization=false;`,
+      true,
+    )
+    const messages = createInterface({ input: first.worker.stdout })
+    try {
+      const handshake = once(messages, "line", { signal: AbortSignal.timeout(15_000) })
+      const ready = await Promise.race([
+        handshake.then(([line]) => String(line)),
+        first.done.then((result) => {
+          throw new Error(JSON.stringify(result))
+        }),
+      ])
+      expect(ready).toBe("initial-state-absent")
+      const second = await launch(root, `snapshot.created_at=222;${publish};${consume}`).done
+      expect(second.exit, second.stderr).toBe(0)
+      const canonical = second.stdout.trim().split("\n")
+      expect(canonical).toHaveLength(3)
+      expect(canonical[0]).toBe("published")
+      expect(canonical[1]).toContain('"created_at":222')
+      expect(canonical[2]).toBe("durable content")
+
+      const input = first.worker.stdin
+      if (input === null) throw new Error("The delayed initializer requires a release input")
+      input.end("continue\n")
+      const resumed = await first.done
+      expect(resumed.exit, resumed.stderr).toBe(0)
+      expect(resumed.stdout.trim().split("\n").slice(1)).toEqual(canonical)
+
+      const recovered = await launch(root, consume).done
+      expect(recovered.exit, recovered.stderr).toBe(0)
+      expect(recovered.stdout.trim().split("\n")).toEqual(canonical.slice(1))
+    } finally {
+      // A failed handshake or peer must not leave our delayed child waiting for input.
+      if (first.worker.exitCode === null && first.worker.signalCode === null) first.worker.kill()
+      await first.done
+      messages.close()
+    }
   }))
 
 test("competing different immutable bytes are refused and retain the winning content", () =>
