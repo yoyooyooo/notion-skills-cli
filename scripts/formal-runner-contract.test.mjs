@@ -373,3 +373,100 @@ test("guard mutation classification requires real assertions and rejects runner 
     observations.map(({ name }) => name).join(", "),
   )
 })
+
+test("immutable runtime mutations require both survivor assertions and an exact closed owner", () => {
+  const closedStore = {
+    code: "STATE_CONFIG_ERROR",
+    details: {
+      phase: "sqlite_state",
+      error_tag: "SqlError",
+      operation: "execute",
+      native_code: "ERR_INVALID_STATE",
+    },
+  }
+  const observation = (error) => {
+    const message =
+      "AssertionError: " +
+      JSON.stringify({ version: 1, status: "failed", error }) +
+      ": expected 'failed' to be 'ready' // Object.is equality\n" +
+      "    at ready (/owned/packages/core/test/sdk-immutable-read.node.test.ts:373:49)"
+    return {
+      returncode: 1,
+      stdout: "",
+      stderr: "",
+      assertion_failures: [message, message],
+      real_assertions: [0, 1200].map((delay) => ({
+        fullName:
+          "two public SDK runtimes share only exact immutable bytes, and creator cancellation preserves the survivor (eligibility delay " +
+          delay +
+          " ms)",
+        status: "failed",
+        failureMessages: [message],
+      })),
+    }
+  }
+  const rows = [
+    { name: "closed-store", value: observation(closedStore), expected: true },
+    {
+      name: "closed-scheduler",
+      value: observation({ code: "NOTION_SCHEDULER_UNAVAILABLE" }),
+      expected: true,
+    },
+    {
+      name: "generic-state-error",
+      value: observation({ code: "STATE_CONFIG_ERROR" }),
+      expected: false,
+    },
+    { name: "unrelated-error", value: observation({ code: "CACHE_MISSING" }), expected: false },
+  ]
+  for (const key of Object.keys(closedStore.details)) {
+    const error = structuredClone(closedStore)
+    error.details[key] = "unrelated"
+    rows.push({ name: "wrong-" + key, value: observation(error), expected: false })
+  }
+  for (const [name, mutate] of [
+    ["one-survivor", (value) => value.real_assertions.pop()],
+    ["wrong-case", (value) => (value.real_assertions[1].fullName = "unrelated case")],
+    ["passed-case", (value) => (value.real_assertions[1].status = "passed")],
+    ["runner-error", (value) => (value.stderr = "SyntaxError: Unexpected token '='")],
+    [
+      "unrelated-assertion",
+      (value) =>
+        value.real_assertions[1].failureMessages.push("AssertionError: expected 1 to be 2"),
+    ],
+    [
+      "wrong-behavior",
+      (value) =>
+        (value.real_assertions[1].failureMessages[0] =
+          value.real_assertions[1].failureMessages[0].replace(
+            "to be 'ready'",
+            "to be 'cancelled'",
+          )),
+    ],
+    [
+      "wrong-assertion-site",
+      (value) =>
+        (value.real_assertions[1].failureMessages[0] =
+          value.real_assertions[1].failureMessages[0].replace("at ready (", "at setup (")),
+    ],
+  ]) {
+    const value = observation(closedStore)
+    mutate(value)
+    rows.push({ name, value, expected: false })
+  }
+  const classified = spawnSync(
+    "python3",
+    [
+      "-B",
+      "-c",
+      "import json, sys\nfrom types import SimpleNamespace\nfrom scripts.formal_mutation_result import immutable_runtime_scope_failures\nprint(json.dumps([immutable_runtime_scope_failures(SimpleNamespace(**row['value'])) is not None for row in json.load(sys.stdin)]))",
+    ],
+    { cwd: root, encoding: "utf8", input: JSON.stringify(rows) },
+  )
+  assert.equal(classified.status, 0, classified.stderr)
+  assert.deepEqual(
+    JSON.parse(classified.stdout),
+    rows.map(({ expected }) => expected),
+    rows.map(({ name }) => name).join(", "),
+  )
+})
