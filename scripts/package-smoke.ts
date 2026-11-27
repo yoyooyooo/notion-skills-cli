@@ -131,6 +131,8 @@ assert.deepEqual(
     "check",
     "disable",
     "enable",
+    "manager",
+    "materialize",
     "refresh",
     "remove",
     "restore-follow",

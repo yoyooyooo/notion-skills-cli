@@ -220,13 +220,13 @@ test("materialization facts preserve two missing-owner initial states and an unt
     "legacy-members",
   )
   const root = legacy.sample.notion.skills.find((row: { id: string }) => row.id === "old-page-root")
-  expect(root.properties.Content).toBeUndefined()
-  expect(root.properties["Current State"]).toBeUndefined()
+  expect(root.properties.Content.rich_text).toEqual([])
+  expect(root.properties["Current State"].select).toBeNull()
   expect(root.properties.Requires.relation).toEqual([{ id: "old-page-required" }])
   expect(root.properties.Members.relation).toEqual([{ id: "old-page-sibling" }])
   expect(legacy.expected.untouched_sibling.properties.Enabled.checkbox).toBe(true)
-  expect(legacy.expected.untouched_sibling.properties.Content).toBeUndefined()
-  expect(legacy.expected.untouched_sibling.properties["Current State"]).toBeUndefined()
+  expect(legacy.expected.untouched_sibling.properties.Content.rich_text).toEqual([])
+  expect(legacy.expected.untouched_sibling.properties["Current State"].select).toBeNull()
   expect(legacy.contributions).toHaveLength(3)
   const onlySource = materializationServiceFacts(
     fixture,
@@ -375,6 +375,16 @@ test("the real materialization generator produces Source and relation facts acce
               content: { kind: "source", source_id: facts.source_id, revision: facts.revision },
             },
           })
+          const missing = structuredClone(owner)
+          delete missing.properties.Content
+          expect(
+            await Effect.runPromise(
+              readCurrentSkillMetadata(library, missing.id, missing).pipe(
+                Effect.provideService(Notion, metadataOnly),
+                Effect.flip,
+              ),
+            ),
+          ).toMatchObject({ code: "CURRENT_SCHEMA_REQUIRED", details: { missing: "Content" } })
         } else {
           expect(await Effect.runPromise(Effect.flip(current))).toMatchObject({
             code: "CURRENT_SCHEMA_REQUIRED",
@@ -418,8 +428,8 @@ test("the real materialization generator produces Source and relation facts acce
           ? []
           : [facts.members[initial === "native-root" ? 0 : 1].legacy_page_id],
       )
-      expect(facts.expected.untouched_sibling.properties.Content).toBeUndefined()
-      expect(facts.expected.untouched_sibling.properties["Current State"]).toBeUndefined()
+      expect(facts.expected.untouched_sibling.properties.Content.rich_text).toEqual([])
+      expect(facts.expected.untouched_sibling.properties["Current State"].select).toBeNull()
       if (initial === "native-root") {
         expect(
           await Effect.runPromise(

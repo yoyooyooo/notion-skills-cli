@@ -222,9 +222,8 @@ export function materializationServiceFacts(sample, gitUrl, initial) {
     const row = structuredClone(notion.main)
     row.id = member.legacy_page_id
     row.last_edited_time = "2026-11-27T00:00:00.000Z"
-    for (const name of ["Content", "Current State"])
-      for (const [key, current] of Object.entries(row.properties))
-        if (current.id === library.skills.property_ids[name]) delete row.properties[key]
+    set(row, library.skills, "Content", "rich_text", [])
+    set(row, library.skills, "Current State", "select", null)
     set(row, library.skills, "Name", "title", rich(member.name))
     set(row, library.skills, "Description", "rich_text", rich(member.description))
     set(row, library.skills, "Skill ID", "rich_text", rich(member.legacy_skill_id))

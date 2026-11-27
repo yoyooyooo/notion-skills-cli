@@ -777,6 +777,7 @@ function executeCurrentSource(
     if (
       options.mode === "apply" &&
       original === undefined &&
+      adoptions.size === 0 &&
       retirements.length === 0 &&
       current?.state.state === "ready" &&
       currentSourceManagementMatches(current, wanted)
