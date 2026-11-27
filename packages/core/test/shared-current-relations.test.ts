@@ -8,7 +8,13 @@ import { property, text, type ContentKind } from "../src/model.ts"
 import { skillIdentity } from "../src/shared-content.ts"
 import { prepareCurrentRelations } from "../src/shared-current-relations.ts"
 import { prepareCurrentSkillWrite, writeCurrentSkill } from "../src/shared-current-write.ts"
-import { currentWriteFixture, id, library, testBytes } from "./shared-current-write-fixture.ts"
+import {
+  currentWriteFixture,
+  id,
+  library,
+  pauseAfterCurrentActionAcknowledgement,
+  testBytes,
+} from "./shared-current-write-fixture.ts"
 
 const parent = mkdtempSync(join(tmpdir(), "ntn-current-relations-"))
 afterAll(async () => {
@@ -224,7 +230,7 @@ describe("current native relation round-trip", () => {
     expect(f.mutations()).toEqual([])
   })
   test.each(["accepted", "absent", "partial"] as const)(
-    "an unknown %s relation PATCH resumes the same action without duplicate application",
+    "an unknown %s relation PATCH retains the original intent without another write",
     async (outcome) => {
       const f = currentWriteFixture(parent)
       seed(f, "target", 1)
@@ -236,17 +242,25 @@ describe("current native relation round-trip", () => {
         f.run(writeCurrentSkill(library, { plan, operation_id: "pending-relations" })),
       ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
       expect(relationWrites(f)).toHaveLength(1)
-      expect(
-        await f.run(
+      const pendingKey = [...f.json.keys()].find((key) =>
+        key.startsWith("operations/current-write-pending/"),
+      )!
+      const original = structuredClone(f.json.get(pendingKey))
+      const pages = structuredClone(f.pages)
+      f.clearCalls()
+      await expect(
+        f.run(
           writeCurrentSkill(library, { plan, operation_id: "pending-relations", mode: "resume" }),
         ),
-      ).toMatchObject({ state: "ready" })
-      expect(relationWrites(f)).toHaveLength(outcome === "accepted" ? 1 : 2)
-      f.clearCalls()
-      expect(
-        await f.run(writeCurrentSkill(library, { plan, operation_id: "same-complete-selection" })),
-      ).toMatchObject({ status: "unchanged" })
+      ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
       expect(f.mutations()).toEqual([])
+      expect(f.pages).toEqual(pages)
+      expect(f.json.get(pendingKey)).toEqual(original)
+      await expect(
+        f.run(writeCurrentSkill(library, { plan, operation_id: "same-complete-selection" })),
+      ).rejects.toMatchObject({ code: "CURRENT_OPERATION_PENDING" })
+      expect(f.mutations()).toEqual([])
+      expect(f.json.get(pendingKey)).toEqual(original)
     },
   )
   test.each(["missing", "duplicate", "router", "disabled", "attention", "foreign-table"] as const)(
@@ -308,14 +322,17 @@ describe("current native relation round-trip", () => {
       pendingState,
     )
   })
-  test("a pending relation action cannot resume with another physical target for the same logical ID", async () => {
-    const f = currentWriteFixture(parent),
-      target = seed(f, "target", 1)
+  test("an acknowledged pending relation cannot resume with another physical target for the same logical ID", async () => {
+    const f = pauseAfterCurrentActionAcknowledgement(
+      currentWriteFixture(parent),
+      (key) => key === "skill:relations",
+    )
+    const target = seed(f, "target", 1)
     const plan = await f.run(prepareCurrentSkillWrite(ownerInput(selection(["target"]))))
-    f.failNext({ kind: "relations", outcome: "accepted" })
     await expect(
       f.run(writeCurrentSkill(library, { plan, operation_id: "bound-relation" })),
-    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    ).rejects.toMatchObject({ code: "REQUEST_BUDGET_EXHAUSTED" })
+    expect(f.paused()).toBe(true)
     f.pages.get(target)!.in_trash = true
     seed(f, "target", 2)
     f.clearCalls()

@@ -17,7 +17,12 @@ import {
   writeCurrentSkillPatch,
 } from "../src/shared-current-write.ts"
 import { observeSharedBody } from "../src/shared-page-body.ts"
-import { currentWriteFixture, library, testBytes } from "./shared-current-write-fixture.ts"
+import {
+  currentWriteFixture,
+  library,
+  pauseAfterCurrentActionAcknowledgement,
+  testBytes,
+} from "./shared-current-write-fixture.ts"
 
 const parent = mkdtempSync(join(tmpdir(), "ntn-current-skill-patch-"))
 afterAll(async () => {
@@ -123,19 +128,23 @@ test("a prepared patch preserves later unselected native edits, metadata, flags 
   expect(f.mutations()).toEqual([])
 })
 
-test("a patch resumes an accepted File retirement from its frozen scope without restoring or replaying it", async () => {
-  const { f, page, index } = await seed()
+test("a patch resumes an acknowledged File retirement from its frozen scope without restoring or replaying it", async () => {
+  const { f: fixture, page, index } = await seed()
   const removed = index.files.find((file) => file.path === "obsolete.txt")!
+  const f = pauseAfterCurrentActionAcknowledgement(
+    fixture,
+    (key) => key === `retire-file:${removed.page_id}`,
+  )
   const selection = {
     target: page,
     files: [{ path: "notes/new.md", bytes: testBytes("# New note\n\nDurable text.\n") }],
     remove: ["obsolete.txt"],
   }
   const plan = await f.run(prepareCurrentSkillPatch(library, selection))
-  f.failNext({ kind: "retire-file", outcome: "accepted" })
   await expect(
     f.run(writeCurrentSkillPatch(library, { plan, operation_id: "replace-support" })),
-  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  ).rejects.toMatchObject({ code: "REQUEST_BUDGET_EXHAUSTED" })
+  expect(f.paused()).toBe(true)
   expect(f.pages.get(removed.page_id)?.in_trash).toBe(true)
   const current = await f.run(
     readCurrentOperationIntent(library, { kind: "skill", id: index.skill_id }),
@@ -185,6 +194,52 @@ test("a patch resumes an accepted File retirement from its frozen scope without 
   ).toBe("unchanged")
   expect(f.mutations()).toEqual([])
 })
+
+test.each(["accepted", "absent"] as const)(
+  "a patch preserves its frozen scope and never replays an unknown %s File retirement",
+  async (outcome) => {
+    const { f, page, index } = await seed()
+    const removed = index.files.find((file) => file.path === "obsolete.txt")!
+    const selection = {
+      target: page,
+      files: [{ path: "notes/new.md", bytes: testBytes("# New note\n") }],
+      remove: ["obsolete.txt"],
+    }
+    const plan = await f.run(prepareCurrentSkillPatch(library, selection))
+    f.failNext({ kind: "retire-file", outcome })
+    await expect(
+      f.run(writeCurrentSkillPatch(library, { plan, operation_id: "unknown-retirement" })),
+    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    const key = pending(f)[0]!
+    const original = structuredClone(property(f.json.get(key)).intent)
+    const current = await f.run(
+      readCurrentOperationIntent(library, { kind: "skill", id: index.skill_id }),
+    )
+    if (
+      current === undefined ||
+      !("skill_action" in current.intent) ||
+      current.intent.skill_action.kind !== "update"
+    )
+      throw new Error("Expected the frozen patch scope")
+    const resumed = await f.run(
+      prepareCurrentSkillPatch(library, { ...selection, scope: current.intent.skill_action.scope }),
+    )
+    expect(resumed.input_sha256).toBe(plan.input_sha256)
+    f.clearCalls()
+    await expect(
+      f.run(
+        writeCurrentSkillPatch(library, {
+          plan: resumed,
+          operation_id: "unknown-retirement",
+          mode: "resume",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+    expect(f.mutations()).toEqual([])
+    expect(property(f.json.get(key)).intent).toEqual(original)
+    expect(f.pages.get(removed.page_id)?.in_trash).toBe(outcome === "accepted")
+  },
+)
 
 test("a removal cannot strand a preserved native reference, including on the read-only preview", async () => {
   const { f, page } = await seed()

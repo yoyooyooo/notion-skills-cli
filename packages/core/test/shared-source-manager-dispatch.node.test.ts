@@ -108,11 +108,15 @@ beforeAll(async () => {
     await mkdir(supplied, { mode: 0o700 })
     evidence = await realpath(supplied)
   } else evidence = await realpath(await mkdtemp(join(tmpdir(), "ntn-manager-dispatch-")))
-  runtime = await realpath(process.execPath)
   const gitProbe = await execute("/bin/sh", ["-c", "command -v git"], {
     env: { PATH: process.env.PATH },
   })
-  gitExecutable = await realpath(gitProbe.stdout.trim())
+  const tools = await helper.stageSdkManagerTools(join(evidence, "tools"), {
+    node: process.execPath,
+    git: gitProbe.stdout.trim(),
+  })
+  runtime = tools.node.path
+  gitExecutable = tools.git.path
   // The normal Node lane follows test:unit's current build. A private paired run
   // supplies its already installed frozen prefix instead of repacking the source.
   if (process.env.NTN_SKILLS_MANAGER_TEST_GENERATION) {
@@ -161,6 +165,7 @@ beforeAll(async () => {
     runtime_sha256: hash(await readFile(runtime)),
     git: gitExecutable,
     git_sha256: hash(await readFile(gitExecutable)),
+    tool_selection: tools,
     inventory: selected,
   })
   const generated = join(evidence, "fixture")

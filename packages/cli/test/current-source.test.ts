@@ -123,6 +123,9 @@ test("current Source action routes expose the same bounded finite intent control
       group.commands.map((command) => command.name),
     ),
   ).toEqual([
+    "materialize",
+    "members",
+    "manager",
     "apply",
     "refresh",
     "check",
