@@ -25,6 +25,8 @@ import {
   type RequestScheduleState,
 } from "../src/notion-request-scheduler.ts"
 import { configuredToken, Store } from "../src/store.ts"
+import { currentEvidenceForResponse } from "../src/current-evidence.ts"
+import { CURRENT_EVIDENCE_GENERATION } from "../src/current-evidence-model.ts"
 
 const store = Layer.succeed(Store, {
   backup: () => Effect.die(new Error("Unexpected backup")),
@@ -873,6 +875,70 @@ test("formal Notion Layer coalesces concurrent equal metadata queries before adm
             in_flight: 0,
             outcomes: { success: 2, failure: 0, cancelled: 0 },
           })
+        }),
+    ),
+  )
+})
+
+test("shared HTTP waiters retain the original producer order for current and collection evidence", async () => {
+  const release = Latch.makeUnsafe()
+  const id = "00000000-0000-4000-8000-000000000001"
+  const scope = "a".repeat(64)
+  const observed: number[] = []
+  let generation = 0
+  await Effect.runPromise(
+    withClockedNotion(
+      () => ({
+        wait: release.await,
+        text: JSON.stringify({
+          object: "page",
+          id,
+          last_edited_time: "2026-01-01T00:00:00.000Z",
+        }),
+      }),
+      ({ api, started, starts }) =>
+        Effect.gen(function* () {
+          const base = yield* Effect.provide(Store, store)
+          const evidenceStore: Store["Service"] = {
+            ...base,
+            readJson: (key, schema) =>
+              key.startsWith("cache/identities/")
+                ? Effect.succeed(decode(schema, { scope }))
+                : base.readJson(key, schema),
+            reserveCacheGeneration: () => Effect.sync(() => ++generation),
+            currentEvidence: {
+              observe: (input) =>
+                Effect.sync(() => {
+                  observed.push(input.generation)
+                }),
+              capture: () => Effect.die(new Error("Unexpected capture")),
+              matches: () => Effect.die(new Error("Unexpected match")),
+            },
+          }
+          const request = api
+            .request(`v1/pages/${id}`)
+            .pipe(Effect.provideService(Store, evidenceStore))
+          const probe = observeTransportCoalescing(api)
+          const first = yield* Effect.forkChild(request, { startImmediately: true })
+          yield* Queue.take(started)
+          const lateCollection = {
+            store: evidenceStore.currentEvidence!,
+            scope,
+            generation: yield* evidenceStore.reserveCacheGeneration(
+              scope,
+              CURRENT_EVIDENCE_GENERATION,
+            ),
+          }
+          const second = yield* Effect.forkChild(request, { startImmediately: true })
+          yield* probe.joined
+          yield* release.open
+          const responses = yield* Fiber.joinAll([first, second])
+          expect(starts).toHaveLength(1)
+          expect(generation).toBe(2)
+          expect(observed).toEqual([1])
+          const collection = yield* currentEvidenceForResponse(lateCollection, responses[1])
+          expect(collection?.generation).toBe(1)
+          expect(collection?.scope).toBe(scope)
         }),
     ),
   )

@@ -11,7 +11,7 @@
 | C01–C04 | Broker consumer-state | 固定选择、准备、有效正文、provider 接受与后续 turn |
 | C05 | Broker consumer-state | View 成员、精确资格、旧完整任务、显式 current |
 | C06 | CLI management | 内容 authority/readiness、完整树与独立阅读投影 |
-| C07a | CLI consumption | Store generation、clear、迟到发布及新 deny |
+| C07a | CLI consumption | Store generation、持久事实 epoch、最终全图读集、clear、迟到发布及新 deny |
 | C07b | CLI operation-recovery | unknown/partial、原意图恢复及有限退役 |
 | C07c | Broker consumer-state | scope/epoch、fork、取消与迟到交付 |
 | C08 | Broker verify-notion-agent-workflows | 自然任务结果、实际正文、工具必要性 |
@@ -35,7 +35,7 @@ C10/T21 使用 daily-installation 的 plan/run/candidate-plan/candidate-run 公�
 plan 及 candidate-plan 只准备输入，帮助输出也不是场景成绩。
 candidate 是项目级检查，不能替代 Pro/Mini 的普通日用入口；候选实现模块不能直接作为 CLI 调用。
 
-T01 最低执行层是 host。缓存、TTL、库选择、启动/SDK 次序或会话复用变化，必须执行 Broker 的 `notion-sdk-pi.mjs run` 场景 `http-warm-restart` 和 `http-warm-directory-expired`，再沿其 `evidence` 动作重验原件。正文与目录都 fresh 时，新 Pi 的整个暖阶段 HTTP 必须为 0；仅目录到期时允许 list 请求，正文 consume 仍为 0，Library 根结构 children 保留真实物理分类。两者都核新 PID/session、根与 Requires 的原 snapshot/validated_at 和实际 provider 全文。SDK 与助手单测只记录其覆盖的局部。
+T01 最低执行层是 host。缓存、变化证据、TTL、库选择、启动/SDK 次序或会话复用变化，必须执行 Broker 的 `notion-sdk-pi.mjs run` 场景 `http-warm-restart`、`http-warm-directory-expired`、`http-smart-revalidate` 和 `http-smart-current`，再沿其 `evidence` 动作重验原件。正文与目录都 fresh 时，新 Pi 的整个暖阶段 HTTP 必须为 0；仅目录到期时允许 list 请求，正文 consume 仍为 0，Library 根结构 children 保留真实物理分类。完整 metadata 复核可续证而不下载 Skill 正文：如实记 `source:notion`、`validation:metadata` 与新 `validated_at`，不延长独立 `body_verified_at`/全文期限。Required 单独变化后取消或 429 不得恢复旧 current；下一进程获得新完整闭包，原已接纳 pin 保持原版本，新的 Requires 全集另行采用。所有场景都核新 PID/session、准确的 snapshot/证据时间和实际 provider 全文。SDK 与助手单测只记录其覆盖的局部。
 
 普通安装和真实 Notion 的缓存复验使用同一 daily 公开入口的 `cache-plan` 与 `cache-run --live`，配置 scope 为 `ordinary-pi-cache-reuse`，保留正常 HOME/agentDir/配置/cache，核实际默认正文策略 1 小时。该动作允许过期目录刷新，并报告现场 Requires 数量；它不替代受控闭包正例、metadata run/aggregate、next 交付或自然模型。`cache-plan` 与其他 plan 一样不构成执行成绩。
 
@@ -54,6 +54,9 @@ T24 分别运行双库管理与消费、跨库完整引用、原 Source 操作�
   新 current 按 Enabled/授权判断；已完整旧任务、精确缺字节补取和授权拒绝各有不同边界。
   metadata 缺行不能推导精确 deny，重新启用需可信 fresh use 或新 metadata 观察。
 - 缓存层分别记录 observations、objects、manifest、短引用和有效 context。cache clear 不等于空 Store。
+  Core 持久事实按 scope、完整依赖指纹和 epoch 判断 current；已知变化遇到 unknown/失败仍保持 dirty。重复 unchanged 不反复制造失效。
+  最终 root 与全部 Requires 统一核事实、权限和退休记录；一页 unchanged 或根成功不能替代全图准入。旧 observation 缺 proof 必须补验，不由 schema 升级获得资格。真实 Store 的同协议旧库加表后，旧 pin/bytes 保留，current 经完整元数据补验；原网络观察时序不得由后到 caller 改写。
+  Broker 保留原 ticket、scope、pin 与完整交付守卫，不镜像第二份持久证据。Git 60 秒共享 ref hint 只提示上游变化，不能替代 Notion declaration、授权或固定 plan。
   不能恢复的 mandatory closure 应降级该能力；后续普通聊天和刷新请求必须可达模型。
   真实 physical page 拒绝覆盖该页已知旧/新稳定身份；alias 丢失、改绑或读取失败不能抹去此事实。
   physical 授权观察不冒充第二份正文缓存；当前成功须经原 owner/fence，不能将新身份正文替换旧 pin。

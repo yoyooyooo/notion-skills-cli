@@ -10,6 +10,13 @@
 
 当前资源与有限意图由 [资源状态 Skill](../.cursor/skills/verify-notion-resource-lifecycle/SKILL.md) 维护 [current-lifecycle](../verification/models/current-lifecycle/README.md)。CurrentLifecycle 保留七个配置，分开内容 owner Operation 与 projection/restore 的有限意图；覆盖当前读取与 writer 交错、未知写不重放、完成资格，以及声明假设下的进展。SourceSync 的十一个配置另查有限 Source 同步协调：原意图优先、完整 affected owner 的旧投影 fence、冻结 commit、配置参与 no-op、授权恢复，以及 Source 与投影结果分离。SourceSyncProgress 的十三个配置检查预算重入后保留投影游标和 full 批次终结前缀、硬失败不丢失，以及 parent 成功项先保存、child 清理只认精确终结资格。LibraryLifecycle 的十四个配置检查 root CREATE 前的独立意图、canonical root 身份、真实 DB/DS 归属、完整 readback、原 pending 寻址和冻结物理绑定。[操作恢复 Skill](../.cursor/skills/verify-notion-operation-recovery/SKILL.md) 仍拥有实际 writer/HTTP/SQLite 回放。四个模型共 45 个配置，复用同一 runner，不增加总验证平台。
 
+同一 current-lifecycle owner 的 [智能缓存合同](../verification/models/current-lifecycle/smart-cache.md)
+新增 ObservationSafety、ClosureEvidence、SelectionPins、AdmissionProgress 和 InformationLimit，
+共 16 个配置，套件合计 61 个。前四者检查证据时间、已知变化/拒绝、完整读集、
+固定选择和条件进展；InformationLimit 用有无隐藏编辑的两份环境假设说明信息边界。
+十个模型缺陷变体和能力边界反例不是十一项生产 bug。实现对应状态、实际行为回归
+及守卫变异分别记录在 coverage 与该切片文档，设计合同接入不代替源码接线。
+
 Hosted Notion MCP 的独立凭据由 [消费验证 Skill](../.cursor/skills/verify-notion-consumption/SKILL.md) 维护 [notion-mcp-auth](../verification/models/notion-mcp-auth/README.md)。保留审核后的 AuthAcquisition v5 与 RefreshRotation v7，共 31 个完整配置：8 个候选正例、19 个故意缺陷和 4 个成功可达性见证。源代码对应只绑定已审阅的认证、store 和同机锁守卫；这不是完整实现精化证明，也不借模型的 Enabled/sessionEpoch 输入证明 Broker 接线。
 
 同一消费验证 owner 的 [notion-mcp-search](../verification/models/notion-mcp-search/README.md) 独立拥有 SearchAdmission 的 core 资格判定和 SDK Source/auth fence。它复用同一 runner 与冻结工具，保持独立规则与 mutation 清单；Broker 会话和工具投递仍由 Broker 验收。
@@ -37,7 +44,8 @@ node --test scripts/formal-runner-contract.test.mjs
 
 `--model` 接受 SharedProducer、RequestAdmission、CurrentLifecycle、SourceSync、
 SourceSyncProgress、LibraryLifecycle、AuthAcquisition、RefreshRotation、SearchAdmission、
-ReferenceSelection 或 ImportRelations，选择该模型的全部正负配置。
+ReferenceSelection、ImportRelations、ObservationSafety、ClosureEvidence、SelectionPins、
+AdmissionProgress 或 InformationLimit，选择该模型的全部正负配置。
 五个现役 suite 为 request-engine/current-lifecycle/notion-mcp-auth/notion-mcp-search/skill-reference，
 不兼容已退役模型。输出使用本次新的外部空绝对目录；失败保留原结果，下一次使用新目录。
 
@@ -66,7 +74,7 @@ root/DB/DS 的独立事实及原 pending 存在是 oracle，不能直接复用�
 
 `scripts/check-formal-mutations.py --suite request-engine` 在独立副本中回放 19 个实际 guard。每个必须原件通过、突变导致行为断言失败、恢复后通过。`formal_mutation_result.py` 只接受真实断言诊断；expect 统计行、超时、导入失败或语法错误都不算捕获，混有断言的工具失败也拒绝。现有 runner contract 测试用实际 Bun 输出和 Vitest 结构化错误核对判据。异步用例必须无条件释放自有 latch，让断言错误能够完成退出。当前 immutable runtime case 修改 `shared-current-resource.ts`，并通过公开 SDK 取消 creator，确认另一个 runtime 的读取仍可完成。
 
-同一入口的 `--suite current-lifecycle` 回放二十五个实际 guard，其中原有九个是：原有 current 最后读回 fence、projection 分类、never-replay 的未知 action、非内容完成时的 owner 资格；新增 Source 完整 affected 范围、pending 优先、精确 observed commit、no-op 配置 receipt 与 manager/generation 恢复资格。pending mutation 同时移除本地 pipeline 和远端原意图两道拒绝，因为单独去掉一层仍会安全阻塞。只改 projection 外层 activation 条件也会被下一层写入边界拒绝；这种未触发对应行为断言的异常不是该性质已被杀死。各 mutation 必须与模型的真实坏路径一致。Library 的十三条回放另查原 root CREATE 意图、未知写入、根单调性、真实 DB/DS parent、完整 schema/分页、原 current/import pending 寻址和 SQLite 完整绑定；独立物理事实和原 Store 意图不能由候选描述符或新 lookup key 自证。 DS parent 有首次表检查与最终 Sources relation readback 两个独立 enforcers；单守卫存活保留为冗余防御证据。对应 mutation 明确同时移除这两处 parent 检查，逐文件保存/恢复与核 hash，不能把单守卫存活改报通过。 新增真实 SQLite 地址回放专门复现 coordinator 已改为 root/operation、持久层仍含 DS 的裂缝；四个 Node 子进程贯穿真实保存、重启、换表拒绝、child 恢复和退役。其 mutant 必须以行为断言失败，不能用类型或导入错误替代。
+同一入口的 `--suite current-lifecycle` 保留原有二十五个实际 guard，智能缓存新增回放见该 suite 的 `smart-cache.md`，其中原有九个是：原有 current 最后读回 fence、projection 分类、never-replay 的未知 action、非内容完成时的 owner 资格；新增 Source 完整 affected 范围、pending 优先、精确 observed commit、no-op 配置 receipt 与 manager/generation 恢复资格。pending mutation 同时移除本地 pipeline 和远端原意图两道拒绝，因为单独去掉一层仍会安全阻塞。只改 projection 外层 activation 条件也会被下一层写入边界拒绝；这种未触发对应行为断言的异常不是该性质已被杀死。各 mutation 必须与模型的真实坏路径一致。Library 的十三条回放另查原 root CREATE 意图、未知写入、根单调性、真实 DB/DS parent、完整 schema/分页、原 current/import pending 寻址和 SQLite 完整绑定；独立物理事实和原 Store 意图不能由候选描述符或新 lookup key 自证。 DS parent 有首次表检查与最终 Sources relation readback 两个独立 enforcers；单守卫存活保留为冗余防御证据。对应 mutation 明确同时移除这两处 parent 检查，逐文件保存/恢复与核 hash，不能把单守卫存活改报通过。 新增真实 SQLite 地址回放专门复现 coordinator 已改为 root/operation、持久层仍含 DS 的裂缝；四个 Node 子进程贯穿真实保存、重启、换表拒绝、child 恢复和退役。其 mutant 必须以行为断言失败，不能用类型或导入错误替代。
 
 Profile 的三条实际回放检查完整 pending binding、锁内真实 root/四表 readback 与 root/Profile 稳定 local fence。真实 Store 测试跨四个 Node 进程，拒绝新 Records 表的相同 fingerprint 吞掉旧 unknown CREATE，保留完整意图并仅在原绑定恢复后按既有当前规则语义收敛。旧 pending 缺 frozen Library 时明确阻断。认证 GET /users/me 单独允许和计量，不能把它抹去当零 HTTP；拒绝后的 Library/Record I/O 和语义写入仍须为零。local fence 落实单协作 owner 假设，有限模型没有 Profile fingerprint、SQLite 或操作系统锁状态。
 

@@ -1,4 +1,10 @@
-import { Effect, Schema } from "effect"
+import { Crypto, Effect, Option, Schema } from "effect"
+import {
+  beginCurrentEvidence,
+  currentEvidenceForResponse,
+  currentFact,
+  observeCurrentFacts,
+} from "./current-evidence.ts"
 import {
   decode,
   fail,
@@ -20,6 +26,7 @@ import {
   type CurrentSkillState,
 } from "./shared-current-file.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
+import { Store } from "./store.ts"
 
 export type CurrentFileBinding = {
   readonly file_id: string
@@ -211,10 +218,37 @@ function validateBindings(files: readonly CurrentFileBinding[], owner: string): 
     planSharedFiles({ base: files, mounts: [], overrides: [], entrypoint: entry.path })
 }
 
+/** One complete owner inventory, including additions, removals and descriptor changes. */
+export function currentFilesFact(
+  dataSourceId: string,
+  owner: string,
+  files: readonly CurrentFileBinding[],
+) {
+  return currentFact(
+    `files:${pageId(dataSourceId) ?? dataSourceId}:${pageId(owner) ?? owner}`,
+    [...files]
+      .sort((a, b) => (a.page_id < b.page_id ? -1 : a.page_id > b.page_id ? 1 : 0))
+      .map((file) => ({
+        file_id: file.file_id,
+        page_id: file.page_id,
+        skill_page_id: file.skill_page_id,
+        path: file.path,
+        last_edited_time: new Date(file.last_edited_time).toISOString(),
+        content: file.content,
+      })),
+  )
+}
+
 /** Complete metadata for the selected owners. It never reads bodies, events or operation history. */
 export function queryCurrentFilesForSkills(input: QueryCurrentFilesInput) {
   return Effect.gen(function* () {
     const api = yield* Notion
+    const store = Option.getOrUndefined(yield* Effect.serviceOption(Store))
+    const crypto = Option.getOrUndefined(yield* Effect.serviceOption(Crypto.Crypto))
+    if (store?.currentEvidence !== undefined && crypto === undefined)
+      return yield* Effect.fail(
+        fail("CACHE_INVALIDATED", "Current metadata requires its evidence runtime."),
+      )
     const { owners, dataSourceId, ids, endpoint } = yield* checked(() => {
       const owners = input.skillPageIds.map((id) => exactPage(id, "Skill owner"))
       if (owners.length === 0 || new Set(owners).size !== owners.length)
@@ -230,6 +264,12 @@ export function queryCurrentFilesForSkills(input: QueryCurrentFilesInput) {
         endpoint: `v1/data_sources/${dataSourceId}/query?${parameters}`,
       }
     })
+    let attempt =
+      store?.currentEvidence === undefined || crypto === undefined
+        ? undefined
+        : yield* beginCurrentEvidence(api.credentialIdentity, api.apiOrigin).pipe(
+            Effect.provideService(Crypto.Crypto, crypto),
+          )
     const result = new Map<string, CurrentFileBinding[]>(owners.map((owner) => [owner, []]))
     const pages = new Set<string>()
     for (let offset = 0; offset < owners.length; offset += 80) {
@@ -250,8 +290,14 @@ export function queryCurrentFilesForSkills(input: QueryCurrentFilesInput) {
           },
           { method: "POST" },
         )
+        attempt = yield* currentEvidenceForResponse(attempt, raw)
         const page = yield* checked(() => {
-          if (object(raw, "Current Files query").object !== "list")
+          const envelope = object(raw, "Current Files query")
+          if (
+            envelope.object !== "list" ||
+            (envelope.request_status !== undefined &&
+              object(envelope.request_status, "Query status").type !== "complete")
+          )
             throw invalid("Current Files query did not return a complete list.")
           const list = decode(listSchema(Schema.Unknown), raw)
           if (
@@ -286,6 +332,16 @@ export function queryCurrentFilesForSkills(input: QueryCurrentFilesInput) {
     yield* checked(() => {
       for (const [owner, files] of result) validateBindings(files, owner)
     })
+    // A partial page never establishes absence. Publish only after every owner
+    // and cursor has passed the same complete-inventory validation.
+    if (attempt !== undefined && crypto !== undefined) {
+      const facts = yield* Effect.forEach([...result], ([owner, files]) =>
+        currentFilesFact(dataSourceId, owner, files).pipe(
+          Effect.provideService(Crypto.Crypto, crypto),
+        ),
+      )
+      yield* observeCurrentFacts(attempt, facts)
+    }
     const complete: ReadonlyMap<string, readonly CurrentFileBinding[]> = result
     return complete
   })

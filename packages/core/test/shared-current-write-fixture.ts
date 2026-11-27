@@ -696,6 +696,11 @@ export function currentWriteFixture(parent: string) {
           const before = property(previous),
             after = property(value)
           if (options !== undefined) {
+            if (!("expectedCurrentWritePending" in options))
+              throw fail(
+                "INVALID_ARGUMENT",
+                "This write fixture only models pending-operation guards.",
+              )
             if (
               !/^operations\/current-write-pending\/[a-f0-9]{64}\/pending\.json$/u.test(key) ||
               previous === undefined ||
