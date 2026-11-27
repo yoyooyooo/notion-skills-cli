@@ -40,7 +40,7 @@
     "packages/core/node_modules/@effect/platform-node-shared/src/NodeChildProcessSpawner.ts": "0e1b55d9e2a52d8d05b720098f485f9d427fa41100795c340bf1ffa1406e1ee3",
     "packages/core/node_modules/@effect/platform-node-shared/src/internal/nodeChildProcessSpawner.ts": "01c3a18cbb62c17952ff1c28e1011ac6fb4bbb04b9be532ad06467032d2093f4",
     "packages/core/src/shared-source-member-discovery.ts": "1056beb323e3a6d55b6edbfb1e87c7b63891962dae7e638b21b1527790b6c5c9",
-    "packages/core/test/shared-source-directory.test.ts": "cf335df954cf2793fb9efdc46a8112f872b8e8b1aff95f7568c650a60b0ff785"
+    "packages/core/test/shared-source-directory.test.ts": "2b58a8f96ff7c6cdf48df1071297e0e5a711006d888851e20e95830533827362"
   },
   "models": {
     "SharedProducer": {
