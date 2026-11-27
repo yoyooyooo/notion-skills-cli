@@ -353,8 +353,11 @@ describe("shared catalog routing", () => {
     })
     const selected = await f.run(explicitSource("team"))
     expect(selected).toEqual(registered)
-    expect(f.calls).toHaveLength(45)
+    expect(f.calls).toHaveLength(42)
     expect(f.calls.filter((call) => call.path === `v1/pages/${library.library_id}`)).toHaveLength(3)
+    expect(
+      f.calls.filter((call) => call.path === `v1/databases/${library.skills.database_id}`),
+    ).toHaveLength(3)
     expect(f.calls.every((call) => call.body === undefined && call.method === undefined)).toBe(true)
   })
 
@@ -387,16 +390,46 @@ describe("shared catalog routing", () => {
     }
   })
 
-  test("explicit current selection preserves the descriptor without querying Files or Records", async () => {
-    const f = fixture()
+  test("explicit selection reuses the verified Skills title", async () => {
+    const f = fixture({
+      databaseValue: { ...database(), title: [{ plain_text: "Current team title" }] },
+    })
     const result = await f.run(explicitSource(library.library_id))
     expect(result.shared_library).toEqual(library)
     expect(result.data_source_ids).toEqual([library.skills.data_source_id])
-    expect(f.calls).toHaveLength(15)
+    expect(result.title).toBe("Current team title")
+    expect(f.calls).toHaveLength(14)
+    expect(
+      f.calls.filter((call) => call.path === `v1/databases/${library.skills.database_id}`),
+    ).toHaveLength(1)
     expect(f.calls.filter((call) => call.path.includes("/query"))).toEqual([])
     expect(f.calls.filter((call) => call.path.startsWith("v1/pages/"))).toEqual([
       { path: `v1/pages/${library.library_id}`, body: undefined, method: undefined },
     ])
+  })
+
+  test("later explicit selections read new titles and reject changed bindings", async () => {
+    const current = database()
+    const f = fixture({ databaseValue: current })
+    expect((await f.run(explicitSource(library.library_id))).title).toBe("Shared Skills")
+
+    current.title = [{ plain_text: "Renamed Skills" }]
+    expect((await f.run(explicitSource(library.library_id))).title).toBe("Renamed Skills")
+    expect(
+      f.calls.filter((call) => call.path === `v1/databases/${library.skills.database_id}`),
+    ).toHaveLength(2)
+
+    current.parent.page_id = id(99)
+    const rejected = await f.run(explicitSource(library.library_id).pipe(Effect.result))
+    expect(rejected).toMatchObject({
+      _tag: "Failure",
+      failure: { code: "LIBRARY_SCHEMA_CONFLICT" },
+    })
+    expect(
+      f.calls.filter((call) => call.path === `v1/databases/${library.skills.database_id}`),
+    ).toHaveLength(3)
+    expect(f.calls.filter((call) => call.path === `v1/pages/${library.library_id}`)).toHaveLength(3)
+    expect(f.calls.every((call) => call.body === undefined && call.method === undefined)).toBe(true)
   })
 
   test("cold explicit catalog is metadata only and includes the shared stable identity", async () => {
@@ -406,7 +439,10 @@ describe("shared catalog routing", () => {
     expect(result.records[0]?.locator.type).toBe("shared_skill")
     expect(result.coverage.exhaustive).toBe(true)
     expect(result.databases[0]?.shared_library).toEqual(library)
-    expect(f.calls).toHaveLength(17)
+    expect(f.calls).toHaveLength(16)
+    expect(
+      f.calls.filter((call) => call.path === `v1/databases/${library.skills.database_id}`),
+    ).toHaveLength(1)
     const query = f.calls.find((call) => call.path.includes("/query?"))
     if (query === undefined) throw new Error("Missing selected Skills query")
     const fields = new URL(query.path, "https://api.notion.com/").searchParams.getAll(
@@ -443,7 +479,7 @@ describe("shared catalog routing", () => {
     const f = fixture({ rows })
     const result = await f.run(catalog({ library: library.library_id, refresh: true }))
     expect(result.records).toHaveLength(101)
-    expect(f.calls).toHaveLength(18)
+    expect(f.calls).toHaveLength(17)
     expect(f.calls.filter((call) => call.path.includes("/query?"))).toHaveLength(2)
     expect(
       f.calls.some(
@@ -467,7 +503,7 @@ describe("shared catalog routing", () => {
       reason: "empty",
       value_length: 0,
     })
-    expect(f.calls).toHaveLength(18)
+    expect(f.calls).toHaveLength(17)
     expect(f.calls.filter((call) => call.path.includes("/query?"))).toHaveLength(2)
     expect(
       f.calls.some(
@@ -516,7 +552,7 @@ describe("shared catalog routing", () => {
       skillIdentity(library.library_id, "skill-1"),
     ])
     expect(result.coverage.exhaustive).toBe(true)
-    expect(f.calls).toHaveLength(17)
+    expect(f.calls).toHaveLength(16)
     expect(
       f.calls.some(
         (call) =>
@@ -549,7 +585,7 @@ describe("shared catalog routing", () => {
     const result = await f.run(catalog({ library: library.library_id, refresh: true }))
     expect(result.records).toHaveLength(1)
     expect(result.coverage.exhaustive).toBe(true)
-    expect(f.calls).toHaveLength(17)
+    expect(f.calls).toHaveLength(16)
     expect(() => sharedRecordFromPage(draft, source, library.skills.data_source_id)).toThrow(
       "Skill ID must be a stable bounded identity.",
     )
@@ -563,7 +599,7 @@ describe("shared catalog routing", () => {
     expect(result.coverage.search_index_limited).toBe(true)
     expect(
       f.calls.filter((call) => call.path === `v1/databases/${library.skills.database_id}`),
-    ).toHaveLength(3)
+    ).toHaveLength(2)
     expect(f.calls.filter((call) => call.path === `v1/pages/${library.library_id}`)).toHaveLength(1)
     expect(
       f.calls.filter((call) => call.path === `v1/data_sources/${library.skills.data_source_id}`),

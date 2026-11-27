@@ -31,9 +31,9 @@
     "packages/core/test/skill-reference-guards.test.ts": "060982d502d1b8fc10298ec41196e44355e11192fe2e635c8e1b39b62640bb40",
     "packages/core/test/sqlite-state.node.test.ts": "524c54c3b3586c0159af322f3128856f6d5a313c06c36914104e58b05a87c782",
     "verification/models/skill-reference/mutations.json": "d2cfd8b9ac749c669fa0bd0494c6220fb52508bf8aee7921620b7030243dd182",
-    "packages/core/src/catalog.ts": "57eafb59b6065d07dba5eb3bc561d2ae75d75bd554503ff5ffb631ab0f1862b7",
+    "packages/core/src/catalog.ts": "584e50752a44709602fec7c99c423c387ce52db82bd66d321cf17fea4d74667f",
     "packages/core/src/library-selection.ts": "e1cff08feed83b3479566c1a47108d0126552c4bfbb72f0d74ad9e576b081e12",
-    "packages/core/src/shared-library.ts": "90adf217346484735fd24d377261d3468068b93a4f03fc8f2a9df2197915445a",
+    "packages/core/src/shared-library.ts": "dde14702ca26d31f84940c59638eb58b08ff9c69844057bb145a0dd117f346c9",
     "packages/core/src/shared-library-model.ts": "331dfe22a7fb88cf97236dd860bceae280022e5473c7bc0d591bd8295bd04f1c",
     "packages/core/src/shared-current-import-plan.ts": "9d357dd9cbc5b2cdaea96c9a77692be4e1cd23bfa50bb21f093aea8e4db5f3f1",
     "packages/core/test/library-schema-fixture.ts": "901ecd1d8c5a3a185a3648b08d77fc45f898d29c5059bb58d780b778055d1df5"
