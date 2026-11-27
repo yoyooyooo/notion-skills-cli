@@ -99,7 +99,7 @@ function rich(library: SharedLibrary, row: unknown, name: string, kind = "rich_t
 
 /** Read current configuration by registered identities. Status and Operation
  * describe the finite writer; they are not declaration input. */
-export function parseCurrentSourceManagement(library: SharedLibrary, input: unknown) {
+export function parseCurrentSourceConfiguration(library: SharedLibrary, input: unknown) {
   const { id } = livePage(library, input)
   const source_id = validateCurrentSourceId(rich(library, input, "Source ID"))
   const provider = property(field(library, input, "Provider", "select").select).name
@@ -109,8 +109,6 @@ export function parseCurrentSourceManagement(library: SharedLibrary, input: unkn
       "Current Source management requires a Git source with a supported exact cold-read route.",
       { source_id, provider },
     )
-  const state = property(field(library, input, "Status", "select").select).name
-  if (typeof state !== "string") throw invalid("The current Source state is missing.")
   const policy = property(field(library, input, "Policy", "select").select).name
   const definition = validateSourceDefinition({
     version: 1,
@@ -127,6 +125,25 @@ export function parseCurrentSourceManagement(library: SharedLibrary, input: unkn
     selection: JSON.parse(rich(library, input, "Selection")),
     options: JSON.parse(rich(library, input, "Options")),
   })
+  return { page_id: id, definition }
+}
+
+export function parseCurrentSourceRegistration(library: SharedLibrary, input: unknown) {
+  const configuration = parseCurrentSourceConfiguration(library, input)
+  const state = property(field(library, input, "Status", "select").select).name
+  if (typeof state !== "string") throw invalid("The current Source state is missing.")
+  return {
+    ...configuration,
+    state: parseCurrentSkillState(state, rich(library, input, "Operation")),
+  }
+}
+
+export function currentSourceText(library: SharedLibrary, row: unknown, name: string) {
+  return rich(library, row, name)
+}
+
+export function parseCurrentSourceManagement(library: SharedLibrary, input: unknown) {
+  const { page_id: id, definition, state } = parseCurrentSourceRegistration(library, input)
   const contributions = validateCurrentSourceContributions(
     JSON.parse(rich(library, input, "Contributions")),
   )
@@ -138,14 +155,14 @@ export function parseCurrentSourceManagement(library: SharedLibrary, input: unkn
     declaration: { version: 1 as const, definition, contributions },
     content,
     revision,
-    state: parseCurrentSkillState(state, rich(library, input, "Operation")),
+    state,
   }
 }
 
 export type CurrentSourceManagement = ReturnType<typeof parseCurrentSourceManagement>
 
 /** Complete one exact identity query before accepting absence or uniqueness. */
-function queryCurrentSourceManagementRow(library: SharedLibrary, sourceId: string) {
+export function queryCurrentSourceManagementRow(library: SharedLibrary, sourceId: string) {
   return Effect.gen(function* () {
     const source_id = yield* checked(() => validateCurrentSourceId(sourceId))
     const id = yield* checked(() => currentSourceProperty(library, "Source ID"))
@@ -358,6 +375,8 @@ type CurrentSourceTargetsInput = {
   readonly skillIds: readonly string[]
   readonly sourcePageId?: string
   readonly sourceId?: string
+  readonly declaredOnly?: boolean
+  readonly uninitializedSkillIds?: readonly string[]
 }
 
 /** Complete live owner candidates without claiming a supporting Files inventory. */
@@ -366,6 +385,7 @@ export function queryCurrentSourceTargetPages(
   input: CurrentSourceTargetsInput,
 ) {
   return Effect.gen(function* () {
+    if (input.declaredOnly) input = { ...input, sourcePageId: undefined, sourceId: undefined }
     const ids = [...new Set(input.skillIds)].sort(),
       byPage = new Map<string, unknown>(),
       bySkill = new Map<string, string>()
@@ -504,6 +524,7 @@ export function queryCurrentSourceTargets(
     })
     const targets = new Map<string, CurrentSkillIndex>()
     for (const [skill_id, { page_id, page }] of pages) {
+      if (input.uninitializedSkillIds?.includes(skill_id)) continue
       const rows = files.get(page_id)
       if (rows === undefined)
         return yield* Effect.fail(invalid("An affected Files scope is missing."))

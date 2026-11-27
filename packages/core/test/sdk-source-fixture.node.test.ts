@@ -1,14 +1,18 @@
 import { createHash } from "node:crypto"
-import { mkdtemp, readFile } from "node:fs/promises"
+import { execFile } from "node:child_process"
+import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises"
 import { request } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { promisify } from "node:util"
 import { expect, test, vi } from "vitest"
 
 // The verification fixture is deliberately standalone JavaScript, shared by the
 // installed SDK smoke and the actual Pi driver without importing product state.
 const helperUrl = new URL("../../../scripts/sdk-source-fixture.mjs", import.meta.url)
-const { startSdkSourceFixture } = await import(helperUrl.href)
+const { startSdkSourceFixture, startSdkGitFixture, materializationServiceFacts } = await import(
+  helperUrl.href
+)
 type Source = Awaited<ReturnType<typeof startSdkSourceFixture>>
 
 function sample() {
@@ -91,6 +95,182 @@ async function settled(source: Source, count: number) {
 
 const sha256 = (value: Uint8Array) => createHash("sha256").update(value).digest("hex")
 
+test("materialization facts preserve two missing-owner initial states and an untouched legacy sibling", () => {
+  const base = sample()
+  const skills = [
+    "Name",
+    "Description",
+    "Skill ID",
+    "Main File ID",
+    "Content",
+    "Current State",
+    "Origin",
+    "Requires",
+    "Members",
+    "Enabled",
+    "Default Context",
+  ]
+  const sources = [
+    "Name",
+    "Source ID",
+    "Description",
+    "Provider",
+    "Location",
+    "Ref",
+    "Selection",
+    "Options",
+    "Contributions",
+    "Content",
+    "Last Revision",
+    "Operation",
+    "Policy",
+    "Status",
+    "Enabled",
+    "Skills",
+    "Records",
+  ]
+  const identities = (names: string[]) =>
+    Object.fromEntries(names.map((name) => [name, name.toLowerCase().replaceAll(" ", "-")]))
+  const members = ["root", "required", "sibling"].map((name) => {
+    const content = `# ${name} complete original\n`
+    return {
+      member_key: "skills/" + name,
+      name,
+      description: "Complete " + name,
+      legacy_skill_id: "old-" + name,
+      legacy_page_id: "old-page-" + name,
+      legacy_main_file_id: "old-main-" + name,
+      files: [
+        {
+          path: "SKILL.md",
+          source_path: "skills/" + name + "/SKILL.md",
+          git_oid: "c".repeat(40),
+          sha256: sha256(Buffer.from(content)),
+          bytes: Buffer.byteLength(content),
+          mode: "100644",
+          encoding: "utf8",
+          content,
+        },
+      ],
+    }
+  })
+  const fixture = {
+    ...base,
+    notion: {
+      ...base.notion,
+      library: {
+        ...base.notion.library,
+        skills: { ...base.notion.library.skills, property_ids: identities(skills) },
+        sources: { ...base.notion.library.sources, property_ids: identities(sources) },
+      },
+    },
+    source_materialization: {
+      version: 1,
+      source_id: "source-test",
+      source_page_id: "registered-source",
+      commit: "a".repeat(40),
+      tree: "b".repeat(40),
+      members,
+    },
+  }
+  const original = structuredClone(fixture)
+  const legacy = materializationServiceFacts(
+    fixture,
+    "http://127.0.0.1:43210/upstream.git",
+    "legacy-members",
+  )
+  const root = legacy.sample.notion.skills.find((row: { id: string }) => row.id === "old-page-root")
+  expect(root.properties.Content).toBeUndefined()
+  expect(root.properties["Current State"]).toBeUndefined()
+  expect(root.properties.Requires.relation).toEqual([{ id: "old-page-required" }])
+  expect(root.properties.Members.relation).toEqual([{ id: "old-page-sibling" }])
+  expect(legacy.expected.untouched_sibling.properties.Enabled.checkbox).toBe(false)
+  expect(legacy.contributions).toHaveLength(3)
+  const onlySource = materializationServiceFacts(
+    fixture,
+    "http://127.0.0.1:43210/upstream.git",
+    "source-only",
+  )
+  expect(onlySource.sample.notion.skills).toEqual(base.notion.skills)
+  expect(onlySource.contributions).toEqual([])
+  expect(onlySource.plan.base.source.files).toHaveLength(3)
+  const legacySource = materializationServiceFacts(
+    fixture,
+    "http://127.0.0.1:43210/upstream.git",
+    "legacy-source",
+  )
+  expect(legacySource.sample.notion.sources[0].properties.Status.select.name).toBe("applied")
+  expect(
+    legacySource.sample.notion.sources[0].properties["Last Revision"].rich_text[0].text.content,
+  ).toBe(fixture.source_materialization.commit)
+  expect(legacySource.sample.notion.sources[0].properties.Content.rich_text[0].text.content).toBe(
+    "",
+  )
+  expect(
+    legacySource.sample.notion.sources[0].properties.Contributions.rich_text[0].text.content,
+  ).toBe("")
+  expect(
+    legacySource.sample.notion.skills.find((row: { id: string }) => row.id === "old-page-root")
+      .properties["Source Member"].rich_text[0].text.content,
+  ).toBe("skills/root")
+  const growth = materializationServiceFacts(
+    fixture,
+    "http://127.0.0.1:43210/upstream.git",
+    "manifest-growth",
+  )
+  expect(growth.contributions).toHaveLength(1)
+  expect(growth.plan.base.source.files).toHaveLength(1)
+  const descriptor = JSON.parse(
+    growth.sample.notion.skills.find((row: { id: string }) => row.id === "old-page-root").properties
+      .Content.rich_text[0].text.content,
+  )
+  expect(descriptor).toMatchObject({
+    revision: growth.revision,
+    source_id: "source-test",
+    source_path: "skills/root/SKILL.md",
+    bytes: Buffer.byteLength(members[0]!.files[0]!.content),
+    mode: "100644",
+  })
+  const nativeInput = structuredClone(fixture)
+  const nativeProperties: Record<string, unknown> = {
+    Content: {
+      id: "content",
+      type: "rich_text",
+      rich_text: [
+        {
+          plain_text: JSON.stringify({
+            kind: "native",
+            mode: "100644",
+            frontmatter: "---\nname: native-root\n---\n\n",
+          }),
+        },
+      ],
+    },
+    "Skill ID": { id: "skill-id", type: "rich_text", rich_text: [{ plain_text: "native-root" }] },
+  }
+  nativeInput.notion.main.properties = nativeProperties
+  nativeInput.notion.skills[0] = nativeInput.notion.main
+  const native = materializationServiceFacts(
+    nativeInput,
+    "http://127.0.0.1:43210/upstream.git",
+    "native-root",
+  )
+  expect(native.native_root).toMatchObject({
+    page_id: "selected",
+    skill_id: "native-root",
+    alias: "lazy-native-root",
+  })
+  expect(native.native_root.content).toBe(
+    "---\nname: native-root\n---\n\n" + base.notion.bodies.selected,
+  )
+  expect(native.sample.notion.main.properties.Requires.relation).toEqual([{ id: "old-page-root" }])
+  expect(native.sample.notion.main.properties.Members.relation).toEqual([
+    { id: "old-page-sibling" },
+  ])
+  expect(native.contributions).toHaveLength(3)
+  expect(fixture).toEqual(original)
+})
+
 test("Source contribution contains queries return complete candidates with normal pagination", async () => {
   const directory = await mkdtemp(join(tmpdir(), "sdk-source-contributions-"))
   const base = sample()
@@ -139,6 +319,201 @@ test("Source contribution contains queries return complete candidates with norma
     expect(second.next_cursor).toBeNull()
     await settled(source, 2)
     expect(source.unexpected).toEqual([])
+  } finally {
+    await source.close()
+  }
+})
+
+test("a declared empty default-view inventory is complete and bound to the selected database", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "sdk-source-empty-views-"))
+  const base = sample()
+  const source = await startSdkSourceFixture(
+    { ...base, view_dynamics: undefined, empty_view_inventory: true },
+    join(directory, "requests.jsonl"),
+  )
+  try {
+    const response = await fetch(source.origin + "/v1/views?database_id=skills-db")
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      object: "list",
+      results: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    expect(source.unexpected).toEqual([])
+    const foreign = await fetch(source.origin + "/v1/views?database_id=foreign-db")
+    expect(foreign.status).toBe(400)
+    await foreign.arrayBuffer()
+    expect(source.unexpected).toHaveLength(1)
+  } finally {
+    await source.close()
+  }
+})
+
+test("Source pages remain readable without granting writes or a reading projection", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "sdk-source-readonly-"))
+  const base = sample()
+  const row = { id: "registered-source", properties: {} }
+  const source = await startSdkSourceFixture(
+    { ...base, notion: { ...base.notion, sources: [row] } },
+    join(directory, "requests.jsonl"),
+  )
+  try {
+    expect(await (await fetch(source.origin + "/v1/pages/registered-source")).json()).toEqual(row)
+    const denied = await fetch(source.origin + "/v1/pages/registered-source", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ properties: { status: { select: { name: "ready" } } } }),
+    })
+    expect(denied.status).toBe(400)
+    await denied.arrayBuffer()
+    expect(source.notion.sources).toEqual([row])
+    await settled(source, 2)
+    expect(
+      source.requests.some((request: { semantic_write?: boolean }) => request.semantic_write),
+    ).toBe(false)
+  } finally {
+    await source.close()
+  }
+})
+
+test("a submitted Source PATCH may apply after its client disconnects without producing an ACK", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "sdk-source-late-write-"))
+  const base = sample()
+  const row = {
+    id: "registered-source",
+    properties: {
+      revision: {
+        id: "revision",
+        type: "rich_text",
+        rich_text: [{ text: { content: "before" } }],
+      },
+    },
+  }
+  const source = await startSdkSourceFixture(
+    { ...base, notion: { ...base.notion, sources: [row] } },
+    join(directory, "requests.jsonl"),
+    { allowCurrentWrites: true, forbidProjectionWrites: true },
+  )
+  try {
+    const held = source.holdNext({
+      method: "PATCH",
+      path: "/v1/pages/registered-source",
+      afterHeaders: false,
+      applyAfterDisconnect: true,
+    })
+    const controller = new AbortController()
+    const pending = fetch(source.origin + "/v1/pages/registered-source", {
+      method: "PATCH",
+      signal: controller.signal,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        properties: { revision: { rich_text: [{ text: { content: "after" } }] } },
+      }),
+    })
+      .then((response) => response.json())
+      .then(
+        () => "completed",
+        () => "cancelled",
+      )
+    await held.reached
+    controller.abort()
+    expect(await pending).toBe("cancelled")
+    await vi.waitFor(() => expect(source.requests[0].closed_monotonic_ns).not.toBeNull())
+    expect(source.notion.sources[0]).toEqual(row)
+    held.release()
+    const closed = await held.closed
+    expect(closed).toMatchObject({
+      semantic_write: true,
+      status: null,
+      terminal: "aborted",
+      response_bytes_complete: false,
+      observed_response_bytes: 0,
+    })
+    expect(source.notion.sources[0].properties.revision.rich_text[0].text.content).toBe("after")
+    expect(source.unexpected).toEqual([])
+    const events = (await readFile(source.eventsPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    expect(events.some((event) => event.event === "late-application")).toBe(true)
+    expect(
+      source.requests.some((request: { projection_write?: boolean }) => request.projection_write),
+    ).toBe(false)
+  } finally {
+    await source.close()
+  }
+})
+
+test("materialization fixtures refuse projection attempts before changing generated bodies", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "sdk-source-no-projection-"))
+  const source = await startSdkSourceFixture(sample(), join(directory, "requests.jsonl"), {
+    allowCurrentWrites: true,
+    forbidProjectionWrites: true,
+  })
+  try {
+    const original = source.notion.bodies.selected
+    const response = await fetch(source.origin + "/v1/pages/selected/markdown", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        markdown_version: "v2",
+        type: "replace_content",
+        replace_content: { new_str: "unexpected projection" },
+      }),
+    })
+    expect(response.status).toBe(400)
+    await response.arrayBuffer()
+    await settled(source, 1)
+    expect(source.notion.bodies.selected).toBe(original)
+    expect(source.requests[0]).toMatchObject({ projection_write: true })
+    expect(source.requests[0].semantic_write).not.toBe(true)
+    expect(source.unexpected[0].error).toContain("Reading projection is forbidden")
+  } finally {
+    await source.close()
+  }
+})
+
+test("the Git fixture serves exact real commits to independent clones through HTTP", async () => {
+  const run = promisify(execFile)
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "sdk-source-real-git-")))
+  const repository = join(directory, "upstream.git")
+  await mkdir(repository)
+  const env = {
+    PATH: process.env.PATH,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_AUTHOR_NAME: "Controlled Git",
+    GIT_AUTHOR_EMAIL: "fixture@example.test",
+    GIT_COMMITTER_NAME: "Controlled Git",
+    GIT_COMMITTER_EMAIL: "fixture@example.test",
+  }
+  await run("git", ["init", "-b", "main", repository], { env })
+  const body = "# Exact original\n\nNo shared consumer Store is required.\n"
+  await writeFile(join(repository, "SKILL.md"), body)
+  await run("git", ["-C", repository, "add", "SKILL.md"], { env })
+  await run("git", ["-C", repository, "commit", "--no-gpg-sign", "-m", "controlled source"], {
+    env,
+  })
+  const commit = (await run("git", ["-C", repository, "rev-parse", "HEAD"], { env })).stdout.trim()
+  const source = await startSdkGitFixture(repository, join(directory, "git.jsonl"))
+  try {
+    for (const client of ["first-client", "second-client"]) {
+      const target = join(directory, client)
+      await run("git", ["clone", "--no-checkout", source.url, target], { env })
+      expect((await run("git", ["-C", target, "show", commit + ":SKILL.md"], { env })).stdout).toBe(
+        body,
+      )
+    }
+    await vi.waitFor(() =>
+      expect(
+        source.requests.every((request: { exit_code: number | null }) => request.exit_code === 0),
+      ).toBe(true),
+    )
+    expect(source.unexpected).toEqual([])
+    expect(
+      source.requests.filter((request: { method: string }) => request.method === "POST").length,
+    ).toBeGreaterThanOrEqual(2)
   } finally {
     await source.close()
   }

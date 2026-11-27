@@ -361,10 +361,8 @@ function loseRegistrationAck(
 }
 
 for (const outcome of ["accepted", "absent"] as const)
-  for (const phase of (outcome === "accepted"
-    ? ["seed", "file", "bind", "ready", "retire"]
-    : ["seed", "file", "ready", "retire"]) as readonly AckPhase[])
-    test(`the same registration intent recovers an ${outcome} ${phase} PATCH with a lost ACK`, async () => {
+  for (const phase of ["seed", "file", "bind", "ready", "retire"] as readonly AckPhase[])
+    test(`registration only releases an ${outcome} ${phase} PATCH with a unique control witness`, async () => {
       const f = currentWriteFixture(parent),
         { owner, support } = await draft(f)
       const options = { target: owner }
@@ -383,6 +381,15 @@ for (const outcome of ["accepted", "absent"] as const)
       }
       await assertBodies(f, owner, support)
       f.clearCalls()
+      if (outcome !== "accepted" || (phase !== "bind" && phase !== "retire")) {
+        await expect(f.run(registerCurrentNotionSkill(library, options))).rejects.toMatchObject({
+          code: "CURRENT_OPERATION_UNRESOLVED",
+        })
+        expect(f.mutations()).toEqual([])
+        expect(pending(f)).toHaveLength(1)
+        await assertBodies(f, owner, support)
+        return
+      }
       const result = await f.run(registerCurrentNotionSkill(library, options))
       expect(result).toMatchObject({ status: "registered", state: "ready", page_id: owner })
       expect(f.table("skills")).toHaveLength(1)

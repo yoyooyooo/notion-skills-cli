@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect"
+import { sourceDefinitionOptions } from "./shared-source-definition-options.ts"
 import { fail, SkillsError } from "./model.ts"
 import { normalizePath, pageId } from "./ref.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
@@ -68,7 +69,7 @@ export function validateSourceDefinition(value: unknown): SourceDefinitionInput 
     "external_assets",
     "external_markdown",
   ])
-  for (const key of Object.keys(result.options))
+  for (const key of Object.keys(sourceDefinitionOptions(result.options)))
     if (!options.has(key))
       throw fail(
         "SOURCE_ADAPTER_OPTIONS_UNSUPPORTED",

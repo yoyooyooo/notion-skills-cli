@@ -156,7 +156,9 @@ Source remove 自带库内完整 Skills/Files 元数据反查，能找到缺 Ori
 
 用一个管理意图覆盖 CREATE/完整 append/归档响应丢失、部分文件已成、进程重启或预算暂停。重传同一完整输入，只继续能按当前事实确认的动作。部分 append 未收敛时保持 pending，不盲目重放；这个拒绝结果不能说成自动恢复通过。ready 不依赖历史证明，半树也不能靠改状态通过。
 
-需要改变目标时，停止原 writer 后显式 supersede 为完整新输入，验证有限交接的未知响应和最终清空；不新增确认台账或内容副本。Source 单文件动作不能把旧多目标动作抹掉。未知远端请求可能迟到，本地锁不提供跨机 fencing；只声明实际观察到的完成结果。
+需要改变目标时，先核原业务和控制写均已有因果终结，再显式 supersede 为完整新输入。停止原 writer、超时或当前 desired 相等不能消除未知请求；任一 child 未结清就须在父首次 mutation 前拒绝。Source 单文件动作不能把旧多目标动作抹掉。固定 manager 的 canonical Store 统一 Source 写准入，客户端无本地 fallback；它不提供跨主机 CAS。只声明实际观察到的完成结果。
+
+首次明确 `$` 的局部管理沿 [Source 物化](source-materialization.md)，只补消费可复用状态，投影调用为零。旧行缺 schema、无 Skill 行、空 Source plan/贡献、manifest 增长四初态，以及 root+Requires、惰性 sibling、五分钟新 Pi PID和独立空客户端必须分别留证。普通 consume 与管理 effects 分开，真正 provider 全文由 Broker integration 持有。
 
 旧 ACK/event/永久 pin 模型及专属入口已退役。当前 writer/HTTP 反例由 operation-recovery 维护；resource-lifecycle 维护准确对应的当前生命周期模型。请求模型仍只证明请求范围；不恢复旧模型或新增平台。
 

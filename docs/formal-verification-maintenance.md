@@ -12,7 +12,7 @@
 
 同一 current-lifecycle owner 的 [智能缓存合同](../verification/models/current-lifecycle/smart-cache.md)
 新增 ObservationSafety、ClosureEvidence、SelectionPins、AdmissionProgress 和 InformationLimit，
-共 16 个配置，套件合计 61 个。前四者检查证据时间、已知变化/拒绝、完整读集、
+共 16 个配置。另有 SourceMaterialization 七个和 SourceWriterSettlement 九个配置，套件合计 77 个。前四者检查证据时间、已知变化/拒绝、完整读集、
 固定选择和条件进展；InformationLimit 用有无隐藏编辑的两份环境假设说明信息边界。
 十个模型缺陷变体和能力边界反例不是十一项生产 bug。实现对应状态、实际行为回归
 及守卫变异分别记录在 coverage 与该切片文档，设计合同接入不代替源码接线。
@@ -45,7 +45,7 @@ node --test scripts/formal-runner-contract.test.mjs
 `--model` 接受 SharedProducer、RequestAdmission、CurrentLifecycle、SourceSync、
 SourceSyncProgress、LibraryLifecycle、AuthAcquisition、RefreshRotation、SearchAdmission、
 ReferenceSelection、ImportRelations、ObservationSafety、ClosureEvidence、SelectionPins、
-AdmissionProgress 或 InformationLimit，选择该模型的全部正负配置。
+AdmissionProgress、InformationLimit、SourceMaterialization 或 SourceWriterSettlement，选择该模型的全部正负配置。
 五个现役 suite 为 request-engine/current-lifecycle/notion-mcp-auth/notion-mcp-search/skill-reference，
 不兼容已退役模型。输出使用本次新的外部空绝对目录；失败保留原结果，下一次使用新目录。
 
@@ -74,7 +74,9 @@ root/DB/DS 的独立事实及原 pending 存在是 oracle，不能直接复用�
 
 `scripts/check-formal-mutations.py --suite request-engine` 在独立副本中回放 19 个实际 guard。每个必须原件通过、突变导致行为断言失败、恢复后通过。`formal_mutation_result.py` 只接受真实断言诊断；expect 统计行、超时、导入失败或语法错误都不算捕获，混有断言的工具失败也拒绝。现有 runner contract 测试用实际 Bun 输出和 Vitest 结构化错误核对判据。异步用例必须无条件释放自有 latch，让断言错误能够完成退出。当前 immutable runtime case 修改 `shared-current-resource.ts`，并通过公开 SDK 取消 creator，确认另一个 runtime 的读取仍可完成。
 
-同一入口的 `--suite current-lifecycle` 保留原有二十五个实际 guard，智能缓存新增回放见该 suite 的 `smart-cache.md`，其中原有九个是：原有 current 最后读回 fence、projection 分类、never-replay 的未知 action、非内容完成时的 owner 资格；新增 Source 完整 affected 范围、pending 优先、精确 observed commit、no-op 配置 receipt 与 manager/generation 恢复资格。pending mutation 同时移除本地 pipeline 和远端原意图两道拒绝，因为单独去掉一层仍会安全阻塞。只改 projection 外层 activation 条件也会被下一层写入边界拒绝；这种未触发对应行为断言的异常不是该性质已被杀死。各 mutation 必须与模型的真实坏路径一致。Library 的十三条回放另查原 root CREATE 意图、未知写入、根单调性、真实 DB/DS parent、完整 schema/分页、原 current/import pending 寻址和 SQLite 完整绑定；独立物理事实和原 Store 意图不能由候选描述符或新 lookup key 自证。 DS parent 有首次表检查与最终 Sources relation readback 两个独立 enforcers；单守卫存活保留为冗余防御证据。对应 mutation 明确同时移除这两处 parent 检查，逐文件保存/恢复与核 hash，不能把单守卫存活改报通过。 新增真实 SQLite 地址回放专门复现 coordinator 已改为 root/operation、持久层仍含 DS 的裂缝；四个 Node 子进程贯穿真实保存、重启、换表拒绝、child 恢复和退役。其 mutant 必须以行为断言失败，不能用类型或导入错误替代。
+同一入口的 `--suite current-lifecycle` 当前回放四十二个实际 guard。智能缓存四条回放见该 suite 的 `smart-cache.md`，Source 物化新增十三条见 `source-materialization.md`。此前二十五条中包括 current 最后读回 fence、projection 分类、never-replay 的未知 action、非内容完成时的 owner 资格，以及 Source 完整 affected 范围、pending 优先、精确 observed commit、no-op 配置 receipt 与 manager/generation 恢复资格。pending mutation 同时移除本地 pipeline 和远端原意图两道拒绝，因为单独去掉一层仍会安全阻塞。只改 projection 外层 activation 条件也会被下一层写入边界拒绝；这种未触发对应行为断言的异常不是该性质已被杀死。各 mutation 必须与模型的真实坏路径一致。Library 的十三条回放另查原 root CREATE 意图、未知写入、根单调性、真实 DB/DS parent、完整 schema/分页、原 current/import pending 寻址和 SQLite 完整绑定；独立物理事实和原 Store 意图不能由候选描述符或新 lookup key 自证。 DS parent 有首次表检查与最终 Sources relation readback 两个独立 enforcers；单守卫存活保留为冗余防御证据。对应 mutation 明确同时移除这两处 parent 检查，逐文件保存/恢复与核 hash，不能把单守卫存活改报通过。 新增真实 SQLite 地址回放专门复现 coordinator 已改为 root/operation、持久层仍含 DS 的裂缝；四个 Node 子进程贯穿真实保存、重启、换表拒绝、child 恢复和退役。其 mutant 必须以行为断言失败，不能用类型或导入错误替代。
+
+Source 物化的十三条实际回放分别检查未知业务值与重发、control Record PATCH/retirement 的原写见证、派发前 durable intent、未知 successor、父操作预检全部 child（含第一 child 已结束而第二 child 仍未知）、同一 manager read–plan–write fence、禁止 local fallback、已物化成员 revision 重绑、惰性 sibling 和 Contributions 保留。保留集合 mutation 同时移除 planner 与 writer 两个独立集合守卫；不能把其中另一层安全拒绝计为模型的集合丢失。ACK 与内容验证分别建证，客户端取消和跨主机路由仍由实际进程/HTTP 回归补足。
 
 Profile 的三条实际回放检查完整 pending binding、锁内真实 root/四表 readback 与 root/Profile 稳定 local fence。真实 Store 测试跨四个 Node 进程，拒绝新 Records 表的相同 fingerprint 吞掉旧 unknown CREATE，保留完整意图并仅在原绑定恢复后按既有当前规则语义收敛。旧 pending 缺 frozen Library 时明确阻断。认证 GET /users/me 单独允许和计量，不能把它抹去当零 HTTP；拒绝后的 Library/Record I/O 和语义写入仍须为零。local fence 落实单协作 owner 假设，有限模型没有 Profile fingerprint、SQLite 或操作系统锁状态。
 

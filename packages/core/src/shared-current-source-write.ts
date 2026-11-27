@@ -1,4 +1,15 @@
+import { sameLegacySourceRegistration } from "./shared-current-source-legacy-registration.ts"
+import {
+  adoptSourceSkill,
+  uninitializedSourceSkill,
+  type SourceMaterializationWriteScope,
+} from "./shared-current-source-adoption.ts"
+import {
+  readMaterializationRegistration,
+  sourceRegistrationDigest,
+} from "./shared-source-materialization-registration.ts"
 import { Crypto, Effect, Schema } from "effect"
+import { withCurrentSourceWriter } from "./shared-current-source-writer.ts"
 import { fail, listSchema, property, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
@@ -16,6 +27,7 @@ import {
   parseCurrentSourceManagement,
   queryCurrentSourceManagement,
   queryCurrentSourceTargets,
+  queryCurrentSourceTargetPages,
 } from "./shared-current-source-management.ts"
 import {
   inspectCurrentOperation,
@@ -75,6 +87,8 @@ type SourceWriteOptions = {
   readonly dry_run?: boolean
   /** Read-only completion proof after a lost final response. Never repairs drift. */
   readonly verify_only?: boolean
+  /** Exact additive management scope; ordinary apply remains a complete declaration. */
+  readonly materialization?: SourceMaterializationWriteScope
 }
 type Pending = Effect.Success<ReturnType<typeof readCurrentOperationIntent>>
 
@@ -129,7 +143,7 @@ function sourcePending(
       input_sha256: intent.input_sha256,
       next: "resume_or_supersede_current",
       required_input:
-        "Resume the original input, or stop its writer and supply a complete new input with --operation NEW --supersede OLD.",
+        "Resume the original input only after its dispatch has terminal evidence. A successor requires every original dispatch to settle before --operation NEW --supersede OLD; stopping a process is not that proof.",
     })
   return intent
 }
@@ -164,6 +178,7 @@ export function applyCurrentSource(
     })
     return yield* executeCurrentSource(library, prepared, selected, pending)
   }).pipe(
+    (effect) => withCurrentSourceWriter(library, effect),
     withCurrentInvocationBudget,
     Effect.map(({ result }) => result),
   )
@@ -177,7 +192,7 @@ export function writePreparedCurrentSource(
 ) {
   return Effect.gen(function* () {
     yield* checked(() => validateSourceWriteOptions(input))
-    const prepared = yield* copyPreparedSource(input.prepared)
+    const prepared = yield* copyPreparedSource(input.prepared, input.materialization)
     const pending = yield* readCurrentOperationIntent(library, {
       kind: "source",
       id: prepared.declaration.definition.source_id,
@@ -191,12 +206,16 @@ export function writePreparedCurrentSource(
       )
     return yield* executeCurrentSource(library, prepared, selected, pending)
   }).pipe(
+    (effect) => withCurrentSourceWriter(library, effect),
     withCurrentInvocationBudget,
     Effect.map(({ result }) => result),
   )
 }
 
-function copyPreparedSource(input: PreparedCurrentSourceInput) {
+function copyPreparedSource(
+  input: PreparedCurrentSourceInput,
+  materialization?: SourceMaterializationWriteScope,
+) {
   return Effect.gen(function* () {
     const value = yield* checked(() => structuredClone(input))
     const declaration = yield* checked(() => validateCurrentSourceInput(value.declaration))
@@ -226,6 +245,11 @@ function copyPreparedSource(input: PreparedCurrentSourceInput) {
       return yield* Effect.fail(invalid("The prepared Source manifest changed before writing."))
     const expected = new Map<string, Map<string, string>>()
     for (const contribution of declaration.contributions) {
+      if (
+        materialization !== undefined &&
+        !materialization.skill_ids.includes(contribution.skill_id)
+      )
+        continue
       const target = expected.get(contribution.skill_id) ?? new Map<string, string>()
       const prefix = contribution.member_key === "." ? "" : contribution.member_key + "/"
       for (const entry of inspection.manifest) {
@@ -345,18 +369,99 @@ function executeCurrentSource(
 ) {
   return Effect.gen(function* () {
     const source_id = prepared.declaration.definition.source_id
-    const current = yield* queryCurrentSourceManagement(library, source_id)
-    const currentPage = current?.page_id
+    const registered =
+      options.materialization === undefined
+        ? undefined
+        : yield* readMaterializationRegistration(
+            library,
+            source_id,
+            options.materialization.legacy_registration === undefined
+              ? undefined
+              : {
+                  registration: options.materialization.legacy_registration,
+                  operation_id: options.operation_id,
+                },
+          )
+    if (
+      registered !== undefined &&
+      (registered.page_id !== options.materialization!.source_page_id ||
+        (yield* sourceRegistrationDigest(registered)) !==
+          options.materialization!.registration_digest)
+    )
+      return yield* Effect.fail(
+        invalid("The Source registration changed before additive materialization."),
+      )
+    if (
+      registered !== undefined &&
+      registered.current === undefined &&
+      !sameLegacySourceRegistration(
+        registered.legacy_registration,
+        options.materialization?.legacy_registration,
+      )
+    )
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_LEGACY_REGISTRATION_CHANGED",
+          "The frozen legacy Source evidence changed before materialization.",
+        ),
+      )
+    const current =
+      registered === undefined
+        ? yield* queryCurrentSourceManagement(library, source_id)
+        : registered.current
+    const currentPage = current?.page_id ?? registered?.page_id
+    const adoptions = new Map(
+      (options.materialization?.adoptions ?? []).map((entry) => [entry.skill_id, entry]),
+    )
+    const declaredScope =
+      options.materialization === undefined ? {} : { declaredOnly: true as const }
+    if (
+      current !== undefined &&
+      options.materialization !== undefined &&
+      current.declaration.contributions.some(
+        (entry) =>
+          !prepared.declaration.contributions.some(
+            (desired) => canonicalSharedJson(entry) === canonicalSharedJson(desired),
+          ),
+      )
+    )
+      return yield* Effect.fail(
+        invalid("Additive materialization must preserve every existing contribution."),
+      )
+    if (current !== undefined && options.materialization !== undefined) {
+      const existing = yield* queryCurrentSourceTargetPages(library, {
+        skillIds: current.declaration.contributions.map((entry) => entry.skill_id),
+        declaredOnly: true,
+      })
+      for (const entry of current.declaration.contributions) {
+        const owner = existing.get(entry.skill_id)
+        if (owner === undefined)
+          return yield* Effect.fail(
+            invalid("A declared materialized owner disappeared.", { skill_id: entry.skill_id }),
+          )
+        if (
+          !(yield* checked(() => uninitializedSourceSkill(library, owner.page))) &&
+          !options.materialization.skill_ids.includes(entry.skill_id)
+        )
+          return yield* Effect.fail(
+            invalid("A growing Source manifest must rebind every materialized owner.", {
+              skill_id: entry.skill_id,
+            }),
+          )
+      }
+    }
     const original = yield* checked(() =>
       sourcePending(pending, prepared.configuration_sha256, options),
     )
-    const targetIds = [
+    const targetIds = options.materialization?.skill_ids ?? [
       ...prepared.targets.map((target) => target.skill_id),
       ...(current?.declaration.contributions.map((entry) => entry.skill_id) ?? []),
       ...(original?.source_input.affected_skill_ids ?? []),
     ]
     const targets = yield* queryCurrentSourceTargets(library, {
       skillIds: targetIds,
+      ...declaredScope,
+      uninitializedSkillIds: [...adoptions.keys()],
       sourceId: source_id,
       ...(currentPage === undefined ? {} : { sourcePageId: currentPage }),
     })
@@ -402,7 +507,9 @@ function executeCurrentSource(
         retirements.push(frozen ?? { skill_id, page_id: previous!.page_id })
         continue
       }
-      const bindings = previous === undefined ? [] : [previous.main, ...previous.files]
+      const adoption = adoptions.get(skill_id)
+      const bindings =
+        previous === undefined ? [...(adoption?.files ?? [])] : [previous.main, ...previous.files]
       const owned = bindings.filter(
         (file) => file.content.kind === "source" && file.content.source_id === source_id,
       )
@@ -431,6 +538,17 @@ function executeCurrentSource(
             }),
           )
         const samePath = bindings.find((entry) => entry.path === file.path)
+        if (
+          options.materialization !== undefined &&
+          samePath !== undefined &&
+          samePath.content.kind !== "source"
+        )
+          return yield* Effect.fail(
+            invalid(
+              "Materialization cannot replace native or resource authority. Preserve it with its existing contribution exclusion.",
+              { skill_id, path: file.path },
+            ),
+          )
         if (samePath?.content.kind === "source" && samePath.content.source_id !== source_id)
           return yield* Effect.fail(
             invalid("The desired Source path belongs to another Source.", {
@@ -450,6 +568,7 @@ function executeCurrentSource(
             file_id:
               selected[0]?.file_id ??
               samePath?.file_id ??
+              (file.path === "SKILL.md" ? adoption?.main_file_id : undefined) ??
               "source-file-" +
                 (yield* sha256(
                   canonicalSharedJson([
@@ -496,6 +615,16 @@ function executeCurrentSource(
       resolved_commit: prepared.resolved_commit,
       affected_skill_ids: affected,
       retirements,
+      ...(options.materialization === undefined
+        ? {}
+        : {
+            materialization_sha256: yield* sha256(canonicalSharedJson(options.materialization)),
+            ...(options.materialization.legacy_registration === undefined
+              ? {}
+              : {
+                  legacy_registration: options.materialization.legacy_registration,
+                }),
+          }),
     }
     const intent = {
       operation_id: options.operation_id,
@@ -525,6 +654,19 @@ function executeCurrentSource(
       Effect.Success<ReturnType<typeof inspectCoordinatedSkillWrite>>
     >()
     for (const plan of plans) {
+      const adoption = adoptions.get(plan.skill_id)
+      if (adoption !== undefined) {
+        inspected.push({
+          contract: "current",
+          skill_id: plan.skill_id,
+          page_id: adoption.page_id,
+          action: "adopt",
+          remote_writes: 0,
+          source_files: desiredBySkill.get(plan.skill_id)!.files.length,
+          notion_pages: adoption.files.length + 1,
+        })
+        continue
+      }
       const target = yield* inspectCoordinatedSkillWrite(library, plan, source)
       inspected.push({
         ...target,
@@ -641,6 +783,7 @@ function executeCurrentSource(
     ) {
       const actual = yield* queryCurrentSourceTargets(library, {
         skillIds: affected,
+        ...declaredScope,
         sourcePageId: current.page_id,
         sourceId: source_id,
       })
@@ -708,56 +851,61 @@ function executeCurrentSource(
           let changed = current === undefined || !currentSourceManagementMatches(current, wanted)
           const api = yield* Notion
           let latest = current
-          const created = yield* session.dispatch<string, Notion | Crypto.Crypto>({
-            key: "source:create",
-            replay: "never",
-            request: {
-              path: "v1/pages",
-              body: {
-                parent: { type: "data_source_id", data_source_id: library.sources.data_source_id },
-                properties: yield* checked(() =>
-                  currentSourceWriteProperties(library, {
-                    ...wanted,
-                    creatingOperation: options.operation_id,
-                  }),
-                ),
+          const created =
+            currentPage ??
+            (yield* session.dispatch<string, Notion | Crypto.Crypto>({
+              key: "source:create",
+              replay: "never",
+              request: {
+                path: "v1/pages",
+                body: {
+                  parent: {
+                    type: "data_source_id",
+                    data_source_id: library.sources.data_source_id,
+                  },
+                  properties: yield* checked(() =>
+                    currentSourceWriteProperties(library, {
+                      ...wanted,
+                      creatingOperation: options.operation_id,
+                    }),
+                  ),
+                },
+                options: { method: "POST" },
               },
-              options: { method: "POST" },
-            },
-            observe: ({ fresh }) =>
-              Effect.gen(function* () {
-                if (fresh || latest === undefined)
-                  latest = yield* queryCurrentSourceManagement(library, source_id)
-                if (latest === undefined) return { status: "missing" } as const
-                if (current !== undefined && latest.page_id !== current.page_id)
-                  return yield* Effect.fail(invalid("The Source changed physical identity."))
-                if (
-                  current === undefined &&
-                  (!currentSourceManagementMatches(latest, wanted) ||
-                    latest.state.state === "ready" ||
-                    latest.state.operation_id !== options.operation_id)
-                )
-                  return yield* Effect.fail(
-                    invalid("Another writer created this Source after target inspection."),
+              observe: ({ fresh }) =>
+                Effect.gen(function* () {
+                  if (fresh || latest === undefined)
+                    latest = yield* queryCurrentSourceManagement(library, source_id)
+                  if (latest === undefined) return { status: "missing" } as const
+                  if (current !== undefined && latest.page_id !== current.page_id)
+                    return yield* Effect.fail(invalid("The Source changed physical identity."))
+                  if (
+                    current === undefined &&
+                    (!currentSourceManagementMatches(latest, wanted) ||
+                      latest.state.state === "ready" ||
+                      latest.state.operation_id !== options.operation_id)
                   )
-                return { status: "complete", value: latest.page_id } as const
-              }),
-            acknowledge: (raw) =>
-              checked(() => {
-                const row = parseCurrentSourceManagement(library, raw)
-                if (
-                  !currentSourceManagementMatches(row, wanted) ||
-                  row.state.state === "ready" ||
-                  row.state.operation_id !== options.operation_id
-                )
-                  throw fail(
-                    "WRITE_OUTCOME_UNKNOWN",
-                    "Source CREATE did not confirm the selected intent.",
+                    return yield* Effect.fail(
+                      invalid("Another writer created this Source after target inspection."),
+                    )
+                  return { status: "complete", value: latest.page_id } as const
+                }),
+              acknowledge: (raw) =>
+                checked(() => {
+                  const row = parseCurrentSourceManagement(library, raw)
+                  if (
+                    !currentSourceManagementMatches(row, wanted) ||
+                    row.state.state === "ready" ||
+                    row.state.operation_id !== options.operation_id
                   )
-                latest = row
-                return row.page_id
-              }),
-          })
+                    throw fail(
+                      "WRITE_OUTCOME_UNKNOWN",
+                      "Source CREATE did not confirm the selected intent.",
+                    )
+                  latest = row
+                  return row.page_id
+                }),
+            }))
           if (session.ownerPageId === null) yield* session.bindOwner(created)
           else if (session.ownerPageId !== created)
             return yield* Effect.fail(invalid("The Source intent has a different physical owner."))
@@ -778,6 +926,33 @@ function executeCurrentSource(
             observe: () =>
               Effect.gen(function* () {
                 const raw = yield* api.request(`v1/pages/${created}`)
+                if (current === undefined && registered !== undefined) {
+                  const observed = yield* readMaterializationRegistration(
+                    library,
+                    source_id,
+                    options.materialization?.legacy_registration === undefined
+                      ? undefined
+                      : {
+                          registration: options.materialization.legacy_registration,
+                          operation_id: options.operation_id,
+                        },
+                  )
+                  if (observed.current === undefined) {
+                    if (
+                      observed.page_id !== created ||
+                      (yield* sourceRegistrationDigest(observed)) !==
+                        options.materialization!.registration_digest ||
+                      !sameLegacySourceRegistration(
+                        observed.legacy_registration,
+                        options.materialization?.legacy_registration,
+                      )
+                    )
+                      return yield* Effect.fail(
+                        invalid("The uninitialized Source registration changed."),
+                      )
+                    return { status: "missing" as const }
+                  }
+                }
                 const row = yield* checked(() => parseCurrentSourceManagement(library, raw))
                 if (currentSourceManagementMatches(row, wanted))
                   return { status: "complete" as const, value: undefined }
@@ -831,6 +1006,15 @@ function executeCurrentSource(
             yield* retireOrphanedSourceFiles(library, session, source_id, assertSourceCurrent)
           if (session.pendingActionKey?.startsWith("retire-source-manifest:"))
             yield* retireSourceManifests(library, session, wanted.content, assertSourceCurrent)
+          for (const adoption of adoptions.values()) {
+            yield* assertSourceCurrent
+            yield* adoptSourceSkill(
+              library,
+              session,
+              adoption,
+              desiredBySkill.get(adoption.skill_id)!,
+            )
+          }
           const results = []
           for (const skill_id of affected) {
             const retirement = retirements.find((target) => target.skill_id === skill_id)
@@ -904,6 +1088,7 @@ function executeCurrentSource(
             if (!authorization.completed) yield* session.markSourceChildComplete(plan.skill_id)
           }
           if (
+            options.materialization === undefined &&
             (yield* retireOrphanedSourceFiles(library, session, source_id, assertSourceCurrent)) > 0
           )
             changed = true
@@ -941,6 +1126,7 @@ function executeCurrentSource(
             )
           const actual = yield* queryCurrentSourceTargets(library, {
             skillIds: affected,
+            ...declaredScope,
             sourcePageId: row.page_id,
             sourceId: source_id,
           })

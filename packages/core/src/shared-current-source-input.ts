@@ -1,3 +1,4 @@
+import { sourceDefinitionOptions } from "./shared-source-definition-options.ts"
 import { Effect, Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import type { createRequestMetrics } from "./request-metrics.ts"
@@ -123,7 +124,7 @@ function gitUrl(definition: SourceDefinitionInput): string {
 }
 
 /** Explicit assignments override stable identities; discovery owns current membership. */
-function resolveCurrentSourceContributions(input: {
+export function resolveCurrentSourceContributions(input: {
   readonly source_id: string
   readonly members: readonly string[]
   readonly overrides: readonly CurrentSourceContribution[]
@@ -158,14 +159,19 @@ export function validateCurrentSourceInput(input: unknown): CurrentSourceDeclara
     ...requested,
     adapter: { ...requested.adapter, url },
   }
-  const permitted = new Set(["accepted_ref", "require_all_included"])
-  for (const key of Object.keys(definition.options))
+  const options = sourceDefinitionOptions(definition.options)
+  const permitted = new Set([
+    "accepted_ref",
+    "require_all_included",
+    ...(definition.options.settings === undefined ? [] : ["member_patches"]),
+  ])
+  for (const key of Object.keys(options))
     if (!permitted.has(key))
       throw unsupported("This option has no current fixed-file write behavior.", { option: key })
-  const accepted = definition.options.accepted_ref
+  const accepted = options.accepted_ref
   if (accepted !== undefined && (typeof accepted !== "string" || !/^[a-f0-9]{40}$/u.test(accepted)))
     throw invalid("accepted_ref must select an exact lowercase Git commit.")
-  const requireAllIncluded = definition.options.require_all_included
+  const requireAllIncluded = options.require_all_included
   if (requireAllIncluded !== undefined && typeof requireAllIncluded !== "boolean")
     throw invalid("require_all_included must be boolean.")
   if (
@@ -185,9 +191,10 @@ export function validateCurrentSourceInput(input: unknown): CurrentSourceDeclara
 function exactCommit(input: CurrentSourceDeclaration, override?: string): string | undefined {
   if (override !== undefined && !/^[a-f0-9]{40}$/u.test(override))
     throw invalid("A resumed Source intent must select an exact lowercase Git commit.")
+  const options = sourceDefinitionOptions(input.definition.options)
   const configured =
-    typeof input.definition.options.accepted_ref === "string"
-      ? input.definition.options.accepted_ref
+    typeof options.accepted_ref === "string"
+      ? options.accepted_ref
       : input.definition.policy === "pinned" && input.definition.adapter.type === "git"
         ? input.definition.adapter.ref
         : undefined
@@ -201,7 +208,11 @@ function exactCommit(input: CurrentSourceDeclaration, override?: string): string
 export function prepareCurrentSourceFromDiscovery(
   input: unknown,
   observation: unknown,
-  options: { readonly exactCommit?: string } = {},
+  options: {
+    readonly exactCommit?: string
+    readonly memberKeys?: readonly string[]
+    readonly allowMissingMembers?: boolean
+  } = {},
 ) {
   return Effect.gen(function* () {
     const requested_declaration = yield* checked(() => validateCurrentSourceInput(input))
@@ -235,7 +246,9 @@ export function prepareCurrentSourceFromDiscovery(
       ...requested_declaration,
       contributions: yield* resolveCurrentSourceContributions({
         source_id: requested_declaration.definition.source_id,
-        members: snapshot.members.map((member) => member.member_key),
+        members: options.allowMissingMembers
+          ? snapshot.members.map((member) => member.member_key)
+          : (options.memberKeys ?? snapshot.members.map((member) => member.member_key)),
         overrides: requested_declaration.contributions,
       }),
     }
@@ -349,7 +362,11 @@ export function prepareCurrentSourceFromDiscovery(
     }
     yield* checked(() => {
       const selected = selectMembers(
-        { ...sourceDiscoveryInput(declaration.definition), allow_empty: true },
+        {
+          ...sourceDiscoveryInput(declaration.definition),
+          member_patches: undefined,
+          allow_empty: true,
+        },
         [...members.keys()],
         [...verified.keys()],
       )
@@ -443,6 +460,9 @@ export function prepareCurrentSource(
   options: {
     readonly exactCommit?: string
     readonly metrics?: ReturnType<typeof createRequestMetrics>
+    /** Exact additive scope; discovery still validates the configured complete Git roster. */
+    readonly memberKeys?: readonly string[]
+    readonly allowMissingMembers?: boolean
   } = {},
 ) {
   return Effect.gen(function* () {
@@ -453,11 +473,19 @@ export function prepareCurrentSource(
         ? declaration.definition
         : {
             ...declaration.definition,
-            options: { ...declaration.definition.options, accepted_ref: selected },
+            options: {
+              ...sourceDefinitionOptions(declaration.definition.options),
+              accepted_ref: selected,
+            },
           }
     const observation = yield* discoverSource(
       { ...sourceDiscoveryInput(effective), allow_empty: true },
-      { metrics: options.metrics },
+      {
+        metrics: options.metrics,
+        ...(options.memberKeys === undefined
+          ? {}
+          : { onlyMembers: options.memberKeys, allowMissingMembers: options.allowMissingMembers }),
+      },
     )
     return yield* prepareCurrentSourceFromDiscovery(declaration, observation, options)
   })

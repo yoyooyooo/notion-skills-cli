@@ -365,7 +365,7 @@ async function syncFixture() {
   }
 }
 
-test("Source sync guard resolves a ready pending intent before an unchanged upstream decision", async () => {
+test("Source sync guard keeps an unknown ready PATCH pending before an unchanged upstream decision", async () => {
   const h = await syncFixture()
   expect((await h.f.run(h.use(syncCurrentSources(library, request)))).status).toBe("complete")
   const page = h.f.pages.get(skillPage(h.f, "sync-guard-beta"))
@@ -387,14 +387,19 @@ test("Source sync guard resolves a ready pending intent before an unchanged upst
   expect(originalOperation).not.toBeNull()
   const checked = h.checks.length
 
+  h.f.clearCalls()
   const resumed = await h.f.run(h.use(syncCurrentSources(library, { ...request, mode: "changed" })))
-  expect(resumed.status).toBe("complete")
-  expect(single(resumed)).toMatchObject({ status: "reconciled", operation_id: originalOperation })
+  expect(resumed.status).toBe("blocked")
+  expect(single(resumed)).toMatchObject({
+    operation_id: originalOperation,
+    error: { code: "CURRENT_OPERATION_UNRESOLVED" },
+  })
+  expect(h.f.mutations()).toEqual([])
   expect(h.checks).toHaveLength(checked)
-  expect(pendingSyncKeys(h.f)).toEqual([])
+  expect(pendingSyncKeys(h.f)).toHaveLength(1)
   expect(
     await h.f.run(readCurrentOperationIntent(library, { kind: "source", id: sourceId })),
-  ).toBeUndefined()
+  ).toBeDefined()
   expect(await h.selected()).toMatchObject({ commit: firstCommit })
 })
 
@@ -413,7 +418,7 @@ test("Source sync guard freezes the observed commit before the branch moves duri
   expect(await h.selected()).toMatchObject({ commit: secondCommit })
 })
 
-test("Source sync guard resumes its frozen commit without checking a newer branch after a lost Source response", async () => {
+test("Source sync guard retains its frozen commit and blocks newer branches while a Source request is unknown", async () => {
   const h = await syncFixture()
   h.moveHead(secondCommit)
   h.f.failNext({ kind: "source-properties", outcome: "accepted" })
@@ -423,16 +428,18 @@ test("Source sync guard resumes its frozen commit without checking a newer branc
   const operation = single(interrupted).operation_id
   h.moveHead(thirdCommit)
   const checked = h.checks.length
+  h.f.clearCalls()
   const resumed = await h.f.run(h.use(syncCurrentSources(library, { ...request, mode: "changed" })))
-  expect(resumed.status).toBe("complete")
+  expect(resumed.status).toBe("blocked")
   expect(single(resumed)).toMatchObject({
     operation_id: operation,
-    content: { status: "published", resolved_commit: secondCommit },
+    error: { code: "CURRENT_OPERATION_UNRESOLVED" },
   })
   expect(h.checks).toHaveLength(checked)
   expect(h.preparations.at(-1)).toEqual({ commit: secondCommit, exact: secondCommit })
   expect(await h.selected()).toMatchObject({ commit: secondCommit })
-  expect(pendingSyncKeys(h.f)).toEqual([])
+  expect(pendingSyncKeys(h.f)).toHaveLength(1)
+  expect(h.f.mutations()).toEqual([])
 })
 
 test("Source sync guard reconciles changed configuration at the same commit instead of reusing a stale no-op receipt", async () => {
@@ -561,7 +568,8 @@ test.each([
     expect(
       [...h.f.json.entries()].filter(([key]) => key.startsWith("operations/current-source-sync/")),
     ).toEqual(before)
-    expect((await h.f.run(h.use(syncCurrentSources(library, request)))).status).toBe("complete")
+    expect((await h.f.run(h.use(syncCurrentSources(library, request)))).status).toBe("blocked")
+    expect(h.f.mutations()).toEqual([])
   },
 )
 

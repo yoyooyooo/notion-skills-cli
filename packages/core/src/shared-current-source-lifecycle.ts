@@ -1,3 +1,4 @@
+import { withCurrentSourceWriter } from "./shared-current-source-writer.ts"
 import { Effect } from "effect"
 import { fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
@@ -485,6 +486,7 @@ function execute(library: SharedLibrary, supplied: Options, action: Action) {
         }),
     })
   }).pipe(
+    (effect) => withCurrentSourceWriter(library, effect),
     withCurrentInvocationBudget,
     Effect.map(({ result }) => result),
   )

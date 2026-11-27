@@ -3,13 +3,13 @@
   "synchronized_commit": "642c8a7110038bc5d22d51391d002264978be60c",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "correspondence": "Bounded current content/projection/restore, Source coordination/progress, independent Library root bootstrap/admission, and intelligent-cache observation/complete-read-set/selection/progress contracts. Safety and conditional explanation only; no distributed CAS, remote atomic snapshot, complete management verification or implementation refinement claim.",
-  "review_basis": "Reviewed the protected operation source at 6c4cee6 against 93a895f3, together with native write validation, the partial-update writer, management wrappers, registration and removal. The four modeled production guards remain unchanged: final current-read fence, projection classification, unknown never-replay action and non-content completion qualification. The new skill_action union uses content-owner semantics; only registration may seed the exact existing page before binding, and that path still requires its stable identity, applying state and original operation. Native completion now compares a complete observed body by supported structural equivalence while freezing the original input bytes; Source/resource remain exact. VerifyTarget abstracts the successful verification result and does not prove Markdown equivalence. Automatic matching resume still requires a caller to repeat the original frozen input. Registration before owner binding, preservation of unselected bodies and removal's terminal Trash/relations/Files/Resources sequence are not enumerated by this one-action model; their permanent production and fault regressions are identified below. The earlier metadata-first restore boundary for hidden Trash relations remains outside the model's single Trash bit. Only the reviewed operation source hash changes; all seven configurations, complete rule inventories and four actual guard mutations remain intact. These hashes bind inspected inputs, not a refinement proof or a substitute for actual run results. Reviewed the offline known-denial change at 9ebd9c2215f97934f0746125382415b2f338f572 and its integration with incoming native management at 0070dfb: the sole assertKnownSnapshotAccess now rejects observed target ACCESS_DENIED and scope AUTH_REQUIRED before selected object reads for online and offline consumption. The offline exemption argument, successful access_denied result and pinned stale-success branch are deleted together. Ordinary current/name reads, fixed main/resources, batches and consume reuse that boundary. Unknown transport failure, ambiguous NOT_FOUND, unaffected scopes, historical metadata and complete bytes under business Enabled changes remain distinct. The public SDK regressions obtain actual controlled 401/403 before checking body refusal and real SQLite retirement; offline prepare may fail earlier with CACHE_SCOPE_UNAVAILABLE after target-only all-clear, while fixed scalar/batch retain exact denial. No extra terminal permission probe or byte-hash authorization grant is claimed. These are concrete implementation regressions, not additional finite-model properties; model variables, case/rule inventories and existing mutation guards are unchanged. Reviewed successful-untrash visibility convergence against e95f813163c6c5fcbc12aa7b2c238206e0e077fd. Only the successful restore action acknowledgement may observe an exact live ready owner whose complete stable-identity query is temporarily empty; it checks the frozen Source/owner fingerprint on every observation and performs at most five observations with four interruptible waits under the same invocation deadline. Initial guards, mutation admission, explicit lost-ACK reconciliation, duplicate/foreign/partial-query rejection and strict final verification remain unchanged. No mutation is replayed by this convergence loop. The model still abstracts Trash and does not enumerate separately lagging page/index observations; the new positive, permanent-gap, concurrent-change, deadline and cancellation cases are implementation regressions, not additional formal properties. Reviewed the bounded current-metadata and physical-denial delta against 414a9ec9ba63a12e4f604f04687984854a4c629e. Selected stable claims choose identity only; the exact owner GET still precedes body reads and the original final owner/Files/Source consumptionFence remains a new observation after provider I/O. Physical access generation is reserved before dependent I/O, and a grant is recorded only after that original fence and publication. Exact related-page rejection is saved before alias lookup or stable publication can fail. Scope, stable and physical denial use the existing byte-delivery guard and generation/retirement mechanism. Public SQLite keeps frozen page aliases and rejects rebinding after retirement; the changed-alias case is an explicitly constructed Store boundary, while the public SDK replays two content versions under one stable identity. These metadata, alias, offline and authorization obligations are concrete regressions, not new finite properties. The four existing modeled guards, all seven cases and their rule inventories are unchanged. AH-1198 adds three coupled public SDK/HTTP/SQLite T14 regressions: a creator cancellation plus actual 429 pagination while Source is applying, all-waiter cancellation after a partial response, and two original per-call deadlines during Retry-After followed by fresh revision selection. Each caller completes its own current eligibility before sharing exact Notion-owned resource bytes; an already admitted A acquisition may finish, whereas a later missing-byte acquisition observes applying. The resource identity remains unchanged while an unrequested Source contribution advances the complete tree. Source row transitions are explicitly controlled service facts, not executions of a live management writer. Partial or timed-out work exposes no files or cached object; the new selection preserves the old manifest. This test-only change does not alter production guards, finite models, case/rule inventories or mutation targets, and adds no model property. Reviewed the T05 fixed-byte credential switch defect against 715e5368a6e19281ddea1d9cf30551ec48267e75. The existing fixed access guard now requires the locally recorded scope for the selected credential digest and API origin before any fixed inventory or object read. Unknown binding and mismatched scope fail structurally without remote authentication or a content-hash grant; underlying Store errors preserve their original diagnostic fields. Public cache clear retains credential-to-scope authorization facts and excludes them from retirement receipts, while current/body observations and the original denial/generation fences still retire as before. The complete-byte public SDK regression uses a real SQLite Store and controlled HTTP to cover unknown and authenticated alternate credentials, actual 401, origin changes, scalar/batch/inventory/use/inspect, clear, same-credential offline reuse, and fresh recovery. A separate real identity-table query failure checks exact Store error propagation; the existing SQLite observation-race fixture supplies the now-required local credential association without changing its race or denial assertions. Current lifecycle and RequestEngine finite variables do not model credential associations or cache-clear identity retention. These are concrete regressions; finite models, case/rule inventories and mutation targets are unchanged. Reviewed Source-relative identity resolution against 9200b9afcb328006ee3dcd8fd48a031a628eef3e. Fixed containing references now share the read-from manifest and stable File-binding path before the original repository Source path is mapped to one exact owner. Identity-only resolution does not acquire target bodies, activate dependencies or mutate Notion. The target read still uses the existing fixed/current acquisition, authorization, scope and final publication fences. Mounted-path collisions and duplicate Source mounts are concrete regressions in shared-source-references and shared-current-source-write; native, missing and stale-path File bindings are covered by shared-current-relative. Named local CLI refs retain pure syntactic resolution. A Source-mounted reference can retain an exact same-owner native companion only when its original relative path escapes the repository root, with a frozen File binding and no Source acquisition route; a valid Source address always takes precedence. Existing CLI syntactic and mixed native/Source composition regressions cover these compatibility boundaries. The Source mapping and import Members inference are not variables in this finite lifecycle model. No operation kernel, model, case inventory or production mutation guard changed; this correspondence update does not claim a new formal property. Reviewed e6d67119e09fe7330d57baaf74f096d8803716e7 against 87c5bfcd2cfbcd5ab993307ac760fac802163b0d: local selection IDs now bind the full observed record while content version and bytes keep their existing identity. Current producers emit only record-bound IDs; retained old IDs are recognized solely for existing local fixed-manifest validation and recovery. Current cache metadata must equal its selected manifest; the complete preparation binding guard is unchanged. Independent SDK processes cover A/B/C/D metadata selections, cache clear, original intermediate bindings, forged records and an actual content-version change. Native management may complete its Markdown structure action before correcting only proven added automatic links on original plain spans. Complete Markdown structure and physical block inventory bind each correction; the existing operation dispatch freezes its request, observes accepted unknown writes before replay, and the original strict full-body comparison alone sets native verification before ready. Ordinary consumption does not correct content. The finite lifecycle model does not enumerate Markdown spans, multiple block actions, record fields or local snapshot formulas. Its four production guards, seven configurations and complete rule inventories are unchanged; the new identity, transport and recovery obligations are concrete implementation and installed/live regressions, not additional finite properties. Reviewed the rebased integration at 6f9abd76e00400bcd2754e7db6457edea5c71a7d on current next 3f8f58d2c635e60d2a50805b6c0ed33ba17464cb. The retained-ID decoder now follows the actual fixed producer: local_snapshot with pinned freshness only; local_cache, current/Notion and non-pinned legacy claims remain rejected. The public consume and Crypto-only decoder regression preserves complete binding checks. This local compatibility repair and the release empty-array guard are outside the finite models. Existing file pins, model/case inventories and mutation targets remain unchanged; this entry records source review, not a new run result. Reviewed AH-1268 commit 084699e35e6fcea17fd3df11a37700bb37665dc3 against incoming next 34f34295265943deb884daa8ae47494f9e320603 during the merge. querySelectedSkillMetadataWithClaims returns the same exact physical target map plus the complete observations already produced by querySkillClaims; an empty target set returns both empty maps. Physical GET admission, complete stable-claim pagination, disabled-duplicate participation and assertUnique remain unchanged. Existing shared-graph-read-context callers continue through querySelectedSkillMetadata, whose Effect.map returns only value.targets and preserves the previous return shape and query behavior. The new MCP search caller alone consumes claim observations to detect differing current metadata. Current reader publication/consumptionFence, finite intent ownership, non-content completion and unknown-write no-replay guards are untouched. Search admission and claim freshness belong to the separately owned notion-mcp-search suite and concrete metadata/SDK regressions, not a new CurrentLifecycle property. Only the reviewed shared-skill-targets source hash is rebound; all seven configurations, complete rule inventories and four current-lifecycle mutation targets remain unchanged. This records source review, not a rerun result. Reviewed main-file frontmatter projection against 34f34295265943deb884daa8ae47494f9e320603. An explicit main/supporting role limits header omission to the canonical main; Source/resource original bytes, discovery metadata and native author bodies remain unchanged. The projection input fingerprint advances with the renderer so an older unfinished intent is refused on resume before semantic writes; cancellation reconstructs requests with the same role and preserves changed-request conflicts. The four modeled production guards, seven configurations, complete rule inventories and mutation targets are unchanged. Only the reviewed projection writer-test hash is rebound. YAML recognition, rendered blocks and renderer revisions remain implementation regressions outside this finite model; this records source review, not a formal run result. Rechecked the coverage binding after rebasing onto incoming next 9710dbc09d79146818229dcb56137d533145d0cb; the incoming shared-skill-targets source hash and source-review record are preserved. Reviewed AH-1282 Source sync against next base ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1: processSource resolves the single saved pipeline before provider checks or cached no-op; manager and execution generation must match. pendingOwners rejects foreign parents and affected Skill intents, including removed owners. writePreparedCurrentSource repeats the complete affected-owner fence before its first mutation using the existing operation hook. The initial prepare receives the exact observed commit, and recovery reproduces the complete saved declaration/commit/configuration/revision. A successful receipt compares scope, physical Source, configuration, commit, revision and requested projection coverage. continueOwned publishes Source content before independent projection, recovers only deterministic owned target operations, and returns after finishing the original operation. The concrete lost-local-phase regression verifies the published result without rewriting later manual metadata. Five added real guard mutations bind pending-first (two defensive guards removed together), removed-owner projection scope, exact observed commit, configuration receipt and manager/generation to their behavior assertions. Projection ownership and failure separation also have direct kernel regressions; their model faults do not imply a newly removed single implementation guard. Neither Map fixtures nor the finite child steps prove SQLite or live provider behavior. The final writer review preserves its existing CURRENT_OPERATION_PENDING public code. A resumed exact parent may also admit the single recorded predecessor child; explicit supersede still selects only its original parent. The pre-existing selectedSourceMode and handoff qualification remain before this fence. Ancestor-child transfer is an existing concrete writer regression, not a new SourceSync model state. Reviewed the bounded progress delta on base ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1 after live no-op costs exposed repeated-prefix starvation. continueOwned freezes ordered target IDs/pages, resumes next_index, performs complete preflight again and persists +1 only after exact projection success. A completed-prefix remote projection intent, even with the original deterministic operation ID, blocks rather than being silently skipped. Full batches retain one ordered terminal prefix, exclude retryable results and preserve earlier hard failures. Review found that a disposable latest receipt, even tagged with batch_id, can be displaced by later hourly updates before daily full resumes; requiring a fresh unchanged HEAD can also reopen already completed work. That intermediate design is removed rather than treated as proved. Source completion now checkpoints the existing exact dispatch parent before clearing its finite child. completedBatchChild admits local cleanup only with exact parent scope/batch identity and owner/generation, matching operation ID, published selection and completed projection IDs/cursor. Existing hard results are never replaced; missing or different parents are not recreated. The full loop reloads the parent to observe the child's single append and keeps cleanup failures visible without changing the durable success result or retiring the parent. changed may finish that same original child and checkpoint its parent, then later ordinary updates can replace cache observations without losing full progress. The actual Source and projection writers are unchanged by this local checkpoint ordering. Batch schema/helper and SQLite preserve frozen identities, complete terminal prefix items, ordered target pages and only same/+1 progress; independent process tests cover their actual transitions and retirement. SourceSyncProgress now has thirteen configurations for two Sources with two targets, one crash at a cursor or parent/child boundary, one retryable stop and sufficient preflight-plus-one-target budget. Parent completion authority is abstracted as two identities, not a proof of every UUID/field or SQLite durability. Original eighteen configurations and nine production mutations remain separate in scope. Controlled guards cover parent checkpoint failure, post-parent child cleanup failure/75, exact local cleanup and five mismatched completion fields; batch regressions retain B progress through later C/D publications and ignore disposable cache times. The model does not prove production request cost, arbitrary repeated failures, later remote-intent/authority changes, scheduler or installed-package behavior. All other protected files retain their earlier reviewed hashes. This records exact source correspondence and must be accompanied by final snapshot run evidence. The acceptance repair adds one controlled high-level sync regression: after a completed full synchronization, an external generated-body edit at the same Git commit remains untouched by changed mode; full mode repairs the observed projection, preserves exact Source and main-file identities, clears pending state and performs zero semantic writes when repeated. This is coordinator/writer/projection regression coverage, not a new formal-model property or a live Notion fault-injection claim. The required-member option parser is covered separately by its input and real Git regressions; this model does not prove that parser. Reviewed the Skill-reference v2 task diff against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. Cache paths encode complete logical identities at the storage boundary and decode before selection/retirement; payload and SQL identities remain raw. Reference binding is explicit before current lookup, stable identities replace title/alias fallback, fixed owner and path are exact, and a missing path is not repaired through File ID. Source-relative resolution keeps authoritative containing coordinates and target-owned pins. Existing cache/metadata regressions migrate exact identities, preserve denial and retirement fences, and replace the obsolete stale-path repair expectation with failure before bytes. The stable-claim query changes only its canonical identity constructor; complete claim pagination and physical guards remain. Current read publication, consumptionFence, finite intent ownership and all four lifecycle mutation targets are unchanged; seven complete case/rule inventories are retained. The separate skill-reference suite and concrete SQLite regressions cover the new selection and storage obligations. This mapping is source-review evidence, not a rerun result. The official format pass changed layout only; named mutation anchors were rechecked against the formatted source. The final shared-snapshot diff also removes the unused requestedFileIds input and loop after all callers were migrated to exact paths; requestedPaths validation and native File bindings remain. Final publication, consumptionFence, the four production guards and all seven case inventories are unchanged. Final review removes the unreachable name/catalog fallback after exact entry binding and retains the same denial invalidation. The contract now uses the actual positional ctl library inspect ENTRY syntax; database aliases remain entry conveniences, not portable Library IDs. Integration checkpoint: preserve every upstream SourceSync and SourceSyncProgress model, case, implementation binding and source guard. The final merged source bytes, including SDK changes shared by both branches, still require a fresh diff review before final hash binding and execution. Final integration review against upstream next 9d986a83aaae35e3f9f6cd35341add0476f5c887 and task checkpoint ad7d09c9cd21aad6e318eca52bcb167b46e9bf78: all 37 upstream TLA/config/view artifacts, all 31 case rule inventories and every SourceSync/SourceSyncProgress implementation binding are byte-for-byte or structurally identical. The SQLite diff adds the independent frozen import-plan dispatch branch and exact identity segment encoding/decoding; the upstream SourceSync dispatch branches remain unchanged. SQL regressions use complete owner identities and exact selected paths. The two SDK fixture corrections encode the retired fence segment and use the explicit Notion page URL plus exact denial page ID for an unresolved physical child; restart, permission and retirement assertions remain. Rebound only these four reviewed source/test hashes. The existing nine current-lifecycle and SourceSync implementation guard mutations and upstream gitless source-identity checks remain intact. This is source-correspondence review, not a replacement for final model, mutation or SQL run receipts. Final formatter-only review after the ref04 source freeze: sdk-immutable-read.node.test.ts changes only the callback layout and trailing argument comma; its encoded retired-fence assertion and every model rule and production guard remain unchanged. The protected test hash is rebound to the final formatted bytes. Model evidence from ref04 retains its exact recorded source hashes; final guard receipts identify the later selected build. The provenance helper now recognizes node_modules as a path component, including workspace-local dependencies; the mutation runner still checks each coverage dependency byte hash before source provenance, and the paired build remains the installation authority. Final native transport review after the ref04 model run: a live Markdown PATCH discarded an authored skill:// link while retaining its label, so the existing strict completion guard correctly left the original operation pending. The correction planner now admits only an exact valid original Skill URL with null title becoming a null observed link, preserving all text/code/style/tree checks. Only actually matched lost destinations are excluded during this intermediate plan; pure-link blocks and an already accepted pending correction remain eligible. The physical block/page/parent/type/shape guards, original rich-text requests, idempotent native:page:plain:block action identity, writer body PATCH/input and final compareNativeMarkdown remain unchanged. The existing observation caller receives its separate dropped set. Added hashes bind the reviewed helper and its two regression files; positive write and accepted-response-loss cases require the same operation, one body PATCH, one correction PATCH, original frozen plan and zero-write completion/repetition. Eleven negative plans retain changed or unrecognized content. The 31 models and their complete rule inventories remain unchanged; ref04 model evidence applies to its recorded bytes, and the later selected-build guard, concrete native and live receipts establish this unmodeled transport change. Final explicit-scope diagnostic review after ref05: logical current references and fixed selections now report LIBRARY_SCOPE_MISMATCH for an explicitly incompatible database. The warm branch preserves SKILL_NOT_FOUND for the physical page target variant, whose type has no snapshot selection. Only the diagnostic code expression changes; the mismatch predicates, selected manifest owner/path, current-read publication, cache fences and I/O order are unchanged. Concrete warm/fixed/resource regressions require zero Notion requests and semantic writes, while the physical-page regression preserves its old containment error. Rebound only the reviewed snapshot source hash. The 31 complete model inventories and all nine lifecycle/SourceSync guards retain their meaning; cache-mode diagnostic spelling is not an added finite-model property. Reviewed the root Library redesign against next 5a3f36f: canonical root identity and v2 descriptor; pure local selector/default binding; physical root, complete direct-child inventory, all DB/DS ownership and stable schema readback; initialization intent saved before CREATE, unknown CREATE blocked, known root monotonic; current/import pending lookup excludes mutable data-source IDs, freezes all physical bindings and rejects drift before I/O; real SQLite immutable current intent and Source synchronization identity include the full Library. Original current-reader final fence, owner readiness, never-replay kernel and Source coordination guards remain intact. Public options now bind Library roots, full refs reject explicit conflicting scope, cached pins retain logical owners, and physical-page reads reject a foreign parent without querying that foreign database. Tests replace obsolete IDs/selectors and declare physical topology separately, while keeping root children honestly classified as body reads. Finite properties abstract complete validation; concrete pagination, schemas, SQLite restart, installed artifacts and live Notion retain separate evidence. Source hashes bind reviewed inputs; results belong to the independent model and guard run receipts, not this inventory. Reviewed the native Skill hyperlink transport boundary in 1f355221eca2eee5aba40bc7897d190bbae13129 and the image-definition ledger correction in 642c8a7110038bc5d22d51391d002264978be60c. Real candidate-07 Notion probes preserved the original rejection evidence for pathless, empty-slash, dot and extensionless URLs; one bounded neutral entrypoint.md/.. path pair was then accepted and retained verbatim by both rich-text and Markdown readback for a root and an extensionless reference. The pure helper inserts one layer into an already decoded span and strips at most one exact prefix boundary only after both complete references validate with the same Skill, Library scope, normalized path and snapshot selection. Raw authority/query and remaining path spelling are retained; literal text, code and the actual image source remain exact. The complete destination ledger uses the same one-layer representation for reference definitions and image observations without changing the separately compared image payload. Original input, initial Markdown requests, finite intent and exact pending request hashes remain unchanged. The new kernel regression rejects a changed unknown request before observation or mutation, retains its original marker and permits the original request to reconcile. Writer regressions retain same-input response-loss recovery, definitive-rejection recovery, complete readback and zero-write repetition. Add the previously unpinned Markdown source/test and the new helper/test to the actual source inventory; update only reviewed existing test/helper hashes. This is a concrete implementation boundary outside the abstract verified bit: no TLA module, finite configuration, rule inventory or 25 actual mutation target changes. The 45-config/25-mutation final replay and installed/live original-operation recovery must identify their later frozen candidate; these reviewed hashes do not claim those executions have already passed. Reviewed the AH-1322 Node 26 CI counterexample on 55ac5fd: after mkdir reports EEXIST, a normal owner can retire the fence before the contender's first lstat. Absence at that exact boundary now returns SYNC_LOCKED to the existing caller deadline and retry; it never authorizes the protected effect. The existing real-process OAuth fixture deterministically pauses the contender before its real lstat, cancels the original refresh owner, and then verifies reacquired owner.json before rereading the retained marker, one refresh dispatch and MCP_AUTH_REAUTH_REQUIRED. The pre-fix result is STORAGE_ERROR with syscall_code ENOENT. Dead-owner recovery, inode comparison, release, credential epochs, pending-marker and token guards are unchanged. OS scheduling and error classification remain concrete implementation obligations; no finite transition, bound, rule inventory or existing mutation target changes. Reviewed cross-process hot-cache preparation at a1e9b4b on 6b2d53b and the subsequent one-hour product default. Graph admission selects the existing credential/API-origin cache scope locally; the snapshot readers retain their credential, known-denial, complete-graph, byte, expiry and refresh guards. The default read/current-eligibility duration changes from 300000 to 3600000 ms, while the 60000 ms catalog policy, explicit durations, Profile rules and independent full-body deadline remain unchanged. Public SDK/HTTP/SQLite regressions cover new-process five-minute reuse without identity requests or renewed validation times, forced/expired/missing/foreign-scope reads, known 401/403 after clear, and the default thirty-minute/one-hour boundary. Cache durations and routing are concrete implementation behavior outside these finite variables. No model, case, expected-rule inventory or production guard mutation changes. The updated hashes bind reviewed source and tests; they do not claim a new formal-model or installed-artifact result.",
+  "review_basis": "Reviewed the protected operation source at 6c4cee6 against 93a895f3, together with native write validation, the partial-update writer, management wrappers, registration and removal. The four modeled production guards remain unchanged: final current-read fence, projection classification, unknown never-replay action and non-content completion qualification. The new skill_action union uses content-owner semantics; only registration may seed the exact existing page before binding, and that path still requires its stable identity, applying state and original operation. Native completion now compares a complete observed body by supported structural equivalence while freezing the original input bytes; Source/resource remain exact. VerifyTarget abstracts the successful verification result and does not prove Markdown equivalence. Automatic matching resume still requires a caller to repeat the original frozen input. Registration before owner binding, preservation of unselected bodies and removal's terminal Trash/relations/Files/Resources sequence are not enumerated by this one-action model; their permanent production and fault regressions are identified below. The earlier metadata-first restore boundary for hidden Trash relations remains outside the model's single Trash bit. Only the reviewed operation source hash changes; all seven configurations, complete rule inventories and four actual guard mutations remain intact. These hashes bind inspected inputs, not a refinement proof or a substitute for actual run results. Reviewed the offline known-denial change at 9ebd9c2215f97934f0746125382415b2f338f572 and its integration with incoming native management at 0070dfb: the sole assertKnownSnapshotAccess now rejects observed target ACCESS_DENIED and scope AUTH_REQUIRED before selected object reads for online and offline consumption. The offline exemption argument, successful access_denied result and pinned stale-success branch are deleted together. Ordinary current/name reads, fixed main/resources, batches and consume reuse that boundary. Unknown transport failure, ambiguous NOT_FOUND, unaffected scopes, historical metadata and complete bytes under business Enabled changes remain distinct. The public SDK regressions obtain actual controlled 401/403 before checking body refusal and real SQLite retirement; offline prepare may fail earlier with CACHE_SCOPE_UNAVAILABLE after target-only all-clear, while fixed scalar/batch retain exact denial. No extra terminal permission probe or byte-hash authorization grant is claimed. These are concrete implementation regressions, not additional finite-model properties; model variables, case/rule inventories and existing mutation guards are unchanged. Reviewed successful-untrash visibility convergence against e95f813163c6c5fcbc12aa7b2c238206e0e077fd. Only the successful restore action acknowledgement may observe an exact live ready owner whose complete stable-identity query is temporarily empty; it checks the frozen Source/owner fingerprint on every observation and performs at most five observations with four interruptible waits under the same invocation deadline. Initial guards, mutation admission, explicit lost-ACK reconciliation, duplicate/foreign/partial-query rejection and strict final verification remain unchanged. No mutation is replayed by this convergence loop. The model still abstracts Trash and does not enumerate separately lagging page/index observations; the new positive, permanent-gap, concurrent-change, deadline and cancellation cases are implementation regressions, not additional formal properties. Reviewed the bounded current-metadata and physical-denial delta against 414a9ec9ba63a12e4f604f04687984854a4c629e. Selected stable claims choose identity only; the exact owner GET still precedes body reads and the original final owner/Files/Source consumptionFence remains a new observation after provider I/O. Physical access generation is reserved before dependent I/O, and a grant is recorded only after that original fence and publication. Exact related-page rejection is saved before alias lookup or stable publication can fail. Scope, stable and physical denial use the existing byte-delivery guard and generation/retirement mechanism. Public SQLite keeps frozen page aliases and rejects rebinding after retirement; the changed-alias case is an explicitly constructed Store boundary, while the public SDK replays two content versions under one stable identity. These metadata, alias, offline and authorization obligations are concrete regressions, not new finite properties. The four existing modeled guards, all seven cases and their rule inventories are unchanged. AH-1198 adds three coupled public SDK/HTTP/SQLite T14 regressions: a creator cancellation plus actual 429 pagination while Source is applying, all-waiter cancellation after a partial response, and two original per-call deadlines during Retry-After followed by fresh revision selection. Each caller completes its own current eligibility before sharing exact Notion-owned resource bytes; an already admitted A acquisition may finish, whereas a later missing-byte acquisition observes applying. The resource identity remains unchanged while an unrequested Source contribution advances the complete tree. Source row transitions are explicitly controlled service facts, not executions of a live management writer. Partial or timed-out work exposes no files or cached object; the new selection preserves the old manifest. This test-only change does not alter production guards, finite models, case/rule inventories or mutation targets, and adds no model property. Reviewed the T05 fixed-byte credential switch defect against 715e5368a6e19281ddea1d9cf30551ec48267e75. The existing fixed access guard now requires the locally recorded scope for the selected credential digest and API origin before any fixed inventory or object read. Unknown binding and mismatched scope fail structurally without remote authentication or a content-hash grant; underlying Store errors preserve their original diagnostic fields. Public cache clear retains credential-to-scope authorization facts and excludes them from retirement receipts, while current/body observations and the original denial/generation fences still retire as before. The complete-byte public SDK regression uses a real SQLite Store and controlled HTTP to cover unknown and authenticated alternate credentials, actual 401, origin changes, scalar/batch/inventory/use/inspect, clear, same-credential offline reuse, and fresh recovery. A separate real identity-table query failure checks exact Store error propagation; the existing SQLite observation-race fixture supplies the now-required local credential association without changing its race or denial assertions. Current lifecycle and RequestEngine finite variables do not model credential associations or cache-clear identity retention. These are concrete regressions; finite models, case/rule inventories and mutation targets are unchanged. Reviewed Source-relative identity resolution against 9200b9afcb328006ee3dcd8fd48a031a628eef3e. Fixed containing references now share the read-from manifest and stable File-binding path before the original repository Source path is mapped to one exact owner. Identity-only resolution does not acquire target bodies, activate dependencies or mutate Notion. The target read still uses the existing fixed/current acquisition, authorization, scope and final publication fences. Mounted-path collisions and duplicate Source mounts are concrete regressions in shared-source-references and shared-current-source-write; native, missing and stale-path File bindings are covered by shared-current-relative. Named local CLI refs retain pure syntactic resolution. A Source-mounted reference can retain an exact same-owner native companion only when its original relative path escapes the repository root, with a frozen File binding and no Source acquisition route; a valid Source address always takes precedence. Existing CLI syntactic and mixed native/Source composition regressions cover these compatibility boundaries. The Source mapping and import Members inference are not variables in this finite lifecycle model. No operation kernel, model, case inventory or production mutation guard changed; this correspondence update does not claim a new formal property. Reviewed e6d67119e09fe7330d57baaf74f096d8803716e7 against 87c5bfcd2cfbcd5ab993307ac760fac802163b0d: local selection IDs now bind the full observed record while content version and bytes keep their existing identity. Current producers emit only record-bound IDs; retained old IDs are recognized solely for existing local fixed-manifest validation and recovery. Current cache metadata must equal its selected manifest; the complete preparation binding guard is unchanged. Independent SDK processes cover A/B/C/D metadata selections, cache clear, original intermediate bindings, forged records and an actual content-version change. Native management may complete its Markdown structure action before correcting only proven added automatic links on original plain spans. Complete Markdown structure and physical block inventory bind each correction; the existing operation dispatch freezes its request, observes accepted unknown writes before replay, and the original strict full-body comparison alone sets native verification before ready. Ordinary consumption does not correct content. The finite lifecycle model does not enumerate Markdown spans, multiple block actions, record fields or local snapshot formulas. Its four production guards, seven configurations and complete rule inventories are unchanged; the new identity, transport and recovery obligations are concrete implementation and installed/live regressions, not additional finite properties. Reviewed the rebased integration at 6f9abd76e00400bcd2754e7db6457edea5c71a7d on current next 3f8f58d2c635e60d2a50805b6c0ed33ba17464cb. The retained-ID decoder now follows the actual fixed producer: local_snapshot with pinned freshness only; local_cache, current/Notion and non-pinned legacy claims remain rejected. The public consume and Crypto-only decoder regression preserves complete binding checks. This local compatibility repair and the release empty-array guard are outside the finite models. Existing file pins, model/case inventories and mutation targets remain unchanged; this entry records source review, not a new run result. Reviewed AH-1268 commit 084699e35e6fcea17fd3df11a37700bb37665dc3 against incoming next 34f34295265943deb884daa8ae47494f9e320603 during the merge. querySelectedSkillMetadataWithClaims returns the same exact physical target map plus the complete observations already produced by querySkillClaims; an empty target set returns both empty maps. Physical GET admission, complete stable-claim pagination, disabled-duplicate participation and assertUnique remain unchanged. Existing shared-graph-read-context callers continue through querySelectedSkillMetadata, whose Effect.map returns only value.targets and preserves the previous return shape and query behavior. The new MCP search caller alone consumes claim observations to detect differing current metadata. Current reader publication/consumptionFence, finite intent ownership, non-content completion and unknown-write no-replay guards are untouched. Search admission and claim freshness belong to the separately owned notion-mcp-search suite and concrete metadata/SDK regressions, not a new CurrentLifecycle property. Only the reviewed shared-skill-targets source hash is rebound; all seven configurations, complete rule inventories and four current-lifecycle mutation targets remain unchanged. This records source review, not a rerun result. Reviewed main-file frontmatter projection against 34f34295265943deb884daa8ae47494f9e320603. An explicit main/supporting role limits header omission to the canonical main; Source/resource original bytes, discovery metadata and native author bodies remain unchanged. The projection input fingerprint advances with the renderer so an older unfinished intent is refused on resume before semantic writes; cancellation reconstructs requests with the same role and preserves changed-request conflicts. The four modeled production guards, seven configurations, complete rule inventories and mutation targets are unchanged. Only the reviewed projection writer-test hash is rebound. YAML recognition, rendered blocks and renderer revisions remain implementation regressions outside this finite model; this records source review, not a formal run result. Rechecked the coverage binding after rebasing onto incoming next 9710dbc09d79146818229dcb56137d533145d0cb; the incoming shared-skill-targets source hash and source-review record are preserved. Reviewed AH-1282 Source sync against next base ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1: processSource resolves the single saved pipeline before provider checks or cached no-op; manager and execution generation must match. pendingOwners rejects foreign parents and affected Skill intents, including removed owners. writePreparedCurrentSource repeats the complete affected-owner fence before its first mutation using the existing operation hook. The initial prepare receives the exact observed commit, and recovery reproduces the complete saved declaration/commit/configuration/revision. A successful receipt compares scope, physical Source, configuration, commit, revision and requested projection coverage. continueOwned publishes Source content before independent projection, recovers only deterministic owned target operations, and returns after finishing the original operation. The concrete lost-local-phase regression verifies the published result without rewriting later manual metadata. Five added real guard mutations bind pending-first (two defensive guards removed together), removed-owner projection scope, exact observed commit, configuration receipt and manager/generation to their behavior assertions. Projection ownership and failure separation also have direct kernel regressions; their model faults do not imply a newly removed single implementation guard. Neither Map fixtures nor the finite child steps prove SQLite or live provider behavior. The final writer review preserves its existing CURRENT_OPERATION_PENDING public code. A resumed exact parent may also admit the single recorded predecessor child; explicit supersede still selects only its original parent. The pre-existing selectedSourceMode and handoff qualification remain before this fence. Ancestor-child transfer is an existing concrete writer regression, not a new SourceSync model state. Reviewed the bounded progress delta on base ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1 after live no-op costs exposed repeated-prefix starvation. continueOwned freezes ordered target IDs/pages, resumes next_index, performs complete preflight again and persists +1 only after exact projection success. A completed-prefix remote projection intent, even with the original deterministic operation ID, blocks rather than being silently skipped. Full batches retain one ordered terminal prefix, exclude retryable results and preserve earlier hard failures. Review found that a disposable latest receipt, even tagged with batch_id, can be displaced by later hourly updates before daily full resumes; requiring a fresh unchanged HEAD can also reopen already completed work. That intermediate design is removed rather than treated as proved. Source completion now checkpoints the existing exact dispatch parent before clearing its finite child. completedBatchChild admits local cleanup only with exact parent scope/batch identity and owner/generation, matching operation ID, published selection and completed projection IDs/cursor. Existing hard results are never replaced; missing or different parents are not recreated. The full loop reloads the parent to observe the child's single append and keeps cleanup failures visible without changing the durable success result or retiring the parent. changed may finish that same original child and checkpoint its parent, then later ordinary updates can replace cache observations without losing full progress. The actual Source and projection writers are unchanged by this local checkpoint ordering. Batch schema/helper and SQLite preserve frozen identities, complete terminal prefix items, ordered target pages and only same/+1 progress; independent process tests cover their actual transitions and retirement. SourceSyncProgress now has thirteen configurations for two Sources with two targets, one crash at a cursor or parent/child boundary, one retryable stop and sufficient preflight-plus-one-target budget. Parent completion authority is abstracted as two identities, not a proof of every UUID/field or SQLite durability. Original eighteen configurations and nine production mutations remain separate in scope. Controlled guards cover parent checkpoint failure, post-parent child cleanup failure/75, exact local cleanup and five mismatched completion fields; batch regressions retain B progress through later C/D publications and ignore disposable cache times. The model does not prove production request cost, arbitrary repeated failures, later remote-intent/authority changes, scheduler or installed-package behavior. All other protected files retain their earlier reviewed hashes. This records exact source correspondence and must be accompanied by final snapshot run evidence. The acceptance repair adds one controlled high-level sync regression: after a completed full synchronization, an external generated-body edit at the same Git commit remains untouched by changed mode; full mode repairs the observed projection, preserves exact Source and main-file identities, clears pending state and performs zero semantic writes when repeated. This is coordinator/writer/projection regression coverage, not a new formal-model property or a live Notion fault-injection claim. The required-member option parser is covered separately by its input and real Git regressions; this model does not prove that parser. Reviewed the Skill-reference v2 task diff against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. Cache paths encode complete logical identities at the storage boundary and decode before selection/retirement; payload and SQL identities remain raw. Reference binding is explicit before current lookup, stable identities replace title/alias fallback, fixed owner and path are exact, and a missing path is not repaired through File ID. Source-relative resolution keeps authoritative containing coordinates and target-owned pins. Existing cache/metadata regressions migrate exact identities, preserve denial and retirement fences, and replace the obsolete stale-path repair expectation with failure before bytes. The stable-claim query changes only its canonical identity constructor; complete claim pagination and physical guards remain. Current read publication, consumptionFence, finite intent ownership and all four lifecycle mutation targets are unchanged; seven complete case/rule inventories are retained. The separate skill-reference suite and concrete SQLite regressions cover the new selection and storage obligations. This mapping is source-review evidence, not a rerun result. The official format pass changed layout only; named mutation anchors were rechecked against the formatted source. The final shared-snapshot diff also removes the unused requestedFileIds input and loop after all callers were migrated to exact paths; requestedPaths validation and native File bindings remain. Final publication, consumptionFence, the four production guards and all seven case inventories are unchanged. Final review removes the unreachable name/catalog fallback after exact entry binding and retains the same denial invalidation. The contract now uses the actual positional ctl library inspect ENTRY syntax; database aliases remain entry conveniences, not portable Library IDs. Integration checkpoint: preserve every upstream SourceSync and SourceSyncProgress model, case, implementation binding and source guard. The final merged source bytes, including SDK changes shared by both branches, still require a fresh diff review before final hash binding and execution. Final integration review against upstream next 9d986a83aaae35e3f9f6cd35341add0476f5c887 and task checkpoint ad7d09c9cd21aad6e318eca52bcb167b46e9bf78: all 37 upstream TLA/config/view artifacts, all 31 case rule inventories and every SourceSync/SourceSyncProgress implementation binding are byte-for-byte or structurally identical. The SQLite diff adds the independent frozen import-plan dispatch branch and exact identity segment encoding/decoding; the upstream SourceSync dispatch branches remain unchanged. SQL regressions use complete owner identities and exact selected paths. The two SDK fixture corrections encode the retired fence segment and use the explicit Notion page URL plus exact denial page ID for an unresolved physical child; restart, permission and retirement assertions remain. Rebound only these four reviewed source/test hashes. The existing nine current-lifecycle and SourceSync implementation guard mutations and upstream gitless source-identity checks remain intact. This is source-correspondence review, not a replacement for final model, mutation or SQL run receipts. Final formatter-only review after the ref04 source freeze: sdk-immutable-read.node.test.ts changes only the callback layout and trailing argument comma; its encoded retired-fence assertion and every model rule and production guard remain unchanged. The protected test hash is rebound to the final formatted bytes. Model evidence from ref04 retains its exact recorded source hashes; final guard receipts identify the later selected build. The provenance helper now recognizes node_modules as a path component, including workspace-local dependencies; the mutation runner still checks each coverage dependency byte hash before source provenance, and the paired build remains the installation authority. Final native transport review after the ref04 model run: a live Markdown PATCH discarded an authored skill:// link while retaining its label, so the existing strict completion guard correctly left the original operation pending. The correction planner now admits only an exact valid original Skill URL with null title becoming a null observed link, preserving all text/code/style/tree checks. Only actually matched lost destinations are excluded during this intermediate plan; pure-link blocks and an already accepted pending correction remain eligible. The physical block/page/parent/type/shape guards, original rich-text requests, idempotent native:page:plain:block action identity, writer body PATCH/input and final compareNativeMarkdown remain unchanged. The existing observation caller receives its separate dropped set. Added hashes bind the reviewed helper and its two regression files; positive write and accepted-response-loss cases require the same operation, one body PATCH, one correction PATCH, original frozen plan and zero-write completion/repetition. Eleven negative plans retain changed or unrecognized content. The 31 models and their complete rule inventories remain unchanged; ref04 model evidence applies to its recorded bytes, and the later selected-build guard, concrete native and live receipts establish this unmodeled transport change. Final explicit-scope diagnostic review after ref05: logical current references and fixed selections now report LIBRARY_SCOPE_MISMATCH for an explicitly incompatible database. The warm branch preserves SKILL_NOT_FOUND for the physical page target variant, whose type has no snapshot selection. Only the diagnostic code expression changes; the mismatch predicates, selected manifest owner/path, current-read publication, cache fences and I/O order are unchanged. Concrete warm/fixed/resource regressions require zero Notion requests and semantic writes, while the physical-page regression preserves its old containment error. Rebound only the reviewed snapshot source hash. The 31 complete model inventories and all nine lifecycle/SourceSync guards retain their meaning; cache-mode diagnostic spelling is not an added finite-model property. Reviewed the root Library redesign against next 5a3f36f: canonical root identity and v2 descriptor; pure local selector/default binding; physical root, complete direct-child inventory, all DB/DS ownership and stable schema readback; initialization intent saved before CREATE, unknown CREATE blocked, known root monotonic; current/import pending lookup excludes mutable data-source IDs, freezes all physical bindings and rejects drift before I/O; real SQLite immutable current intent and Source synchronization identity include the full Library. Original current-reader final fence, owner readiness, never-replay kernel and Source coordination guards remain intact. Public options now bind Library roots, full refs reject explicit conflicting scope, cached pins retain logical owners, and physical-page reads reject a foreign parent without querying that foreign database. Tests replace obsolete IDs/selectors and declare physical topology separately, while keeping root children honestly classified as body reads. Finite properties abstract complete validation; concrete pagination, schemas, SQLite restart, installed artifacts and live Notion retain separate evidence. Source hashes bind reviewed inputs; results belong to the independent model and guard run receipts, not this inventory. Reviewed the native Skill hyperlink transport boundary in 1f355221eca2eee5aba40bc7897d190bbae13129 and the image-definition ledger correction in 642c8a7110038bc5d22d51391d002264978be60c. Real candidate-07 Notion probes preserved the original rejection evidence for pathless, empty-slash, dot and extensionless URLs; one bounded neutral entrypoint.md/.. path pair was then accepted and retained verbatim by both rich-text and Markdown readback for a root and an extensionless reference. The pure helper inserts one layer into an already decoded span and strips at most one exact prefix boundary only after both complete references validate with the same Skill, Library scope, normalized path and snapshot selection. Raw authority/query and remaining path spelling are retained; literal text, code and the actual image source remain exact. The complete destination ledger uses the same one-layer representation for reference definitions and image observations without changing the separately compared image payload. Original input, initial Markdown requests, finite intent and exact pending request hashes remain unchanged. The new kernel regression rejects a changed unknown request before observation or mutation, retains its original marker and permits the original request to reconcile. Writer regressions retain same-input response-loss recovery, definitive-rejection recovery, complete readback and zero-write repetition. Add the previously unpinned Markdown source/test and the new helper/test to the actual source inventory; update only reviewed existing test/helper hashes. This is a concrete implementation boundary outside the abstract verified bit: no TLA module, finite configuration, rule inventory or 25 actual mutation target changes. The 45-config/25-mutation final replay and installed/live original-operation recovery must identify their later frozen candidate; these reviewed hashes do not claim those executions have already passed. Reviewed the AH-1322 Node 26 CI counterexample on 55ac5fd: after mkdir reports EEXIST, a normal owner can retire the fence before the contender's first lstat. Absence at that exact boundary now returns SYNC_LOCKED to the existing caller deadline and retry; it never authorizes the protected effect. The existing real-process OAuth fixture deterministically pauses the contender before its real lstat, cancels the original refresh owner, and then verifies reacquired owner.json before rereading the retained marker, one refresh dispatch and MCP_AUTH_REAUTH_REQUIRED. The pre-fix result is STORAGE_ERROR with syscall_code ENOENT. Dead-owner recovery, inode comparison, release, credential epochs, pending-marker and token guards are unchanged. OS scheduling and error classification remain concrete implementation obligations; no finite transition, bound, rule inventory or existing mutation target changes. Reviewed cross-process hot-cache preparation at a1e9b4b on 6b2d53b and the subsequent one-hour product default. Graph admission selects the existing credential/API-origin cache scope locally; the snapshot readers retain their credential, known-denial, complete-graph, byte, expiry and refresh guards. The default read/current-eligibility duration changes from 300000 to 3600000 ms, while the 60000 ms catalog policy, explicit durations, Profile rules and independent full-body deadline remain unchanged. Public SDK/HTTP/SQLite regressions cover new-process five-minute reuse without identity requests or renewed validation times, forced/expired/missing/foreign-scope reads, known 401/403 after clear, and the default thirty-minute/one-hour boundary. Cache durations and routing are concrete implementation behavior outside these finite variables. No model, case, expected-rule inventory or production guard mutation changes. The updated hashes bind reviewed source and tests; they do not claim a new formal-model or installed-artifact result. Reviewed the final lazy Source materialization delta against 31f30db8f960cc4f36d1e02f8e279d641b660718, including the previously failed real-Pi SQLite address boundary and the independently observed legacy applied Source shape. Additive management retains existing Contributions and manifest while selecting all ready owners plus explicit roots/Requires; a declared uninitialized sibling remains untouched. The shared manager Store fence precedes read/plan/write. Original control and business dispatches cannot be replayed or settled from desired-value equality; original unique witnesses and every affected child fence successor admission. Known ACK retention across retirement/rejected checkpoints is a concrete recovery regression, not a claimed liveness property. The legacy management-only path freezes exact physical Source, Git provider, empty Content/Operation and optional historical accepted 40hex commit; a declaration/materialization hash carries this descriptor through the existing Record-to-applying protocol. Ordinary current parsers do not accept applied. Fresh changed legacy evidence blocks without mutation and normal reads remain behind applying. Source-member caches now use a registered rebuildable SQLite domain keyed by actual credential scope/Library; immutable unfinished materialization inputs use a separate dispatch domain and retire only after completion. Independent Node processes exercise these real domains, not the Map fixture. New bounded SourceMaterialization and SourceWriterSettlement models add 16 configurations to the unchanged existing 61, with exact complete rule inventories, declared two-child bounds and 13 added actual implementation mutants. Existing unsafe recovery assertions are replaced by causal-settlement expectations while preserving original failure evidence. Full provider bodies, actual installed manager/Pi sessions, different credential scopes, Git HTTP and zero projection calls remain concrete execution obligations outside the finite models. These reviewed source hashes are inputs to subsequent official model/mutation/installed runs, not a pass declaration.",
   "files": {
     "packages/core/src/shared-snapshot.ts": "bde086d17d14d116b90b1cd9d93f539f37f510a7f7bf5a6cf2a1b184ec870a45",
-    "packages/core/src/shared-current-operation.ts": "afe1bc7058c753d07d134f336fcd1690c8f0998b163f8d0032313e13c1f824d3",
+    "packages/core/src/shared-current-operation.ts": "6b7d47b181d5a55e77469f39c378802c70ad3f7cbcf9d2bcb48fd8fcc4d45b32",
     "packages/core/test/shared-current-snapshot.test.ts": "e1da621f2243691f1cc67dc530e183d4305ffab3319fc29acb14b8354e7f92ad",
-    "packages/core/test/shared-current-operation.test.ts": "6c5e8f47aa7278d7b4a9d8c0f1daefa2d9fab623f9552d4dd3137798d49dbc0f",
-    "packages/core/test/shared-current-projection-write.test.ts": "aac29d0c9ef33b35597ffefce6cee9961833110e518082623d89d430e141b1bc",
+    "packages/core/test/shared-current-operation.test.ts": "658c02198ad05a8194e17be272e21545ffaaa26f66d5c635c0c43ca0fcd93bcd",
+    "packages/core/test/shared-current-projection-write.test.ts": "ce71e2e9494ef53961043a5dd3746cd4b8a66eb7db79163d0eaabeda29f9faf1",
     "packages/core/src/cache.ts": "4a65106f5b7dd11bb4e049f9c41cb191fb9ff3564a2a70c6405dbc1c497f2bf8",
     "packages/core/src/fixed-snapshot-files.ts": "3f06a96da80d6d0d63515560465cdf0df4bb5f644a384fe1cd8017e535ef86e5",
     "packages/core/src/snapshot.ts": "430cbded058870a1297999b4c4cb577ff5c23b4f39aea4364b562e6169071552",
@@ -20,17 +20,17 @@
     "packages/core/src/shared-skill-targets.ts": "b73e7ee9c84293f44013fd17ecfc2e9dab18e7af2ffbaa26489a5818ff738dea",
     "packages/core/test/bounded-graph-metadata.test.ts": "85ca6a10080c7940577903e0db6f1c5d57a8cf63947ef1126f3ec444f5977339",
     "packages/core/test/sdk-bounded-metadata.node.test.ts": "4728aa15cfa0ed5fbb16e9bd15cc7d8a13ceb6e4e31f57a41b42d6df7080e9eb",
-    "packages/core/src/shared-current-source-sync.ts": "bdcf155966f615f0e50e416f45cdc88dcffe55aad48f9d5817fd02b06eec7d27",
+    "packages/core/src/shared-current-source-sync.ts": "52326203acc62a49a1a9d21dbc50b2c17986da94ef6160c7af34ad0c03c29191",
     "packages/core/src/shared-current-source-sync-model.ts": "06770f615d2757e4f4ce8efbf47515fdd3d3c277cc62e430e50d790968f734cb",
     "packages/core/src/shared-current-source-check.ts": "c243db23ea43a08cf37f086d1168f1e94a8ab0a54ca1f9ff12369ca38f957ec8",
-    "packages/core/src/shared-current-source-write.ts": "b5d9172495dfadd89bb2aed1ba44b0f380619a2eb9af184342871d9621e7ae5e",
-    "packages/core/test/shared-current-source-sync-guards.test.ts": "d8294ae2d0bf9b1f66751fe358522820ec36ee4389e10a261f25e7ab4f50dad9",
+    "packages/core/src/shared-current-source-write.ts": "e44bc7c37491bd780d2c1f17c923a0e047632921f29edc187cde085919283333",
+    "packages/core/test/shared-current-source-sync-guards.test.ts": "dad8f71050f8d443649295ba50897ce306b1d5169e7ee3b2571ced0237d3b97e",
     "packages/core/src/shared-current-source-sync-batch-model.ts": "6b788f425d08de2eb6cd83816b866730c9550bb35fbcf30c3c4d1238afa861d4",
     "packages/core/src/shared-current-source-sync-batch-helper.ts": "8f322b138db56dc2c94a24df73b9d9160b6cd2964203c92808aa54f2e0fcd100",
     "packages/core/test/shared-current-source-sync-batch-model.test.ts": "931dde10bf83bac81bf29eade338608fa4354cdaed9ab5dd50b24d5f3cfdc6a0",
     "packages/core/test/shared-current-source-sync-batch.test.ts": "197aa05d1e640e268d750dec72aaaf713fb6985c9d5bf955e0eab3afe2960e51",
-    "packages/core/src/sqlite-state.ts": "dbc48820aad7afbfbb11fe090f4a94c49a213d4a8f586ee01ac699950c3f20d7",
-    "packages/core/test/shared-sqlite.node.test.ts": "b1f0284f41f4631ad6e27861c11d517b58b26134ba89878ea2be8c1a8ca50f14",
+    "packages/core/src/sqlite-state.ts": "77c70439509c06b0f09bfc6c069f50df90051b91c45a970df29d3c38adf45ae0",
+    "packages/core/test/shared-sqlite.node.test.ts": "5e9ed73953c2b048125fd49567520c24277cb6d2f0f157e9368613052bb81557",
     "packages/core/src/shared-native-plain-text.ts": "a3d6b8e9ce7f08b513b92c762b5e688ca25f847562f33f00b106b4cd5ba4861a",
     "packages/core/test/shared-native-plain-text.test.ts": "d39a975c685abe59bff4b51c7c016b9975f2fdff27a0cc62ec4f42df8d063da4",
     "packages/core/test/shared-current-skill.test.ts": "3f928c48ad09c5737db89d6c432bdf6319cf654a836ca5e3ba2bba87197a70fd",
@@ -42,7 +42,7 @@
     "packages/core/test/shared-library.test.ts": "54b158bc807d376c0e456768a953d9ae360183b589dde70515d88c806faabd2e",
     "packages/core/src/shared-current-import-plan.ts": "9d357dd9cbc5b2cdaea96c9a77692be4e1cd23bfa50bb21f093aea8e4db5f3f1",
     "packages/core/src/shared-current-import-plan-model.ts": "2f06171a957bbf35699a0a07c733e9fc1d9e7e83218ac25540942fcea76b5f42",
-    "packages/core/test/shared-current-write.test.ts": "f2acccd10ee328eadaa41264e862fb07bd587eb44ba85863d9239cb3882f3ac5",
+    "packages/core/test/shared-current-write.test.ts": "b8ca954fc85d929050ed263d5429e0ab1d00ff7a4fb8716f24e1e5b108c17b85",
     "packages/core/test/shared-current-import-plan.test.ts": "07d683662216ed09e8cb274cdb8f7cf4cbaf8afa048fb140d3bfe5ebc86b1730",
     "packages/core/test/shared-current-operation.node.test.ts": "5a1344e8eb7a052660f8d32a7654c765573b5a64251136d03b58496182e1f47c",
     "packages/core/test/shared-current-import-plan.node.test.ts": "6063bf7ba7fedd705d79f717d971971dc045464fe9fda760038d19c483654a23",
@@ -56,8 +56,8 @@
     "packages/core/src/shared-native-markdown.ts": "bc87518438cdf16dbdbe2ebe6827c30a3454269466bec84bea240bfe79ddd5c4",
     "packages/core/test/shared-native-markdown.test.ts": "f08676979392f7fabe82ff79921c5b0f186e11cb8661bada66fcd85421978d6a",
     "packages/core/src/catalog-cache.ts": "29c6a14db80b351925818f98364b99b998b41e3d67640e85edeb9a4b32ec8147",
-    "packages/core/src/candidate-snapshot.ts": "94867236366b70add3be20981dfcdebd51b9f3213b7beed899f7a316fc08c4ba",
-    "packages/core/test/candidate-snapshot.node.test.ts": "853874e8e9a41f767e99b86fc7b475a3330a7bc2d527f63ff391642ee8c01fe5",
+    "packages/core/src/candidate-snapshot.ts": "58e167663c4271c0a7b17f36b20e3fe9c78478b30728fdf72b0a1d2f55f3b22c",
+    "packages/core/test/candidate-snapshot.node.test.ts": "72392e13b4832d4f9e322988fbdc89ca77e7e667af2834341d667093ea513726",
     "packages/core/src/catalog-consumption.ts": "61e19c988ee9d75715cc245294ed1de677b1b25d3a1f11973c744eada62801a7",
     "packages/core/test/shared-views.test.ts": "694d3286458612cd0c211bba1c18440e6ed7c8f52fb8335f776cc0dda5f5a3b4",
     "packages/core/test/config.node.test.ts": "b0c47c5345dc00a57950a5766b09e342634dded0f7b70040300e44cd0ab82c1d",
@@ -72,7 +72,7 @@
     "packages/core/src/notion.ts": "39838e1fda51bf7c53344e2f02b2a95adee51f849a791bef437853c9829c1fb1",
     "packages/core/src/catalog.ts": "584e50752a44709602fec7c99c423c387ce52db82bd66d321cf17fea4d74667f",
     "packages/cli/src/runtime.ts": "caf2f0f585967759155e88114cf584def84e10933fd5cc937b32bed7d94c3556",
-    "packages/core/src/cache-retention-model.ts": "7f4ff2b5e96644cb7800174e3de4601265535849f1dc04850925e9ab830f9480",
+    "packages/core/src/cache-retention-model.ts": "6e1748cfdc8c9e202fff652f2ab4f998b2779ac34d44c1c6f776abe24d6a6456",
     "packages/core/test/current-evidence.node.test.ts": "21f4132d8028241935c13f3e36e849d8f8253726d2bbf4107efec3c6cf07255c",
     "packages/core/test/shared-current-evidence.node.test.ts": "446387314cb27b25e493065fe9931d687388af6227660cb77fab2f4a9cafe8c7",
     "packages/core/test/shared-source-ref-cache.node.test.ts": "8bb3347d9231ae01d75359eafcddb08ce007a3bf8ca840083d77bf41ee64de94",
@@ -82,7 +82,28 @@
     "packages/core/test/shared-current-fixture.ts": "ed69b28c12a69b12dbcc5fbbe6f5dd8015982689734756db4cbcf28ee4f5ccaa",
     "packages/core/test/graph-prepare-live-fixture.ts": "071308c8a9734242189dfcd9c010490fce2cac49985f16a1c9d96d0174a9ed65",
     "packages/core/test/shared-current-source-consumer-fixture.ts": "780a469d55060e91b1fabfcfd5e19fbeab667de2d09c41a50738b125c45c2452",
-    "packages/core/src/graph-derived-directory.ts": "662a50cea39abbf1f006203651b03ec51e2310c098afcdd6a430e8d7ad7b62c1"
+    "packages/core/src/graph-derived-directory.ts": "662a50cea39abbf1f006203651b03ec51e2310c098afcdd6a430e8d7ad7b62c1",
+    "packages/core/src/shared-source-materialization-management.ts": "d7abc7e998a3b48594e190618c5f32c58b66f49313119fb88c35d7d9ffbc0b0c",
+    "packages/core/src/shared-current-source-adoption.ts": "ba45175b18f6f19cfd57e844fc2457d1a33cd917617deb41d892d399a63ad6dc",
+    "packages/core/src/shared-current-source-input.ts": "450b8f2c98a53bd8a1f4bbfc910436a038e5d6e1a3007a0c94a75a960eed10f5",
+    "packages/core/src/shared-current-source-management.ts": "b60424aca78fd1b83f9d8516650c75a6808b442916646405d7a5944fcf9c6bb1",
+    "packages/core/src/shared-current-source-writer.ts": "9811294067e072b7c2168e02cb3c9e5a2b2aed97994eacdfdccbd92f1dab803f",
+    "packages/core/src/shared-source-materialization-registration.ts": "34a500e271fafce88dfd622b00ef31d471cb3ef930298cd0271522facba9ffcb",
+    "packages/core/test/shared-source-materialization-management.test.ts": "8ac26869f719748ec35df95c284de43263f7b3746e028b691ff1a0b546878d8f",
+    "packages/core/test/shared-source-materialization-fixture.ts": "28c57d4f75f636f97812fbe47408463cd26f13e84aaadb667ade912a263522fd",
+    "packages/core/test/shared-current-source-writer.test.ts": "187c85f32bffb83c35f5b1766487cc3a1f40009f86e1646455f308be651f6ee5",
+    "packages/core/src/shared-current-records.ts": "0481b1e73d11c18efeaf7e4614543de2d747c380b7415ce641219cc02fced4a2",
+    "packages/core/test/shared-current-source-write.test.ts": "636ae614aa92f565458f0dc86d29ec19de5bbbef954719f43de008698295d4e9",
+    "packages/core/src/shared-current-source-legacy-registration.ts": "18a8611e7c8c87a618ccee701035ce1be4653c9430378c93940ff6df03d19eee",
+    "packages/core/src/shared-current-source-action.ts": "a0067e9684992b1ddc8e7ae73e31dd39b24d420ec900f1c64d2265591ac00af5",
+    "packages/core/src/shared-source-materialization-state.ts": "ad2c1907d1cf7f7f6d19f57970f9c910322d128f5b8b0bff20251755345a2cc9",
+    "packages/core/src/shared-source-materialization-model.ts": "b443d603751b1e1c0344a79fd51c5a2a9d12de8f58995e3abb7d096cb12657a2",
+    "packages/core/src/shared-source-member-discovery.ts": "0371aa6d08a85485056c03d21f6ee6ee0bfbe96a72e8e0a70e56bf6d3dd162a9",
+    "packages/core/test/shared-source-materialization-legacy-registration.test.ts": "16366199dd23b3f227e8aabfa4bd8a9e11e3c3237a4f385532444b021ace33c7",
+    "packages/core/test/shared-source-materialization-invalidation.test.ts": "8e5e48b1cf392bfd5949fa8363148c19d0007f4155269e2a7d15a2ee2f615252",
+    "packages/core/test/sdk-source-fixture.node.test.ts": "7a4b10fdc3bd43379b3e69be98008ac3882fd07b99cc5dfb584d103665f0a6e3",
+    "scripts/sdk-source-fixture.mjs": "c1e0b61623919483616b6b0f849b5efe90e2f7dd2ef60511e774e8b1a5e83318",
+    "scripts/sdk-fixture.ts": "a0fb7ec3dd9c49ba02514f2f83e92957b1a13f098f9cd2985974fbbf020dd9d6"
   },
   "models": {
     "CurrentLifecycle": {
@@ -205,6 +226,31 @@
       "bounds": "One cached version, at most one hidden remote edit and one consumption. The no-hidden-edits configuration excludes that edit; the limit configuration allows it.",
       "assumptions": "The restricted control describes a remote object that does not change during the attempt. Allowing an unobserved edit deliberately falsifies exact remote equality at consumption time.",
       "scope": "This positive/negative assumption control documents an information limit, not a production defect, product freshness guarantee, or implementation mutation. The original design review's sole negative is preserved; the complementary control satisfies the existing per-model positive/negative inventory contract."
+    },
+    "SourceMaterialization": {
+      "kind": "bounded_additive_source_materialization",
+      "symbols": [
+        "Source Contributions and complete current manifest",
+        "exact manager admission before read-plan-write",
+        "ready owner revision binding",
+        "unrequested legacy sibling preservation"
+      ],
+      "bounds": "One Source, two independently requested members, one previously ready member and one declared but uninitialized legacy sibling. Three initial manifests: complete, requiring growth, and empty. Every original request is admitted once; the four negative configurations remove admission, preservation, rebinding, or request scope.",
+      "assumptions": "The designated manager owns the full read-plan-write interval and its durable gate remains valid while an accepted remote mutation may still arrive. SourceWriterSettlement checks that separate bounded premise. A successful Source update and aggregate verified owner writes abstract lower operations; no atomic multi-Skill transaction, complete pagination, credential, filesystem or Pi proof is claimed.",
+      "scope": "Preserve every existing declared contribution and manifest member; bind only the already-ready owners plus explicit requested members to the resulting revision. A declared legacy sibling remains uninitialized. A broader manifest can keep the same revision. Manifest identity abstracts the normalized plan digest; concrete bytes, hashes, modes and native/resource authority require implementation and installed tests."
+    },
+    "SourceWriterSettlement": {
+      "kind": "bounded_source_writer_unknown_settlement",
+      "symbols": [
+        "durable original before dispatch",
+        "unknown business mutation without unique witness",
+        "control-record write_id or exact monotonic retirement witness",
+        "waiter cancellation",
+        "successor admission after settlement"
+      ],
+      "bounds": "One original business or control-record mutation, one successor, at most one lost response, one cancellation and one deliberately invalid replay. A third scenario adds two separately accepted original child requests; either may settle after the parent and a faulty successor. Every configuration checks the same complete rule inventory.",
+      "assumptions": "The single designated manager and its canonical Store are the common admission boundary. Each mutation is applied at most once per dispatch. A unique action witness can only be produced by that original dispatch; an untagged current value cannot prove settlement. Known successful replies belong to the original request. The model abstracts durable saves and exact remote observations; it does not prove SQLite fsync, OS process locks, SSH transport authenticity, external noncooperating writers or a Notion CAS.",
+      "scope": "Unknown writes retain their original intent and gate. An ambiguous property value stays blocked even when it equals desired. Control-record witness readback may establish this one original request; it does not recover its network ACK. A cancelled waiter does not revoke an accepted server mutation. Explained pending/blocked outcomes satisfy conditional progress, without promising automatic convergence or eventual remote visibility. Parent replacement also waits for every original child action. The two-child bound detects a parent-first or partial-child preflight; it is not an unbounded refinement proof. ACK/unique causal completion and desired-content verification remain separate."
     }
   },
   "cases": [
@@ -1268,6 +1314,302 @@
       "config": "limit.cfg",
       "expected_broken": ["AlwaysEqualsRemote"],
       "expected_rules": ["TypeOK", "AlwaysEqualsRemote", "NoDeadlock"]
+    },
+    {
+      "model": "SourceMaterialization",
+      "config": "covered.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "SingleSourceWriter",
+        "PublishedContributionsRemain",
+        "ReadyRevisionCoherent",
+        "LegacySiblingUntouched",
+        "MaterializationEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceMaterialization",
+      "config": "growth.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "SingleSourceWriter",
+        "PublishedContributionsRemain",
+        "ReadyRevisionCoherent",
+        "LegacySiblingUntouched",
+        "MaterializationEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceMaterialization",
+      "config": "empty.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "SingleSourceWriter",
+        "PublishedContributionsRemain",
+        "ReadyRevisionCoherent",
+        "LegacySiblingUntouched",
+        "MaterializationEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceMaterialization",
+      "config": "gate-negative.cfg",
+      "expected_broken": [
+        "SingleSourceWriter",
+        "PublishedContributionsRemain",
+        "ReadyRevisionCoherent"
+      ],
+      "expected_rules": [
+        "TypeOK",
+        "SingleSourceWriter",
+        "PublishedContributionsRemain",
+        "ReadyRevisionCoherent",
+        "LegacySiblingUntouched",
+        "MaterializationEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceMaterialization",
+      "config": "replace-negative.cfg",
+      "expected_broken": ["PublishedContributionsRemain", "ReadyRevisionCoherent"],
+      "expected_rules": [
+        "TypeOK",
+        "SingleSourceWriter",
+        "PublishedContributionsRemain",
+        "ReadyRevisionCoherent",
+        "LegacySiblingUntouched",
+        "MaterializationEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceMaterialization",
+      "config": "revision-negative.cfg",
+      "expected_broken": ["ReadyRevisionCoherent"],
+      "expected_rules": [
+        "TypeOK",
+        "SingleSourceWriter",
+        "PublishedContributionsRemain",
+        "ReadyRevisionCoherent",
+        "LegacySiblingUntouched",
+        "MaterializationEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceMaterialization",
+      "config": "eager-negative.cfg",
+      "expected_broken": ["LegacySiblingUntouched"],
+      "expected_rules": [
+        "TypeOK",
+        "SingleSourceWriter",
+        "PublishedContributionsRemain",
+        "ReadyRevisionCoherent",
+        "LegacySiblingUntouched",
+        "MaterializationEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceWriterSettlement",
+      "config": "unique.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalIntentPrecedesDispatch",
+        "UnknownMutationDispatchedOnce",
+        "UnknownOriginalKeepsAdmission",
+        "OriginalSettlementIsCausal",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "AllOriginalChildrenSettledBeforeSuccessor",
+        "SettledSuccessorNeverOverwritten",
+        "WriterEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceWriterSettlement",
+      "config": "ambiguous.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalIntentPrecedesDispatch",
+        "UnknownMutationDispatchedOnce",
+        "UnknownOriginalKeepsAdmission",
+        "OriginalSettlementIsCausal",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "AllOriginalChildrenSettledBeforeSuccessor",
+        "SettledSuccessorNeverOverwritten",
+        "WriterEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceWriterSettlement",
+      "config": "replay-negative.cfg",
+      "expected_broken": [
+        "UnknownMutationDispatchedOnce",
+        "OriginalSettlementIsCausal",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "SettledSuccessorNeverOverwritten"
+      ],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalIntentPrecedesDispatch",
+        "UnknownMutationDispatchedOnce",
+        "UnknownOriginalKeepsAdmission",
+        "OriginalSettlementIsCausal",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "AllOriginalChildrenSettledBeforeSuccessor",
+        "SettledSuccessorNeverOverwritten",
+        "WriterEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceWriterSettlement",
+      "config": "release-negative.cfg",
+      "expected_broken": [
+        "UnknownOriginalKeepsAdmission",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "SettledSuccessorNeverOverwritten"
+      ],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalIntentPrecedesDispatch",
+        "UnknownMutationDispatchedOnce",
+        "UnknownOriginalKeepsAdmission",
+        "OriginalSettlementIsCausal",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "AllOriginalChildrenSettledBeforeSuccessor",
+        "SettledSuccessorNeverOverwritten",
+        "WriterEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceWriterSettlement",
+      "config": "cancel-negative.cfg",
+      "expected_broken": [
+        "OriginalIntentPrecedesDispatch",
+        "UnknownOriginalKeepsAdmission",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "SettledSuccessorNeverOverwritten"
+      ],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalIntentPrecedesDispatch",
+        "UnknownMutationDispatchedOnce",
+        "UnknownOriginalKeepsAdmission",
+        "OriginalSettlementIsCausal",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "AllOriginalChildrenSettledBeforeSuccessor",
+        "SettledSuccessorNeverOverwritten",
+        "WriterEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceWriterSettlement",
+      "config": "value-only-negative.cfg",
+      "expected_broken": [
+        "OriginalSettlementIsCausal",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "SettledSuccessorNeverOverwritten"
+      ],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalIntentPrecedesDispatch",
+        "UnknownMutationDispatchedOnce",
+        "UnknownOriginalKeepsAdmission",
+        "OriginalSettlementIsCausal",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "AllOriginalChildrenSettledBeforeSuccessor",
+        "SettledSuccessorNeverOverwritten",
+        "WriterEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceWriterSettlement",
+      "config": "intent-negative.cfg",
+      "expected_broken": [
+        "OriginalIntentPrecedesDispatch",
+        "UnknownOriginalKeepsAdmission",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "SettledSuccessorNeverOverwritten"
+      ],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalIntentPrecedesDispatch",
+        "UnknownMutationDispatchedOnce",
+        "UnknownOriginalKeepsAdmission",
+        "OriginalSettlementIsCausal",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "AllOriginalChildrenSettledBeforeSuccessor",
+        "SettledSuccessorNeverOverwritten",
+        "WriterEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceWriterSettlement",
+      "config": "children.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalIntentPrecedesDispatch",
+        "UnknownMutationDispatchedOnce",
+        "UnknownOriginalKeepsAdmission",
+        "OriginalSettlementIsCausal",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "AllOriginalChildrenSettledBeforeSuccessor",
+        "SettledSuccessorNeverOverwritten",
+        "WriterEventuallyExplained",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SourceWriterSettlement",
+      "config": "child-fence-negative.cfg",
+      "expected_broken": [
+        "OriginalGateRetainsUnsettledWrite",
+        "AllOriginalChildrenSettledBeforeSuccessor",
+        "SettledSuccessorNeverOverwritten"
+      ],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalIntentPrecedesDispatch",
+        "UnknownMutationDispatchedOnce",
+        "UnknownOriginalKeepsAdmission",
+        "OriginalSettlementIsCausal",
+        "OriginalGateRetainsUnsettledWrite",
+        "SuccessorWaitsForSettlement",
+        "AllOriginalChildrenSettledBeforeSuccessor",
+        "SettledSuccessorNeverOverwritten",
+        "WriterEventuallyExplained",
+        "NoDeadlock"
+      ]
     }
   ],
   "implementation_bindings": [
@@ -1479,6 +1821,52 @@
       ],
       "scope": "Native body_verified_at still comes from real downloaded bytes and retains its separate 24-hour deadline. Metadata validation or cache hits do not renew that proof; existing full-body-expiry and unchanged-byte regressions protect this distinction. Fixed snapshot reads retain their immutable selection. Snapshot return and final graph admission repeat the existing known-access check after intervening local reads. An actual pinned-only graph regression injects a physical-page denial during derived-directory access and requires ACCESS_DENIED without Ready; its paired metadata-only change keeps the exact accepted pin and bytes. Current fingerprints are not imposed on fixed content. This late-denial timing is an implementation regression, not a new SelectionPins state or mutation case. Broker accepted session pins remain the separately verified consumer-state owner. Existing RequestBudget, deadlines and request-engine mutations own the elapsed-time and cancellation enforcers; this change adds no retry loop or budget reset. AdmissionProgress is conditional explanation under its stated fairness assumptions, not a new successful-network or arbitrary scheduler guarantee.",
       "related_suites": ["request-engine", "broker/consumer-state"]
+    },
+    {
+      "name": "source_additive_materialization",
+      "models": ["SourceMaterialization"],
+      "files": [
+        "packages/core/src/shared-source-materialization-management.ts",
+        "packages/core/src/shared-current-source-adoption.ts",
+        "packages/core/src/shared-current-source-input.ts",
+        "packages/core/src/shared-current-source-management.ts",
+        "packages/core/src/shared-current-source-write.ts",
+        "packages/core/src/shared-current-source-writer.ts",
+        "packages/core/src/shared-source-materialization-registration.ts",
+        "packages/core/test/shared-source-materialization-management.test.ts",
+        "packages/core/test/shared-source-materialization-fixture.ts",
+        "packages/core/test/shared-current-source-writer.test.ts"
+      ],
+      "mutations": [
+        "source-manager-read-plan-fence",
+        "source-manager-no-local-fallback",
+        "source-materialized-owner-scope",
+        "source-lazy-sibling",
+        "source-materialization-preserve"
+      ],
+      "scope": "One registered Source with two requesters, an already ready owner and a declared uninitialized sibling. The actual canonical manager Store fence starts before fresh reads/planning and is shared with apply/sync/lifecycle entrypoints. The planner retains existing Contributions and accepted Git manifest, selects ready M plus requested R and rebinds all selected descriptors to the full revision; the writer independently refuses omitted prior contributions and ready owners. Exact preparation and actual serialized child writes are concrete regressions. The preservation mutant removes both independent collection checks; a redundant rejection does not count as collection loss. Legacy physical identity, native/resource authority, full Requires, package generation and actual bytes are outside this finite abstraction and require the documented SDK/HTTP/Pi evidence."
+    },
+    {
+      "name": "source_original_write_settlement",
+      "models": ["SourceWriterSettlement"],
+      "files": [
+        "packages/core/src/shared-current-operation.ts",
+        "packages/core/src/shared-current-records.ts",
+        "packages/core/src/shared-current-source-write.ts",
+        "packages/core/test/shared-current-operation.test.ts",
+        "packages/core/test/shared-current-source-write.test.ts"
+      ],
+      "mutations": [
+        "source-unknown-idempotent-value",
+        "source-unknown-idempotent-replay",
+        "source-control-record-witness",
+        "source-control-retirement-witness",
+        "source-control-intent-before-dispatch",
+        "source-unknown-successor-admission",
+        "source-parent-child-preflight",
+        "source-parent-every-child"
+      ],
+      "scope": "The original control_write intent is saved before dispatch. Unknown business writes never replay or settle merely because current desired values match. Control Record PATCH requires its original unique write_id; retirement requires the exact physical monotonic retired witness. Known ACK is saved separately from content verification, including across retirement and a rejected next checkpoint. Source successors inspect every original affected child before the first parent replacement, including a completed first child and unknown second child. The finite model has one original business/control action, one successor and two independent pending children; causal witness, durable persistence and cooperating fixed-manager routing are explicit abstractions. It does not prove disk fsync, arbitrary child cardinality, external noncooperating writers, remote CAS or provider publication after cancellation."
     }
   ],
   "unmodeled_bindings": [
@@ -1629,6 +2017,30 @@
         "packages/cli/src/sdk.ts"
       ],
       "scope": "readCandidateSnapshot returns miss, blocked or snapshot using local credential/API-origin scope and canonical Library selection only. The original observed time is preserved. Partial/failure cannot replace the last complete directory; complete empty retires old candidates. SQLite atomically merges retention and exact refusals after the existing generation fence. Scope denial blocks and stable/physical denial suppresses only matching candidates; discovery cannot authorize bodies, Requires or host delivery. Controlled public HTTP seeds real SQLite, and subsequent public local reads prove zero HTTP, no scheduler acquisition, credential/Library isolation, partial/disabled/unavailable handling, authorization recovery, late old publication and corrupt identity refusal. Existing finite lifecycle variables do not enumerate candidate catalogs, local read races, TUI menus or performance."
+    },
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "source_materialization_legacy_sqlite_and_receipt_boundaries",
+      "files": [
+        "packages/core/src/shared-current-source-legacy-registration.ts",
+        "packages/core/src/shared-current-source-action.ts",
+        "packages/core/src/shared-source-materialization-state.ts",
+        "packages/core/src/shared-source-materialization-model.ts",
+        "packages/core/src/shared-source-member-discovery.ts",
+        "packages/core/test/shared-source-materialization-legacy-registration.test.ts",
+        "packages/core/test/shared-source-materialization-invalidation.test.ts",
+        "packages/core/test/sdk-source-fixture.node.test.ts",
+        "scripts/sdk-source-fixture.mjs",
+        "scripts/sdk-fixture.ts",
+        "packages/core/src/shared-source-materialization-management.ts",
+        "packages/core/src/shared-current-source-write.ts",
+        "packages/core/src/candidate-snapshot.ts",
+        "packages/core/src/sqlite-state.ts",
+        "packages/core/src/cache-retention-model.ts",
+        "packages/core/test/candidate-snapshot.node.test.ts",
+        "packages/core/test/shared-sqlite.node.test.ts"
+      ],
+      "scope": "Actual SDK discovery writes the registered scope/Library Source-member cache and local candidate snapshots read it through real SQLite. Cross-process tests retain metadata, reject another credential address, preserve immutable unfinished input through cache retirement and physically retire completed journal state. The exact legacy applied registration permits only management initialization, preserving historical accepted Git commit and rechecking frozen physical/schema/provider/revision evidence before the existing Record/applying writes; current consume remains strict. Legacy recovery distinguishes definitive rejection from unknown dispatch and refuses changed registration without new writes. A blocked stale candidate invalidates its exact target plus catalog facts while retaining unrelated candidates. Controlled Git fixtures advertise a newer HEAD with different root bytes and retain the selected older commit. These concrete regressions, independent Store authentication, fixed-manager transport and actual Pi/provider-byte checks are not additional finite-state claims."
     }
   ],
   "maintenance": {
@@ -1716,5 +2128,54 @@
     "scope": "Offline current access repeats the original known-access assertion before freshness can hide a denial as CACHE_MISSING. Physical grants retain their original causal publication gate and then preserve a surviving scope or page denial ahead of generic current-evidence rejection. Early authenticated scope association is required only for Stores implementing currentEvidence, preserving the legacy/custom Store side-effect contract. Detached immutable byte producers rebuild their own transport with a local MemoMap and omit the creator Store; the actual scoped current HTTP producer still owns its original evidence attempt. CurrentEvidence epochs, complete collection capture, final graph admission, pins and all 29 existing mutation cases are unchanged.",
     "fixtures": "The Source page fixture now supplies last_edited_time and advances it when its selected definition or contributions change. The separate real-Store lifecycle/native-alias fixtures run their fake requests through the production evidence hook; the writer fixture selects its already-declared API origin before ConfigProvider captures the environment. Their original restart, byte, export, no-replay and zero-write assertions remain intact. These setup repairs do not add a finite-model transition or a new guard-mutation claim.",
     "evidence_boundary": "The retained smart-formal-final-01 result proves 61 configurations, 29 actual mutations and 15 SQLite/graph tests for the earlier 6dcf4316 candidate only; its separate RequestEngine failure remains recorded. Reviewed repaired bytes and focused implementation regressions do not relabel that candidate or replace the required exact-new-head CI model, guard and implementation results. Models and all complete expected-rule inventories are unchanged."
+  },
+  "materialization_review": {
+    "basis": "Two bounded models in the existing current-lifecycle owner, with independently enumerated complete rule inventories and exact negative expectations. Model development runs are separate from the final protected-source runner, guard mutations, installed management process and actual Pi payload checks.",
+    "management_boundary": "Explicit user-dollar preparation uses the paired management entry. Ordinary SDK source-member discovery and consumption remain semantically read-only. A management ready receipt is neither graph preparation nor provider acceptance.",
+    "implementation_owners": [
+      "packages/core/src/shared-source-materialization-management.ts",
+      "packages/core/src/shared-current-source-adoption.ts",
+      "packages/core/src/shared-current-source-write.ts",
+      "packages/core/src/shared-current-source-writer.ts",
+      "packages/core/src/shared-current-operation.ts",
+      "packages/core/src/shared-current-records.ts"
+    ],
+    "outside_finite_models": [
+      "exact Source Member legacy metadata and stable physical identity",
+      "native/resource authority and full file bytes/modes",
+      "root plus Requires completeness and lazy Members",
+      "scoped CLI and Broker fact invalidation",
+      "real local fixed manager and independent second Store",
+      "actual new Pi PID/session within five minutes and complete provider entity",
+      "zero Notion reading-projection calls",
+      "legacy applied Source exact descriptor and old accepted Git commit while upstream HEAD advances",
+      "registered real SQLite Source-member cache and immutable unfinished-input address domains",
+      "blocked receipt retirement of only the selected stale candidate without remote mutation"
+    ],
+    "scope_boundary": "Manager and consumer credentials may differ. The public receipt scope is locally authenticated by the SDK; manager_scope preserves the server scope. Real independent SQLite and actual Pi tests, rather than these finite variables, own this boundary.",
+    "actual_mutations": 13,
+    "source_pins_status": "Final SQLite, finite legacy registration and blocked-target invalidation delta reviewed and hash-bound. Run results are recorded separately."
+  },
+  "source_materialization_boundary_review": {
+    "reviewed_base": "31f30db8f960cc4f36d1e02f8e279d641b660718",
+    "reviewed_changed_files": [
+      "packages/core/src/cache-retention-model.ts",
+      "packages/core/src/candidate-snapshot.ts",
+      "packages/core/src/shared-current-operation.ts",
+      "packages/core/src/shared-current-source-adoption.ts",
+      "packages/core/src/shared-current-source-management.ts",
+      "packages/core/src/shared-current-source-sync.ts",
+      "packages/core/src/shared-current-source-write.ts",
+      "packages/core/src/shared-source-materialization-management.ts",
+      "packages/core/src/shared-source-materialization-registration.ts",
+      "packages/core/src/sqlite-state.ts",
+      "packages/core/test/candidate-snapshot.node.test.ts",
+      "packages/core/test/shared-current-operation.test.ts",
+      "packages/core/test/shared-current-projection-write.test.ts",
+      "packages/core/test/shared-current-source-sync-guards.test.ts",
+      "packages/core/test/shared-current-write.test.ts",
+      "packages/core/test/shared-sqlite.node.test.ts"
+    ],
+    "result": "correspondence_only; actual run receipts are separate"
   }
 }

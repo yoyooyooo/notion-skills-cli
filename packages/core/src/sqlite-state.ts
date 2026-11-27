@@ -1,3 +1,8 @@
+import {
+  SOURCE_MEMBER_CACHE_PREFIX,
+  SOURCE_MATERIALIZATION_PENDING_PREFIX,
+  decodeSourceMemberCache,
+} from "./shared-source-materialization-state.ts"
 import { Clock, Context, Crypto, Effect, FileSystem, Layer, Path, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import {
@@ -104,12 +109,28 @@ function sharedObservationOwner(key: string, value: unknown) {
     ? sourceRefCacheOwner(key, value)
     : sharedFileObservationOwner(value)
 }
-const mutableSharedLocalPrefixes = [sharedCurrentTreeValidationPrefix, "cache/current-source-sync"]
+const mutableSharedLocalPrefixes = [
+  sharedCurrentTreeValidationPrefix,
+  "cache/current-source-sync",
+  SOURCE_MEMBER_CACHE_PREFIX,
+]
 const sharedLocalDomains: readonly {
   readonly prefix: string
   readonly category: SharedLocalCategory
   readonly address: RegExp
 }[] = [
+  {
+    prefix: SOURCE_MEMBER_CACHE_PREFIX,
+    category: "cache",
+    address:
+      /^cache\/source-members\/[a-f0-9]{64}\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$/u,
+  },
+  {
+    prefix: SOURCE_MATERIALIZATION_PENDING_PREFIX,
+    category: "dispatch",
+    address:
+      /^operations\/current-source-materialization\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/[a-f0-9]{64}\.json$/u,
+  },
   {
     prefix: SOURCE_REF_CACHE_PREFIX,
     category: "cache",
@@ -676,6 +697,11 @@ export function sqliteState(
               fail("STATE_CORRUPT", "Domain query returned an invalid payload."),
             )
           const parsed = yield* parse(rows[0].payload)
+          if (key.startsWith(`${SOURCE_MEMBER_CACHE_PREFIX}/`))
+            yield* Effect.try({
+              try: () => decodeSourceMemberCache(key, parsed),
+              catch: storageError,
+            })
           if (fencedFileObservation(key)) {
             const owner = yield* Effect.try({
               try: () => sharedObservationOwner(key, parsed),
@@ -762,6 +788,11 @@ export function sqliteState(
                     ),
                   )
               } else if (sharedCategory !== undefined) {
+                if (key.startsWith(`${SOURCE_MEMBER_CACHE_PREFIX}/`))
+                  yield* Effect.try({
+                    try: () => decodeSourceMemberCache(key, value),
+                    catch: storageError,
+                  })
                 const payload = yield* Effect.try({
                   try: () => {
                     const encoded = json(value)
@@ -792,7 +823,7 @@ export function sqliteState(
                   if (existing[0] === undefined) {
                     const totals = yield* sql<{
                       bytes: number
-                    }>`SELECT COALESCE(SUM(LENGTH(CAST(payload AS BLOB))),0) AS bytes FROM shared_local_records WHERE category='cache' AND (key LIKE 'cache/shared-github-blobs/%' OR key LIKE 'cache/shared-derived-graphs/%' OR key LIKE 'cache/current-source-sync/%' OR key LIKE 'cache/shared-source-refs/%')`
+                    }>`SELECT COALESCE(SUM(LENGTH(CAST(payload AS BLOB))),0) AS bytes FROM shared_local_records WHERE category='cache' AND (key LIKE 'cache/shared-github-blobs/%' OR key LIKE 'cache/shared-derived-graphs/%' OR key LIKE 'cache/current-source-sync/%' OR key LIKE 'cache/shared-source-refs/%' OR key LIKE 'cache/source-members/%')`
                     if (
                       (totals[0]?.bytes ?? 0) + new TextEncoder().encode(payload).length >
                       capacity.max_bytes
@@ -1401,6 +1432,7 @@ export function sqliteState(
                   // Current Profile and Skill/Source writes retain only unfinished intent.
                   // Completion permits the next intent at the same address.
                   if (
+                    key.startsWith(`${SOURCE_MATERIALIZATION_PENDING_PREFIX}/`) ||
                     key.startsWith("operations/shared-profile-pending/") ||
                     key.startsWith("operations/current-source-sync/") ||
                     key.startsWith("operations/current-source-sync-batch/") ||

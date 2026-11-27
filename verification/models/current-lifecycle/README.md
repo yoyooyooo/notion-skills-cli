@@ -6,6 +6,7 @@ SourceSyncProgress 检查投影和 full 批次的两个有限完成前缀。
 LibraryLifecycle 检查独立根页面的初始化、真实物理归属与原操作绑定。
 四者不恢复旧 ACK、永久 pin 或历史管理模型。
 智能缓存另沿 [证据与准入合同](smart-cache.md) 检查观察、闭包、固定选择、请求进展及信息能力边界。
+SourceMaterialization 与 SourceWriterSettlement 沿 [增量物化与原未知写](source-materialization.md) 检查共同 manager admission、声明保留、revision 绑定、惰性 sibling、唯一原写见证及全部 child 终结前的父准入。
 源码行为由实际 reader/operation 测试回放；模型与生产 guard mutation 各有独立结果。
 
 ## 运行
@@ -29,12 +30,12 @@ CurrentLifecycle 正例为 content/projection/restore 三个配置；四个反�
 SourceSync 有 fresh/resume/projection/foreign 四个正例和七个故意缺陷配置。
 SourceSyncProgress 有 full/resume/hard/completion/foreign-completion 五个正例和八个故意缺陷配置。
 LibraryLifecycle 有一个正例和十三个故意缺陷配置；上述四个模型共 45 个配置。
-智能缓存五个模型另有 16 个配置，完整套件共 61 个配置。
+智能缓存五个模型另有 16 个配置；SourceMaterialization 七个与 SourceWriterSettlement 九个配置加入后，完整套件共 77 个配置。
 同一模型的每个配置检查同一份完整规则清单，expected_broken 独立维护。
 缺工具、规则遗漏、cut、超时和解析异常都不算通过。
 
 单独定位时使用 `--model SourceSync`、`--model SourceSyncProgress` 或 `--model LibraryLifecycle`；
-完整 current-lifecycle 组运行九个模型的全部配置。
+完整 current-lifecycle 组运行十一个模型的全部配置。
 新增 ObservationSafety、ClosureEvidence、SelectionPins、AdmissionProgress 和 InformationLimit
 也可通过 `--model` 运行各自全部正负配置；合同与实现绑定状态以 coverage 为准。
 

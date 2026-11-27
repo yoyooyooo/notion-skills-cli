@@ -47,6 +47,8 @@ export type SourceDiscoveryOptions = {
   /** Runtime-only exact Git member scope. The configured full tree is still
    * validated, but unrelated blobs are never acquired for this observation. */
   readonly onlyMembers?: readonly string[]
+  /** A complete sync roster may prove a formerly materialized member was removed. */
+  readonly allowMissingMembers?: boolean
 }
 const PortableSkillSchema = Schema.Struct({
   kind: Schema.Literal("skill"),
@@ -1048,7 +1050,7 @@ function gitSnapshot(
         )
         if (options.onlyMembers === undefined) return configured
         for (const key of options.onlyMembers)
-          if (!configured.includes(key))
+          if (!configured.includes(key) && !options.allowMissingMembers)
             throw sourceError(
               "MEMBER_UNAVAILABLE",
               "The exact member is not in the configured pinned Git tree; no other member is substituted.",
@@ -1483,7 +1485,7 @@ export function discoverSource(input: DiscoverSourceInput, options: SourceDiscov
       if (options.onlyMembers === undefined) return
       if (
         decoded.source.type === "registry" ||
-        options.onlyMembers.length === 0 ||
+        (options.onlyMembers.length === 0 && !options.allowMissingMembers) ||
         options.onlyMembers.length > 100 ||
         new Set(options.onlyMembers).size !== options.onlyMembers.length
       )

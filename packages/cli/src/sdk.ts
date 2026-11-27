@@ -1,3 +1,6 @@
+import { discoverRegisteredSourceMembers } from "../../core/src/shared-source-member-discovery.ts"
+import { loadSharedLibrary } from "../../core/src/shared-library.ts"
+import { libraryId } from "../../core/src/catalog.ts"
 import { resolveLibrary as coreResolveLibrary } from "../../core/src/shared-library.ts"
 import { selectedLibraryId } from "../../core/src/library-selection.ts"
 import {
@@ -80,6 +83,32 @@ import {
   type ContentSearchInput,
   type ContentSearchResult,
 } from "../../core/src/notion-mcp-search.ts"
+
+export { SOURCE_MATERIALIZATION_VERSION } from "../../core/src/shared-source-materialization-model.ts"
+export type {
+  SourceMemberCandidate,
+  SourceMemberDiscovery,
+  SourceMaterializationTarget,
+} from "../../core/src/shared-source-materialization-model.ts"
+/** Read-only registration/upstream discovery. This never enters management. */
+export function discoverSourceMembers(
+  input: {
+    readonly library: string
+    readonly query?: string
+    readonly source_id?: string
+    readonly requires_of?: string
+  },
+  options: SdkOptions = {},
+) {
+  return runOperation(
+    () =>
+      Effect.gen(function* () {
+        const library = yield* loadSharedLibrary(yield* libraryId(input.library))
+        return yield* discoverRegisteredSourceMembers(library, input)
+      }),
+    options,
+  )
+}
 
 export const SDK_VERSION = 3
 export { SKILL_REF_VERSION } from "../../core/src/skill-ref.ts"

@@ -82,6 +82,13 @@ content from projection, so a published Source with unfinished projection is
 visible as such. Complete consumption manifests retain scripts, tests and
 other supported files regardless of reading-page selection.
 
+Synchronization reconciles the currently declared materialized roster. It does
+not add every newly discovered upstream member to that roster. First explicit
+use can add one selected closure through [Source materialization](source-materialization.md).
+An uninitialized legacy declaration requires that explicit preparation before
+normal sync can validate it. Missing currently declared members can retire only
+after complete selected discovery proves their absence.
+
 The manager freezes one exact advertised commit before full preparation. The
 existing Source writer then validates the complete selected files and publishes
 them. Provider failures or incomplete discovery do not authorize deletion.

@@ -61,13 +61,21 @@
     {
       "id": "verify-notion-source-onboarding",
       "skill": ".cursor/skills/verify-notion-source-onboarding/SKILL.md",
-      "features": ["resource-sources.md"],
+      "features": ["resource-sources.md", "source-materialization.md"],
       "regressions": [
         "packages/core/test/shared-current-source.test.ts",
         "packages/core/test/shared-current-source-check.test.ts",
+        "packages/core/test/shared-source-member-discovery.test.ts",
+        "packages/core/test/shared-source-materialization-management.test.ts",
+        "packages/core/test/shared-current-source-writer.test.ts",
+        "packages/core/test/sdk-source-fixture.node.test.ts",
         "packages/core/test/shared-source-ref-cache.node.test.ts",
         "packages/core/test/shared-acquisition-contract.test.ts",
-        "packages/core/test/shared-current-resource.test.ts"
+        "packages/core/test/shared-current-resource.test.ts",
+        "packages/core/test/candidate-snapshot.node.test.ts",
+        "packages/core/test/shared-sqlite.node.test.ts",
+        "packages/core/test/shared-source-materialization-legacy-registration.test.ts",
+        "packages/core/test/shared-source-materialization-invalidation.test.ts"
       ],
       "installed_recipe": ".cursor/skills/verify-ntn-skills/features/resource-sources.md",
       "excludes": ["已绑定正文自动更新", "部分报告替代全库分母"]
@@ -340,11 +348,15 @@
       "events": ["accepted response lost", "resume", "cancel", "supersede", "upgrade"],
       "observation": "原请求结果、当前观察与剩余动作分开",
       "ordinary": "当前读取不触发 repair",
-      "explicit": "正式恢复命令核原意图，未知非幂等请求不盲重放",
+      "explicit": "正式恢复命令核原意图；业务和控制写只要结果未知都不重放，唯一原写终结前不接班",
       "failure": "不靠清 pending 或写 ready 掩盖未知",
       "recovery": "有限对账可停在带下一步的 attention；退出旧状态后单轨升级",
       "linearization": "意图与物理 owner 校验；完成核对后 retire",
-      "not_proven": ["当前相等不证明原网络 ACK", "projection intent 不等于 owner Operation"],
+      "not_proven": [
+        "当前相等不证明原网络 ACK；idempotent 属性不提供晚到写 fencing",
+        "projection intent 不等于 owner Operation",
+        "同一固定 manager 的 Store fence 不等于跨主机 CAS"
+      ],
       "entrypoints": [
         {
           "repository": "cli",

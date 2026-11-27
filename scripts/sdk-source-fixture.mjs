@@ -1,9 +1,10 @@
 import assert from "node:assert/strict"
+import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { once } from "node:events"
 import fs from "node:fs"
 import { createServer } from "node:http"
-import { isAbsolute, join } from "node:path"
+import { basename, dirname, isAbsolute, join } from "node:path"
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
 const monotonic = () => process.hrtime.bigint().toString()
@@ -15,8 +16,445 @@ const deferred = () => {
   return { promise, resolve }
 }
 
+const canonicalJson = (value) =>
+  JSON.stringify(value, (_key, item) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(
+          Object.keys(item)
+            .sort()
+            .map((key) => [key, item[key]]),
+        )
+      : item,
+  )
+
+/** Declare remote facts independently of the writer. The Git URL belongs to the
+ * running owned HTTP backend; every consumer still starts with its own Store. */
+export function materializationServiceFacts(sample, gitUrl, initial) {
+  assert.ok(
+    ["legacy-members", "source-only", "legacy-source", "manifest-growth", "native-root"].includes(
+      initial,
+    ),
+  )
+  const original = sample.source_materialization
+  assert.equal(original?.version, 1, "Generate the fixture with --materialization")
+  assert.match(original.commit, /^[a-f0-9]{40}$/u)
+  assert.match(original.tree, /^[a-f0-9]{40}$/u)
+  assert.match(gitUrl, /^http:\/\/127\.0\.0\.1:[0-9]+\/[A-Za-z0-9_.-]+$/u)
+  const result = structuredClone(sample),
+    notion = result.notion,
+    library = notion.library
+  const members = structuredClone(original.members)
+  // This Library has no saved default-context view; discovery still calls the
+  // real views endpoint and must receive a complete empty inventory.
+  result.empty_view_inventory = true
+  delete result.view_dynamics
+  assert.equal(members.length, 3)
+  const [root, required, sibling] = members
+  const rich = (value) => [{ type: "text", plain_text: value, text: { content: value } }]
+  const field = (binding, name, type, value) => {
+    const id = binding.property_ids[name]
+    assert.equal(typeof id, "string", "Declare the actual registered property: " + name)
+    return {
+      id,
+      type,
+      [type]: value,
+      ...(["rich_text", "relation"].includes(type) ? { has_more: false } : {}),
+    }
+  }
+  const set = (row, binding, name, type, value) => {
+    const next = field(binding, name, type, value)
+    for (const [key, current] of Object.entries(row.properties))
+      if (current.id === next.id) delete row.properties[key]
+    row.properties[name] = next
+  }
+  const contribution = (member) => ({
+    member_key: member.member_key,
+    skill_id: member.legacy_skill_id,
+    mount_path: "",
+    mapping: {},
+    exclude: [],
+  })
+  const planMembers = initial === "manifest-growth" ? [root] : members
+  const plan = {
+    version: 1,
+    kind: "composition",
+    base: {
+      kind: "git",
+      source: {
+        url: gitUrl,
+        commit: original.commit,
+        root: "",
+        tree: original.tree,
+        files: planMembers
+          .flatMap((member) =>
+            member.files.map((file) => ({
+              path: file.source_path,
+              source_path: file.source_path,
+              git_oid: file.git_oid,
+              bytes: file.bytes,
+              mode: file.mode,
+              sha256: file.sha256,
+            })),
+          )
+          .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
+      },
+    },
+    mounts: [],
+  }
+  const revision = hash(canonicalJson(plan))
+  const contributions =
+    initial === "source-only" || initial === "legacy-source"
+      ? []
+      : (initial === "manifest-growth" ? [root] : members)
+          .map(contribution)
+          .sort(
+            (a, b) =>
+              a.skill_id.localeCompare(b.skill_id) || a.member_key.localeCompare(b.member_key),
+          )
+  const source = {
+    object: "page",
+    id: original.source_page_id,
+    parent: {
+      type: "data_source_id",
+      data_source_id: library.sources.data_source_id,
+      database_id: library.sources.database_id,
+    },
+    in_trash: false,
+    archived: false,
+    last_edited_time: "2026-11-27T00:00:00.000Z",
+    properties: {},
+  }
+  const texts = {
+    "Source ID": original.source_id,
+    Description: "Registered controlled lazy source",
+    Location: gitUrl,
+    Ref: "main",
+    Selection: canonicalJson({ roots: ["skills"], include: [], exclude: [], mapping: {} }),
+    Options: "{}",
+    Contributions: initial === "legacy-source" ? "" : canonicalJson(contributions),
+    Content: initial === "legacy-source" ? "" : canonicalJson({ version: 1, plan }),
+    "Last Revision": initial === "legacy-source" ? original.commit : revision,
+    Operation: "",
+  }
+  for (const [name, value] of Object.entries(texts))
+    set(source, library.sources, name, "rich_text", rich(value))
+  set(source, library.sources, "Name", "title", rich("Controlled lazy source"))
+  for (const [name, value] of [
+    ["Provider", "git"],
+    ["Policy", "manual"],
+    ["Status", initial === "legacy-source" ? "applied" : "ready"],
+  ])
+    set(source, library.sources, name, "select", { name: value })
+  set(source, library.sources, "Enabled", "checkbox", true)
+  notion.sources.push(source)
+  const existing =
+    initial === "source-only" ? [] : initial === "manifest-growth" ? [root, sibling] : members
+  set(
+    source,
+    library.sources,
+    "Skills",
+    "relation",
+    existing.map((member) => ({ id: member.legacy_page_id })),
+  )
+  set(source, library.sources, "Records", "relation", [])
+  for (const member of existing) {
+    const row = structuredClone(notion.main)
+    row.id = member.legacy_page_id
+    row.last_edited_time = "2026-11-27T00:00:00.000Z"
+    for (const name of ["Content", "Current State"])
+      for (const [key, current] of Object.entries(row.properties))
+        if (current.id === library.skills.property_ids[name]) delete row.properties[key]
+    set(row, library.skills, "Name", "title", rich(member.name))
+    set(row, library.skills, "Description", "rich_text", rich(member.description))
+    set(row, library.skills, "Skill ID", "rich_text", rich(member.legacy_skill_id))
+    set(row, library.skills, "Main File ID", "rich_text", rich(member.legacy_main_file_id))
+    set(row, library.skills, "Origin", "relation", [{ id: source.id }])
+    set(
+      row,
+      library.skills,
+      "Requires",
+      "relation",
+      member === root && initial !== "manifest-growth" ? [{ id: required.legacy_page_id }] : [],
+    )
+    set(
+      row,
+      library.skills,
+      "Members",
+      "relation",
+      member === root ? [{ id: sibling.legacy_page_id }] : [],
+    )
+    set(row, library.skills, "Enabled", "checkbox", member !== sibling)
+    set(row, library.skills, "Default Context", "checkbox", false)
+    row.properties["Source Member"] = {
+      id: "source-member",
+      type: "rich_text",
+      has_more: false,
+      rich_text: rich(member.member_key),
+    }
+    if (initial === "manifest-growth" && member === root) {
+      const main = member.files.find((file) => file.path === "SKILL.md")
+      set(
+        row,
+        library.skills,
+        "Content",
+        "rich_text",
+        rich(
+          canonicalJson({
+            kind: "source",
+            source_id: original.source_id,
+            revision,
+            source_path: member.member_key + "/SKILL.md",
+            sha256: main.sha256,
+            bytes: main.bytes,
+            mode: main.mode,
+          }),
+        ),
+      )
+      set(row, library.skills, "Current State", "select", { name: "ready" })
+    }
+    notion.skills.push(row)
+    notion.bodies[row.id] =
+      "# Old generated reading projection\n\nThis is not the original Skill.\n"
+  }
+  let nativeRoot
+  if (initial === "native-root") {
+    const native = notion.skills.find((row) => row.id === notion.main.id)
+    assert.ok(native)
+    const fieldText = (name) => {
+      const value = Object.values(native.properties).find(
+        (field) => field.id === library.skills.property_ids[name],
+      )
+      return (value?.rich_text ?? [])
+        .map((part) => part.plain_text ?? part.text?.content ?? "")
+        .join("")
+    }
+    const content = JSON.parse(fieldText("Content"))
+    assert.equal(
+      content.kind,
+      "native",
+      "The explicit root must have native authority before management",
+    )
+    set(native, library.skills, "Name", "title", rich("Lazy native root"))
+    set(native, library.skills, "Default Context", "checkbox", false)
+    set(native, library.skills, "Requires", "relation", [{ id: root.legacy_page_id }])
+    set(native, library.skills, "Members", "relation", [{ id: sibling.legacy_page_id }])
+    notion.main = native
+    nativeRoot = {
+      page_id: native.id,
+      skill_id: fieldText("Skill ID"),
+      alias: "lazy-native-root",
+      content: content.frontmatter + notion.bodies[native.id],
+    }
+  }
+  return {
+    sample: result,
+    source_id: original.source_id,
+    source_page_id: source.id,
+    initial,
+    plan,
+    revision,
+    contributions,
+    members,
+    ...(nativeRoot === undefined ? {} : { native_root: nativeRoot }),
+    root: {
+      member_key: root.member_key,
+      legacy_skill_id: root.legacy_skill_id,
+      legacy_page_id: root.legacy_page_id,
+    },
+    expected: {
+      root: root.files.find((file) => file.path === "SKILL.md").content,
+      required: required.files.find((file) => file.path === "SKILL.md").content,
+      sibling: sibling.files.find((file) => file.path === "SKILL.md").content,
+      untouched_sibling: structuredClone(
+        notion.skills.find((row) => row.id === sibling.legacy_page_id) ?? null,
+      ),
+    },
+  }
+}
+
+/** Serve one owned real Git repository through Git's production smart-HTTP
+ * backend. The manager and independent consumers fetch through their own Git
+ * transports; no object directory or consumer cache is copied between them. */
+export async function startSdkGitFixture(repository, ledgerPath) {
+  assert.ok(isAbsolute(repository) && isAbsolute(ledgerPath))
+  assert.equal(fs.realpathSync(repository), repository, "Use an exact owned Git repository")
+  assert.ok(fs.statSync(repository).isDirectory())
+  const name = basename(repository)
+  assert.match(name, /^[A-Za-z0-9][A-Za-z0-9_.-]*$/u)
+  fs.writeFileSync(ledgerPath, "", { flag: "wx", mode: 0o600 })
+  const requests = [],
+    unexpected = [],
+    active = new Set()
+  let phase = "setup",
+    closing
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1")
+    const call = {
+      phase,
+      method: request.method,
+      path: url.pathname,
+      query: url.searchParams.toString(),
+      started_monotonic_ns: monotonic(),
+      request_bytes: 0,
+      response_bytes: 0,
+      response_complete: false,
+      status: null,
+      pid: null,
+      exit_code: null,
+      stderr: "",
+    }
+    requests.push(call)
+    const allowed =
+      (request.method === "GET" &&
+        url.pathname === `/${name}/info/refs` &&
+        url.searchParams.get("service") === "git-upload-pack") ||
+      (request.method === "POST" && url.pathname === `/${name}/git-upload-pack`)
+    if (!allowed) {
+      call.status = 400
+      unexpected.push({ ...call, error: "Only the declared read-only Git transport is allowed" })
+      response.writeHead(400).end()
+      fs.appendFileSync(ledgerPath, JSON.stringify(call) + "\n")
+      return
+    }
+    const child = spawn("git", ["http-backend"], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        PATH: process.env.PATH,
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_PROJECT_ROOT: dirname(repository),
+        GIT_HTTP_EXPORT_ALL: "1",
+        PATH_INFO: url.pathname,
+        QUERY_STRING: url.searchParams.toString(),
+        REQUEST_METHOD: request.method,
+        REMOTE_ADDR: "127.0.0.1",
+        SERVER_PROTOCOL: "HTTP/1.1",
+        CONTENT_TYPE: request.headers["content-type"] ?? "",
+        CONTENT_LENGTH: request.headers["content-length"] ?? "",
+        HTTP_GIT_PROTOCOL: request.headers["git-protocol"] ?? "",
+      },
+    })
+    call.pid = child.pid ?? null
+    const stopped = deferred(),
+      record = { child, stopped }
+    active.add(record)
+    let prefix = Buffer.alloc(0),
+      headersRead = false,
+      childDone = false,
+      responseClosed = false,
+      finished = false
+    const bodyDigest = createHash("sha256")
+    const finish = () => {
+      if (finished || !childDone || !responseClosed) return
+      finished = true
+      call.response_sha256 = bodyDigest.digest("hex")
+      call.ended_monotonic_ns = monotonic()
+      fs.appendFileSync(ledgerPath, JSON.stringify(call) + "\n")
+      active.delete(record)
+      stopped.resolve()
+    }
+    response.once("finish", () => {
+      call.response_complete = true
+    })
+    response.once("close", () => {
+      responseClosed = true
+      finish()
+    })
+    child.once("error", (error) => {
+      call.stderr = String(error)
+      unexpected.push({ ...call, error: String(error) })
+      response.destroy(error)
+    })
+    child.stdin.on("error", (error) => {
+      if (error.code !== "EPIPE") unexpected.push({ ...call, error: String(error) })
+    })
+    child.stderr.on("data", (bytes) => {
+      call.stderr += bytes.toString("utf8")
+    })
+    child.stdout.on("data", (bytes) => {
+      try {
+        let body = bytes
+        if (!headersRead) {
+          prefix = Buffer.concat([prefix, bytes])
+          const boundary = prefix.indexOf("\r\n\r\n")
+          if (boundary < 0) {
+            assert.ok(prefix.length < 65536, "Git CGI headers must be bounded")
+            return
+          }
+          const fields = {},
+            lines = prefix.subarray(0, boundary).toString("utf8").split("\r\n")
+          call.status = 200
+          for (const line of lines) {
+            const separator = line.indexOf(":")
+            assert.ok(separator > 0, "Git CGI returned an invalid header")
+            const key = line.slice(0, separator).toLowerCase(),
+              value = line.slice(separator + 1).trim()
+            if (key === "status") call.status = Number(value.split(" ")[0])
+            else fields[key] = value
+          }
+          response.writeHead(call.status, fields)
+          headersRead = true
+          body = prefix.subarray(boundary + 4)
+          prefix = Buffer.alloc(0)
+        }
+        call.response_bytes += body.length
+        bodyDigest.update(body)
+        if (!response.destroyed) response.write(body)
+      } catch (error) {
+        unexpected.push({ ...call, error: String(error) })
+        response.destroy(error)
+        child.kill("SIGTERM")
+      }
+    })
+    child.once("close", (code) => {
+      call.exit_code = code
+      childDone = true
+      if (code !== 0) unexpected.push({ ...call, error: "Git HTTP backend failed" })
+      if (!response.destroyed) response.end()
+      finish()
+    })
+    request.on("data", (bytes) => {
+      call.request_bytes += bytes.length
+    })
+    request.on("error", () => {
+      child.stdin.destroy()
+    })
+    request.pipe(child.stdin)
+  })
+  server.listen(0, "127.0.0.1")
+  await once(server, "listening")
+  const origin = "http://127.0.0.1:" + server.address().port
+  return {
+    origin,
+    url: origin + "/" + name,
+    ledgerPath,
+    requests,
+    unexpected,
+    setPhase(label) {
+      assert.ok(!closing && active.size === 0, "Set a Git phase only after every backend exits")
+      assert.ok(typeof label === "string" && label.length > 0)
+      phase = label
+    },
+    close() {
+      if (closing) return closing
+      closing = (async () => {
+        const stopped = [...active].map((record) => record.stopped.promise)
+        const closed = new Promise((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        )
+        server.closeAllConnections()
+        for (const record of active) record.child.kill("SIGTERM")
+        await closed
+        await Promise.all(stopped)
+        assert.equal(active.size, 0)
+      })()
+      return closing
+    },
+  }
+}
+
 // The installed service serves declared Notion facts. Writes are enabled only
-// for the bounded CLI import gate; SDK consumption keeps the default read-only mode.
+// for declared CLI management gates; SDK consumption keeps the default read-only mode.
 export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
   assert.ok(
     sample?.notion?.library?.skills && sample.notion.library.sources,
@@ -31,6 +469,10 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
   assert.ok(Number.isInteger(port) && port >= 0 && port <= 65535, "Invalid loopback fixture port")
   assert.ok(
     options.allowCurrentWrites === undefined || typeof options.allowCurrentWrites === "boolean",
+  )
+  assert.ok(
+    options.forbidProjectionWrites === undefined ||
+      typeof options.forbidProjectionWrites === "boolean",
   )
   assert.ok(
     options.emptyFirstRecordsPage === undefined ||
@@ -65,12 +507,18 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
   let nextPage = 900000,
     edit = 0
   const nextId = () => "00000000-0000-4000-8000-" + (nextPage++).toString(16).padStart(12, "0")
-  const currentPages = () => [...notion.skills, ...notion.files, ...notion.records]
+  const currentPages = () => [
+    ...notion.skills,
+    ...notion.files,
+    ...notion.records,
+    ...notion.sources,
+  ]
   const rowsFor = (dataSource) => {
     const { library } = notion
     if (dataSource === library.skills.data_source_id) return notion.skills
     if (dataSource === library.files.data_source_id) return notion.files
     if (dataSource === library.records.data_source_id) return notion.records
+    if (dataSource === library.sources.data_source_id) return notion.sources
     throw new Error("The current writer selected an undeclared table")
   }
   const touch = (row) => {
@@ -101,9 +549,12 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     if (method === "POST" && path === "/v1/pages") {
       assert.equal(body.parent.type, "data_source_id")
       const rows = rowsFor(body.parent.data_source_id)
-      const table = [notion.library.skills, notion.library.files, notion.library.records].find(
-        (item) => item.data_source_id === body.parent.data_source_id,
-      )
+      const table = [
+        notion.library.skills,
+        notion.library.files,
+        notion.library.records,
+        notion.library.sources,
+      ].find((item) => item.data_source_id === body.parent.data_source_id)
       const defaults = {}
       if (rows === notion.skills && skillsDataSource() !== undefined)
         for (const field of Object.values(skillsDataSource().properties))
@@ -133,6 +584,8 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       const row = currentPages().find((item) => item.id === selected[1])
       assert.ok(row, "A current write selected an undeclared page")
       if (selected[2]) {
+        call.projection_write = true
+        assert.notEqual(options.forbidProjectionWrites, true, "Reading projection is forbidden")
         assert.equal(body.markdown_version, "v2")
         assert.equal(body.type, "replace_content")
         assert.equal(typeof body.replace_content.new_str, "string")
@@ -170,6 +623,8 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     }
     const children = /^\/v1\/blocks\/([^/]+)\/children$/u.exec(path)
     if (children && method === "PATCH") {
+      call.projection_write = true
+      assert.notEqual(options.forbidProjectionWrites, true, "Reading projection is forbidden")
       const row = currentPages().find((item) => item.id === children[1])
       assert.ok(row, "A projection selected an undeclared page")
       assert.ok(
@@ -235,9 +690,7 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     if (filter.relation?.is_empty === true) return field.relation?.length === 0
     if (filter.relation) {
       // Notion hides a relation to a trashed target even while this row remains live.
-      const target = [...currentPages(), ...notion.sources].find(
-        (item) => item.id === filter.relation.contains,
-      )
+      const target = currentPages().find((item) => item.id === filter.relation.contains)
       if (target?.in_trash === true || target?.archived === true || target?.is_archived === true)
         return false
       return field.relation?.some((item) => item.id === filter.relation.contains) ?? false
@@ -349,6 +802,13 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     ) {
       value = currentPages().find((row) => url.pathname === `/v1/pages/${row.id}`)
       assert.ok(value, "An undeclared current page was requested")
+    } else if (
+      sample.empty_view_inventory === true &&
+      request.method === "GET" &&
+      url.pathname === "/v1/views"
+    ) {
+      assert.equal(url.searchParams.get("database_id"), library.skills.database_id)
+      value = { object: "list", results: [], has_more: false, next_cursor: null }
     } else if (viewObservation && request.method === "GET" && url.pathname === "/v1/views") {
       assert.equal(url.searchParams.get("database_id"), library.skills.database_id)
       value = {
@@ -398,6 +858,11 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       notion.files.some((file) => url.pathname === `/v1/pages/${file.id}`)
     )
       value = notion.files.find((file) => url.pathname === `/v1/pages/${file.id}`)
+    else if (
+      request.method === "GET" &&
+      notion.sources.some((source) => url.pathname === `/v1/pages/${source.id}`)
+    )
+      value = notion.sources.find((source) => url.pathname === `/v1/pages/${source.id}`)
     else if (request.method === "GET" && /^\/v1\/pages\/[^/]+\/markdown$/u.test(url.pathname)) {
       const id = url.pathname.split("/")[3]
       assert.equal(typeof notion.bodies[id], "string", "An unselected target body was requested")
@@ -477,7 +942,9 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
         path === "/v1/pages/" + notion.main?.id ||
         notion.files.some((file) => path === "/v1/pages/" + file.id) ||
         notion.skills.some((row) => path === "/v1/pages/" + row.id) ||
+        notion.sources.some((row) => path === "/v1/pages/" + row.id) ||
         Object.keys(notion.bodies).some((id) => path === "/v1/pages/" + id + "/markdown") ||
+        (sample.empty_view_inventory === true && path === "/v1/views") ||
         (viewObservation &&
           (path === "/v1/views" || path === "/v1/views/" + sample.view_dynamics.view.id))
       )
@@ -554,7 +1021,7 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     assert.ok(!closing && !pendingControl, "Only one next HTTP control may be armed")
     const allowed =
       kind === "hold"
-        ? ["method", "path", "afterHeaders"]
+        ? ["method", "path", "afterHeaders", "applyAfterDisconnect"]
         : kind === "reject"
           ? ["method", "path", "status", "retryAfterSeconds"]
           : ["method", "path"]
@@ -562,6 +1029,17 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     assert.ok(knownRoute(options.method, options.path), "Controls require one exact declared route")
     if (kind === "hold" && Object.hasOwn(options, "afterHeaders"))
       assert.equal(typeof options.afterHeaders, "boolean")
+    if (kind === "hold" && Object.hasOwn(options, "applyAfterDisconnect")) {
+      assert.equal(typeof options.applyAfterDisconnect, "boolean")
+      assert.ok(
+        !options.applyAfterDisconnect ||
+          (allowCurrentWrites &&
+            !options.afterHeaders &&
+            ["POST", "PATCH"].includes(options.method) &&
+            !options.path.endsWith("/query")),
+        "A delayed accepted mutation must be one declared write before response headers",
+      )
+    }
     if (kind === "reject") {
       assert.equal(options.status ?? 429, 429)
       assert.ok(
@@ -644,7 +1122,7 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     response.once("close", () => {
       call.closed_monotonic_ns = monotonic()
       event(call, "close", { response_finished: response.writableFinished })
-      next?.release.resolve()
+      if (!next?.applyAfterDisconnect) next?.release.resolve()
       finalize()
     })
     response.once("error", (error) => {
@@ -692,7 +1170,7 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       if (next?.kind === "hold" && !next.afterHeaders) {
         next.reached.resolve(structuredClone(call))
         await next.release.promise
-        if (response.destroyed) return
+        if (response.destroyed && !next.applyAfterDisconnect) return
       }
       const result =
         next?.kind === "reject"
@@ -706,6 +1184,12 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
               },
             }
           : packet(request, url, body, call)
+      if (response.destroyed) {
+        assert.equal(next?.applyAfterDisconnect, true)
+        assert.equal(call.semantic_write, true)
+        event(call, "late-application", { semantic_write: true })
+        return
+      }
       const output = Buffer.from(JSON.stringify(result.value))
       headers(
         result.status,
@@ -772,6 +1256,7 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       discardPending()
       closing = (async () => {
         const settled = [...active].map((record) => record.complete.promise)
+        for (const record of active) record.next?.release.resolve()
         const stopped = new Promise((resolve, reject) =>
           server.close((error) => (error ? reject(error) : resolve())),
         )

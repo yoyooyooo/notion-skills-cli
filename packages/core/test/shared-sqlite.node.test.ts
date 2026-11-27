@@ -852,3 +852,94 @@ test("local-content restriction schema and persisted corruption fail closed with
     expect(JSON.parse(corrupt.stdout)).toEqual({ read: "Failure", write: "Failure" })
   })
 }, 30_000)
+
+test("Source candidate metadata survives another process, updates, and cannot cross credential scopes", async () => {
+  await isolated(async (root) => {
+    const key = `cache/source-members/${scope}/${currentLibrary.library_id}.json`
+    const candidate = {
+      type: "source_member",
+      library_id: currentLibrary.library_id,
+      scope,
+      source_id: "registered-source",
+      member_key: "skills/member",
+      expected_skill_id: "future-member",
+      registration_digest: "b".repeat(64),
+      name: "Future member",
+      alias: "future-member",
+      description: "Registered original",
+      enabled: true,
+      readiness: "materializable",
+    }
+    const first = {
+      version: 1,
+      library_id: currentLibrary.library_id,
+      scope,
+      candidates: [candidate],
+    }
+    const created = await child(
+      root,
+      `yield* state.write(${JSON.stringify(key)},${JSON.stringify(first)})`,
+    )
+    expect(created.exit, created.stderr).toBe(0)
+    const reopened = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})))`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(JSON.parse(reopened.stdout)).toEqual(first)
+    const next = { ...first, candidates: [{ ...candidate, name: "Updated name" }] }
+    const updated = await child(
+      root,
+      `yield* state.write(${JSON.stringify(key)},${JSON.stringify(next)}); console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})))`,
+    )
+    expect(updated.exit, updated.stderr).toBe(0)
+    expect(JSON.parse(updated.stdout)).toEqual(next)
+    const crossed = await child(
+      root,
+      `yield* state.write(${JSON.stringify(key)},${JSON.stringify({ ...first, scope: "c".repeat(64) })})`,
+    )
+    expect(crossed.exit).not.toBe(0)
+    expect(crossed.stderr).toContain("scoped Library cache address")
+    const cleared = await child(
+      root,
+      `yield* state.retire([${JSON.stringify(key)}]); console.log(JSON.stringify((yield* state.read(${JSON.stringify(key)}))??null))`,
+    )
+    expect(cleared.exit, cleared.stderr).toBe(0)
+    expect(JSON.parse(cleared.stdout)).toBeNull()
+  })
+}, 30_000)
+
+test("unfinished materialization input survives restart and cache retirement until explicit completion", async () => {
+  await isolated(async (root) => {
+    const pending = `operations/current-source-materialization/${currentLibrary.library_id}/${"d".repeat(64)}.json`
+    const cached = `cache/source-members/${scope}/${currentLibrary.library_id}.json`
+    const frozen = {
+      version: 1,
+      request: { request_id: "same-explicit-input", library: currentLibrary.library_id },
+      commit: "a".repeat(40),
+    }
+    const initialized = await child(
+      root,
+      `yield* state.write(${JSON.stringify(pending)},${JSON.stringify(frozen)});yield* state.write(${JSON.stringify(cached)},${JSON.stringify({ version: 1, library_id: currentLibrary.library_id, scope, candidates: [] })})`,
+    )
+    expect(initialized.exit, initialized.stderr).toBe(0)
+    const restarted = await child(
+      root,
+      `yield* state.retire([${JSON.stringify(cached)}]);console.log(JSON.stringify(yield* state.read(${JSON.stringify(pending)})))`,
+    )
+    expect(restarted.exit, restarted.stderr).toBe(0)
+    expect(JSON.parse(restarted.stdout)).toEqual(frozen)
+    const changed = await child(
+      root,
+      `yield* state.write(${JSON.stringify(pending)},${JSON.stringify({ ...frozen, commit: "b".repeat(40) })})`,
+    )
+    expect(changed.exit).not.toBe(0)
+    expect(changed.stderr).toContain("frozen shared local record")
+    const completed = await child(
+      root,
+      `yield* state.retire([${JSON.stringify(pending)}]);console.log(JSON.stringify({pending:(yield* state.read(${JSON.stringify(pending)}))??null,keys:yield* state.list('operations/current-source-materialization')}))`,
+    )
+    expect(completed.exit, completed.stderr).toBe(0)
+    expect(JSON.parse(completed.stdout)).toEqual({ pending: null, keys: [] })
+  })
+}, 30_000)

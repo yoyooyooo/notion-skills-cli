@@ -647,7 +647,7 @@ describe("complete current Skill writer", () => {
     },
   )
   test.each(["retire-file", "retire-resource"] as const)(
-    "accepted unknown %s is recovered even after it disappears from active queries",
+    "accepted unknown %s retains its pending intent after disappearing from active queries",
     async (kind) => {
       const f = currentWriteFixture(parent),
         initial = await f.run(prepareCurrentSkillWrite(input()))
@@ -665,17 +665,20 @@ describe("complete current Skill writer", () => {
         (call) => call.method === "PATCH" && property(call.body).in_trash === true,
       )!
       expect(f.pages.get(original.path.replace("v1/pages/", ""))?.in_trash).toBe(true)
-      await f.run(writeCurrentSkill(library, { plan, operation_id: "cleanup", mode: "resume" }))
+      const count = f.mutations().length
+      await expect(
+        f.run(writeCurrentSkill(library, { plan, operation_id: "cleanup", mode: "resume" })),
+      ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+      expect(f.mutations()).toHaveLength(count)
       expect(
         f.calls.filter(
           (call) => call.path === original.path && property(call.body).in_trash === true,
         ),
       ).toHaveLength(1)
       expect(f.table("files")).toHaveLength(0)
-      expect(f.table("records")).toHaveLength(1)
       expect(
         [...f.json.keys()].filter((key) => key.startsWith("operations/current-write-pending/")),
-      ).toEqual([])
+      ).toHaveLength(1)
     },
   )
   test("incomplete pagination and a foreign owner fail before any semantic write", async () => {

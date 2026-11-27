@@ -1,4 +1,6 @@
-import { mkdir, writeFile } from "node:fs/promises"
+import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
+import { chmod, mkdir, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { property } from "../packages/core/src/model.ts"
 import { librarySchemaResponse } from "../packages/core/test/library-schema-fixture.ts"
@@ -12,13 +14,17 @@ import {
 } from "../packages/core/test/shared-current-fixture.ts"
 
 const args = process.argv.slice(2)
+const flags = new Set(args.slice(2))
 if (
-  ![2, 3].includes(args.length) ||
+  ![2, 3, 4].includes(args.length) ||
   args[0] !== "--outdir" ||
   !isAbsolute(args[1] ?? "") ||
-  (args.length === 3 && args[2] !== "--catalog")
+  flags.size !== args.length - 2 ||
+  [...flags].some((flag) => !["--catalog", "--materialization"].includes(flag))
 )
-  throw new Error("Usage: node scripts/sdk-fixture.ts --outdir /new/absolute/directory [--catalog]")
+  throw new Error(
+    "Usage: node scripts/sdk-fixture.ts --outdir /new/absolute/directory [--catalog] [--materialization]",
+  )
 const root = args[1]!
 await mkdir(root, { mode: 0o700 })
 const f = currentSnapshotFixture({ fileCount: 101 })
@@ -87,7 +93,7 @@ for (let n = 1; n < f.files.length; n++) {
   declare(path, bytes, mode, n === 2)
 }
 const skills = [main]
-if (args[2] === "--catalog")
+if (flags.has("--catalog"))
   for (let n = 1; n <= 100; n++) {
     const row = structuredClone(main)
     row.id = currentId(2000 + n)
@@ -120,6 +126,118 @@ const schemas = roles.map((role) => {
     },
   }
 })
+const sourceMaterialization = async () => {
+  const repository = join(root, "upstream.git")
+  await mkdir(repository)
+  const env = {
+    PATH: process.env.PATH,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_AUTHOR_NAME: "Controlled Source",
+    GIT_AUTHOR_EMAIL: "fixture@example.test",
+    GIT_COMMITTER_NAME: "Controlled Source",
+    GIT_COMMITTER_EMAIL: "fixture@example.test",
+  }
+  const git = (args: string[]) =>
+    execFileSync("git", ["-C", repository, ...args], {
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim()
+  git(["init", "-b", "main"])
+  git(["config", "uploadpack.allowFilter", "true"])
+  const members = []
+  for (const [index, name] of ["lazy-root", "lazy-required", "lazy-sibling"].entries()) {
+    const member_key = "skills/" + name
+    const description = "Controlled complete " + name + " document"
+    const originals = [
+      {
+        path: "SKILL.md",
+        bytes: Buffer.from(
+          `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n\nThis is the complete original ${name} document.\n\nEvery paragraph belongs to the fixed Git commit.\n`,
+        ),
+        mode: "100644" as const,
+      },
+      {
+        path: "references/guide.md",
+        bytes: Buffer.from(`# ${name} guide\n\nComplete supporting text, including α and 😀.\n`),
+        mode: "100644" as const,
+      },
+      {
+        path: "scripts/run.sh",
+        bytes: Buffer.from(`#!/bin/sh\nprintf '%s\\n' '${name}'\n`),
+        mode: "100755" as const,
+      },
+      {
+        path: "assets/raw.bin",
+        bytes: Buffer.from([0, 255, index, 128, 13, 10]),
+        mode: "100644" as const,
+      },
+    ]
+    const files = []
+    for (const original of originals) {
+      const source_path = member_key + "/" + original.path
+      const destination = join(repository, source_path)
+      await mkdir(join(destination, ".."), { recursive: true })
+      await writeFile(destination, original.bytes, {
+        flag: "wx",
+        mode: original.mode === "100755" ? 0o755 : 0o644,
+      })
+      await chmod(destination, original.mode === "100755" ? 0o755 : 0o644)
+      const binary = original.path.endsWith(".bin")
+      files.push({
+        path: original.path,
+        source_path,
+        git_oid: createHash("sha1")
+          .update(`blob ${original.bytes.length}\0`)
+          .update(original.bytes)
+          .digest("hex"),
+        sha256: currentDigest(original.bytes),
+        bytes: original.bytes.length,
+        mode: original.mode,
+        encoding: binary ? "base64" : "utf8",
+        content: original.bytes.toString(binary ? "base64" : "utf8"),
+      })
+    }
+    members.push({
+      member_key,
+      name,
+      description,
+      legacy_skill_id: "legacy-" + name,
+      legacy_page_id: currentId(830010 + index),
+      legacy_main_file_id: "legacy-main-" + name,
+      files,
+    })
+  }
+  git(["add", "skills"])
+  git(["commit", "--no-gpg-sign", "-m", "Controlled Source originals"])
+  const commit = git(["rev-parse", "HEAD"])
+  const tree = git(["rev-parse", "HEAD^{tree}"])
+  const rootMain = members[0]!.files.find((file) => file.path === "SKILL.md")!
+  const unacceptedRoot = rootMain.content.replace(
+    "Every paragraph belongs to the fixed Git commit.",
+    "UNACCEPTED FUTURE HEAD: these changed bytes must not be delivered.",
+  )
+  await writeFile(join(repository, rootMain.source_path), unacceptedRoot)
+  await writeFile(join(repository, "future-only.txt"), "An unrelated file in the later commit.\n")
+  git(["add", "skills", "future-only.txt"])
+  git(["commit", "--no-gpg-sign", "-m", "Unaccepted future upstream HEAD"])
+  return {
+    version: 1,
+    repository,
+    source_id: "controlled-lazy-source",
+    source_page_id: currentId(830000),
+    commit,
+    tree,
+    head_commit: git(["rev-parse", "HEAD"]),
+    unaccepted_root: {
+      content: unacceptedRoot,
+      sha256: currentDigest(Buffer.from(unacceptedRoot)),
+      git_oid: git(["rev-parse", "HEAD:" + rootMain.source_path]),
+    },
+    members,
+  }
+}
 await writeFile(
   envPath,
   JSON.stringify(
@@ -162,6 +280,9 @@ const fixture = {
     file_count: expectedFiles.length,
     files: expectedFiles,
   },
+  ...(flags.has("--materialization")
+    ? { source_materialization: await sourceMaterialization() }
+    : {}),
 }
 await writeFile(join(root, "fixture.json"), JSON.stringify(fixture, null, 2) + "\n", {
   mode: 0o600,

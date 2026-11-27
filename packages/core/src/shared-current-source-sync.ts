@@ -1,7 +1,7 @@
 import { Clock, Context, Crypto, Effect } from "effect"
 import { fail, property, SkillsError } from "./model.ts"
 import { libraryId } from "./catalog.ts"
-import { withLocalLocks } from "./local-locks.ts"
+import { withCurrentSourceWriter } from "./shared-current-source-writer.ts"
 import { Notion } from "./notion.ts"
 import { RequestBudget } from "./request-budget.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
@@ -396,6 +396,10 @@ function continueOwned(
         preparedInput ??
         (yield* provider.prepare(pending.input.declaration, {
           exactCommit: pending.input.resolved_commit,
+          memberKeys: [
+            ...new Set(pending.input.declaration.contributions.map((entry) => entry.member_key)),
+          ],
+          allowMissingMembers: true,
           metrics: api.metrics,
         }))
       if (
@@ -621,6 +625,8 @@ function processSource(
     }
     const prepared = yield* provider.prepare(current.declaration, {
       exactCommit: observed.observation.resolved_commit,
+      memberKeys: [...new Set(current.declaration.contributions.map((entry) => entry.member_key))],
+      allowMissingMembers: true,
       metrics: (yield* Notion).metrics,
     })
     const operation_id = `source-sync-${yield* (yield* Crypto.Crypto).randomUUIDv4().pipe(Effect.mapError(() => fail("CRYPTO_ERROR", "Cannot identify Source synchronization.")))}`
@@ -938,15 +944,7 @@ function executeBatch(library: SharedLibrary, command: CurrentSourceSyncCommand)
       return results
     })
     const outcome = yield* (
-      command.action === "sync"
-        ? withLocalLocks(
-            store.root,
-            [
-              `current-source-sync:${api.apiOrigin ?? "https://api.notion.com"}:${library.sources.data_source_id}`,
-            ],
-            body,
-          )
-        : body
+      command.action === "sync" ? withCurrentSourceWriter(library, body) : body
     ).pipe(Effect.result)
     if (outcome._tag === "Success") return outcome.success
     const results = [
