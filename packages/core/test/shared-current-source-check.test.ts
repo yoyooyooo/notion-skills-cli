@@ -26,6 +26,7 @@ import {
 import type { CurrentSourceManagement } from "../src/shared-current-source-management.ts"
 import type { CurrentSharedSourcePlanContent } from "../src/shared-current-source.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
+import { SourceRefAccessContext } from "../src/shared-source-ref-cache.ts"
 import { currentWriteFixture, id, library } from "./shared-current-write-fixture.ts"
 
 const url = "https://github.com/source-check-fixture/skills"
@@ -286,6 +287,77 @@ test("a failed observation is not retained and the next invocation observes a ne
     )
     expect(next.resolved_commit).toBe(second)
     expect(next.resolved_commit).not.toBe(input.first)
+  })
+})
+
+test("a shared ref hint still compares each Notion declaration and never changes the selected Source plan", async () => {
+  await fixture(async (input) => {
+    const before = structuredClone(input.current)
+    const run = (declaration?: unknown, maxAge?: number) =>
+      input.f.run(
+        routed(
+          input,
+          checkCurrentSource(library, {
+            current: input.current,
+            declaration,
+            scope: "same-access",
+            maxAge,
+          }).pipe(
+            Effect.provideService(SourceRefAccessContext, {
+              cwd: input.directory,
+              environment: { PATH: "fixture" },
+            }),
+          ),
+        ),
+      )
+    expect((await run()).status).toBe("upstream_unchanged")
+    const changed = {
+      ...declaration,
+      contributions: declaration.contributions.map((item) => ({ ...item, mount_path: "vendor" })),
+    }
+    expect(await run(changed)).toMatchObject({
+      status: "update_available",
+      reason: "configuration_changed",
+    })
+    expect(input.commands).toHaveLength(1)
+    const second = await commit(input.directory, "# Unadopted upstream version\n")
+    expect(await run(undefined, 0)).toMatchObject({
+      status: "update_available",
+      reason: "upstream_changed",
+      observation: { resolved_commit: second },
+      selected_commit: input.first,
+    })
+    expect(input.current).toEqual(before)
+    expect(input.f.mutations()).toEqual([])
+  })
+})
+
+test("an invocation batch does not hide a newer accepted ref behind its old completed result", async () => {
+  await fixture(async (input) => {
+    const batch = await input.f.run(makeCurrentSourceCheckBatch())
+    const observe = (selectedBatch?: typeof batch, maxAge?: number) =>
+      input.f.run(
+        routed(
+          input,
+          observeCurrentSourceRef({
+            url,
+            ref: "main",
+            scope: "same-access",
+            batch: selectedBatch,
+            maxAge,
+          }).pipe(
+            Effect.provideService(SourceRefAccessContext, {
+              cwd: input.directory,
+              environment: {},
+            }),
+          ),
+        ),
+      )
+    expect((await observe(batch)).resolved_commit).toBe(input.first)
+    const second = await commit(input.directory, "# Accepted outside the first batch\n")
+    expect((await observe(undefined, 0)).resolved_commit).toBe(second)
+    expect((await observe(batch)).resolved_commit).toBe(second)
+    expect(input.commands).toHaveLength(2)
   })
 })
 

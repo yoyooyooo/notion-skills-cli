@@ -1,4 +1,4 @@
-import { Clock, Effect, FileSystem, Option } from "effect"
+import { Clock, Crypto, Effect, FileSystem, Option } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import { fail, SkillsError } from "./model.ts"
 import { RequestBudget } from "./request-budget.ts"
@@ -9,7 +9,14 @@ import { canonicalGitUrl, gitRemoteUrl, isGithubGitUrl } from "./shared-git-orig
 import { makeBoundedImmutableReadCoalescer } from "./shared-immutable-read.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
-import { sha256 } from "./store.ts"
+import {
+  DEFAULT_SOURCE_REF_MAX_AGE_MS,
+  reuseSourceRefObservation,
+  sourceRefAccessScope,
+  sourceRefObservationFresh,
+  type SourceRefObservation,
+} from "./shared-source-ref-cache.ts"
+import { Store, sha256 } from "./store.ts"
 import { runSourceGit } from "./upstream-source.ts"
 
 const REF_OUTPUT_LIMIT = 32 * 1024
@@ -32,26 +39,20 @@ export function currentSourceConfigurationFingerprint(input: unknown) {
   )
 }
 
-export type CurrentSourceRefObservation = {
-  readonly url: string
-  readonly ref: string
-  readonly resolved_ref: string
-  /** Advertised candidate. Full preparation still verifies that this is a commit
-   * and validates its complete selected tree before any publication. */
-  readonly resolved_commit: string
-  readonly observed_at: number
-}
+/** Advertised candidate. Full preparation still verifies the commit and complete
+ * selected tree before any publication; this observation does not authorize it. */
+export type CurrentSourceRefObservation = SourceRefObservation
 
 export type CurrentSourceCheckBatch = {
   readonly run: (
     identity: string,
     execute: Effect.Effect<CurrentSourceRefObservation, SkillsError>,
+    maxAge?: number,
   ) => Effect.Effect<CurrentSourceRefObservation, SkillsError>
 }
 
-/** Create once per invocation. Scheduling owns the interval; this is neither a
- * cross-run TTL nor an authorization cache. Only successful observations survive
- * within this bounded batch, and pending callers share cancellation ownership. */
+/** Create once per invocation. Only successful bounded observations survive in
+ * memory; pending callers share cancellation ownership within one budget. */
 export function makeCurrentSourceCheckBatch(): Effect.Effect<CurrentSourceCheckBatch> {
   return Effect.gen(function* () {
     const pending = yield* makeBoundedImmutableReadCoalescer<CurrentSourceRefObservation>({
@@ -60,11 +61,15 @@ export function makeCurrentSourceCheckBatch(): Effect.Effect<CurrentSourceCheckB
     })
     const complete = new Map<string, CurrentSourceRefObservation>()
     return {
-      run: (identity, execute) =>
-        Effect.suspend(() => {
+      run: (identity, execute, maxAge = DEFAULT_SOURCE_REF_MAX_AGE_MS) =>
+        Effect.gen(function* () {
           const observed = complete.get(identity)
-          if (observed !== undefined) return Effect.succeed(observed)
-          return pending.run(
+          if (
+            observed !== undefined &&
+            sourceRefObservationFresh(observed, yield* Clock.currentTimeMillis, maxAge)
+          )
+            return observed
+          return yield* pending.run(
             identity,
             REF_OUTPUT_LIMIT,
             execute.pipe(
@@ -153,7 +158,11 @@ function parseRefObservation(bytes: Uint8Array, ref: string, refs: readonly stri
   return { resolved_ref: symbolic.get(name) ?? name, resolved_commit: commit }
 }
 
-type RefRuntime = FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner
+type RefRuntime =
+  | FileSystem.FileSystem
+  | ChildProcessSpawner.ChildProcessSpawner
+  | Store
+  | Crypto.Crypto
 
 /** One ls-remote reads only ref advertisements. It neither fetches a repository
  * tree nor uses a provider-specific REST API. The existing Git process boundary
@@ -164,17 +173,23 @@ export function observeCurrentSourceRef(input: {
   /** Opaque invocation access scope. Never share a batch across credentials. */
   readonly scope: string
   readonly batch?: CurrentSourceCheckBatch
+  /** Zero forces this check; omission uses the uniform short ref observation window. */
+  readonly maxAge?: number
 }): Effect.Effect<CurrentSourceRefObservation, SkillsError, RefRuntime> {
   return Effect.gen(function* () {
-    const { url, ref, refs, scope, batch } = yield* checked(() => {
+    const { url, ref, refs, scope, batch, maxAge } = yield* checked(() => {
       if (!input.scope || input.scope.length > 8192)
         throw invalid("An upstream observation requires a bounded access scope.")
+      const maxAge = input.maxAge ?? DEFAULT_SOURCE_REF_MAX_AGE_MS
+      if (!Number.isSafeInteger(maxAge) || maxAge < 0)
+        throw invalid("The Git ref observation age must be a nonnegative safe integer.")
       return {
         url: canonicalGitUrl(input.url),
         ref: input.ref,
         refs: exactRefs(input.ref),
         scope: input.scope,
         batch: input.batch,
+        maxAge,
       }
     })
     const budget = yield* Effect.serviceOption(RequestBudget)
@@ -212,15 +227,30 @@ export function observeCurrentSourceRef(input: {
         })
       }),
     )
-    if (batch === undefined) return yield* observe
+    const accessScope = yield* sourceRefAccessScope(scope)
     const identity = canonicalSharedJson([
       scope,
+      accessScope ?? null,
       Option.isSome(budget) ? budget.value.identity : null,
       url,
       ref,
+      maxAge,
     ])
     const context = yield* Effect.context<RefRuntime>()
-    return yield* batch.run(identity, observe.pipe(Effect.provide(context)))
+    // The persistent accepted slot owns completed observations. A batch may
+    // share its network producer, but must not hide a newer cross-process fact
+    // behind an older in-memory completion.
+    const acquire =
+      batch === undefined
+        ? observe
+        : batch.run(
+            identity,
+            observe.pipe(Effect.provide(context)),
+            accessScope === undefined ? maxAge : 0,
+          )
+    return yield* accessScope === undefined
+      ? acquire
+      : reuseSourceRefObservation({ scope: accessScope, url, ref, maxAge }, acquire)
   })
 }
 
@@ -258,6 +288,7 @@ export function checkCurrentSource(
     readonly declaration?: unknown
     readonly scope: string
     readonly batch?: CurrentSourceCheckBatch
+    readonly maxAge?: number
   },
 ) {
   return Effect.gen(function* () {
@@ -308,6 +339,7 @@ export function checkCurrentSource(
       ref: definition.adapter.ref,
       scope: input.scope,
       batch: input.batch,
+      maxAge: input.maxAge,
     })
     const observed = { ...identity, selected_commit: selected?.commit ?? null, observation }
     const reason =

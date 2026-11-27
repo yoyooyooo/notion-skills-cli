@@ -1,4 +1,12 @@
 import { Effect, Schema } from "effect"
+import type { CurrentFact } from "./current-evidence-model.ts"
+import {
+  beginCurrentEvidence,
+  currentEvidenceForResponse,
+  currentFact,
+  currentPageFact,
+  observeCurrentFacts,
+} from "./current-evidence.ts"
 import { fail, listSchema, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
@@ -21,6 +29,8 @@ export type CurrentSkillConsumption = {
   readonly files: readonly { readonly path: string; readonly content: CurrentFileContent }[]
   readonly sources: ReadonlyMap<string, CurrentSharedSource>
   readonly source_fingerprint: string
+  /** Exact metadata read by this candidate; undefined means some page evidence is unknown. */
+  readonly current_facts: readonly CurrentFact[] | undefined
 }
 export type CurrentSourceConsumption = Omit<CurrentSkillConsumption, "files"> & {
   readonly files: readonly {
@@ -83,9 +93,11 @@ function currentContributions(library: SharedLibrary, skillId: string) {
   return Effect.gen(function* () {
     const contributionId = yield* checked(() => currentSourceProperty(library, "Contributions"))
     const api = yield* Notion
+    let attempt = yield* beginCurrentEvidence(api.credentialIdentity, api.apiOrigin)
     const physical = new Set<string>(),
       cursors = new Set<string>(),
-      selected = new Map<string, CurrentSourceManagement>()
+      selected = new Map<string, CurrentSourceManagement>(),
+      selectedPages = new Map<string, unknown>()
     let cursor: string | undefined
     for (;;) {
       const raw = yield* api.request(
@@ -97,6 +109,7 @@ function currentContributions(library: SharedLibrary, skillId: string) {
         },
         { method: "POST" },
       )
+      attempt = yield* currentEvidenceForResponse(attempt, raw)
       const list = yield* checked(() => {
         const envelope = property(raw)
         if (
@@ -119,6 +132,7 @@ function currentContributions(library: SharedLibrary, skillId: string) {
           if (
             row.object !== "page" ||
             row.archived === true ||
+            row.is_archived === true ||
             row.in_trash === true ||
             physical.has(id) ||
             parent.type !== "data_source_id" ||
@@ -136,6 +150,7 @@ function currentContributions(library: SharedLibrary, skillId: string) {
               source_id: sourceId,
             })
           selected.set(sourceId, current)
+          selectedPages.set(current.page_id, value)
         }
         return list
       })
@@ -148,9 +163,22 @@ function currentContributions(library: SharedLibrary, skillId: string) {
       cursor = next
       cursors.add(next)
     }
-    return [...selected.values()].sort((a, b) =>
+    const currents = [...selected.values()].sort((a, b) =>
       compare(a.declaration.definition.source_id, b.declaration.definition.source_id),
     )
+    const pages: CurrentFact[] = []
+    for (const current of currents) {
+      const fact = yield* currentPageFact(selectedPages.get(current.page_id))
+      // Missing page metadata is unknown, not proof that an old timestamp is current.
+      if (fact === undefined) return { currents, current_facts: undefined }
+      pages.push(fact)
+    }
+    const collection = yield* currentFact(
+      `sources:${physicalId(library.sources.data_source_id)}:${skillId}`,
+      { sources: currents, pages },
+    )
+    yield* observeCurrentFacts(attempt, [collection])
+    return { currents, current_facts: [collection, ...pages] }
   })
 }
 
@@ -202,7 +230,8 @@ export function resolveCurrentSourceConsumption(
 ) {
   return Effect.gen(function* () {
     const excluded = new Set(options.excludeSourceIds)
-    const currents = (yield* currentContributions(library, skillId)).filter(
+    const enumeration = yield* currentContributions(library, skillId)
+    const currents = enumeration.currents.filter(
       (current) => !excluded.has(current.declaration.definition.source_id),
     )
     const sources = yield* resolveCurrentSharedSources(library, {
@@ -217,6 +246,15 @@ export function resolveCurrentSourceConsumption(
         const sourceId = current.declaration.definition.source_id
         const source = sources.get(sourceId)
         if (source === undefined) throw invalid("A selected Source has no complete manifest.")
+        if (pageId(source.page_id) !== current.page_id)
+          throw fail(
+            "CURRENT_SOURCE_CONFLICT",
+            "The selected Source changed its physical owner while its manifest was being read.",
+            {
+              source_id: sourceId,
+              next: "reselect_current",
+            },
+          )
         return currentSourceContributionFiles(skillId, current.declaration.contributions, source)
       })
       return files.sort((a, b) => compare(a.path, b.path))
@@ -242,6 +280,7 @@ export function resolveCurrentSourceConsumption(
       files,
       sources,
       source_fingerprint: yield* sha256(canonicalSharedJson(definitions)),
+      current_facts: enumeration.current_facts,
     }
     return result
   })

@@ -8,11 +8,20 @@ import {
 } from "./cache-retention-model.ts"
 import { identitySegment, identityFromSegment } from "./cache-address.ts"
 import { retainCompleteCatalog } from "./catalog-cache.ts"
+import {
+  CURRENT_EVIDENCE_GENERATION,
+  validateCurrentEvidence,
+  validateCurrentFacts,
+  type CurrentEvidence,
+  type CurrentFact,
+} from "./current-evidence-model.ts"
+import type { StoreWriteOptions } from "./store.ts"
 import { trashPath } from "./local-locks.ts"
 import { fail, property, SkillsError } from "./model.ts"
 import { skillIdentity } from "./shared-content.ts"
 import { probeSqliteRuntime } from "./sqlite-runtime-policy.ts"
 import { CurrentSourceSyncPendingSchema } from "./shared-current-source-sync-model.ts"
+import { SOURCE_REF_CACHE_PREFIX, sourceRefCacheOwner } from "./shared-source-ref-cache.ts"
 import {
   CurrentSourceSyncBatchSchema,
   preservesCurrentSourceSyncBatch,
@@ -29,6 +38,7 @@ import {
 
 // This physical schema identifies current local execution state, not content history.
 const currentApplicationId = 0x4e544e43
+const currentFactsTable = `CREATE TABLE IF NOT EXISTS current_facts (scope TEXT NOT NULL, identity TEXT NOT NULL, fingerprint TEXT NOT NULL, generation INTEGER NOT NULL CHECK(generation>0), epoch INTEGER NOT NULL CHECK(epoch>0), observed_at INTEGER NOT NULL CHECK(observed_at>=0), PRIMARY KEY(scope,identity));`
 const initializeCurrentSchema = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   yield* sql.withTransaction(
@@ -38,6 +48,7 @@ const initializeCurrentSchema = Effect.gen(function* () {
         `INSERT INTO state_format VALUES (1);`,
         `CREATE TABLE snapshots (id TEXT PRIMARY KEY, scope TEXT NOT NULL, record_identity TEXT NOT NULL, locator TEXT NOT NULL, version_id TEXT NOT NULL, manifest TEXT NOT NULL);`,
         `CREATE TABLE cache_fences (scope TEXT NOT NULL, identity TEXT NOT NULL, generation INTEGER NOT NULL CHECK(generation>=0), retired_through INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(scope,identity));`,
+        currentFactsTable,
         `CREATE TABLE observations (id TEXT PRIMARY KEY, scope TEXT NOT NULL, record_identity TEXT NOT NULL, generation INTEGER NOT NULL, validated_at REAL NOT NULL, snapshot_id TEXT, payload TEXT NOT NULL);`,
         `CREATE INDEX observations_record ON observations(scope,record_identity,generation DESC);`,
         `CREATE TABLE catalogs (scope TEXT NOT NULL, selection TEXT NOT NULL, generation INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(scope,selection));`,
@@ -82,7 +93,16 @@ function sharedFileObservationOwner(value: unknown) {
 const sharedCurrentTreeValidationPrefix = "cache/shared-current-tree-validation"
 const currentNativeBodiesPrefix = "cache/current-native-bodies"
 function fencedFileObservation(key: string): boolean {
-  return key.startsWith(`${currentNativeBodiesPrefix}/`) && key.endsWith("/latest.json")
+  return (
+    (key.startsWith(`${currentNativeBodiesPrefix}/`) ||
+      key.startsWith(`${SOURCE_REF_CACHE_PREFIX}/`)) &&
+    key.endsWith("/latest.json")
+  )
+}
+function sharedObservationOwner(key: string, value: unknown) {
+  return key.startsWith(`${SOURCE_REF_CACHE_PREFIX}/`)
+    ? sourceRefCacheOwner(key, value)
+    : sharedFileObservationOwner(value)
 }
 const mutableSharedLocalPrefixes = [sharedCurrentTreeValidationPrefix, "cache/current-source-sync"]
 const sharedLocalDomains: readonly {
@@ -90,6 +110,11 @@ const sharedLocalDomains: readonly {
   readonly category: SharedLocalCategory
   readonly address: RegExp
 }[] = [
+  {
+    prefix: SOURCE_REF_CACHE_PREFIX,
+    category: "cache",
+    address: /^cache\/shared-source-refs\/[a-f0-9]{64}\/latest\.json$/u,
+  },
   {
     prefix: "operations/current-source-sync-batch",
     category: "dispatch",
@@ -429,6 +454,8 @@ export function sqliteState(
       return yield* Effect.fail(
         fail("STATE_CONFIG_ERROR", "Unsupported SQLite state format; use a matching CLI version."),
       )
+    // Additive current-protocol migration, only after the historical-format guard.
+    yield* clientService.unsafe(currentFactsTable).pipe(Effect.mapError(storageError))
     const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
       effect.pipe(Effect.provide(context), Effect.mapError(storageError))
     const json = (value: unknown) => JSON.stringify(value)
@@ -437,6 +464,164 @@ export function sqliteState(
         try: () => JSON.parse(value) as unknown,
         catch: () => fail("STATE_CORRUPT", "Invalid domain state JSON in SQLite."),
       })
+    const checkFacts = (scope: string, facts: readonly CurrentFact[]) =>
+      Effect.try({ try: () => validateCurrentFacts(scope, facts), catch: storageError })
+    const checkEvidence = (evidence: CurrentEvidence) =>
+      Effect.try({ try: () => validateCurrentEvidence(evidence), catch: storageError })
+    const evidenceMatches = (evidence: CurrentEvidence, grantingIdentity?: string) =>
+      Effect.gen(function* () {
+        yield* checkEvidence(evidence)
+        const sql = yield* SqlClient.SqlClient
+        for (const fact of evidence.facts) {
+          const rows = yield* sql<{
+            fingerprint: string
+            epoch: number
+          }>`SELECT fingerprint,epoch FROM current_facts WHERE scope=${evidence.scope} AND identity=${fact.identity}`
+          if (rows[0]?.fingerprint !== fact.fingerprint || rows[0]?.epoch !== fact.epoch)
+            return false
+        }
+        for (const record of evidence.records) {
+          const fences = yield* sql<{
+            retired_through: number
+          }>`SELECT retired_through FROM cache_fences WHERE scope=${evidence.scope} AND identity=${record.identity}`
+          if ((fences[0]?.retired_through ?? 0) !== record.retired_through) return false
+          if (record.identity === grantingIdentity) continue
+          const observations = yield* sql<{
+            payload: string
+          }>`SELECT payload FROM observations WHERE scope=${evidence.scope} AND record_identity=${record.identity} ORDER BY generation DESC,id LIMIT 1`
+          if (
+            observations[0] !== undefined &&
+            property(yield* parse(observations[0].payload)).access_denied !== undefined
+          )
+            return false
+        }
+        return true
+      })
+    const currentEvidence = {
+      observe: (input: {
+        readonly scope: string
+        readonly generation: number
+        readonly observed_at: number
+        readonly facts: readonly CurrentFact[]
+      }) =>
+        run(
+          Effect.gen(function* () {
+            yield* checkFacts(input.scope, input.facts)
+            if (
+              !Number.isSafeInteger(input.generation) ||
+              input.generation < 1 ||
+              !Number.isSafeInteger(input.observed_at) ||
+              input.observed_at < 0
+            )
+              return yield* Effect.fail(
+                fail(
+                  "STATE_CORRUPT",
+                  "A current observation requires an allocated generation and valid time.",
+                ),
+              )
+            const sql = yield* SqlClient.SqlClient
+            yield* sql.withTransaction(
+              Effect.gen(function* () {
+                // Take the writer slot before reading predecessors. An attempt order is
+                // not a fact epoch: an unchanged observation must preserve old readers.
+                yield* sql`UPDATE cache_fences SET generation=generation WHERE scope=${input.scope} AND identity=${CURRENT_EVIDENCE_GENERATION}`
+                const allocated = yield* sql<{
+                  generation: number
+                  retired_through: number
+                }>`SELECT generation,retired_through FROM cache_fences WHERE scope=${input.scope} AND identity=${CURRENT_EVIDENCE_GENERATION}`
+                if (allocated[0] === undefined || input.generation > allocated[0].generation)
+                  return yield* Effect.fail(
+                    fail("STATE_CONFLICT", "A current observation has no allocated generation."),
+                  )
+                if (input.generation <= allocated[0].retired_through)
+                  return yield* Effect.fail(
+                    fail(
+                      "CACHE_INVALIDATED",
+                      "This current-evidence attempt was retired before publication.",
+                    ),
+                  )
+                for (const fact of input.facts) {
+                  const rows = yield* sql<{
+                    fingerprint: string
+                    generation: number
+                    epoch: number
+                  }>`SELECT fingerprint,generation,epoch FROM current_facts WHERE scope=${input.scope} AND identity=${fact.identity}`
+                  const previous = rows[0]
+                  if (previous !== undefined && previous.generation > input.generation) continue
+                  if (previous?.generation === input.generation) {
+                    if (previous.fingerprint !== fact.fingerprint)
+                      return yield* Effect.fail(
+                        fail(
+                          "STATE_CONFLICT",
+                          "One current observation attempt produced conflicting facts.",
+                        ),
+                      )
+                    continue
+                  }
+                  const epoch =
+                    previous?.fingerprint === fact.fingerprint ? previous.epoch : input.generation
+                  yield* sql`INSERT INTO current_facts(scope,identity,fingerprint,generation,epoch,observed_at) VALUES(${input.scope},${fact.identity},${fact.fingerprint},${input.generation},${epoch},${input.observed_at}) ON CONFLICT(scope,identity) DO UPDATE SET fingerprint=excluded.fingerprint,generation=excluded.generation,epoch=excluded.epoch,observed_at=excluded.observed_at`
+                }
+              }),
+            )
+          }),
+        ),
+      capture: (
+        scope: string,
+        expected: readonly CurrentFact[],
+        identities: readonly string[] = [],
+      ) =>
+        run(
+          Effect.gen(function* () {
+            yield* checkFacts(scope, expected)
+            const sql = yield* SqlClient.SqlClient
+            return yield* sql.withTransaction(
+              Effect.gen(function* () {
+                const facts: CurrentEvidence["facts"][number][] = []
+                for (const fact of expected) {
+                  const rows = yield* sql<{
+                    fingerprint: string
+                    epoch: number
+                  }>`SELECT fingerprint,epoch FROM current_facts WHERE scope=${scope} AND identity=${fact.identity}`
+                  const current = rows[0]
+                  if (current === undefined || current.fingerprint !== fact.fingerprint)
+                    return yield* Effect.fail(
+                      fail(
+                        "CACHE_INVALIDATED",
+                        "The candidate no longer matches known current facts.",
+                      ),
+                    )
+                  facts.push({ ...fact, epoch: current.epoch })
+                }
+                const records: CurrentEvidence["records"][number][] = []
+                for (const identity of new Set([
+                  "access:scope",
+                  CURRENT_EVIDENCE_GENERATION,
+                  ...identities,
+                  ...expected
+                    .filter((fact) => fact.identity.startsWith("page:"))
+                    .map((fact) => fact.identity.slice(5)),
+                ])) {
+                  const fences = yield* sql<{
+                    retired_through: number
+                  }>`SELECT retired_through FROM cache_fences WHERE scope=${scope} AND identity=${identity}`
+                  records.push({ identity, retired_through: fences[0]?.retired_through ?? 0 })
+                }
+                const evidence = { version: 1 as const, scope, facts, records }
+                yield* checkEvidence(evidence)
+                return evidence
+              }),
+            )
+          }),
+        ),
+      matches: (evidence: CurrentEvidence) =>
+        run(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient
+            return yield* sql.withTransaction(evidenceMatches(evidence))
+          }),
+        ),
+    }
     const read = (key: string) =>
       run(
         Effect.gen(function* () {
@@ -487,7 +672,7 @@ export function sqliteState(
           const parsed = yield* parse(rows[0].payload)
           if (fencedFileObservation(key)) {
             const owner = yield* Effect.try({
-              try: () => sharedFileObservationOwner(parsed),
+              try: () => sharedObservationOwner(key, parsed),
               catch: storageError,
             })
             const fences = yield* sql<{
@@ -503,16 +688,13 @@ export function sqliteState(
           return parsed
         }),
       )
-    const write = (
-      key: string,
-      value: unknown,
-      options?: { readonly expectedCurrentWritePending: unknown },
-    ) =>
+    const write = (key: string, value: unknown, options?: StoreWriteOptions) =>
       run(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient
           if (
             options !== undefined &&
+            "expectedCurrentWritePending" in options &&
             !/^operations\/current-write-pending\/[a-f0-9]{64}\/pending\.json$/u.test(key)
           )
             return yield* Effect.fail(
@@ -520,6 +702,21 @@ export function sqliteState(
                 "INVALID_ARGUMENT",
                 "Expected-current replacement only addresses a current write pending key.",
                 { key },
+              ),
+            )
+          if (
+            options !== undefined &&
+            "expectedCurrentEvidence" in options &&
+            (!/^cache\/latest\/[a-f0-9]{64}\/.+\/.+\.json$/u.test(key) ||
+              property(value).scope !== options.expectedCurrentEvidence.scope ||
+              !options.expectedCurrentEvidence.records.some(
+                (record) => record.identity === property(value).record_identity,
+              ))
+          )
+            return yield* Effect.fail(
+              fail(
+                "INVALID_ARGUMENT",
+                "Current evidence can only guard its scoped current snapshot observation.",
               ),
             )
           const v = property(value)
@@ -534,6 +731,14 @@ export function sqliteState(
           })
           yield* sql.withTransaction(
             Effect.gen(function* () {
+              if (options !== undefined && "expectedCurrentEvidence" in options) {
+                const evidence = options.expectedCurrentEvidence
+                yield* sql`UPDATE cache_fences SET generation=generation WHERE scope=${evidence.scope} AND identity=${CURRENT_EVIDENCE_GENERATION}`
+                if (!(yield* evidenceMatches(evidence, property(value).record_identity as string)))
+                  return yield* Effect.fail(
+                    fail("CACHE_INVALIDATED", "Known current facts changed before publication."),
+                  )
+              }
               if (restrictedHash !== undefined) {
                 const payload = yield* Effect.try({
                   try: () => localContentPayload(restrictedHash, value),
@@ -581,7 +786,7 @@ export function sqliteState(
                   if (existing[0] === undefined) {
                     const totals = yield* sql<{
                       bytes: number
-                    }>`SELECT COALESCE(SUM(LENGTH(CAST(payload AS BLOB))),0) AS bytes FROM shared_local_records WHERE category='cache' AND (key LIKE 'cache/shared-github-blobs/%' OR key LIKE 'cache/shared-derived-graphs/%' OR key LIKE 'cache/current-source-sync/%')`
+                    }>`SELECT COALESCE(SUM(LENGTH(CAST(payload AS BLOB))),0) AS bytes FROM shared_local_records WHERE category='cache' AND (key LIKE 'cache/shared-github-blobs/%' OR key LIKE 'cache/shared-derived-graphs/%' OR key LIKE 'cache/current-source-sync/%' OR key LIKE 'cache/shared-source-refs/%')`
                     if (
                       (totals[0]?.bytes ?? 0) + new TextEncoder().encode(payload).length >
                       capacity.max_bytes
@@ -591,7 +796,7 @@ export function sqliteState(
                 }
                 if (fencedFileObservation(key)) {
                   const owner = yield* Effect.try({
-                    try: () => sharedFileObservationOwner(value),
+                    try: () => sharedObservationOwner(key, value),
                     catch: storageError,
                   })
                   // Claim the existing SQLite writer slot before reading the
@@ -626,7 +831,7 @@ export function sqliteState(
                   if (previous !== undefined) {
                     const parsed = yield* parse(previous.payload)
                     const prior = yield* Effect.try({
-                      try: () => sharedFileObservationOwner(parsed),
+                      try: () => sharedObservationOwner(key, parsed),
                       catch: () =>
                         fail(
                           "STATE_CORRUPT",
@@ -643,7 +848,7 @@ export function sqliteState(
                     // A rebuilt physical page keeps the same logical owner.
                     // The existing generation order fences late old-page writes;
                     // equal generations still require an identical full payload.
-                    for (const field of ["scope", "library_id", "skill_id"] as const)
+                    for (const field of ["scope", "record_identity"] as const)
                       if (prior[field] !== owner[field])
                         return yield* Effect.fail(
                           fail(
@@ -668,6 +873,10 @@ export function sqliteState(
                     yield* sql`UPDATE shared_local_records SET payload=${payload},retired=0 WHERE key=${key} AND category='cache'`
                   } else {
                     yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},'cache',${payload},0)`
+                  }
+                  if (rebuildableCacheKey(key)) {
+                    const admittedAt = yield* Clock.currentTimeMillis
+                    yield* sql`INSERT INTO cache_admissions(key,admitted_at) VALUES(${key},${admittedAt}) ON CONFLICT(key) DO NOTHING`
                   }
                   return
                 }
@@ -894,7 +1103,7 @@ export function sqliteState(
                 if (key.startsWith("operations/current-write-pending/")) {
                   // Take the writer slot before comparing a predecessor. The compare
                   // and replacement are one SQLite transaction, never delete/insert.
-                  if (options !== undefined)
+                  if (options !== undefined && "expectedCurrentWritePending" in options)
                     yield* sql`UPDATE shared_local_records SET payload=payload WHERE key=${key} AND category='dispatch' AND retired=0`
                   const rows = yield* sql<{
                     payload: string
@@ -902,7 +1111,7 @@ export function sqliteState(
                     retired: number
                   }>`SELECT payload,category,retired FROM shared_local_records WHERE key=${key}`
                   const previous = rows[0]
-                  if (options !== undefined) {
+                  if (options !== undefined && "expectedCurrentWritePending" in options) {
                     const before =
                       previous === undefined ? undefined : property(yield* parse(previous.payload))
                     const after = property(value)
@@ -1175,7 +1384,7 @@ export function sqliteState(
                     if (rows[0] !== undefined) {
                       const parsed = yield* parse(rows[0].payload)
                       const saved = yield* Effect.try({
-                        try: () => sharedFileObservationOwner(parsed),
+                        try: () => sharedObservationOwner(key, parsed),
                         catch: storageError,
                       })
                       // Fence every generation already reserved, including a newer
@@ -1265,7 +1474,7 @@ export function sqliteState(
             payload: string
             retired: number
             admitted_at: number | null
-          }>`SELECT r.key,r.payload,r.retired,a.admitted_at FROM shared_local_records r LEFT JOIN cache_admissions a ON a.key=r.key WHERE category='cache' AND (r.key LIKE 'cache/shared-github-blobs/%' OR r.key LIKE 'cache/shared-derived-graphs/%' OR r.key LIKE 'cache/current-source-sync/%') ORDER BY r.key`
+          }>`SELECT r.key,r.payload,r.retired,a.admitted_at FROM shared_local_records r LEFT JOIN cache_admissions a ON a.key=r.key WHERE category='cache' AND (r.key LIKE 'cache/shared-github-blobs/%' OR r.key LIKE 'cache/shared-derived-graphs/%' OR r.key LIKE 'cache/current-source-sync/%' OR r.key LIKE 'cache/shared-source-refs/%') ORDER BY r.key`
         }),
       )
     const reclaimDerived = (
@@ -1382,6 +1591,7 @@ export function sqliteState(
       write,
       list,
       reserve,
+      currentEvidence,
       retire,
       reclaimDerived,
       rebuildableCacheRecords,

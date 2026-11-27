@@ -21,17 +21,17 @@
     "packages/core/src/shared-current-write.ts": "3b9984c7b39ae3fa21dc3228c58c3db7861013a078bff84c512a540fedb5f4e8",
     "packages/core/src/shared-source-references.ts": "d326dc74a1b97dd5c97e8164201dc3bfb2dad5bcf78e5c9ada9621c8f9e40399",
     "packages/core/src/skill-ref.ts": "638de57b0cad8904769e16dc421577ab47f356fa8449c2dab123993898cb367e",
-    "packages/core/src/snapshot.ts": "d35a84d0b3b04ed2929871c6907e3bd9eee15b49f513128121ff4b0ed38ebf5f",
+    "packages/core/src/snapshot.ts": "af8130cdbca29b9a16dece77e39a30c914610985f2eb6759963b512c29650a80",
     "packages/core/test/shared-current-import-plan.test.ts": "07d683662216ed09e8cb274cdb8f7cf4cbaf8afa048fb140d3bfe5ebc86b1730",
     "packages/core/test/shared-current-member-discovery.test.ts": "5a2414badcd01914a5d25b3445629d6d0aa6ea488b71b086a007f128a0971e19",
-    "packages/core/test/shared-current-operation.test.ts": "aae3e4b6c3bd4b09ab4c279b52c93034cfcd0c9d529b050ee0bf150e80e1c4eb",
+    "packages/core/test/shared-current-operation.test.ts": "6c5e8f47aa7278d7b4a9d8c0f1daefa2d9fab623f9552d4dd3137798d49dbc0f",
     "packages/core/test/shared-current-relative.test.ts": "354b8b120d87a95fb1c7598b65b9591b91bf2eb2015015d83a2dadd0b0a33263",
     "packages/core/test/shared-source-references.test.ts": "bfa32574f86f5a7a1063169ec3d1d70d3d225a16edd96b462d9538bbc2f527cf",
     "packages/core/test/skill-ref.test.ts": "c4ae7d881f7f617c61e3c7386deb35e29e58a20b1a771ff0e091df0b6db30068",
     "packages/core/test/skill-reference-guards.test.ts": "060982d502d1b8fc10298ec41196e44355e11192fe2e635c8e1b39b62640bb40",
     "packages/core/test/sqlite-state.node.test.ts": "524c54c3b3586c0159af322f3128856f6d5a313c06c36914104e58b05a87c782",
     "verification/models/skill-reference/mutations.json": "d2cfd8b9ac749c669fa0bd0494c6220fb52508bf8aee7921620b7030243dd182",
-    "packages/core/src/catalog.ts": "0423a83b49338ece89b0a9870de3d143b085ef56eec52967b408f0015c2d0eab",
+    "packages/core/src/catalog.ts": "9edab08bcba24ac1a6afed8827f98c658517d80098ea5385814d7b5a9bd4a719",
     "packages/core/src/library-selection.ts": "e1cff08feed83b3479566c1a47108d0126552c4bfbb72f0d74ad9e576b081e12",
     "packages/core/src/shared-library.ts": "90adf217346484735fd24d377261d3468068b93a4f03fc8f2a9df2197915445a",
     "packages/core/src/shared-library-model.ts": "331dfe22a7fb88cf97236dd860bceae280022e5473c7bc0d591bd8295bd04f1c",
@@ -713,5 +713,15 @@
     "file": "packages/core/test/sqlite-state.node.test.ts",
     "scope": "The sole protected-byte change removes NTN_SKILLS_DATA_HOME from the observation-retirement fixture after the Builtin installer that owned it was removed. StoreLive reads explicit state, config and cache roots; these and the scheduler root remain isolated under the fixture directory. The cross-process complete Library identity test, retirement fences, known-denial race assertions and cleanup are unchanged.",
     "evidence_boundary": "Rebind only this reviewed test hash. No production guard, model, case, rule or mutation inventory changes. Model and actual SQLite results remain separate run receipts."
+  },
+  "smart_cache_boundary_review": {
+    "issue": "AH-1330",
+    "implementation_review_base": "a22aa1cd5506d393df6ef4d37a6aeb7c575453ba",
+    "files": [
+      "packages/core/src/snapshot.ts",
+      "packages/core/src/catalog.ts",
+      "packages/core/test/shared-current-operation.test.ts"
+    ],
+    "scope": "Reviewed the AH-1331 current-read delta. Shared current TTL reuse requires its saved CurrentEvidence and the returned current snapshot is checked again before acquisition returns. Fixed snapshot selection and exact identity/manifest/path checks remain unchanged. The existing known-access assertion is repeated before snapshot return and final graph admission so a denial accepted during local derived-directory reads blocks a pinned-only result. A paired actual graph regression preserves the same fixed pin after metadata-only changes; current fingerprints are not imposed on pins. authScope records only the successfully authenticated credential/origin-to-scope mapping needed by the evidence hook; failures still retain their denial path. The pending-operation fixture now narrows the StoreWriteOptions union and refuses an unrelated evidence option before applying its original expected-pending checks. No SkillReference finite model, case, rule inventory or reference-guard mutation changes. Current evidence, complete collections and graph admission are separately owned by current-lifecycle."
   }
 }

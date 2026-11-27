@@ -31,6 +31,13 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 7. 真实公开 list/read/use/files/export 的语义写计数均为 0。Notion query POST 是读；Record 创建、投影、adoption 和清理都是写。
 8. SDK 的完整 `options.env` 同时约束配置和实际 Git 子进程；并发 operation 不共享可变环境。公共 consume 的接线必须有受控 Source/实际 shim 证据，单独测试 runtime 不能代替。
 9. 取消不只检查 SDK 返回。POSIX Git 主进程及其自有进程组须收束，包括主进程先退、孙进程忽略 SIGTERM 的情况；保留原取消原因、2 秒强杀边界和 stderr 保密。不改认证或延长预算制造通过。
+10. 持久 current evidence 绑定精确 scope、实际读到的 page/Files/Sources/relations 指纹与单调事实 epoch。已观察变化立即阻断旧 current；unknown、失败或重复 unchanged 不恢复旧资格、不反复制造失效。旧 observation 缺完整 proof 时补验，不能由 schema 迁移抬升；原 pin 与合法不可变对象保留。最终 root 与所有 Requires 的读集在一次实际 SQLite 检查中共同核事实、权限和退休记录。候选展示、单页 unchanged、根成功均不能替代该准入。
+
+跨进程事实、最终读集和旧版本反复出现的回归沿现有 Node/SQLite 入口；Files、Contributions 和关系全集由当前 snapshot fence 负责，partial 不得标 complete。`shared-current-evidence.node.test.ts` 使用真实 Store 和既有 transport hook，补核冷 9 HTTP/3 body、metadata 6 HTTP/0 body、完整成员增删、根时间不变的关系分页、物理 Source 换页，以及较早网络观察不能借后到 caller 的新 generation 覆盖较新事实。同协议旧库缺 `current_facts` 时仅加表：保留原 pin/bytes，缺完整 proof 的 current 经元数据补验才重新取得资格，不能由升级或旧候选嫁接 proof：
+
+~~~sh
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/current-evidence.node.test.ts packages/core/test/shared-current-evidence.node.test.ts
+~~~
 
 相关当前获取和请求检查：
 
@@ -52,7 +59,7 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 complete empty 必须撤掉旧项。两库、换凭据、disabled 与精确 physical 拒绝分别隔离。
 这里不证明 Pi 下拉首帧、同屏更新、高亮或排队输入；这些仍由 Broker integration 验。
 
-缓存、TTL、库选择、启动/SDK 次序或跨会话复用变化，按 [T01 合同入口](../../../verification/skill-domains.json) 交接 Broker integration：执行 `notion-sdk-pi.mjs` 的 `http-warm-restart` 与 `http-warm-directory-expired`，再沿 `verify-pi-daily-installation.mjs cache-plan/cache-run` 复验普通安装。核新 PID/session、原 snapshot/校验时间、完整根与 Requires 的实际 provider 全文，并将目录 HTTP 与正文 consume 分开；这里的 SDK 通过只记局部覆盖，不能记作 T01 host 通过。
+缓存、变化证据、TTL、库选择、启动/SDK 次序或跨会话复用变化，按 [T01 合同入口](../../../verification/skill-domains.json) 交接 Broker integration：执行 `notion-sdk-pi.mjs` 的 `http-warm-restart`、`http-warm-directory-expired`、`http-smart-revalidate` 和 `http-smart-current`，再沿 `verify-pi-daily-installation.mjs cache-plan/cache-run` 复验普通安装。核新 PID/session、准确的 snapshot/校验时间、完整根与 Requires 的实际 provider 全文，并将目录 HTTP、metadata 续证和正文下载分开；已观察 Required 变化后取消/429 不得回退旧 current，原已接纳 pin 不升级。这里的 SDK 通过只记局部覆盖，不能记作 T01 host 通过。
 
 安装层复用 [portable-export-package-consumption](../verify-ntn-skills/features/portable-export-package-consumption.md) 的实际包入口。旧远端恢复或已退出命令的步骤不可继承；包未切换记缺口。Pi 由 Broker integration 沿 AH-1197/AH-637/AH-1198 验；AH-1063 仅为历史基线，不扩 OMP/Tern。
 
