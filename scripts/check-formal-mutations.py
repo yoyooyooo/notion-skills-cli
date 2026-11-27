@@ -277,7 +277,7 @@ lifecycle_cases = [
      source_sync_test,
      "Source sync guard fences the removed owner", "AllAffectedProjectionsSettledBeforeSourceWrite"),
     ("source-sync-pending-before-decision", source_sync, source_pending_bypass,
-     source_sync_test, "Source sync guard resolves a ready pending intent",
+     source_sync_test, "Source sync guard keeps an unknown ready PATCH pending",
      "PendingResolvedBeforeDecision"),
     ("source-sync-frozen-observation", source_sync,
      [('      exactCommit: observed.observation.resolved_commit,\n', '')],
