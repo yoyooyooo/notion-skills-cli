@@ -18,6 +18,7 @@ bun test packages/core/test/shared-current-source.test.ts packages/core/test/sha
 bun test packages/core/test/shared-current-source-check.test.ts packages/core/test/shared-current-source-sync-guards.test.ts packages/core/test/shared-current-source-sync-batch.test.ts packages/cli/test/current-source-sync.test.ts packages/cli/test/management.test.ts --timeout 60000
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-source-ref-cache.node.test.ts
 bun test packages/core/test/shared-source-registration-compat.test.ts packages/core/test/shared-source-member-discovery.test.ts packages/core/test/shared-source-materialization-management.test.ts packages/core/test/shared-source-materialization-receipt.test.ts packages/core/test/shared-source-materialization-legacy-registration.test.ts packages/core/test/shared-source-materialization-invalidation.test.ts packages/core/test/shared-current-source-writer.test.ts --timeout 60000
+bun test packages/core/test/shared-source-directory.test.ts packages/core/test/upstream-source.test.ts packages/core/test/upstream-source-batch.test.ts packages/core/test/source-git-runtime.test.ts packages/core/test/shared-current-portable.test.ts --timeout 60000
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-source-fixture.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-source-manager-dispatch.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/source-materialization-finalization.node.test.ts
@@ -52,6 +53,19 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
     declaration 的独立写策略拒绝，不能把目录 complete 当成管理授权。未知版本、
     多余字段、不完整 publisher/accepted commit 及实际获取失败继续 partial/拒绝，
     逐 Source 失败保留其已验证身份。受控单 Source 成功不证明真实多 Source 目录完整。
+
+    名字发现使用独立 `SourceDirectory`，枚举每个固定 Git tree 中完整 configured roster，
+    只读取 Skill 元数据及其实际依赖的 pinned link。共用 portable schema、mapping、
+    frontmatter 与元数据 patch 语义；自定义 main 先核 tree 中存在，不为查名字读取它的资源字节。
+    目录没有正文、files 或 content hash，不能传给完整 Source preparation。重复 alias
+    保留全部 member/identity，只在请求该名字时判歧义；无关附件或资源坏链接留给精确
+    管理目标的完整验证。未知元数据、缺 main 或未完成 Source 仍 partial，不能跳过。
+    先固定注册身份并拒绝 duplicate Source ID，再最多四个 Source 并发获取，按原顺序
+    汇总，继承同一 invocation budget 和取消，不按 Source 重置额度。生产 SDK 在首次
+    Library 读取前只安装一次现役整次预算；Pi 原有更短前台时限仍有效。预算耗尽后
+    不得将各 Source 的失败包装成正常 partial 并发布候选 cache。真实 Git 回归
+    分别核目录成本、精确管理的完整资源、坏资源拒绝、并发范围和共享期限到期收束；远端不支持 filter 时
+    Git 可退回其正常 pack 获取，不能把 cat-file/object-storage 统计说成传输字节上限。
 
 [resource-sources](../verify-ntn-skills/features/resource-sources.md) 连接当前测试、精确原件与实际安装边界。来源读取、Source 写入和实库全文覆盖分别验收；未支持 provider 明确拒绝，没执行的真实范围记 not_run。
 

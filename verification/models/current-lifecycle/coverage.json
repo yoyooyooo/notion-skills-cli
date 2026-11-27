@@ -98,7 +98,7 @@
     "packages/core/src/shared-current-source-action.ts": "a0067e9684992b1ddc8e7ae73e31dd39b24d420ec900f1c64d2265591ac00af5",
     "packages/core/src/shared-source-materialization-state.ts": "ad2c1907d1cf7f7f6d19f57970f9c910322d128f5b8b0bff20251755345a2cc9",
     "packages/core/src/shared-source-materialization-model.ts": "30fbd5b9953465a4ef0f0c8dc2988092035f646a49246f6939edfbc0cfcceb7a",
-    "packages/core/src/shared-source-member-discovery.ts": "43449affb79a6c3b5266f96c152d895513860adb52d325842a315b153c4c7c2d",
+    "packages/core/src/shared-source-member-discovery.ts": "1056beb323e3a6d55b6edbfb1e87c7b63891962dae7e638b21b1527790b6c5c9",
     "packages/core/test/shared-source-materialization-legacy-registration.test.ts": "16366199dd23b3f227e8aabfa4bd8a9e11e3c3237a4f385532444b021ace33c7",
     "packages/core/test/shared-source-materialization-invalidation.test.ts": "8e5e48b1cf392bfd5949fa8363148c19d0007f4155269e2a7d15a2ee2f615252",
     "packages/core/test/sdk-source-fixture.node.test.ts": "4a05f8d7c91c77e16f96aee88ce8f6d05b080f634f13c3f94c669660a2d544c0",
@@ -118,7 +118,11 @@
     "packages/cli/test/management.test.ts": "16960d0458497ca7238738f90f96b3bd164f407ae697e2b26c13e1680d345020",
     "packages/cli/test/source-manager-transport.test.ts": "9ba786a3386c1981c22f683392bad077699406560f82ce6078ba6f0322f5002b",
     "packages/core/src/shared-source-definition-options.ts": "9851840edbe44e6bee271adb0f17c4c8986e51e95762b7a530a5976f28c020bb",
-    "packages/core/test/shared-source-registration-compat.test.ts": "4c659e6f07a01e1ff6d5afc719220c86f4db331787c5b4af8f527dfb8a518e7e"
+    "packages/core/test/shared-source-registration-compat.test.ts": "4c659e6f07a01e1ff6d5afc719220c86f4db331787c5b4af8f527dfb8a518e7e",
+    "packages/core/src/upstream-source.ts": "1828e60deb42607b328bc1520c6c5a8273fae51693bf6e9d6391016672058c26",
+    "packages/core/src/portable.ts": "6691c58eb2a55f108bcc907cff640ca7587afaa429aec55c86c0b7d124f22b49",
+    "packages/cli/src/sdk.ts": "7fbe46c5d8b3103ed6984c210005a09b40f0c130e75155d47275e0ed4df41a3d",
+    "packages/core/test/shared-source-directory.test.ts": "cf335df954cf2793fb9efdc46a8112f872b8e8b1aff95f7568c650a60b0ff785"
   },
   "models": {
     "CurrentLifecycle": {
@@ -2101,6 +2105,25 @@
         "packages/core/test/shared-source-registration-compat.test.ts"
       ],
       "scope": "Historical Notion registration metadata has an explicit reading interpretation, while the raw Options remain in the declaration fingerprint. Bounded target labels and auto/fixed-git storage retain exact acquisition settings; valid shared publication metadata and retained storage permit read-only enumeration but cannot authorize the current single-Source writer. Fresh manager declaration validation independently rejects these write policies even when a caller submits an otherwise valid target and digest. Ready physical records are not downgraded. Only the historical Notion boundary removes an exact Selection version-one envelope; current schemas still reject unknown versions, excess properties and unsafe paths. Partial failures retain the verified Source identity. Actual parser, read-only metadata and core manager write-ledger regressions cover these boundaries, not real Git network completeness, live Notion, provider delivery or wall-clock performance. Existing finite models, cases, rules and mutation targets are unchanged."
+    },
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "registered_source_metadata_directory",
+      "files": [
+        "packages/core/src/upstream-source.ts",
+        "packages/core/src/portable.ts",
+        "packages/core/src/shared-source-member-discovery.ts",
+        "packages/cli/src/sdk.ts",
+        "packages/core/test/shared-source-directory.test.ts"
+      ],
+      "symbols": [
+        "discoverSourceDirectory",
+        "openSourceGitTree",
+        "readPortableMetadata",
+        "discoverRegisteredSourceMembers",
+        "discoverSourceMembers"
+      ],
+      "scope": "Registered Source discovery enumerates every selected fixed Git tree before applying an alias query. The independent SourceDirectory carries names, descriptions, canonical main paths and exact member identities, without full content bytes or invented content hashes. It shares strict importDocument, portable manifest, mapping and metadata-patch semantics with complete acquisition, preserves duplicate aliases for caller ambiguity and never upgrades an incomplete observation to complete. Only metadata blobs and required metadata-link targets are read by the directory; the exact manager target still validates and acquires its full resources. Complete-tree path and source identity guards remain, and duplicate Source IDs are rejected before acquisition. Four independent provider fibers return in registration order under one parent invocation budget; an expired budget cannot publish a late candidate cache. Actual controlled Git HTTP regressions cover large unread resources, broken unselected links, full target resource preparation, metadata equivalence, duplicate identities and aliases, and four active process groups followed by two unstarted Sources at a shared deadline. These concrete byte, process, timing and cache-publication obligations are not added finite-model properties and do not establish complete discovery of the live 61-Source library or ordinary Pi delivery."
     }
   ],
   "maintenance": {
@@ -2338,5 +2361,11 @@
     ],
     "boundary": "A complete member directory is separate from current write capability. Interpretation of the known historical envelope does not erase publication/storage intent from the registration digest and cannot bypass the fresh management guard. Private live metadata reproduced 42 supported pre-Git registrations, 18 historical option failures and one Selection version error; after interpretation all 61 pass local acquisition-input validation, while three retain explicit unsupported write capability. This offline fact does not claim complete remote repository enumeration. Seven permanent regressions failed before the change and passed after it.",
     "result": "correspondence_only; reviewed source hashes do not constitute model execution or actual Git/Pi success"
+  },
+  "source_metadata_directory_review": {
+    "base_commit": "4f1af585695c26612c15f0f3ceaf5c41afbe4d65",
+    "scope": "Registered Source discovery enumerates every selected fixed Git tree before applying an alias query. The independent SourceDirectory carries names, descriptions, canonical main paths and exact member identities, without full content bytes or invented content hashes. It shares strict importDocument, portable manifest, mapping and metadata-patch semantics with complete acquisition, preserves duplicate aliases for caller ambiguity and never upgrades an incomplete observation to complete. Only metadata blobs and required metadata-link targets are read by the directory; the exact manager target still validates and acquires its full resources. Complete-tree path and source identity guards remain, and duplicate Source IDs are rejected before acquisition. Four independent provider fibers return in registration order under one parent invocation budget; an expired budget cannot publish a late candidate cache. Actual controlled Git HTTP regressions cover large unread resources, broken unselected links, full target resource preparation, metadata equivalence, duplicate identities and aliases, and four active process groups followed by two unstarted Sources at a shared deadline. These concrete byte, process, timing and cache-publication obligations are not added finite-model properties and do not establish complete discovery of the live 61-Source library or ordinary Pi delivery.",
+    "models_cases_rules_and_mutation_targets": "unchanged",
+    "proof_boundary": "Source hashes record reviewed implementation inputs. Model and mutation run results are recorded separately; real remote completeness and ordinary Pi delivery require separate accepted-package execution."
   }
 }

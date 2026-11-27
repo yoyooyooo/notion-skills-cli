@@ -12,7 +12,7 @@
     "packages/core/src/shared-content.ts": "04c158c5b8e915b95cfcd700bc981cb6f8f4e39bc543062702993027b13c6218",
     "packages/core/test/notion-mcp-search.test.ts": "05247c993ca3939767ecdaee8980d0f8c66be12741efdddf76d5712079f0391e",
     "packages/core/test/shared-current-fixture.ts": "ed69b28c12a69b12dbcc5fbbe6f5dd8015982689734756db4cbcf28ee4f5ccaa",
-    "packages/cli/src/sdk.ts": "c3e67bdb68b49ce8a885a4c152225d9a80f172dd5ebb83135b97b56c39eabbdb",
+    "packages/cli/src/sdk.ts": "7fbe46c5d8b3103ed6984c210005a09b40f0c130e75155d47275e0ed4df41a3d",
     "packages/cli/src/operation-runtime.ts": "a9c344a05035502216f5ccb355e63f8dac0d61f7d4ba3a035cccc1087648f538",
     "packages/cli/src/commands-content.ts": "12aa116d3f0e7ff13d8c92dfa7b2d9465a98aa072644b0264f2c45d92e9f5b1b",
     "packages/core/src/notion-mcp-client.ts": "e30a584dd1e0f73df0f2876170c84d055b7808100c8c0bb374ac8bf380b4ae46",
@@ -688,5 +688,11 @@
     "reviewed_base": "31f30db8f960cc4f36d1e02f8e279d641b660718",
     "reviewed_changed_files": ["packages/cli/src/sdk.ts"],
     "result": "correspondence_only; actual run receipts are separate"
+  },
+  "source_directory_sdk_correspondence": {
+    "base_commit": "4f1af585695c26612c15f0f3ceaf5c41afbe4d65",
+    "scope": "Only the separate discoverSourceMembers SDK operation gains an existing whole-invocation budget before its first Library read. Hosted content search, runOperation capability checks, credentials, retry, accepted physical identity and search publication remain byte-for-byte unchanged. The Source directory and multi-Git deadline are owned by current-lifecycle and request-engine concrete regressions; SearchAdmission does not prove them.",
+    "models_cases_rules_and_mutation_targets": "unchanged",
+    "result": "This reviewed source pin is not an execution result."
   }
 }

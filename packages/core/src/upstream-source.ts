@@ -2,12 +2,18 @@ import { Crypto, Effect, Exit, FileSystem, Option, Schema, Stream } from "effect
 import { HttpClient } from "effect/http"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { importDocument, type ImportFile } from "./import.ts"
-import { aliasFor, fail, SkillsError } from "./model.ts"
+import { aliasFor, fail, SkillsError, validateDisplayName } from "./model.ts"
 import { requestTimeoutMs } from "./request-timeout.ts"
 import type { createRequestMetrics, SourceAcquisition } from "./request-metrics.ts"
 import { RequestBudget, withinRequestBudget } from "./request-budget.ts"
 import { ProviderRequestAdmission } from "./request-budget-http.ts"
-import { portableFiles, readPortable, type PortableSkill } from "./portable.ts"
+import {
+  portableFiles,
+  readPortable,
+  readPortableMetadata,
+  type PortableMetadata,
+  type PortableSkill,
+} from "./portable.ts"
 import { portableIdentity } from "./export.ts"
 import {
   SourceExternalResourceSchema,
@@ -82,6 +88,21 @@ export const SourceSnapshotSchema = Schema.Struct({
   unavailable: Schema.optional(Schema.Array(SourcePrerequisiteUnavailableSchema)),
 })
 export type SourceSnapshot = typeof SourceSnapshotSchema.Type
+
+/** A complete name roster at one fixed Git tree. This is not acquired content. */
+export interface SourceDirectory {
+  readonly kind: "source_directory"
+  readonly version: 1
+  readonly revision: string
+  readonly provenance: Readonly<Record<string, string>>
+  readonly members: readonly {
+    readonly member_key: string
+    readonly source_path: string
+    readonly name: string
+    readonly description: string
+    readonly main: string
+  }[]
+}
 
 const MAX_BYTES = 128 * 1024 * 1024
 const MAX_FILES = 10_000
@@ -432,6 +453,44 @@ function adapt(files: readonly ImportFile[], patch: SourcePatch): ImportFile[] {
     prepared.has(file.path) ? { path: file.path, bytes: prepared.get(file.path)! } : file,
   )
 }
+function memberPatches(input: DiscoverSourceInput, key: string) {
+  const scopedPatch = input.member_patches?.[key]
+  if (input.patch && scopedPatch) {
+    const globalPaths = new Set(input.patch.files.map((file) => file.path))
+    const overlap = scopedPatch.files.find((file) => globalPaths.has(file.path))
+    if (overlap)
+      throw sourceError("PATCH_CONFLICT", "Global and member patches target the same file.", {
+        member_key: key,
+        path: overlap.path,
+      })
+  }
+  return [input.patch, scopedPatch].filter((patch) => patch !== undefined)
+}
+function memberMetadata(
+  input: DiscoverSourceInput,
+  key: string,
+  files: readonly ImportFile[],
+  stored: PortableMetadata | undefined,
+) {
+  const main = files.find((file) => file.path === "SKILL.md")
+  if (!main)
+    throw sourceError("INCOMPLETE_MEMBER", "A source member requires SKILL.md.", {
+      member_key: key,
+    })
+  const metadata =
+    stored ??
+    importDocument(main, input.mapping[key] === undefined ? {} : { name: input.mapping[key] })
+  if (stored && stored.kind !== "skill")
+    throw sourceError("INCOMPLETE_MEMBER", "Upstream source members must contain Skills.", {
+      member_key: key,
+    })
+  return {
+    kind: "skill" as const,
+    name: validateDisplayName(input.mapping[key] ?? metadata.name),
+    description: metadata.description,
+    main: stored?.main ?? "SKILL.md",
+  }
+}
 function member(
   input: DiscoverSourceInput,
   key: string,
@@ -442,38 +501,13 @@ function member(
     files = [...files].sort((left, right) => order(left.path, right.path))
     const upstream_hash = yield* hashFiles(upstreamFiles)
     const scopedPatch = input.member_patches?.[key]
-    if (input.patch && scopedPatch) {
-      const globalPaths = new Set(input.patch.files.map((file) => file.path))
-      const overlap = scopedPatch.files.find((file) => globalPaths.has(file.path))
-      if (overlap)
-        return yield* Effect.fail(
-          sourceError("PATCH_CONFLICT", "Global and member patches target the same file.", {
-            member_key: key,
-            path: overlap.path,
-          }),
-        )
-    }
-    let adapted = input.patch ? yield* attempt(() => adapt(files, input.patch!)) : files
-    if (scopedPatch) adapted = yield* attempt(() => adapt(adapted, scopedPatch))
+    let adapted = files
+    for (const patch of yield* attempt(() => memberPatches(input, key)))
+      adapted = yield* attempt(() => adapt(adapted, patch))
     const portable = yield* attempt((): PortableSkill & { readonly kind: "skill" } => {
       const stored = readPortable(adapted)
-      const main = adapted.find((file) => file.path === "SKILL.md")
-      if (!main)
-        throw sourceError("INCOMPLETE_MEMBER", "A source member requires SKILL.md.", {
-          member_key: key,
-        })
-      const metadata =
-        stored ??
-        importDocument(main, input.mapping[key] === undefined ? {} : { name: input.mapping[key] })
-      if (stored && stored.kind !== "skill")
-        throw sourceError("INCOMPLETE_MEMBER", "Upstream source members must contain Skills.", {
-          member_key: key,
-        })
       const skill: PortableSkill & { readonly kind: "skill" } = {
-        kind: "skill",
-        name: input.mapping[key] ?? metadata.name,
-        description: metadata.description,
-        main: stored?.main ?? "SKILL.md",
+        ...memberMetadata(input, key, adapted, stored),
         files: stored?.files ?? adapted,
       }
       portableFiles(skill)
@@ -498,6 +532,54 @@ function member(
   })
 }
 type GitTreeEntry = { mode: string; type: string; oid: string; size: number; path: string }
+
+/** Link authority is the pinned member tree; never the host filesystem. */
+function resolveGitLink(key: string, path: string, bytes: Uint8Array) {
+  const target = decoder.decode(bytes)
+  if (
+    !target ||
+    target.startsWith("/") ||
+    /^[A-Za-z]:/.test(target) ||
+    /[\\\u0000-\u001f\u007f]/.test(target)
+  )
+    throw sourceError("GIT_LINK_ABSOLUTE", "Git links require a relative POSIX target.", {
+      path: path,
+      target,
+    })
+  const parts = path.split("/").slice(0, -1)
+  const floor = key === "." ? 0 : key.split("/").length
+  for (const part of target.split("/")) {
+    if (!part || part === ".") continue
+    if (part === "..") {
+      if (parts.length <= floor)
+        throw sourceError("GIT_LINK_ESCAPE", "Git link escapes the selected Skill root.", {
+          path: path,
+          target,
+          root: key,
+        })
+      parts.pop()
+    } else {
+      if (part.toLowerCase() === ".git")
+        throw sourceError("GIT_LINK_ESCAPE", "Git link enters reserved metadata.", {
+          path: path,
+          target,
+        })
+      parts.push(part)
+    }
+  }
+  const resolved_path = parts.join("/") || "."
+  if (!under(resolved_path, key))
+    throw sourceError("GIT_LINK_ESCAPE", "Git link escapes the selected Skill root.", {
+      path: path,
+      target,
+    })
+  if (under(path, resolved_path))
+    throw sourceError("GIT_LINK_OVERLAP", "Git link target overlaps its own output subtree.", {
+      path: path,
+      target,
+    })
+  return { target, resolved_path }
+}
 
 /** Resolve only pinned tree objects, never host filesystem links. */
 function expandGitResources(
@@ -526,49 +608,7 @@ function expandGitResources(
   const targets = new Map<string, string>()
   for (const entry of entries.filter((entry) => entry.mode === "120000")) {
     const bytes = blobs.get(entry.oid)!
-    const target = decoder.decode(bytes)
-    if (
-      !target ||
-      target.startsWith("/") ||
-      /^[A-Za-z]:/.test(target) ||
-      /[\\\u0000-\u001f\u007f]/.test(target)
-    )
-      throw sourceError("GIT_LINK_ABSOLUTE", "Git links require a relative POSIX target.", {
-        path: entry.path,
-        target,
-      })
-    const parts = entry.path.split("/").slice(0, -1)
-    const floor = key === "." ? 0 : key.split("/").length
-    for (const part of target.split("/")) {
-      if (!part || part === ".") continue
-      if (part === "..") {
-        if (parts.length <= floor)
-          throw sourceError("GIT_LINK_ESCAPE", "Git link escapes the selected Skill root.", {
-            path: entry.path,
-            target,
-            root: key,
-          })
-        parts.pop()
-      } else {
-        if (part.toLowerCase() === ".git")
-          throw sourceError("GIT_LINK_ESCAPE", "Git link enters reserved metadata.", {
-            path: entry.path,
-            target,
-          })
-        parts.push(part)
-      }
-    }
-    const resolved_path = parts.join("/") || "."
-    if (!under(resolved_path, key))
-      throw sourceError("GIT_LINK_ESCAPE", "Git link escapes the selected Skill root.", {
-        path: entry.path,
-        target,
-      })
-    if (under(entry.path, resolved_path))
-      throw sourceError("GIT_LINK_OVERLAP", "Git link target overlaps its own output subtree.", {
-        path: entry.path,
-        target,
-      })
+    const { target, resolved_path } = resolveGitLink(key, entry.path, bytes)
     targets.set(entry.path, resolved_path)
     links.push({
       path: key === "." ? entry.path : entry.path.slice(key.length + 1),
@@ -778,6 +818,297 @@ function repositoryObjectSize(fs: FileSystem.FileSystem, root: string) {
   )
 }
 
+function openSourceGitTree(
+  input: DiscoverSourceInput,
+  source: Extract<SourceSpec, { type: "git" | "github-market" }>,
+  options: SourceDiscoveryOptions,
+) {
+  return Effect.gen(function* () {
+    const market =
+      source.type === "github-market" ? yield* attempt(() => marketplace(source.url)) : undefined
+    const url = market?.url ?? source.url
+    const ref = input.accepted_ref ?? source.ref ?? "HEAD"
+    yield* attempt(() => validateGitSource(url, ref))
+    const fs = yield* FileSystem.FileSystem
+    const repo = yield* fs
+      .makeTempDirectoryScoped({ prefix: "ntn-upstream-" })
+      .pipe(
+        Effect.mapError(() =>
+          sourceError("TEMP_FAILED", "Could not create scoped Git repository."),
+        ),
+      )
+    yield* assertSourceGitRuntime(repo)
+    yield* git(repo, ["init", "--bare", "--template=", "."])
+    // One validated remote also services missing selected blobs. Negotiated
+    // filtering avoids downloading unrelated repository assets just to find
+    // Skill roots; servers without filter support keep Git's normal fallback.
+    yield* git(repo, ["remote", "add", "origin", url])
+    // GitHub smart-HTTP/2 can fail in host proxy chains with a framing
+    // error even while the pinned GitHub REST API is healthy. Keep this
+    // transport choice inside the disposable bare repository; never edit
+    // the user's Git configuration or any non-GitHub remote.
+    if (githubHttpsSource(url)) yield* git(repo, ["config", "http.version", "HTTP/1.1"])
+    yield* git(repo, ["config", "remote.origin.promisor", "true"])
+    yield* git(repo, ["config", "remote.origin.partialclonefilter", "blob:none"])
+    let finish:
+      | ReturnType<ReturnType<typeof createRequestMetrics>["beginSourceAcquisition"]>
+      | undefined
+    let fetchStarted: number | undefined
+    let fetchMilliseconds = 0
+    let catFileBytes = 0
+    yield* Effect.addFinalizer((exit) =>
+      Effect.gen(function* () {
+        if (finish === undefined) return
+        const observedAt = performance.now()
+        // This is fetched object storage, not bytes on the HTTP/SSH wire. Measuring it
+        // before the scoped bare repository is removed also preserves failed-fetch evidence.
+        const objectBytes = yield* repositoryObjectSize(fs, `${repo}/objects`)
+        finish({
+          outcome: Exit.isSuccess(exit)
+            ? "success"
+            : Exit.hasInterrupts(exit)
+              ? "cancelled"
+              : "failure",
+          fetchMilliseconds,
+          ...(objectBytes === undefined ? {} : { repositoryObjectBytes: objectBytes }),
+          catFileBytes,
+          observationMilliseconds: performance.now() - observedAt,
+        })
+      }),
+    )
+    yield* git(
+      repo,
+      ["fetch", "--filter=blob:none", "--depth=1", "--no-tags", "--", "origin", ref],
+      undefined,
+      {
+        start: () => {
+          fetchStarted = performance.now()
+          const configuredTransport: SourceAcquisition["configured_transport"] = url.startsWith(
+            "https://",
+          )
+            ? "https"
+            : url.startsWith("http://")
+              ? "http"
+              : url.startsWith("/") || url.startsWith("file:")
+                ? "file"
+                : "ssh"
+          finish = options.metrics?.beginSourceAcquisition({
+            provider: market ? "skills.sh" : "git",
+            configured_transport: configuredTransport,
+          })
+        },
+      },
+    ).pipe(
+      Effect.onExit(() =>
+        Effect.sync(() => {
+          if (fetchStarted !== undefined) fetchMilliseconds = performance.now() - fetchStarted
+        }),
+      ),
+    )
+    const readBlob = (oid: string, bytes: number) =>
+      git(repo, ["cat-file", "blob", oid], bytes, {
+        stdoutBytes: (count) => {
+          catFileBytes += count
+        },
+      })
+    const resolved = yield* git(repo, ["rev-parse", "--verify", "FETCH_HEAD^{commit}"])
+    const revision = yield* attempt(() => {
+      const commit = decoder.decode(resolved).trim()
+      if (!/^[a-f0-9]{40,64}$/.test(commit))
+        throw sourceError("INVALID_REF", "Git did not resolve a commit.")
+      if (/^[a-f0-9]{40,64}$/.test(ref) && commit !== ref)
+        throw sourceError("INVALID_REF", "Fetched commit differs from the requested pin.")
+      return commit
+    })
+    const resolvedTree = yield* git(repo, ["rev-parse", "--verify", `${revision}^{tree}`])
+    const treeHash = yield* attempt(() => {
+      const tree = decoder.decode(resolvedTree).trim()
+      if (!/^[a-f0-9]{40,64}$/.test(tree))
+        throw sourceError("INVALID_TREE", "Git did not resolve the pinned commit tree.")
+      return tree
+    })
+    const rawCommitDate = yield* git(repo, ["show", "-s", "--format=%cI", revision], 1024)
+    const committedAt = yield* attempt(() => {
+      const date = decoder.decode(rawCommitDate).trim()
+      if (!Number.isFinite(Date.parse(date)))
+        throw sourceError("INVALID_REF", "The fixed Git commit has no valid committer date.")
+      return new Date(date).toISOString()
+    })
+    // Asking ls-tree for every blob's size (-l) would fetch every missing
+    // object and defeat the filter. Enumerate the full roster from tree
+    // metadata, then size/materialize only selected or explicitly linked blobs.
+    const rawTree = yield* git(repo, ["ls-tree", "-r", "-z", revision], 16 * 1024 * 1024)
+    const entries = yield* attempt(() => {
+      const text = decoder.decode(rawTree)
+      if (text && !text.endsWith("\0"))
+        throw sourceError("INVALID_TREE", "Git tree output is incomplete.")
+      const rows = text ? text.slice(0, -1).split("\0") : []
+      if (rows.length > 100_000)
+        throw sourceError("LIMIT", "Source repository contains too many tree entries.")
+      return rows.map((row) => {
+        const match = /^(\d{6}) (blob|commit) ([a-f0-9]{40,64})\t([\s\S]+)$/.exec(row)
+        if (!match) throw sourceError("INVALID_TREE", "Git returned an invalid tree entry.")
+        return {
+          mode: match[1]!,
+          type: match[2]!,
+          oid: match[3]!,
+          path: safePath(match[4]!),
+        }
+      })
+    })
+    const sizes = new Map<string, number>()
+    // Probe only this exact selected object set locally. In a partial clone,
+    // cat-file -s per file would otherwise start one network fetch per blob.
+    const localBlobSizes = (oids: readonly string[]) =>
+      Effect.gen(function* () {
+        if (oids.length === 0) return [] as string[]
+        const bytes = yield* git(
+          repo,
+          ["cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"],
+          oids.length * 128,
+          { stdin: encoder.encode(oids.join("\n") + "\n"), noLazyFetch: true },
+        )
+        return yield* attempt(() => {
+          const output = decoder.decode(bytes)
+          const lines = output.endsWith("\n") ? output.slice(0, -1).split("\n") : []
+          if (lines.length !== oids.length)
+            throw sourceError("INVALID_TREE", "Selected Git object metadata is incomplete.")
+          const missing: string[] = []
+          for (let at = 0; at < oids.length; at++) {
+            const oid = oids[at]!,
+              line = lines[at]!
+            if (line === `${oid} missing`) {
+              missing.push(oid)
+              continue
+            }
+            const match = /^([a-f0-9]{40,64}) blob (\d+)$/u.exec(line)
+            if (match?.[1] !== oid || !Number.isSafeInteger(Number(match[2])))
+              throw sourceError(
+                "INVALID_TREE",
+                "Selected Git metadata differs from its exact blob identity.",
+              )
+            sizes.set(oid, Number(match[2]))
+          }
+          return missing
+        })
+      })
+    const prefetch = (selected: readonly (typeof entries)[number][]) =>
+      Effect.gen(function* () {
+        yield* attempt(() => {
+          if (selected.length > MAX_FILES)
+            throw sourceError("LIMIT", "Selected source exceeds 10,000 files.")
+          for (const entry of selected) {
+            if (entry.type === "commit" || entry.mode === "160000")
+              throw sourceError("GIT_LINK_SUBMODULE", "Git resources cannot contain submodules.", {
+                path: entry.path,
+              })
+            if (entry.type !== "blob" || !["100644", "100755", "120000"].includes(entry.mode))
+              throw sourceError(
+                "UNSAFE_FILE",
+                "Selected Git resource is not a regular file or contained link.",
+                { path: entry.path, mode: entry.mode },
+              )
+          }
+        })
+        const oids = [...new Set(selected.map((entry) => entry.oid))].filter(
+          (oid) => !sizes.has(oid),
+        )
+        const missing = yield* localBlobSizes(oids)
+        // Bound argv and server requests; never replace this set with a whole
+        // repository fetch. Ref and tree were frozen before this acquisition.
+        for (let at = 0; at < missing.length; at += 128) {
+          const batch = missing.slice(at, at + 128)
+          const started = performance.now()
+          yield* git(
+            repo,
+            [
+              "fetch",
+              "--filter=blob:none",
+              "--no-tags",
+              "--no-write-fetch-head",
+              "--recurse-submodules=no",
+              "--",
+              "origin",
+              ...batch,
+            ],
+            undefined,
+            { noNegotiation: true },
+          ).pipe(
+            Effect.onExit(() =>
+              Effect.sync(() => {
+                fetchMilliseconds += performance.now() - started
+              }),
+            ),
+          )
+          if ((yield* localBlobSizes(batch)).length > 0)
+            return yield* Effect.fail(
+              sourceError(
+                "INVALID_TREE",
+                "The exact selected Git blobs remain unavailable after their batch fetch.",
+              ),
+            )
+        }
+      })
+    const sizeOf = (entry: (typeof entries)[number]) =>
+      Effect.gen(function* () {
+        if (entry.type !== "blob" || !["100644", "100755", "120000"].includes(entry.mode))
+          return { ...entry, size: 0 }
+        const cached = sizes.get(entry.oid)
+        if (cached !== undefined) return { ...entry, size: cached }
+        const raw = decoder.decode(yield* git(repo, ["cat-file", "-s", entry.oid], 128)).trim()
+        const size = yield* attempt(() => {
+          if (!/^\d+$/u.test(raw) || !Number.isSafeInteger(Number(raw)))
+            throw sourceError("INVALID_TREE", "Git returned an invalid selected blob size.", {
+              path: entry.path,
+            })
+          return Number(raw)
+        })
+        sizes.set(entry.oid, size)
+        return { ...entry, size }
+      })
+    const candidates = entries
+      .filter((entry) => entry.path === "SKILL.md" || entry.path.endsWith("/SKILL.md"))
+      .map((entry) => (entry.path === "SKILL.md" ? "." : entry.path.slice(0, -9)))
+    const keys = yield* attempt(() => {
+      let roster = candidates
+      if (market) {
+        roster = candidates.filter((key) => key.split("/").at(-1) === market.slug)
+        if (roster.length !== 1)
+          throw sourceError(
+            "MARKET_AMBIGUOUS",
+            "Marketplace slug must resolve to exactly one Git Skill directory.",
+            { slug: market.slug, candidates: roster },
+          )
+      }
+      const configured = selectMembers(
+        input,
+        roster,
+        entries.map((entry) => entry.path),
+      )
+      if (options.onlyMembers === undefined) return configured
+      for (const key of options.onlyMembers)
+        if (!configured.includes(key) && !options.allowMissingMembers)
+          throw sourceError(
+            "MEMBER_UNAVAILABLE",
+            "The exact member is not in the configured pinned Git tree; no other member is substituted.",
+            { member_key: key },
+          )
+      return configured.filter((key) => options.onlyMembers!.includes(key))
+    })
+    const provenance: Record<string, string> = {
+      provider: market ? "skills.sh" : "git",
+      source_url: market?.source_url ?? source.url,
+      git_url: url,
+      requested_ref: ref,
+      resolved_ref: revision,
+      tree_hash: treeHash,
+      committed_at: committedAt,
+    }
+    if (market) provenance.catalog_slug = market.slug
+    return { revision, treeHash, provenance, entries, keys, prefetch, sizeOf, readBlob }
+  })
+}
+
 function gitSnapshot(
   input: DiscoverSourceInput,
   source: Extract<SourceSpec, { type: "git" | "github-market" }>,
@@ -785,279 +1116,8 @@ function gitSnapshot(
 ) {
   return Effect.scoped(
     Effect.gen(function* () {
-      const market =
-        source.type === "github-market" ? yield* attempt(() => marketplace(source.url)) : undefined
-      const url = market?.url ?? source.url
-      const ref = input.accepted_ref ?? source.ref ?? "HEAD"
-      yield* attempt(() => validateGitSource(url, ref))
-      const fs = yield* FileSystem.FileSystem
-      const repo = yield* fs
-        .makeTempDirectoryScoped({ prefix: "ntn-upstream-" })
-        .pipe(
-          Effect.mapError(() =>
-            sourceError("TEMP_FAILED", "Could not create scoped Git repository."),
-          ),
-        )
-      yield* assertSourceGitRuntime(repo)
-      yield* git(repo, ["init", "--bare", "--template=", "."])
-      // One validated remote also services missing selected blobs. Negotiated
-      // filtering avoids downloading unrelated repository assets just to find
-      // Skill roots; servers without filter support keep Git's normal fallback.
-      yield* git(repo, ["remote", "add", "origin", url])
-      // GitHub smart-HTTP/2 can fail in host proxy chains with a framing
-      // error even while the pinned GitHub REST API is healthy. Keep this
-      // transport choice inside the disposable bare repository; never edit
-      // the user's Git configuration or any non-GitHub remote.
-      if (githubHttpsSource(url)) yield* git(repo, ["config", "http.version", "HTTP/1.1"])
-      yield* git(repo, ["config", "remote.origin.promisor", "true"])
-      yield* git(repo, ["config", "remote.origin.partialclonefilter", "blob:none"])
-      let finish:
-        | ReturnType<ReturnType<typeof createRequestMetrics>["beginSourceAcquisition"]>
-        | undefined
-      let fetchStarted: number | undefined
-      let fetchMilliseconds = 0
-      let catFileBytes = 0
-      yield* Effect.addFinalizer((exit) =>
-        Effect.gen(function* () {
-          if (finish === undefined) return
-          const observedAt = performance.now()
-          // This is fetched object storage, not bytes on the HTTP/SSH wire. Measuring it
-          // before the scoped bare repository is removed also preserves failed-fetch evidence.
-          const objectBytes = yield* repositoryObjectSize(fs, `${repo}/objects`)
-          finish({
-            outcome: Exit.isSuccess(exit)
-              ? "success"
-              : Exit.hasInterrupts(exit)
-                ? "cancelled"
-                : "failure",
-            fetchMilliseconds,
-            ...(objectBytes === undefined ? {} : { repositoryObjectBytes: objectBytes }),
-            catFileBytes,
-            observationMilliseconds: performance.now() - observedAt,
-          })
-        }),
-      )
-      yield* git(
-        repo,
-        ["fetch", "--filter=blob:none", "--depth=1", "--no-tags", "--", "origin", ref],
-        undefined,
-        {
-          start: () => {
-            fetchStarted = performance.now()
-            const configuredTransport: SourceAcquisition["configured_transport"] = url.startsWith(
-              "https://",
-            )
-              ? "https"
-              : url.startsWith("http://")
-                ? "http"
-                : url.startsWith("/") || url.startsWith("file:")
-                  ? "file"
-                  : "ssh"
-            finish = options.metrics?.beginSourceAcquisition({
-              provider: market ? "skills.sh" : "git",
-              configured_transport: configuredTransport,
-            })
-          },
-        },
-      ).pipe(
-        Effect.onExit(() =>
-          Effect.sync(() => {
-            if (fetchStarted !== undefined) fetchMilliseconds = performance.now() - fetchStarted
-          }),
-        ),
-      )
-      const readBlob = (oid: string, bytes: number) =>
-        git(repo, ["cat-file", "blob", oid], bytes, {
-          stdoutBytes: (count) => {
-            catFileBytes += count
-          },
-        })
-      const resolved = yield* git(repo, ["rev-parse", "--verify", "FETCH_HEAD^{commit}"])
-      const revision = yield* attempt(() => {
-        const commit = decoder.decode(resolved).trim()
-        if (!/^[a-f0-9]{40,64}$/.test(commit))
-          throw sourceError("INVALID_REF", "Git did not resolve a commit.")
-        if (/^[a-f0-9]{40,64}$/.test(ref) && commit !== ref)
-          throw sourceError("INVALID_REF", "Fetched commit differs from the requested pin.")
-        return commit
-      })
-      const resolvedTree = yield* git(repo, ["rev-parse", "--verify", `${revision}^{tree}`])
-      const treeHash = yield* attempt(() => {
-        const tree = decoder.decode(resolvedTree).trim()
-        if (!/^[a-f0-9]{40,64}$/.test(tree))
-          throw sourceError("INVALID_TREE", "Git did not resolve the pinned commit tree.")
-        return tree
-      })
-      const rawCommitDate = yield* git(repo, ["show", "-s", "--format=%cI", revision], 1024)
-      const committedAt = yield* attempt(() => {
-        const date = decoder.decode(rawCommitDate).trim()
-        if (!Number.isFinite(Date.parse(date)))
-          throw sourceError("INVALID_REF", "The fixed Git commit has no valid committer date.")
-        return new Date(date).toISOString()
-      })
-      // Asking ls-tree for every blob's size (-l) would fetch every missing
-      // object and defeat the filter. Enumerate the full roster from tree
-      // metadata, then size/materialize only selected or explicitly linked blobs.
-      const rawTree = yield* git(repo, ["ls-tree", "-r", "-z", revision], 16 * 1024 * 1024)
-      const entries = yield* attempt(() => {
-        const text = decoder.decode(rawTree)
-        if (text && !text.endsWith("\0"))
-          throw sourceError("INVALID_TREE", "Git tree output is incomplete.")
-        const rows = text ? text.slice(0, -1).split("\0") : []
-        if (rows.length > 100_000)
-          throw sourceError("LIMIT", "Source repository contains too many tree entries.")
-        return rows.map((row) => {
-          const match = /^(\d{6}) (blob|commit) ([a-f0-9]{40,64})\t([\s\S]+)$/.exec(row)
-          if (!match) throw sourceError("INVALID_TREE", "Git returned an invalid tree entry.")
-          return {
-            mode: match[1]!,
-            type: match[2]!,
-            oid: match[3]!,
-            path: safePath(match[4]!),
-          }
-        })
-      })
-      const sizes = new Map<string, number>()
-      // Probe only this exact selected object set locally. In a partial clone,
-      // cat-file -s per file would otherwise start one network fetch per blob.
-      const localBlobSizes = (oids: readonly string[]) =>
-        Effect.gen(function* () {
-          if (oids.length === 0) return [] as string[]
-          const bytes = yield* git(
-            repo,
-            ["cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"],
-            oids.length * 128,
-            { stdin: encoder.encode(oids.join("\n") + "\n"), noLazyFetch: true },
-          )
-          return yield* attempt(() => {
-            const output = decoder.decode(bytes)
-            const lines = output.endsWith("\n") ? output.slice(0, -1).split("\n") : []
-            if (lines.length !== oids.length)
-              throw sourceError("INVALID_TREE", "Selected Git object metadata is incomplete.")
-            const missing: string[] = []
-            for (let at = 0; at < oids.length; at++) {
-              const oid = oids[at]!,
-                line = lines[at]!
-              if (line === `${oid} missing`) {
-                missing.push(oid)
-                continue
-              }
-              const match = /^([a-f0-9]{40,64}) blob (\d+)$/u.exec(line)
-              if (match?.[1] !== oid || !Number.isSafeInteger(Number(match[2])))
-                throw sourceError(
-                  "INVALID_TREE",
-                  "Selected Git metadata differs from its exact blob identity.",
-                )
-              sizes.set(oid, Number(match[2]))
-            }
-            return missing
-          })
-        })
-      const prefetch = (selected: readonly (typeof entries)[number][]) =>
-        Effect.gen(function* () {
-          yield* attempt(() => {
-            if (selected.length > MAX_FILES)
-              throw sourceError("LIMIT", "Selected source exceeds 10,000 files.")
-            for (const entry of selected) {
-              if (entry.type === "commit" || entry.mode === "160000")
-                throw sourceError(
-                  "GIT_LINK_SUBMODULE",
-                  "Git resources cannot contain submodules.",
-                  { path: entry.path },
-                )
-              if (entry.type !== "blob" || !["100644", "100755", "120000"].includes(entry.mode))
-                throw sourceError(
-                  "UNSAFE_FILE",
-                  "Selected Git resource is not a regular file or contained link.",
-                  { path: entry.path, mode: entry.mode },
-                )
-            }
-          })
-          const oids = [...new Set(selected.map((entry) => entry.oid))].filter(
-            (oid) => !sizes.has(oid),
-          )
-          const missing = yield* localBlobSizes(oids)
-          // Bound argv and server requests; never replace this set with a whole
-          // repository fetch. Ref and tree were frozen before this acquisition.
-          for (let at = 0; at < missing.length; at += 128) {
-            const batch = missing.slice(at, at + 128)
-            const started = performance.now()
-            yield* git(
-              repo,
-              [
-                "fetch",
-                "--filter=blob:none",
-                "--no-tags",
-                "--no-write-fetch-head",
-                "--recurse-submodules=no",
-                "--",
-                "origin",
-                ...batch,
-              ],
-              undefined,
-              { noNegotiation: true },
-            ).pipe(
-              Effect.onExit(() =>
-                Effect.sync(() => {
-                  fetchMilliseconds += performance.now() - started
-                }),
-              ),
-            )
-            if ((yield* localBlobSizes(batch)).length > 0)
-              return yield* Effect.fail(
-                sourceError(
-                  "INVALID_TREE",
-                  "The exact selected Git blobs remain unavailable after their batch fetch.",
-                ),
-              )
-          }
-        })
-      const sizeOf = (entry: (typeof entries)[number]) =>
-        Effect.gen(function* () {
-          if (entry.type !== "blob" || !["100644", "100755", "120000"].includes(entry.mode))
-            return { ...entry, size: 0 }
-          const cached = sizes.get(entry.oid)
-          if (cached !== undefined) return { ...entry, size: cached }
-          const raw = decoder.decode(yield* git(repo, ["cat-file", "-s", entry.oid], 128)).trim()
-          const size = yield* attempt(() => {
-            if (!/^\d+$/u.test(raw) || !Number.isSafeInteger(Number(raw)))
-              throw sourceError("INVALID_TREE", "Git returned an invalid selected blob size.", {
-                path: entry.path,
-              })
-            return Number(raw)
-          })
-          sizes.set(entry.oid, size)
-          return { ...entry, size }
-        })
-      const candidates = entries
-        .filter((entry) => entry.path === "SKILL.md" || entry.path.endsWith("/SKILL.md"))
-        .map((entry) => (entry.path === "SKILL.md" ? "." : entry.path.slice(0, -9)))
-      const keys = yield* attempt(() => {
-        let roster = candidates
-        if (market) {
-          roster = candidates.filter((key) => key.split("/").at(-1) === market.slug)
-          if (roster.length !== 1)
-            throw sourceError(
-              "MARKET_AMBIGUOUS",
-              "Marketplace slug must resolve to exactly one Git Skill directory.",
-              { slug: market.slug, candidates: roster },
-            )
-        }
-        const configured = selectMembers(
-          input,
-          roster,
-          entries.map((entry) => entry.path),
-        )
-        if (options.onlyMembers === undefined) return configured
-        for (const key of options.onlyMembers)
-          if (!configured.includes(key) && !options.allowMissingMembers)
-            throw sourceError(
-              "MEMBER_UNAVAILABLE",
-              "The exact member is not in the configured pinned Git tree; no other member is substituted.",
-              { member_key: key },
-            )
-        return configured.filter((key) => options.onlyMembers!.includes(key))
-      })
+      const { revision, treeHash, provenance, entries, keys, prefetch, sizeOf, readBlob } =
+        yield* openSourceGitTree(input, source, options)
       yield* prefetch(entries.filter((entry) => keys.some((key) => under(entry.path, key))))
       let totalBytes = 0
       let totalFiles = 0
@@ -1194,16 +1254,6 @@ function gitSnapshot(
           bytes,
         })
       }
-      const provenance: Record<string, string> = {
-        provider: market ? "skills.sh" : "git",
-        source_url: market?.source_url ?? source.url,
-        git_url: url,
-        requested_ref: ref,
-        resolved_ref: revision,
-        tree_hash: treeHash,
-        committed_at: committedAt,
-      }
-      if (market) provenance.catalog_slug = market.slug
       return {
         revision,
         provenance,
@@ -1211,6 +1261,157 @@ function gitSnapshot(
         unavailable,
         ...(external_resources.length ? { external_resources } : {}),
       }
+    }),
+  )
+}
+
+/** Enumerate every configured Git member without acquiring its supporting tree.
+ * The caller owns the invocation deadline. All Git children share its request
+ * budget and cancellation; no member or Source receives a new allowance. */
+export function discoverSourceDirectory(
+  input: DiscoverSourceInput,
+  options: Pick<SourceDiscoveryOptions, "metrics"> = {},
+) {
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const decoded = yield* attempt(() =>
+        Schema.decodeUnknownSync(DiscoverSourceInputSchema)(input, { onExcessProperty: "error" }),
+      )
+      yield* attempt(() => validateSourceSelection(decoded))
+      if (decoded.source.type === "registry")
+        return yield* Effect.fail(
+          sourceError("DIRECTORY_UNSUPPORTED", "A Source directory requires a fixed Git tree."),
+        )
+      const { revision, provenance, entries, keys, prefetch, sizeOf, readBlob } =
+        yield* openSourceGitTree(decoded, decoded.source, { metrics: options.metrics })
+      const tree = new Map(entries.map((entry) => [entry.path, entry]))
+      const at = (key: string, path: string) => (key === "." ? path : `${key}/${path}`)
+      const metadataPaths = new Set(
+        keys.flatMap((key) => [at(key, "SKILL.md"), at(key, ".ntn-skills.json")]),
+      )
+      yield* prefetch(entries.filter((entry) => metadataPaths.has(entry.path)))
+      const blobs = new Map<string, Uint8Array>()
+      let bytesRead = 0
+      const read = (entry: (typeof entries)[number]) =>
+        Effect.gen(function* () {
+          const previous = blobs.get(entry.oid)
+          if (previous !== undefined) return previous
+          yield* prefetch([entry])
+          const sized = yield* sizeOf(entry)
+          if (bytesRead + sized.size > MAX_BYTES || blobs.size >= MAX_FILES)
+            return yield* Effect.fail(
+              sourceError("LIMIT", "Source metadata exceeds 128 MiB or 10,000 objects."),
+            )
+          const bytes = yield* readBlob(entry.oid, sized.size)
+          if (bytes.length !== sized.size)
+            return yield* Effect.fail(
+              sourceError("INVALID_TREE", "Metadata blob size differs from its pinned identity.", {
+                path: entry.path,
+              }),
+            )
+          bytesRead += bytes.length
+          blobs.set(entry.oid, bytes)
+          return bytes
+        })
+      // Resolve only paths needed for metadata or entrypoint existence. Unrelated
+      // links and resources remain the full materialization path's obligation.
+      const resolve = (key: string, requested: string) =>
+        Effect.gen(function* () {
+          let path = requested
+          const active = new Set<string>()
+          for (;;) {
+            const parts = path.split("/")
+            let followed = false
+            for (let depth = 1; depth <= parts.length; depth++) {
+              const prefix = parts.slice(0, depth).join("/")
+              const entry = tree.get(prefix)
+              if (entry?.type === "commit" || entry?.mode === "160000")
+                return yield* Effect.fail(
+                  sourceError("GIT_LINK_SUBMODULE", "Metadata cannot traverse a Git submodule.", {
+                    path: prefix,
+                  }),
+                )
+              if (entry?.mode !== "120000") continue
+              if (active.has(prefix) || active.size >= 64)
+                return yield* Effect.fail(
+                  sourceError(
+                    active.has(prefix) ? "GIT_LINK_CYCLE" : "GIT_LINK_DEPTH",
+                    "Metadata link resolution requires an acyclic bounded path.",
+                    { path: prefix },
+                  ),
+                )
+              active.add(prefix)
+              const bytes = yield* read(entry)
+              const target = yield* attempt(() => resolveGitLink(key, prefix, bytes))
+              const suffix = parts.slice(depth).join("/")
+              path = suffix
+                ? target.resolved_path === "."
+                  ? suffix
+                  : `${target.resolved_path}/${suffix}`
+                : target.resolved_path
+              followed = true
+              break
+            }
+            if (followed) continue
+            const entry = tree.get(path)
+            if (entry === undefined)
+              return yield* Effect.fail(
+                sourceError(
+                  "GIT_LINK_MISSING",
+                  "Metadata or entrypoint is absent from the fixed tree.",
+                  {
+                    path,
+                  },
+                ),
+              )
+            if (entry.type !== "blob" || !["100644", "100755"].includes(entry.mode))
+              return yield* Effect.fail(
+                sourceError("UNSAFE_FILE", "Metadata and entrypoints require a regular Git blob.", {
+                  path,
+                  mode: entry.mode,
+                }),
+              )
+            return entry
+          }
+        })
+      const members: SourceDirectory["members"][number][] = []
+      for (const key of keys) {
+        let files: readonly ImportFile[] = yield* Effect.forEach(
+          ["SKILL.md", ".ntn-skills.json"].filter((path) => tree.has(at(key, path))),
+          (path) =>
+            Effect.gen(function* () {
+              const entry = yield* resolve(key, at(key, path))
+              return { path, bytes: yield* read(entry) }
+            }),
+        )
+        for (const patch of yield* attempt(() => memberPatches(decoded, key))) {
+          const metadata = patch.files.filter((file) =>
+            ["SKILL.md", ".ntn-skills.json"].includes(file.path),
+          )
+          if (metadata.length > 0)
+            files = yield* attempt(() => adapt(files, { version: patch.version, files: metadata }))
+        }
+        const metadata = yield* attempt(() =>
+          memberMetadata(decoded, key, files, readPortableMetadata(files)),
+        )
+        yield* resolve(key, at(key, metadata.main))
+        members.push({
+          member_key: key,
+          source_path: key,
+          name: metadata.name,
+          description: metadata.description,
+          main: metadata.main,
+        })
+      }
+      // Duplicate aliases are complete information, not a truncated roster. The
+      // selection boundary must preserve both identities and reject ambiguity.
+      return {
+        kind: "source_directory",
+        version: 1,
+        revision,
+        provenance,
+        members,
+      } satisfies SourceDirectory
     }),
   )
 }

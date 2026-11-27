@@ -1,4 +1,5 @@
 import { discoverRegisteredSourceMembers } from "../../core/src/shared-source-member-discovery.ts"
+import { withCurrentInvocationBudget } from "../../core/src/shared-current-invocation.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { libraryId } from "../../core/src/catalog.ts"
 import { resolveLibrary as coreResolveLibrary } from "../../core/src/shared-library.ts"
@@ -102,10 +103,12 @@ export function discoverSourceMembers(
 ) {
   return runOperation(
     () =>
-      Effect.gen(function* () {
-        const library = yield* loadSharedLibrary(yield* libraryId(input.library))
-        return yield* discoverRegisteredSourceMembers(library, input)
-      }),
+      withCurrentInvocationBudget(
+        Effect.gen(function* () {
+          const library = yield* loadSharedLibrary(yield* libraryId(input.library))
+          return yield* discoverRegisteredSourceMembers(library, input)
+        }),
+      ).pipe(Effect.map(({ result }) => result)),
     options,
   )
 }

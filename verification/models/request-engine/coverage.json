@@ -32,13 +32,15 @@
     "packages/core/src/request-budget-http.ts": "dec67067ce708d24523f79880471dc96177025b5b2adb3a3876d2dc28b174797",
     "packages/core/src/shared-current-invocation.ts": "043dc5f1e5f4be6f07c79649e5233bf56bda65b03e303be8b0f03655e9f9a91b",
     "packages/core/test/shared-current-invocation.test.ts": "5274a5354b814fb877145ff53f82728f564ab9865622089e58d8e2d26be15df2",
-    "packages/cli/src/sdk.ts": "c3e67bdb68b49ce8a885a4c152225d9a80f172dd5ebb83135b97b56c39eabbdb",
+    "packages/cli/src/sdk.ts": "7fbe46c5d8b3103ed6984c210005a09b40f0c130e75155d47275e0ed4df41a3d",
     "packages/cli/src/operation-runtime.ts": "a9c344a05035502216f5ccb355e63f8dac0d61f7d4ba3a035cccc1087648f538",
     "packages/cli/test/sdk.test.ts": "71fe42ac3cee2aec463f32a6f32ff8532335326d18e848bcba5e6e73d7d86af3",
-    "packages/core/src/upstream-source.ts": "2d04f618135305fc909c6b3ba25dee81a5556aba0dc23ac0eb99e1951854e87d",
+    "packages/core/src/upstream-source.ts": "1828e60deb42607b328bc1520c6c5a8273fae51693bf6e9d6391016672058c26",
     "packages/core/test/source-git-runtime.test.ts": "2502378487ee73e7bbee17ef6dd3f1fee3f0a44cbeef30b8e98228b3b37ac0d5",
     "packages/core/node_modules/@effect/platform-node-shared/src/NodeChildProcessSpawner.ts": "0e1b55d9e2a52d8d05b720098f485f9d427fa41100795c340bf1ffa1406e1ee3",
-    "packages/core/node_modules/@effect/platform-node-shared/src/internal/nodeChildProcessSpawner.ts": "01c3a18cbb62c17952ff1c28e1011ac6fb4bbb04b9be532ad06467032d2093f4"
+    "packages/core/node_modules/@effect/platform-node-shared/src/internal/nodeChildProcessSpawner.ts": "01c3a18cbb62c17952ff1c28e1011ac6fb4bbb04b9be532ad06467032d2093f4",
+    "packages/core/src/shared-source-member-discovery.ts": "1056beb323e3a6d55b6edbfb1e87c7b63891962dae7e638b21b1527790b6c5c9",
+    "packages/core/test/shared-source-directory.test.ts": "cf335df954cf2793fb9efdc46a8112f872b8e8b1aff95f7568c650a60b0ff785"
   },
   "models": {
     "SharedProducer": {
@@ -531,6 +533,23 @@
       "name": "public_sdk_repeated_native_current_selection",
       "files": ["packages/core/test/sdk-immutable-read.node.test.ts"],
       "scope": "The public SDK regression uses refresh, refresh and max-age in three actual Node child processes sharing one real SQLite Store. It records child PID/exit, preserves the second real validation time and exact selected body/binding, requires zero warm HTTP and retains absent unselected resource bytes. A related-record metadata change must remain current while the immutable manifest stays fixed. The cache publication implementation and real first-writer race belong to current-lifecycle correspondence; neither SharedProducer nor RequestAdmission models manifest fields, SQLite atomic publication or cross-process cache reuse."
+    },
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "source_directory_shared_parent_deadline",
+      "files": [
+        "packages/core/src/upstream-source.ts",
+        "packages/core/src/shared-source-member-discovery.ts",
+        "packages/cli/src/sdk.ts",
+        "packages/core/test/shared-source-directory.test.ts"
+      ],
+      "symbols": [
+        "discoverSourceMembers withCurrentInvocationBudget",
+        "discoverRegisteredSourceMembers pre-publication check",
+        "discoverSourceDirectory caller-owned deadline",
+        "openSourceGitTree scoped acquisition"
+      ],
+      "scope": "The sole production SDK Source-directory entry installs the existing whole-invocation RequestBudget before the first Library read. Its default allowance remains 1000 HTTP requests, 512 MiB payload bytes and 600000 ms; an enclosing caller cancellation or shorter Pi preparation budget remains effective. Core directory fibers share this same service and do not each receive a new ten-minute allowance. The pure core export requires its caller to own the overall deadline. Provider and Notion paths retain existing admission and process-group cleanup. RequestBudget checks before candidate-cache read and publication prevent a caught provider exhaustion from becoming a completed partial cache observation. A real controlled HTTP case holds four Git fetches under one three-second parent budget, verifies the other two Sources never start, observes each original process handle termination and an empty final process-group inventory, and requires REQUEST_BUDGET_EXHAUSTED with no candidate cache or semantic write. Signal termination is recorded as the actual platform result, not fabricated as exit zero. These are concrete implementation regressions; the existing RequestAdmission and SharedProducer models do not model Git process groups, wire/object bytes, directory schemas, SQLite publication or wall-clock deadlines."
     }
   ],
   "maintenance": {
@@ -610,5 +629,11 @@
     "reviewed_files": ["packages/core/test/sdk-immutable-read.node.test.ts"],
     "boundary": "Reviewed the independent-process native repeat-selection regression against 3cb6a094f2b7eeb6898b839d1f395a887bb8f426. The existing processConsumer helper records each actual child PID and exit after its original stdout/stderr capture; it still runs the same public SDK worker. New refresh/refresh/max-age cases reuse real SQLite across three processes and distinguish the stored manifest proof from current Required metadata. Current resource sharing, detached producer lifetime, request identity, retry, cancellation, admission and budget guards are unchanged. The production cache publication change is owned by current-lifecycle; snapshot serialization and SQLite first-writer behavior are outside both request-engine models. All 21 configurations, independent rule inventories and 19 existing mutation targets remain unchanged. This review and hash update do not claim execution success.",
     "result": "correspondence_only; final-head implementation, model and complete existing mutation CI gates remain independently required"
+  },
+  "source_metadata_directory_review": {
+    "base_commit": "4f1af585695c26612c15f0f3ceaf5c41afbe4d65",
+    "scope": "The sole production SDK Source-directory entry installs the existing whole-invocation RequestBudget before the first Library read. Its default allowance remains 1000 HTTP requests, 512 MiB payload bytes and 600000 ms; an enclosing caller cancellation or shorter Pi preparation budget remains effective. Core directory fibers share this same service and do not each receive a new ten-minute allowance. The pure core export requires its caller to own the overall deadline. Provider and Notion paths retain existing admission and process-group cleanup. RequestBudget checks before candidate-cache read and publication prevent a caught provider exhaustion from becoming a completed partial cache observation. A real controlled HTTP case holds four Git fetches under one three-second parent budget, verifies the other two Sources never start, observes each original process handle termination and an empty final process-group inventory, and requires REQUEST_BUDGET_EXHAUSTED with no candidate cache or semantic write. Signal termination is recorded as the actual platform result, not fabricated as exit zero. These are concrete implementation regressions; the existing RequestAdmission and SharedProducer models do not model Git process groups, wire/object bytes, directory schemas, SQLite publication or wall-clock deadlines.",
+    "models_cases_rules_and_mutation_targets": "unchanged",
+    "proof_boundary": "Source hashes record reviewed implementation inputs. Model and mutation run results are recorded separately; real remote completeness and ordinary Pi delivery require separate accepted-package execution."
   }
 }
