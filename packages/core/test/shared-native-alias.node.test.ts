@@ -1,9 +1,10 @@
 import { afterAll, expect, test } from "vitest"
-import { ConfigProvider, Effect } from "effect"
+import { ConfigProvider, Crypto, Effect } from "effect"
 import { mkdtemp, readFile, readdir } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { exportSkill } from "../src/export.ts"
+import { withNotionChangeEvidence } from "../src/current-evidence.ts"
 import { trashPath } from "../src/local-locks.ts"
 import { readImportZip } from "../src/import.ts"
 import { property } from "../src/model.ts"
@@ -52,6 +53,9 @@ async function fixture() {
   const blockCalls: string[] = []
   const program = Effect.gen(function* () {
     const api = yield* Notion
+    const store = yield* Store
+    const crypto = yield* Crypto.Crypto
+    const credential = yield* api.credentialIdentity
     const native: Notion["Service"] = {
       ...api,
       request: (path, body, options) => {
@@ -91,7 +95,18 @@ async function fixture() {
           )
       },
     }
-    return native
+    // Alias rewriting still passes through production evidence capture for the real Store.
+    const observed: Notion["Service"] = {
+      ...native,
+      request: (path, body, options) =>
+        withNotionChangeEvidence(
+          credential,
+          api.apiOrigin ?? "https://api.notion.com",
+          path,
+          native.request(path, body, options),
+        ).pipe(Effect.provideService(Store, store), Effect.provideService(Crypto.Crypto, crypto)),
+    }
+    return observed
   })
   const config = ConfigProvider.layer(
     ConfigProvider.fromUnknown({

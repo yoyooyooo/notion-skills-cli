@@ -21,7 +21,7 @@
     "packages/core/src/shared-current-write.ts": "3b9984c7b39ae3fa21dc3228c58c3db7861013a078bff84c512a540fedb5f4e8",
     "packages/core/src/shared-source-references.ts": "d326dc74a1b97dd5c97e8164201dc3bfb2dad5bcf78e5c9ada9621c8f9e40399",
     "packages/core/src/skill-ref.ts": "638de57b0cad8904769e16dc421577ab47f356fa8449c2dab123993898cb367e",
-    "packages/core/src/snapshot.ts": "af8130cdbca29b9a16dece77e39a30c914610985f2eb6759963b512c29650a80",
+    "packages/core/src/snapshot.ts": "430cbded058870a1297999b4c4cb577ff5c23b4f39aea4364b562e6169071552",
     "packages/core/test/shared-current-import-plan.test.ts": "07d683662216ed09e8cb274cdb8f7cf4cbaf8afa048fb140d3bfe5ebc86b1730",
     "packages/core/test/shared-current-member-discovery.test.ts": "5a2414badcd01914a5d25b3445629d6d0aa6ea488b71b086a007f128a0971e19",
     "packages/core/test/shared-current-operation.test.ts": "6c5e8f47aa7278d7b4a9d8c0f1daefa2d9fab623f9552d4dd3137798d49dbc0f",
@@ -31,7 +31,7 @@
     "packages/core/test/skill-reference-guards.test.ts": "060982d502d1b8fc10298ec41196e44355e11192fe2e635c8e1b39b62640bb40",
     "packages/core/test/sqlite-state.node.test.ts": "524c54c3b3586c0159af322f3128856f6d5a313c06c36914104e58b05a87c782",
     "verification/models/skill-reference/mutations.json": "d2cfd8b9ac749c669fa0bd0494c6220fb52508bf8aee7921620b7030243dd182",
-    "packages/core/src/catalog.ts": "9edab08bcba24ac1a6afed8827f98c658517d80098ea5385814d7b5a9bd4a719",
+    "packages/core/src/catalog.ts": "57eafb59b6065d07dba5eb3bc561d2ae75d75bd554503ff5ffb631ab0f1862b7",
     "packages/core/src/library-selection.ts": "e1cff08feed83b3479566c1a47108d0126552c4bfbb72f0d74ad9e576b081e12",
     "packages/core/src/shared-library.ts": "90adf217346484735fd24d377261d3468068b93a4f03fc8f2a9df2197915445a",
     "packages/core/src/shared-library-model.ts": "331dfe22a7fb88cf97236dd860bceae280022e5473c7bc0d591bd8295bd04f1c",
@@ -723,5 +723,12 @@
       "packages/core/test/shared-current-operation.test.ts"
     ],
     "scope": "Reviewed the AH-1331 current-read delta. Shared current TTL reuse requires its saved CurrentEvidence and the returned current snapshot is checked again before acquisition returns. Fixed snapshot selection and exact identity/manifest/path checks remain unchanged. The existing known-access assertion is repeated before snapshot return and final graph admission so a denial accepted during local derived-directory reads blocks a pinned-only result. A paired actual graph regression preserves the same fixed pin after metadata-only changes; current fingerprints are not imposed on pins. authScope records only the successfully authenticated credential/origin-to-scope mapping needed by the evidence hook; failures still retain their denial path. The pending-operation fixture now narrows the StoreWriteOptions union and refuses an unrelated evidence option before applying its original expected-pending checks. No SkillReference finite model, case, rule inventory or reference-guard mutation changes. Current evidence, complete collections and graph admission are separately owned by current-lifecycle."
+  },
+  "smart_cache_ci_boundary_review": {
+    "reviewed_from": "6dcf43162b42d000c395805b035cd902df981e9a",
+    "issue": "AH-1330",
+    "files": ["packages/core/src/snapshot.ts", "packages/core/src/catalog.ts"],
+    "scope": "Offline current reads now surface an already known scope or target denial before a failed freshness check can report CACHE_MISSING. The selected fixed manifest, exact owner/path identity, late graph access check and pin stability are unchanged. catalog.authScope records the early credential/origin mapping only for Stores supporting currentEvidence; this retains original custom-Store behavior and does not grant content access from a matching hash. Current-evidence epoch/publication reasoning remains owned by current-lifecycle. No SkillReference finite model, configuration, rule inventory or production mutation changes.",
+    "evidence_boundary": "The retained smart-formal-final-01 result proves 61 configurations, 29 actual mutations and 15 SQLite/graph tests for the earlier 6dcf4316 candidate only; its separate RequestEngine failure remains recorded. Reviewed repaired bytes and focused implementation regressions do not relabel that candidate or replace the required exact-new-head CI model, guard and implementation results. Models and all complete expected-rule inventories are unchanged."
   }
 }

@@ -10,9 +10,9 @@
     "packages/core/test/shared-current-snapshot.test.ts": "e1da621f2243691f1cc67dc530e183d4305ffab3319fc29acb14b8354e7f92ad",
     "packages/core/test/shared-current-operation.test.ts": "6c5e8f47aa7278d7b4a9d8c0f1daefa2d9fab623f9552d4dd3137798d49dbc0f",
     "packages/core/test/shared-current-projection-write.test.ts": "aac29d0c9ef33b35597ffefce6cee9961833110e518082623d89d430e141b1bc",
-    "packages/core/src/cache.ts": "f53e53b88f9318a5aa590230b196fd98acd77a8c2549d98dad90d5b333d5e661",
+    "packages/core/src/cache.ts": "4a65106f5b7dd11bb4e049f9c41cb191fb9ff3564a2a70c6405dbc1c497f2bf8",
     "packages/core/src/fixed-snapshot-files.ts": "3f06a96da80d6d0d63515560465cdf0df4bb5f644a384fe1cd8017e535ef86e5",
-    "packages/core/src/snapshot.ts": "af8130cdbca29b9a16dece77e39a30c914610985f2eb6759963b512c29650a80",
+    "packages/core/src/snapshot.ts": "430cbded058870a1297999b4c4cb577ff5c23b4f39aea4364b562e6169071552",
     "packages/core/test/cache.test.ts": "2e6928423cbc76e00f831175696178a710cee9940fd80fdc6a2b042d1f7ccd0a",
     "packages/core/test/resource-read.test.ts": "58ab50f407c7726a0fc52066df87d0c06850cc1806e94ac9a7f181c79ebda298",
     "packages/core/test/sdk-immutable-read.node.test.ts": "738d92bb05a12a3b061671f052ec79cd3b4e491bc02cee3edc17f92ebad0e75a",
@@ -69,8 +69,8 @@
     "packages/core/src/shared-current-consumption.ts": "ad958e8e1e2785e4ec473c655acbe0446a2cea6399f22dc5cd068c62146dc6f8",
     "packages/core/src/shared-router-members.ts": "edebd449841334b4d5fe566d4221fa90bdf7aad1ba437d4ff3ea4844f0c05467",
     "packages/core/src/shared-source-ref-cache.ts": "dbedd16256b7ac7365bb3b7f67d54086ca3d44fe3d9f912c5168f01fc67a0902",
-    "packages/core/src/notion.ts": "090341e60914af020093b82903d501efb9933d4b27dd5b5600227e9138882b25",
-    "packages/core/src/catalog.ts": "9edab08bcba24ac1a6afed8827f98c658517d80098ea5385814d7b5a9bd4a719",
+    "packages/core/src/notion.ts": "39838e1fda51bf7c53344e2f02b2a95adee51f849a791bef437853c9829c1fb1",
+    "packages/core/src/catalog.ts": "57eafb59b6065d07dba5eb3bc561d2ae75d75bd554503ff5ffb631ab0f1862b7",
     "packages/cli/src/runtime.ts": "caf2f0f585967759155e88114cf584def84e10933fd5cc937b32bed7d94c3556",
     "packages/core/src/cache-retention-model.ts": "7f4ff2b5e96644cb7800174e3de4601265535849f1dc04850925e9ab830f9480",
     "packages/core/test/current-evidence.node.test.ts": "21f4132d8028241935c13f3e36e849d8f8253726d2bbf4107efec3c6cf07255c",
@@ -81,7 +81,7 @@
     "packages/core/test/notion.test.ts": "0d82988dae92940a4a42de2977b04051a3308bfeb8dc8ac052400f0fe2de3d05",
     "packages/core/test/shared-current-fixture.ts": "ed69b28c12a69b12dbcc5fbbe6f5dd8015982689734756db4cbcf28ee4f5ccaa",
     "packages/core/test/graph-prepare-live-fixture.ts": "071308c8a9734242189dfcd9c010490fce2cac49985f16a1c9d96d0174a9ed65",
-    "packages/core/test/shared-current-source-consumer-fixture.ts": "4a59a7b17f91e26dbf0948f2f2ae70e7aec50dea90300209520dc7a94a1fa881",
+    "packages/core/test/shared-current-source-consumer-fixture.ts": "780a469d55060e91b1fabfcfd5e19fbeab667de2d09c41a50738b125c45c2452",
     "packages/core/src/graph-derived-directory.ts": "662a50cea39abbf1f006203651b03ec51e2310c098afcdd6a430e8d7ad7b62c1"
   },
   "models": {
@@ -1702,5 +1702,19 @@
     ],
     "scope": "A pinned-only graph has no current read set. Reusing the existing access assertion before snapshot return and after all graph directory reads closes a known-denial observation accepted after initial access. The actual graph fixture separately proves denial rejection and metadata-only pin stability; the current graph guard mutation retains its original callsite and assertion. No new access API, content-current requirement for pins, formal transition, rule inventory or mutation-count change.",
     "evidence_boundary": "Reviewed source correspondence only; final frozen-candidate graph regressions and suite receipts remain required."
+  },
+  "smart_cache_ci_boundary_review": {
+    "reviewed_from": "6dcf43162b42d000c395805b035cd902df981e9a",
+    "issue": "AH-1330",
+    "files": [
+      "packages/core/src/cache.ts",
+      "packages/core/src/snapshot.ts",
+      "packages/core/src/notion.ts",
+      "packages/core/src/catalog.ts",
+      "packages/core/test/shared-current-source-consumer-fixture.ts"
+    ],
+    "scope": "Offline current access repeats the original known-access assertion before freshness can hide a denial as CACHE_MISSING. Physical grants retain their original causal publication gate and then preserve a surviving scope or page denial ahead of generic current-evidence rejection. Early authenticated scope association is required only for Stores implementing currentEvidence, preserving the legacy/custom Store side-effect contract. Detached immutable byte producers rebuild their own transport with a local MemoMap and omit the creator Store; the actual scoped current HTTP producer still owns its original evidence attempt. CurrentEvidence epochs, complete collection capture, final graph admission, pins and all 29 existing mutation cases are unchanged.",
+    "fixtures": "The Source page fixture now supplies last_edited_time and advances it when its selected definition or contributions change. The separate real-Store lifecycle/native-alias fixtures run their fake requests through the production evidence hook; the writer fixture selects its already-declared API origin before ConfigProvider captures the environment. Their original restart, byte, export, no-replay and zero-write assertions remain intact. These setup repairs do not add a finite-model transition or a new guard-mutation claim.",
+    "evidence_boundary": "The retained smart-formal-final-01 result proves 61 configurations, 29 actual mutations and 15 SQLite/graph tests for the earlier 6dcf4316 candidate only; its separate RequestEngine failure remains recorded. Reviewed repaired bytes and focused implementation regressions do not relabel that candidate or replace the required exact-new-head CI model, guard and implementation results. Models and all complete expected-rule inventories are unchanged."
   }
 }
