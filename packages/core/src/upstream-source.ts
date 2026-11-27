@@ -321,7 +321,9 @@ function git(
                 GIT_TRACE: "0",
                 GIT_TRACE_PACKET: "0",
                 GIT_TRACE_CURL: "0",
-                GIT_CURL_VERBOSE: "0",
+                // Git tests this legacy libcurl flag for presence, so "0" enables it.
+                // Remove inherited values to keep HTTP headers out of diagnostics.
+                GIT_CURL_VERBOSE: undefined,
                 GIT_TRACE_SETUP: "0",
                 GIT_TRACE_PERFORMANCE: "0",
                 GIT_TRACE2: "0",

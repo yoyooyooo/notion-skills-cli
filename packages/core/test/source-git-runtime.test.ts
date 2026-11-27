@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test"
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { Effect, Exit, FileSystem, Layer } from "effect"
+import { Effect, Exit, FileSystem, Layer, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
+import { createServer } from "node:http"
 import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -117,6 +118,90 @@ test.each(["upstream", "fixed"] as const)(
     expect(calls[0]).toContain("--no-lazy-fetch")
   },
 )
+
+test("Git transport keeps response headers out of disabled curl diagnostics", async () => {
+  const marker = `private-git-header-${randomUUID()}`
+  const requests: string[] = []
+  const server = createServer((request, response) => {
+    requests.push(request.url ?? "")
+    response.writeHead(404, {
+      "content-type": "text/plain",
+      "x-source-diagnostic-marker": marker,
+    })
+    response.end("Controlled missing repository\n")
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const address = server.address()
+  if (!address || typeof address === "string") throw new Error("No owned HTTP fixture address")
+  const chunks: Uint8Array[] = []
+  try {
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const directory = yield* fs.makeTempDirectoryScoped({ prefix: "ntn-git-trace-" })
+          const real = yield* ChildProcessSpawner.ChildProcessSpawner
+          const observed = ChildProcessSpawner.make((command) => {
+            if (command._tag !== "StandardCommand" || command.command !== "git")
+              throw new Error("Only the real Git fixture is allowed")
+            return real
+              .spawn(
+                ChildProcess.make(command.command, command.args, {
+                  ...command.options,
+                  env: {
+                    ...command.options.env,
+                    GIT_CONFIG_NOSYSTEM: "1",
+                    GIT_CONFIG_GLOBAL: "/dev/null",
+                  },
+                }),
+              )
+              .pipe(
+                Effect.map((handle) => ({
+                  ...handle,
+                  stderr: handle.stderr.pipe(
+                    Stream.tap((chunk) =>
+                      Effect.sync(() => {
+                        chunks.push(chunk)
+                      }),
+                    ),
+                  ),
+                })),
+              )
+          })
+          return yield* runSourceGit(directory, [
+            "ls-remote",
+            `http://127.0.0.1:${address.port}/source.git`,
+          ]).pipe(
+            Effect.result,
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, observed),
+          )
+        }),
+      ).pipe(Effect.provide(services)),
+    )
+    const stderr = Buffer.concat(chunks).toString("utf8")
+    if (process.env.NTN_SOURCE_GIT_TRACE_EVIDENCE)
+      await writeFile(
+        process.env.NTN_SOURCE_GIT_TRACE_EVIDENCE,
+        JSON.stringify({ result, requests, marker, stderr }, null, 2) + "\n",
+      )
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        code: "UPSTREAM_GIT_FAILED",
+        details: { operation: "ls-remote", exit_code: 128 },
+      },
+    })
+    expect(requests).toEqual(["/source.git/info/refs?service=git-upload-pack"])
+    expect(stderr).not.toContain(marker)
+    expect(stderr).not.toContain("=> Send header")
+    expect(stderr).not.toContain("<= Recv header")
+  } finally {
+    server.closeAllConnections()
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    )
+  }
+})
 
 function processState(pid: number) {
   try {
