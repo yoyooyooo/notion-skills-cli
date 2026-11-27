@@ -21,10 +21,25 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-source-manager-dispatch.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/catalog-retirement.node.test.ts packages/core/test/source-materialization-finalization.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/candidate-snapshot.node.test.ts packages/core/test/shared-sqlite.node.test.ts -t "actual SDK Source discovery|Source candidate metadata|unfinished materialization input"
-bun test packages/core/test/shared-source-member-discovery.test.ts packages/core/test/shared-source-materialization-management.test.ts packages/core/test/shared-source-materialization-receipt.test.ts packages/core/test/shared-source-materialization-legacy-registration.test.ts packages/cli/test/management.test.ts packages/cli/test/source-manager-transport.test.ts packages/core/test/shared-current-source-writer.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-source-write.test.ts --timeout 60000
+bun test packages/core/test/shared-source-registration-compat.test.ts packages/core/test/shared-source-member-discovery.test.ts packages/core/test/shared-source-materialization-management.test.ts packages/core/test/shared-source-materialization-receipt.test.ts packages/core/test/shared-source-materialization-legacy-registration.test.ts packages/cli/test/management.test.ts packages/cli/test/source-manager-transport.test.ts packages/core/test/shared-current-source-writer.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-source-write.test.ts --timeout 60000
 ~~~
 
 这些命令分别证明 fixture 机制、实际 core 管理和恢复，不代表 Pi 已取得正文。 fixture 预检必须经过生产 Source、current owner、Members 和 Requires parser；惰性 Members 保持 enabled 但缺正文，另保留 disabled 关系拒绝反例。新增持久地址必须通过真实 SQLite 与另一 Node 进程：候选缓存可更新、清理且不能跨 scope；冻结物化输入不可替换、不能被 cache retirement 清掉，完成才物理退役。只用 Map Store 的管理单测无法覆盖地址分类和 schema，不能替代这一层。正式命令按仓库当前测试入口执行，不能把未找到测试、编译错误或超时算作反例杀死。
+
+## 历史注册的读取与管理边界
+
+历史 Notion Options 的 version/adapter/settings 信封保留原值参与注册 digest。
+`target_mode` 是有界分类标签，prefix 是旧发布身份提示，均不重写 Git 文件路径。
+`storage=auto|fixed-git` 沿当前完整固定 Git 文件合同；显式 `retained` 仍需单独管理决定。
+共享 target set 必须同时有合法 publisher ID 和固定 accepted commit，完整只读发现
+不意味着一个 Source 可以覆盖原合并目标。需要这种写入的候选返回 blocked/reason，
+manager 重读声明后独立拒绝；已有 ready 物理记录仍可按普通消费合同处理。
+
+仅历史 Notion 注册读取接受精确 Selection version=1，再交给原严格成员选择 schema。
+新声明 API 的 schema 没有放宽，未知版本、多余字段、非法路径和未知 adapter/settings
+仍拒绝。每个失败绑定已验证的 Source ID；不能因无匹配候选而隐藏 partial，不能跳过
+一个未完成的 Source 来证明名字全库唯一。新回归使用实际注册 parser、只读发现和
+core manager 的远端写账本；真实 Git/包/宿主和多 Source 覆盖另验，不扩大有限模型结论。
 
 ## 幂等管理回执
 

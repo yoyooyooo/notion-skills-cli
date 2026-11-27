@@ -1,4 +1,7 @@
-import { sourceDefinitionOptions } from "./shared-source-definition-options.ts"
+import {
+  assertCurrentSourceWriteOptions,
+  sourceDefinitionOptions,
+} from "./shared-source-definition-options.ts"
 import { Effect, Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import type { createRequestMetrics } from "./request-metrics.ts"
@@ -152,6 +155,7 @@ export function validateCurrentSourceInput(input: unknown): CurrentSourceDeclara
     onExcessProperty: "error",
   })
   const requested = validateSourceDefinition(decoded.definition)
+  assertCurrentSourceWriteOptions(requested.options)
   validateCurrentSourceId(requested.source_id)
   const url = gitUrl(requested)
   if (requested.adapter.type !== "git") throw unsupported("Use a Git Source.")
