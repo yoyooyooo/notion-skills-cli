@@ -298,6 +298,39 @@ describe("shared current complete-tree validation receipts", () => {
     expect(f.calls).toEqual([])
   })
 
+  test.each(["missing", "mismatched"] as const)(
+    "publication rejects a %s immutable winner without changing current or its proof",
+    async (mode) => {
+      const f = currentSnapshotFixture()
+      const current = await f.open()
+      const key = `snapshots/${current.snapshot_id}.json`
+      const stored = decode(SnapshotSchema, f.json.get(key))
+      const observations = structuredClone(latestEntries(f))
+      const proofs = proofKeys(f).map((proofKey) => structuredClone(f.json.get(proofKey)))
+      if (mode === "missing") f.json.delete(key)
+      else
+        f.json.set(key, {
+          ...stored,
+          files: stored.files.map((file, index) =>
+            index === 0 ? { ...file, bytes: file.bytes + 1 } : file,
+          ),
+        })
+      f.clearCalls()
+      const publication = await f.run(
+        publishSnapshotObservation(current, Date.now(), 2, {
+          sharedBodyValidUntil: Date.now() + 60_000,
+        }).pipe(Effect.result),
+      )
+      expect(publication._tag).toBe("Failure")
+      if (publication._tag !== "Failure")
+        throw new Error("An unbound immutable winner was published")
+      expect(publication.failure.code).toBe("STATE_CORRUPT")
+      expect(latestEntries(f)).toEqual(observations)
+      expect(proofKeys(f).map((proofKey) => f.json.get(proofKey))).toEqual(proofs)
+      expect(f.calls).toEqual([])
+    },
+  )
+
   test("publishing cannot sign or advance current on broken references or unchecked bytes", async () => {
     const f = currentSnapshotFixture()
     const first = await f.open()

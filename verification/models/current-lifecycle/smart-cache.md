@@ -148,6 +148,15 @@ SelectionPins 对应显式 Source 选择与 Broker 已接受 pin；AdmissionProg
 相同 pin 和字节。固定版本不承担 current 指纹检查，这个晚到拒绝的时序边界也不声称
 已被 SelectionPins 的有限状态枚举。
 
+不可变 snapshot 的存储值与 tree proof 另有真实实现义务：相同 snapshot ID 的重复
+refresh，以及两个首次写者都观察到 missing 的交错，必须以实际 Store 中的不可变赢家
+绑定完整 manifest 摘要。`created_at` 保留该 manifest 的首次值；本次真实远端观察仍
+推进自己的 `validated_at`，本地命中不续期。真实 SQLite 回归与三个独立 Node SDK
+进程检查双 refresh 后的五分钟暖读 0 HTTP、原正文/ref/验证时间及未选资源仍惰性；
+Broker 的 `source-materialize-native-root` 负责管理前后重复选择接入实际 Pi 的交接。
+这些序列化字段、SQLite 首次写入和实际进程的性质没有被本切片的有限时间格建模，
+不能由现有模型通过代填，也不减少 manifest 校验或改变独立正文期限。
+
 生产回归负责真实 SQLite/进程重启、多检查并发、时钟异常、权限恢复、任意实际图和
 动态成员变化。真实 Notion 负责元信息、分页及实际 API 观察边界；安装后两个新 Pi
 及普通 $ 入口负责完整 root + Requires 进入 provider 和全部前后台 HTTP。

@@ -19,6 +19,7 @@ import {
 import { nodeRuntime } from "../../cli/src/runtime.ts"
 import { clearCache, locallySelectedScope } from "../src/cache.ts"
 import { property } from "../src/model.ts"
+import { canonicalSharedJson } from "../src/shared-records.ts"
 import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import { currentSourceConsumerFixture } from "./shared-current-source-consumer-fixture.ts"
 import {
@@ -876,6 +877,10 @@ async function processConsumer(root: string, options: ReturnType<typeof sdkOptio
     })
     await writeFile(requestFile + ".stdout", stdout)
     await writeFile(requestFile + ".stderr", stderr)
+    await writeFile(
+      requestFile + ".process.json",
+      JSON.stringify({ pid: child.pid, exit_code: exit, entry: worker, request: requestFile }),
+    )
     expect(exit, stderr).toBe(0)
     return JSON.parse(stdout) as Awaited<ReturnType<typeof consume>>
   }
@@ -985,6 +990,158 @@ test("public SDK reuses complete five-minute online graphs across independent pr
     console.info(JSON.stringify({ publicSdkHotGraphEvidence: root }))
   }
 })
+
+test.each([false, true])(
+  "public SDK repeated native refresh preserves the immutable manifest proof for the next process (Required metadata changes: %s)",
+  async (changeRequiredMetadata) => {
+    const root = await mkdtemp(join(await realpath(tmpdir()), "sdk-native-repeat-refresh-"))
+    const source = await startSdkSourceFixture(
+      await sample(undefined, changeRequiredMetadata),
+      join(root, "requests.jsonl"),
+    )
+    const options = sdkOptions(source, root, "shared")
+    const refresh = { ...fiveMinuteUse, freshness: { policy: "refresh" } }
+    try {
+      const invoke = await processConsumer(root, options)
+      const first = readyConsumption(await invoke(refresh))
+      const rootId = first.preparation.roots[0]!.id
+      const binding = first.preparation.session_bindings.find(
+        (value) => value.record.id === rootId,
+      )!
+      const snapshotPath = join(
+        options.env.NTN_SKILLS_HOME,
+        "snapshots",
+        binding.snapshot_id + ".json",
+      )
+      const originalManifest = await readFile(snapshotPath)
+      await expect(
+        readFile(join(options.env.NTN_SKILLS_HOME, "objects", hash)),
+      ).rejects.toMatchObject({ code: "ENOENT" })
+      if (changeRequiredMetadata) {
+        const child = source.notion.skills.find((row: { id: string }) => row.id === currentId(902))
+        child.properties.Name.title[0].plain_text = "Current Required name"
+        child.last_edited_time = "2026-11-18T00:01:00.000Z"
+      }
+      source.setPhase("second-refresh")
+      const refreshed = readyConsumption(await invoke(refresh))
+      expect(
+        refreshed.preparation.session_bindings.find((value) => value.record.id === rootId),
+      ).toEqual(binding)
+      if (!changeRequiredMetadata)
+        expect(refreshed.preparation.session_bindings).toEqual(first.preparation.session_bindings)
+      const firstNode = first.preparation.nodes
+        .filter((node) => node.state === "prepared")
+        .find((node) => node.id === rootId)!
+      const refreshedNode = refreshed.preparation.nodes
+        .filter((node) => node.state === "prepared")
+        .find((node) => node.id === rootId)!
+      expect(Date.parse(refreshedNode.freshness!.validated_at!)).toBeGreaterThan(
+        Date.parse(firstNode.freshness!.validated_at!),
+      )
+      expect(await readFile(snapshotPath)).toEqual(originalManifest)
+      const observations = currentObservations(options)
+      const database = new DatabaseSync(join(options.env.NTN_SKILLS_HOME, "state.sqlite"), {
+        readOnly: true,
+      })
+      let retained: unknown
+      try {
+        const stored = database
+          .prepare("SELECT manifest FROM snapshots WHERE id = ?")
+          .get(binding.snapshot_id)
+        const proof = database
+          .prepare("SELECT payload FROM shared_local_records WHERE key = ?")
+          .get(
+            `cache/shared-current-tree-validation/${refreshed.preparation.scope}/${binding.snapshot_id}.json`,
+          )
+        if (typeof stored?.manifest !== "string" || typeof proof?.payload !== "string")
+          throw new Error("Missing persisted immutable manifest proof")
+        retained = {
+          manifest: JSON.parse(stored.manifest),
+          proof: JSON.parse(proof.payload),
+          observations,
+        }
+      } finally {
+        database.close()
+      }
+      await writeFile(join(root, "before-warm.json"), JSON.stringify(retained, null, 2))
+      if (changeRequiredMetadata) {
+        const observation = observations
+          .map((row) => JSON.parse(String(row.payload)))
+          .find((value) => value.record_identity === rootId)
+        expect(observation.current_snapshot.required[0].metadata.name).toBe("Current Required name")
+        expect(JSON.parse(originalManifest.toString()).required[0].metadata.name).not.toBe(
+          "Current Required name",
+        )
+      }
+      source.setPhase("warm")
+      const before = source.requests.length
+      const warm = readyConsumption(await invoke(fiveMinuteUse))
+      const processes = await Promise.all(
+        [0, 1, 2].map(async (serial) =>
+          JSON.parse(await readFile(join(root, `selection-${serial}.json.process.json`), "utf8")),
+        ),
+      )
+      await writeFile(
+        join(root, "repeat-refresh.json"),
+        JSON.stringify(
+          {
+            processes,
+            requests_before_warm: before,
+            warm_requests: source.requests.slice(before),
+            first,
+            refreshed,
+            warm,
+          },
+          null,
+          2,
+        ),
+      )
+      expect(new Set(processes.map((row) => row.pid)).size).toBe(3)
+      expect(processes.every((row) => row.exit_code === 0)).toBe(true)
+      expect(source.requests).toHaveLength(before)
+      expect(warm.preparation.session_bindings).toEqual(refreshed.preparation.session_bindings)
+      if (changeRequiredMetadata) {
+        const warmRoot = warm.preparation.nodes
+          .filter((node) => node.state === "prepared")
+          .find((node) => node.id === rootId)!
+        expect(warmRoot.required[0]?.name).toBe("Current Required name")
+      }
+      expect(
+        warm.preparation.nodes
+          .filter((node) => node.state === "prepared")
+          .map((node) => ({
+            content: node.content,
+            source: node.source,
+            validated_at: node.freshness?.validated_at,
+          })),
+      ).toEqual(
+        refreshed.preparation.nodes
+          .filter((node) => node.state === "prepared")
+          .map((node) => ({
+            content: node.content,
+            source: "local_cache",
+            validated_at: node.freshness?.validated_at,
+          })),
+      )
+      expect(currentObservations(options)).toEqual(observations)
+      const state = property(retained),
+        proof = property(state.proof)
+      expect(proof.manifest_sha256).toBe(
+        createHash("sha256").update(canonicalSharedJson(state.manifest)).digest("hex"),
+      )
+      expect(proof.verified_paths).toEqual(["SKILL.md"])
+      expect(await readFile(snapshotPath)).toEqual(originalManifest)
+      await expect(
+        readFile(join(options.env.NTN_SKILLS_HOME, "objects", hash)),
+      ).rejects.toMatchObject({ code: "ENOENT" })
+      expect(source.unexpected).toEqual([])
+      noConsumerWrites(source)
+    } finally {
+      await source.close()
+      console.info(JSON.stringify({ publicSdkRepeatedNativeRefreshEvidence: root }))
+    }
+  },
+)
 
 test("public SDK default one-hour freshness reuses a thirty-minute graph and revalidates at expiry", async () => {
   const root = await mkdtemp(join(await realpath(tmpdir()), "sdk-default-hour-"))

@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { ConfigProvider, Crypto, Effect, Layer, Schema } from "effect"
-import { mkdtemp } from "node:fs/promises"
+import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
@@ -12,7 +12,9 @@ import {
 } from "../src/current-evidence.ts"
 import { trashPath } from "../src/local-locks.ts"
 import { loadSnapshotManifest, openFixedSnapshotFiles } from "../src/fixed-snapshot-files.ts"
-import { property } from "../src/model.ts"
+import { property, SnapshotSchema } from "../src/model.ts"
+import { validateCachedSharedCurrentTree } from "../src/cache.ts"
+import { canonicalSharedJson } from "../src/shared-records.ts"
 import { Notion } from "../src/notion.ts"
 import { parseTarget } from "../src/ref.ts"
 import { resolveCurrentSkillConsumption } from "../src/shared-current-consumption.ts"
@@ -157,6 +159,144 @@ function addFile(f: Fixture) {
   f.files.push(row)
   f.bodies.set(row.id, "# Newly added supporting file\n")
 }
+
+test("concurrent native selections bind both tree proofs to the actual immutable SQLite winner", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "shared-native-first-writer-"))
+  const f = currentSnapshotFixture({ fileCount: 1 })
+  const resource = await f.resource(
+    0,
+    "scripts/lazy.sh",
+    currentBytes("#!/bin/sh\necho lazy\n"),
+    "100755",
+  )
+  await withRealEvidence(
+    f,
+    async (h) => {
+      const missing = [
+        Promise.withResolvers<{ key: string; at: number }>(),
+        Promise.withResolvers<{ key: string; at: number }>(),
+      ]
+      const release = [Promise.withResolvers<void>(), Promise.withResolvers<void>()]
+      const candidates: unknown[] = []
+      const pending: Array<Promise<Effect.Success<ReturnType<typeof openSharedSnapshot>>>> = []
+      const controlled = (actor: number): Store["Service"] => {
+        let stopped = false
+        return {
+          ...h.store,
+          readJson: (key, schema) =>
+            Effect.gen(function* () {
+              const value = yield* h.store.readJson(key, schema)
+              if (!stopped && key.startsWith("snapshots/") && value === undefined) {
+                stopped = true
+                missing[actor]!.resolve({ key, at: Date.now() })
+                yield* Effect.promise(() => release[actor]!.promise)
+              }
+              return value
+            }),
+          writeJson: (key, value, options) =>
+            Effect.gen(function* () {
+              if (key.startsWith("snapshots/")) candidates[actor] = structuredClone(value)
+              return yield* h.store.writeJson(key, value, options)
+            }),
+        }
+      }
+      const start = (actor: number) => {
+        const producer = h.run(
+          openSharedSnapshot({
+            library: currentLibrary,
+            target: f.main.id,
+            scope: currentScope,
+            startedAt: Date.now(),
+            forceFull: true,
+            requestedPaths: ["SKILL.md"],
+          }).pipe(Effect.provideService(Store, controlled(actor))),
+        )
+        void producer.catch(() => undefined)
+        pending.push(producer)
+        return producer
+      }
+      const reached = async (actor: number, producer: (typeof pending)[number]) => {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+          return await Promise.race([
+            missing[actor]!.promise,
+            producer.then(() => {
+              throw new Error("Producer completed before the snapshot-missing barrier")
+            }),
+            new Promise<never>((_resolve, reject) => {
+              timer = setTimeout(
+                () => reject(new Error("Snapshot-missing barrier timed out")),
+                10_000,
+              )
+            }),
+          ])
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+      try {
+        const first = start(0),
+          a = await reached(0, first)
+        // Use the real clock: the second producer begins only after the first has
+        // already constructed its candidate and observed the immutable slot empty.
+        while (Date.now() <= a.at) await new Promise((resolve) => setTimeout(resolve, 1))
+        const second = start(1),
+          b = await reached(1, second)
+        expect(b.key).toBe(a.key)
+        release[0]!.resolve()
+        const winner = await first
+        const winnerBytes = await readFile(join(h.store.root, a.key))
+        release[1]!.resolve()
+        const follower = await second
+        const stored = await h.run(h.store.readJson(a.key, SnapshotSchema))
+        if (stored === undefined) throw new Error("The immutable winner was not persisted")
+        const proof = property(
+          await h.run(
+            h.store.readJson(
+              `cache/shared-current-tree-validation/${currentScope}/${stored.snapshot_id}.json`,
+              Schema.Unknown,
+            ),
+          ),
+        )
+        await writeFile(
+          join(directory, "first-writer.json"),
+          JSON.stringify(
+            { barriers: [a, b], candidates, winner, follower, stored, proof },
+            null,
+            2,
+          ),
+        )
+        expect(property(candidates[1]).created_at).toBeGreaterThan(
+          Number(property(candidates[0]).created_at),
+        )
+        expect(stored.created_at).toBe(winner.created_at)
+        // Fresh observations keep their own acquisition/metadata. Only the proof
+        // is bound to the actual persisted immutable selection.
+        expect(follower.created_at).toBe(property(candidates[1]).created_at)
+        expect(await readFile(join(h.store.root, a.key))).toEqual(winnerBytes)
+        expect(proof.manifest_sha256).toBe(currentDigest(canonicalSharedJson(stored)))
+        expect(proof.verified_paths).toEqual(["SKILL.md"])
+        await expect(h.run(validateCachedSharedCurrentTree(stored))).resolves.toMatchObject({
+          snapshot_id: stored.snapshot_id,
+        })
+        const omitted = stored.files.find((file) => file.path === "scripts/lazy.sh")
+        expect(omitted?.sha256).toBe(resource.sha256)
+        if (omitted === undefined)
+          throw new Error("The complete immutable directory lost the lazy resource")
+        await expect(h.run(h.store.readBytes(`objects/${omitted.sha256}`))).rejects.toMatchObject({
+          code: "SNAPSHOT_MISSING",
+        })
+        expect(f.semanticWrites()).toEqual([])
+      } finally {
+        for (const gate of release) gate.resolve()
+        await Promise.allSettled(pending)
+      }
+    },
+    true,
+    directory,
+  )
+  console.info(JSON.stringify({ sharedNativeFirstWriterEvidence: directory }))
+})
 
 test("real SQLite captures the complete native read set without extra requests or renewed body times", async () => {
   const f = currentSnapshotFixture()
