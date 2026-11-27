@@ -1,4 +1,9 @@
-import { expect, test } from "bun:test"
+import { afterAll, expect, test } from "bun:test"
+import { mkdtemp, realpath } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { Effect } from "effect"
+import { trashPath } from "../../core/src/local-locks.ts"
 import * as sdk from "../src/sdk.ts"
 import {
   checkSources,
@@ -12,6 +17,11 @@ import { createRequestMetrics } from "../../core/src/request-metrics.ts"
 import { DEFAULT_CURRENT_INVOCATION_BUDGET } from "../../core/src/shared-current-invocation.ts"
 
 const libraryRoot = "00000000-0000-4000-8000-000000000002"
+const configRoot = await realpath(await mkdtemp(join(tmpdir(), "ntn-management-test-")))
+const env = { NTN_SKILLS_CONFIG_HOME: configRoot }
+afterAll(async () => {
+  if (process.platform === "darwin") await Effect.runPromise(trashPath(configRoot))
+})
 const request: SourceSyncInput = {
   library: libraryRoot,
   source_ids: ["team-skills"],
@@ -30,7 +40,7 @@ test("management is an explicit public capability and does not appear on the con
 test("management pre-abort shares the SDK cleanup and exact zero-request metrics boundary", async () => {
   const reports: unknown[] = []
   const options = {
-    env: {},
+    env,
     signal: AbortSignal.abort(),
     onRequestMetrics: (value: unknown) => reports.push(value),
   }
@@ -42,7 +52,7 @@ test("management pre-abort shares the SDK cleanup and exact zero-request metrics
 
 test("invalid management inputs fail before acquiring runtime or credentials", async () => {
   const reports: unknown[] = []
-  const options = { env: {}, onRequestMetrics: (value: unknown) => reports.push(value) }
+  const options = { env, onRequestMetrics: (value: unknown) => reports.push(value) }
   for (const changed of [
     { ...request, library: "" },
     { ...request, library: "skill://old/SKILL.md" },

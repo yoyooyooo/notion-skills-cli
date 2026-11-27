@@ -59,11 +59,25 @@ async function fixture(body: string) {
 async function eventually(path: string) {
   for (let attempt = 0; attempt < 200; attempt++) {
     try {
-      return await readFile(path, "utf8")
+      const value = await readFile(path, "utf8")
+      if (value !== "") return value
     } catch {}
     await new Promise((done) => setTimeout(done, 10))
   }
   throw new Error("fixture child did not finish")
+}
+
+async function eventuallyExited(pid: number) {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    try {
+      process.kill(pid, 0)
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ESRCH") return
+      throw error
+    }
+    await new Promise((done) => setTimeout(done, 10))
+  }
+  throw new Error("fixture child remains alive")
 }
 
 test("fixed local manager receives literal JSON and never inherits client credentials or arbitrary env", async () => {
@@ -109,19 +123,35 @@ test("an explicit missing binding and shell-bearing command are rejected before 
 test("foreground cancellation detaches while the accepted fixed manager finishes its original request", async () => {
   const dir = await mkdtemp(join(root, "detached-"))
   const accepted = join(dir, "accepted"),
-    completed = join(dir, "completed")
+    completed = join(dir, "completed"),
+    processId = join(dir, "pid")
   const f = await fixture(
-    `await writeFile(${JSON.stringify(accepted)},request.request_id);await new Promise(done=>setTimeout(done,150));await writeFile(${JSON.stringify(completed)},request.request_id);respond({ready:true});`,
+    `await writeFile(${JSON.stringify(processId)},String(process.pid));await writeFile(${JSON.stringify(accepted)},request.request_id);await new Promise(done=>setTimeout(done,150));await writeFile(${JSON.stringify(completed)},request.request_id);respond({ready:true});`,
   )
   const controller = new AbortController()
   const waiting = invokeSourceManager(input, f.binding, { ...f.options, signal: controller.signal })
-  expect(await eventually(accepted)).toBe("fixture-request")
-  controller.abort()
-  await expect(waiting).rejects.toMatchObject({
-    code: "CANCELLED",
-    details: { phase: "outcome_unknown", request_id: "fixture-request" },
-  })
-  expect(await eventually(completed)).toBe("fixture-request")
+  const outcome = waiting.then(
+    (value) => ({ ok: true, value }),
+    (error: unknown) => ({ ok: false, error }),
+  )
+  try {
+    expect(await eventually(accepted)).toBe("fixture-request")
+    controller.abort()
+    expect(await outcome).toMatchObject({
+      ok: false,
+      error: {
+        code: "CANCELLED",
+        details: { phase: "outcome_unknown", request_id: "fixture-request" },
+      },
+    })
+    expect(await eventually(completed)).toBe("fixture-request")
+  } finally {
+    controller.abort()
+    await outcome
+    const pid = Number(await eventually(processId))
+    expect(Number.isSafeInteger(pid) && pid > 0).toBe(true)
+    await eventuallyExited(pid)
+  }
 })
 
 test("pre-dispatch cancellation does not start a manager", async () => {

@@ -61,6 +61,18 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 complete empty 必须撤掉旧项。两库、换凭据、disabled 与精确 physical 拒绝分别隔离。
 这里不证明 Pi 下拉首帧、同屏更新、高亮或排队输入；这些仍由 Broker integration 验。
 
+目录退休沿 `packages/core/test/catalog-retirement.node.test.ts` 使用真实 Store/SQLite。
+同一 scope 混有旧 v1 Library 描述符和当前 v2 目录时，退休只读取稳定归属信息，
+不要求旧 records 或 Library 描述符通过当前消费 schema。无法确认归属、非完整、
+payload scope 不符或数据库 ID 无法规范化时保守退休；完整且可证明无关的目录、
+其他 scope 和管理 journal 保留。已预留但尚未发布的目录 generation 同样被 fence，
+迟到写不能复活旧项。当前消费仍拒绝 v1 描述符，底层 I/O 和无法解析的存储 JSON
+错误仍向上传播，不以清除用户缓存代替此回归。
+
+~~~sh
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/catalog-retirement.node.test.ts
+~~~
+
 缓存、变化证据、TTL、库选择、启动/SDK 次序或跨会话复用变化，按 [T01 合同入口](../../../verification/skill-domains.json) 交接 Broker integration：执行 `notion-sdk-pi.mjs` 的 `http-warm-restart`、`http-warm-directory-expired`、`http-smart-revalidate` 和 `http-smart-current`，再沿 `verify-pi-daily-installation.mjs cache-plan/cache-run` 复验普通安装。核新 PID/session、准确的 snapshot/校验时间、完整根与 Requires 的实际 provider 全文，并将目录 HTTP、metadata 续证和正文下载分开；已观察 Required 变化后取消/429 不得回退旧 current，原已接纳 pin 不升级。这里的 SDK 通过只记局部覆盖，不能记作 T01 host 通过。 原生根引用待物化 Source Requires 的交错还必须沿 `source-materialize-native-root` 检查：管理前已选过原生正文、管理后强制 consume，再在五分钟内启动新 Pi，原生根与 Source Requires 都须复用，且该暖读阶段的全部前后台远端请求为 0。
 
 安装层复用 [portable-export-package-consumption](../verify-ntn-skills/features/portable-export-package-consumption.md) 的实际包入口。旧远端恢复或已退出命令的步骤不可继承；包未切换记缺口。Pi 由 Broker integration 沿 AH-1197/AH-637/AH-1198 验；AH-1063 仅为历史基线，不扩 OMP/Tern。
