@@ -50,7 +50,7 @@ bun test packages/core/test/shared-source-member-discovery.test.ts packages/core
 
 | 初态 | 必须保留及新增的事实 | 必须检查的负面结果 |
 | --- | --- | --- |
-| `legacy-members` | 已声明三个 Contributions；root 与真实 Requires 两行缺 Content/Current State；沿原 Skill ID、physical page、Main File ID 物化两者 | 第三个 legacy sibling 仍未初始化；人工 Enabled/Default Context/Requires/Members 不变 |
+| `legacy-members` | 已声明三个 Contributions；root 与真实 Requires 两行的 Content/Current State 属性存在且值为空；沿原 Skill ID、physical page、Main File ID 物化两者 | 第三个 legacy sibling 仍未初始化；人工 Enabled/Default Context/Requires/Members 不变 |
 | `source-only` | 已有 Source 注册和完整 Git plan；没有该成员 Skill 行；第一次明确引用建立唯一成员 | 新候选不冒充有 physical page 的 ContentRecord；无同名替代、无全仓成员展开 |
 | `legacy-source` | Source Status=applied，Content/Contributions/Operation 为空，Last Revision 是原 Git commit；旧 Skill 用 Origin 和额外 Source Member 字段关联 | 旧 revision 只冻结 accepted commit，不能充当 current plan；不拿旧 ZIP/生成正文推断当前字节；保留旧行身份，不丢 Requires |
 | `manifest-growth` | 已 ready 的 M 与新请求 R 合并；完整旧 manifest/Contributions 保留；accepted commit 固定 | Source revision 改变后 M 的 descriptor 也对应新 revision；不顺便物化 unready sibling |
@@ -64,13 +64,13 @@ bun test packages/core/test/shared-source-member-discovery.test.ts packages/core
 1. 对同一精确 Library/Source/member 运行 readonly discoverSourceMembers，记录 scope、registration digest、accepted commit/revision、真实物理候选和覆盖失败。源码、补全、列表、模型 read/use 和普通 SDK consume 都不获得管理权限。不存在的行只返回 SourceMemberCandidate。
 2. 真正用户输入的字面 `$name` 才签发当前 input receipt。引用/代码围栏里的美元名、模型生成文本、旧分支、旧 session、取消或过期 receipt 不得派发管理。候选不唯一、停用、未知、native 权威、注册改变均明确拒绝。
 3. 固定管理端在 canonical Store 的同一 fence 内完成完整 read–plan–write；apply、refresh、sync、materialize、相关 Source 文件/生命周期命令都受该边界约束。配置了 manager 的客户端不得落回本地 writer。SSH 断开、前台取消或超时不能释放未知写或转给新主机。
-4. 管理回执绑定 request、scope、Library、Source/member、accepted commit/revision 和真实物理 records。SDK 必须用消费者自身实际鉴权得到公共 scope，原管理 scope 保存在 manager_scope；不同凭据的真实 SQLite identities 要与回执逐项相符。ready 只说明管理目标已落地；它不能替代消费、正文或 provider 证据。回执先失效受影响事实，再走普通 SDK consume。use 包含全部真实 Requires，Members 保持惰性；旧 pins 不被回执直接替换。
+4. 管理回执绑定 request、scope、Library、Source/member、accepted commit/revision 和真实物理 records。SDK 必须用消费者自身实际鉴权得到公共 scope，原管理 scope 保存在 manager_scope；不同凭据的真实 SQLite identities 要与回执逐项相符。ready 只说明管理目标已落地；它不能替代消费、正文或 provider 证据。回执先失效受影响事实，再完成并持久化同一 Library/消费者 scope 的真实完整 SDK catalog，最后走普通 SDK consume。仅有目标闭包的局部目录不能标成全量缓存；目录失败、非完整或 scope 改变时不能继续发布 ready 正文。use 包含全部真实 Requires，Members 保持惰性；旧 pins 不被回执直接替换。
 5. 对响应丢失的业务 mutation、Operation Record PATCH/retire 和父 Source/子 Skill 分别验证。未知原请求不因 desired 值相等或 idempotent 标签重发；只有原唯一写的终结证据才可放行。已知 ACK 与内容校验成功分开：ACK 可以终结派发，内容仍可能不合格。任何一个 child 仍可晚到时，父 successor 必须在首个 mutation 前拒绝。缺 dispatch 协议标记的旧 pending 保留并报告 unresolved。
-6. 用上述 Node suite 覆盖真实管理进程断连与原请求迟到应用，核原 pending/owner applying、零重放和后继拒绝。另沿实际 Pi 场景验证取消等待与迟到 receipt 不发布；未执行该 Pi 场景时记录 `actual_pi_cancellation:not_run`。不能清空 Store、强写 ready 或启动另一操作来获得成功。
+6. 用上述 Node suite 覆盖真实管理进程断连与原请求迟到应用，核原 pending/owner applying、零重放和后继拒绝。另沿实际 Pi `source-materialize-cancel-late` 场景，在精确业务 HTTP 已到达后执行真实 RPC abort 与 new_session；释放原请求后，以原 manager stdout/exit 和 Store 核验结清，证明迟到 receipt 没有向已取消回合或新 session 发布正文、绑定和选中图。新的明确 `$` 仍可正常消费，且不重复业务写。未执行该 Pi 场景时记录 `actual_pi_cancellation:not_run`。不能清空 Store、强写 ready 或启动另一操作来获得成功。
 7. 真 Pi 第一次 `$` 管理后核普通 consume 的 remote_writes=none、完整 root + Requires provider 字节、独立 management effects、固定 ref 和 session。全部 Notion markdown/blocks 投影写尝试为 0，既有阅读正文保持不变。
 8. 五分钟内用同 Store、不同 Pi PID、不同空 session 重新提交同一 `$`。source-only 重用首次未物化候选产生的精确 `alias@skill%3A<stable-id>@namespace` token，证明物化后的真实目录仍识别原选择。整个暖阶段 Notion HTTP、Git HTTP 和管理调用都为 0，所选 root/Requires 的完整正文仍真正进入 provider。再用独立空客户端读同一远端，观察它自己的 metadata/Git 请求且语义写为 0；不得复制第一个客户端 cache/Store。
 
-实际 Pi 命令由 Broker 的 `verify-notion-skills-integration/features/source-materialization.md` 持有，复用 `scripts/notion-sdk-pi.mjs run/evidence` 的五个 source-materialize 场景。缓存语义同时交接现有四个 http-warm / http-smart 场景，不能只跑新增案例。
+实际 Pi 命令由 Broker 的 `verify-notion-skills-integration/features/source-materialization.md` 持有，复用 `scripts/notion-sdk-pi.mjs run/evidence` 的五个成功初态场景，以及独立的 `source-materialize-cancel-late` 取消场景；每例 run 后都以相同证据目录执行 evidence 回放。缓存语义同时交接现有四个 http-warm / http-smart 场景，不能只跑新增案例。
 
 ## 形式化与 statechart
 

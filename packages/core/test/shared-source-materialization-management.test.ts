@@ -11,6 +11,10 @@ import { queryCurrentSkillIndex } from "../src/shared-current-index.ts"
 import { inspectSourceSkillAdoption } from "../src/shared-current-source-adoption.ts"
 import { writePreparedCurrentSource } from "../src/shared-current-source-write.ts"
 import {
+  currentSourceManagementMatches,
+  currentSourceWriteProperties,
+} from "../src/shared-current-source-management.ts"
+import {
   sourceRegistrationDigest,
   readMaterializationRegistration,
 } from "../src/shared-source-materialization-registration.ts"
@@ -26,6 +30,121 @@ afterAll(async () => {
   if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
 })
 const field = (row: unknown, name: string) => property(property(property(row).properties)[name])
+
+async function matchingLegacySource() {
+  const f = await materializationFixture(root, "legacy-members")
+  const prepared = {
+    ...f.full,
+    targets: f.full.targets.filter((target) => target.skill_id !== "legacy-sibling"),
+  }
+  const wanted = {
+    declaration: prepared.declaration,
+    content: prepared.prepared_source.content,
+    revision: prepared.prepared_source.revision,
+  }
+  await f.run(
+    Effect.flatMap(Notion, (api) =>
+      api.request(
+        `v1/pages/${f.sourcePage}`,
+        { properties: currentSourceWriteProperties(library, wanted) },
+        { method: "PATCH" },
+      ),
+    ),
+  )
+  const registration = await f.run(readMaterializationRegistration(library, sourceId))
+  if (registration.current === undefined) throw new Error("The Source must already be current.")
+  expect(currentSourceManagementMatches(registration.current, wanted)).toBe(true)
+  const adoptions = []
+  for (const name of ["root", "required"]) {
+    const raw = f.pages.get(f.owners.get(name)!)
+    expect(field(raw, library.skills.property_ids.Content!).rich_text).toEqual([])
+    expect(field(raw, library.skills.property_ids["Current State"]!).select).toBeNull()
+    adoptions.push(await f.run(inspectSourceSkillAdoption(library, raw)))
+  }
+  const scope = {
+    source_page_id: f.sourcePage,
+    registration_digest: await f.run(sourceRegistrationDigest(registration)),
+    skill_ids: ["legacy-required", "legacy-root"],
+    adoptions,
+  }
+  f.clearCalls()
+  return { f, prepared, scope, wanted }
+}
+
+test("an unchanged Source still adopts its exact legacy closure before any no-op proof", async () => {
+  const { f, prepared, scope } = await matchingLegacySource()
+  const sibling = structuredClone(f.pages.get(f.owners.get("sibling")!))
+  const result = await f.runManaged(
+    writePreparedCurrentSource(library, {
+      operation_id: "same-source-legacy-adoption",
+      prepared,
+      materialization: scope,
+    }).pipe(Effect.result),
+  )
+  expect(result).toMatchObject({ _tag: "Success", success: { state: "ready" } })
+  expect(f.mutations().length).toBeGreaterThan(0)
+  for (const name of ["root", "required"]) {
+    const index = await f.run(queryCurrentSkillIndex(library, f.owners.get(name)!))
+    expect(index.state).toEqual({ state: "ready" })
+    expect(index.main.file_id).toBe(`legacy-main-${name}`)
+    expect(index.main.content).toMatchObject({
+      kind: "source",
+      revision: prepared.prepared_source.revision,
+    })
+  }
+  expect(f.pages.get(f.owners.get("sibling")!)).toEqual(sibling)
+  expect(
+    f.calls.filter((call) => /markdown|blocks/.test(call.path) && call.method !== "GET"),
+  ).toEqual([])
+
+  f.clearCalls()
+  const unchanged = await f.runManaged(
+    writePreparedCurrentSource(library, {
+      operation_id: "same-source-already-current",
+      prepared,
+      materialization: { ...scope, adoptions: [] },
+    }),
+  )
+  expect(unchanged.status).toBe("unchanged")
+  expect(f.mutations()).toEqual([])
+})
+
+test("an unchanged Source cannot adopt legacy owners without an exact materialization scope", async () => {
+  const { f } = await matchingLegacySource()
+  const result = await f.runManaged(
+    writePreparedCurrentSource(library, {
+      operation_id: "same-source-no-adoption-authority",
+      prepared: f.full,
+    }).pipe(Effect.result),
+  )
+  expect(result).toMatchObject({ _tag: "Failure", failure: { code: "CURRENT_SCHEMA_REQUIRED" } })
+  expect(f.mutations()).toEqual([])
+})
+
+test("legacy materialization refuses an already-current owner with malformed Content", async () => {
+  const { f } = await matchingLegacySource()
+  await f.run(
+    Effect.flatMap(Notion, (api) =>
+      api.request(
+        `v1/pages/${f.owners.get("root")}`,
+        {
+          properties: {
+            [library.skills.property_ids.Content!]: { rich_text: sourceRich('{"kind":"source"}') },
+            [library.skills.property_ids["Current State"]!]: { select: { name: "ready" } },
+          },
+        },
+        { method: "PATCH" },
+      ),
+    ),
+  )
+  f.clearCalls()
+  expect(await f.materialize(await f.request())).toMatchObject({
+    status: "blocked",
+    reason: "CURRENT_CONTENT_INVALID",
+    effects: { remote_writes: "none" },
+  })
+  expect(f.mutations()).toEqual([])
+})
 
 test("legacy adoption preserves page, Main File ID and manual flags", async () => {
   const f = await materializationFixture(root)
