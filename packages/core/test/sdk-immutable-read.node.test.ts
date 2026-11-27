@@ -1526,16 +1526,29 @@ test("T14 shared 429 retry spends each caller's original budget and publishes no
   const revisions = await sourceRevisions()
   await setup(
     async ({ source, root, input, options, snapshotId }) => {
-      const bounded = { ...input, budget: { ...input.budget, timeBudgetMs: 5000 } }
+      // Two complete eligibility passes share a 100 ms request scheduler. Leave
+      // room for both to join before testing the deliberately longer 429 wait.
+      // Each caller still has one deadline measured from its own public call.
+      // The outer test also waits out the shared Retry-After before fresh reads.
+      const bounded = { ...input, budget: { ...input.budget, timeBudgetMs: 10000 } }
+      const elapsed: number[] = []
+      const read = async (index: number) => {
+        const started = process.hrtime.bigint()
+        const result = await readResources(bounded, options)
+        elapsed[index] = Number(process.hrtime.bigint() - started) / 1e6
+        return result
+      }
       const hold = source.holdNext({ method: "POST", path: recordsPath })
-      const started = process.hrtime.bigint()
-      const first = readResources(bounded, options)
+      const first = read(0)
       await hold.reached
-      const second = readResources(bounded, options)
+      const second = read(1)
       await joinedEligibility(source, bounded.budget.timeBudgetMs, 4)
+      expect(bodyCalls(source)).toHaveLength(1)
+      expect(bodyCalls(source)[0].closed_monotonic_ns).toBeNull()
       await sourceFact(source, root, "applying", revisions.applying)
-      source.rejectNext({ method: "POST", path: recordsPath, retryAfterSeconds: 10 })
+      source.rejectNext({ method: "POST", path: recordsPath, retryAfterSeconds: 20 })
       hold.release()
+      expect(await hold.closed).toMatchObject({ status: 200, terminal: "finished" })
       const failed = await Promise.all([first, second])
       expect(failed).toEqual(
         failed.map(() =>
@@ -1546,9 +1559,11 @@ test("T14 shared 429 retry spends each caller's original budget and publishes no
         ),
       )
       expect(failed.every((result) => !("files" in result))).toBe(true)
-      const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6
-      expect(elapsedMs).toBeGreaterThanOrEqual(bounded.budget.timeBudgetMs - 100)
-      expect(elapsedMs).toBeLessThan(9000)
+      expect(elapsed).toHaveLength(2)
+      for (const elapsedMs of elapsed) {
+        expect(elapsedMs).toBeGreaterThanOrEqual(bounded.budget.timeBudgetMs - 100)
+        expect(elapsedMs).toBeLessThan(bounded.budget.timeBudgetMs + 2000)
+      }
       await idle(source)
       expect(bodyCalls(source).map((row: { status: number }) => row.status)).toEqual([200, 429])
       await expect(
@@ -1571,4 +1586,4 @@ test("T14 shared 429 retry spends each caller's original budget and publishes no
     },
     { currentSource: revisions.first, emptyFirstRecordsPage: true },
   )
-})
+}, 45_000)

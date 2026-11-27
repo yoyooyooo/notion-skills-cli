@@ -15,7 +15,7 @@
     "packages/core/src/snapshot.ts": "430cbded058870a1297999b4c4cb577ff5c23b4f39aea4364b562e6169071552",
     "packages/core/test/cache.test.ts": "2e6928423cbc76e00f831175696178a710cee9940fd80fdc6a2b042d1f7ccd0a",
     "packages/core/test/resource-read.test.ts": "58ab50f407c7726a0fc52066df87d0c06850cc1806e94ac9a7f181c79ebda298",
-    "packages/core/test/sdk-immutable-read.node.test.ts": "738d92bb05a12a3b061671f052ec79cd3b4e491bc02cee3edc17f92ebad0e75a",
+    "packages/core/test/sdk-immutable-read.node.test.ts": "8daffd3d6a4738ebe8a70a00d2535462e9ed4d2c2ab036a750333db81b14593c",
     "packages/core/src/shared-current-projection-restore.ts": "c6a4059593749afd5f52b335e5139920650c9be5213eaf8ddd5e162c22783831",
     "packages/core/src/shared-skill-targets.ts": "b73e7ee9c84293f44013fd17ecfc2e9dab18e7af2ffbaa26489a5818ff738dea",
     "packages/core/test/bounded-graph-metadata.test.ts": "85ca6a10080c7940577903e0db6f1c5d57a8cf63947ef1126f3ec444f5977339",
@@ -83,7 +83,7 @@
     "packages/core/test/graph-prepare-live-fixture.ts": "071308c8a9734242189dfcd9c010490fce2cac49985f16a1c9d96d0174a9ed65",
     "packages/core/test/shared-current-source-consumer-fixture.ts": "780a469d55060e91b1fabfcfd5e19fbeab667de2d09c41a50738b125c45c2452",
     "packages/core/src/graph-derived-directory.ts": "662a50cea39abbf1f006203651b03ec51e2310c098afcdd6a430e8d7ad7b62c1",
-    "packages/core/src/shared-source-materialization-management.ts": "d7abc7e998a3b48594e190618c5f32c58b66f49313119fb88c35d7d9ffbc0b0c",
+    "packages/core/src/shared-source-materialization-management.ts": "7729e12bc3dfdd73eb0868ad55af9f8c5f0f4fd156314a950d2aa60a01ce68bf",
     "packages/core/src/shared-current-source-adoption.ts": "ba45175b18f6f19cfd57e844fc2457d1a33cd917617deb41d892d399a63ad6dc",
     "packages/core/src/shared-current-source-input.ts": "450b8f2c98a53bd8a1f4bbfc910436a038e5d6e1a3007a0c94a75a960eed10f5",
     "packages/core/src/shared-current-source-management.ts": "b60424aca78fd1b83f9d8516650c75a6808b442916646405d7a5944fcf9c6bb1",
@@ -97,19 +97,20 @@
     "packages/core/src/shared-current-source-legacy-registration.ts": "18a8611e7c8c87a618ccee701035ce1be4653c9430378c93940ff6df03d19eee",
     "packages/core/src/shared-current-source-action.ts": "a0067e9684992b1ddc8e7ae73e31dd39b24d420ec900f1c64d2265591ac00af5",
     "packages/core/src/shared-source-materialization-state.ts": "ad2c1907d1cf7f7f6d19f57970f9c910322d128f5b8b0bff20251755345a2cc9",
-    "packages/core/src/shared-source-materialization-model.ts": "b443d603751b1e1c0344a79fd51c5a2a9d12de8f58995e3abb7d096cb12657a2",
+    "packages/core/src/shared-source-materialization-model.ts": "30fbd5b9953465a4ef0f0c8dc2988092035f646a49246f6939edfbc0cfcceb7a",
     "packages/core/src/shared-source-member-discovery.ts": "0371aa6d08a85485056c03d21f6ee6ee0bfbe96a72e8e0a70e56bf6d3dd162a9",
     "packages/core/test/shared-source-materialization-legacy-registration.test.ts": "16366199dd23b3f227e8aabfa4bd8a9e11e3c3237a4f385532444b021ace33c7",
     "packages/core/test/shared-source-materialization-invalidation.test.ts": "8e5e48b1cf392bfd5949fa8363148c19d0007f4155269e2a7d15a2ee2f615252",
-    "packages/core/test/sdk-source-fixture.node.test.ts": "1e6cf05f91642394298aa7dd82b4312f56c277d2c42184faf073b9d8189db94b",
-    "scripts/sdk-source-fixture.mjs": "5bde54b32ceeeb550cd22286eed5d76c92af5be5eaa2c62e79c53690c4488b0b",
+    "packages/core/test/sdk-source-fixture.node.test.ts": "f006d113c14afa8987eba5beac765d96950ed62b56943c8d3ba7f9c30d8fbd8f",
+    "scripts/sdk-source-fixture.mjs": "0b9751bf871f15d87ecd72ed68f25bc26a47e224e34da39904da91a38dc46a2a",
     "scripts/sdk-fixture.ts": "a0fb7ec3dd9c49ba02514f2f83e92957b1a13f098f9cd2985974fbbf020dd9d6",
     "packages/core/test/shared-source-manager-dispatch.node.test.ts": "f2c9795c5361d029f595ed6e040cfb9fe99d19d899b11a0f6664c4d70790b623",
     "packages/cli/test/current-projection.test.ts": "741b724d440cd0c779908a1d7938f6cc93a8b921413c1a62a5f72eb1cd9e1c27",
     "packages/core/test/shared-current-relations.test.ts": "724f790712e434644537e266cdbb05bb016397cae736e4e3127e5617c419f44b",
     "packages/core/test/shared-current-skill-patch.test.ts": "ad0ef5de26faa39dedc8ba2dc110a579e925f71c2e57ddb583cdd480c17b58dc",
     "packages/core/test/shared-current-skill-remove.test.ts": "a39b804e85e25a4cb24a2660e29c0049d055b8ed0ac7ce3f271903a26eed0e50",
-    "packages/core/test/shared-current-write-fixture.ts": "4587b4090123049071d74d14b4de93746f1487bf94e68428d77f77eff1e2c631"
+    "packages/core/test/shared-current-write-fixture.ts": "4587b4090123049071d74d14b4de93746f1487bf94e68428d77f77eff1e2c631",
+    "packages/core/test/shared-source-materialization-receipt.test.ts": "c88adb592a6f9a1fbdcf1daace04a64a742dacb57d495f6cf2e17d3d4ef5caa1"
   },
   "models": {
     "CurrentLifecycle": {
@@ -2045,9 +2046,10 @@
         "packages/core/src/cache-retention-model.ts",
         "packages/core/test/candidate-snapshot.node.test.ts",
         "packages/core/test/shared-sqlite.node.test.ts",
-        "packages/core/test/shared-source-manager-dispatch.node.test.ts"
+        "packages/core/test/shared-source-manager-dispatch.node.test.ts",
+        "packages/core/test/shared-source-materialization-receipt.test.ts"
       ],
-      "scope": "Actual SDK discovery writes the registered scope/Library Source-member cache and local candidate snapshots read it through real SQLite. Cross-process tests retain metadata, reject another credential address, preserve immutable unfinished input through cache retirement and physically retire completed journal state. The exact legacy applied registration permits only management initialization, preserving historical accepted Git commit and rechecking frozen physical/schema/provider/revision evidence before the existing Record/applying writes; current consume remains strict. Legacy recovery distinguishes definitive rejection from unknown dispatch and refuses changed registration without new writes. A blocked stale candidate invalidates its exact target plus catalog facts while retaining unrelated candidates. Controlled Git fixtures advertise a newer HEAD with different root bytes and retain the selected older commit. These concrete regressions, independent Store authentication, fixed-manager transport and actual Pi/provider-byte checks are not additional finite-state claims. The standard Node suite launches the actual packed fixed manager against a complete consumer installation, canonical SQLite and real HTTP. It retains arrived requests across manager process termination, performs fresh-process resumes before and after late application, and checks exact request ledgers and copied SQLite originals. Source business PATCH equality cannot settle unknown writes; unique original control Record nonce/retirement evidence and an unsettled child blocking a different parent request are checked separately. This is not actual Pi cancellation or a public kernel supersede command. The fixture uses legal codepoint-safe rich-text fragments and exact method/path/body controls; the actual production parser regression covers all five materialization initial states."
+      "scope": "Actual SDK discovery writes the registered scope/Library Source-member cache and local candidate snapshots read it through real SQLite. Cross-process tests retain metadata, reject another credential address, preserve immutable unfinished input through cache retirement and physically retire completed journal state. The exact legacy applied registration permits only management initialization, preserving historical accepted Git commit and rechecking frozen physical/schema/provider/revision evidence before the existing Record/applying writes; current consume remains strict. Legacy recovery distinguishes definitive rejection from unknown dispatch and refuses changed registration without new writes. A blocked stale candidate invalidates its exact target plus catalog facts while retaining unrelated candidates. Controlled Git fixtures advertise a newer HEAD with different root bytes and retain the selected older commit. These concrete regressions, independent Store authentication, fixed-manager transport and actual Pi/provider-byte checks are not additional finite-state claims. The standard Node suite launches the actual packed fixed manager against a complete consumer installation, canonical SQLite and real HTTP. It retains arrived requests across manager process termination, performs fresh-process resumes before and after late application, and checks exact request ledgers and copied SQLite originals. Source business PATCH equality cannot settle unknown writes; unique original control Record nonce/retirement evidence and an unsettled child blocking a different parent request are checked separately. This is not actual Pi cancellation or a public kernel supersede command. The fixture uses legal codepoint-safe rich-text fragments and exact method/path/body controls; the actual production parser regression covers all five materialization initial states. Ready/already_ready receipts now read back the actual target Source even when it had no write plan or only a foreign Source Requires changed. The current registration, ready state, enabled flag, plan hash and frozen commit are checked before the local journal retires. The CLI receipt decoder matches the Broker requirement for the target Source revision on success; pending/blocked receipts may omit it. Real producer regressions and an independent actual SDK scope-rebinding/SQLite/strict Broker-decoder bridge cover this concrete JSON boundary. SourceMaterialization Finish and ReadyRevisionCoherent abstract remote completion and do not establish these cross-module receipt fields."
     }
   ],
   "maintenance": {
@@ -2211,5 +2213,25 @@
     ],
     "correspondence": "Reviewed the full CI counterexamples against the current dispatch contract. Unknown native, relation, restore and retirement PATCHes retain the same intent and perform no replay even when current values match. Positive recovery tests now interrupt only after the real successful action acknowledgement has been durably written to the original Store. The helper neither invents an ACK nor rewrites a frozen journal. Exact-operation Record retirement retains its separate unique-witness recovery. The Linux fixture copies and hashes the selected Node/Git executables into its own owner-only directory; production manager ownership guards are unchanged.",
     "result": "correspondence_only; source hashes identify reviewed bytes, not a model or runtime pass"
+  },
+  "ci_fixture_contract_review": {
+    "reviewed_base": "9582fcd9a4a2a4db4cd854f9cfb982b32637990e",
+    "correspondence": "Reviewed the exact CI and immutable actual-Pi counterexamples. A Members target remains enabled with absent Content/Current State, so the ordinary relation contract admits metadata without eagerly reading or materializing its body. All five initial states are checked through production Source, current-owner, Members and Requires parsers; the disabled Members variant retains its existing strict refusal. The shared 429 test gives two real eligibility passes room to join before Retry-After, asserts the original held request is still open and then completes with status 200, and measures each caller separately from its original public-call start. Both independent deadlines must expire before the 20-second retry delay, expose no files and publish no object; subsequent applying rejection and revision selection remain unchanged. No production guard, finite model, state bound, expected rule or mutation target changed. The outer test envelope is 45 seconds because it also observes the real shared 20-second cooldown and subsequent independent revision reads; the two inner 10-second caller deadlines remain independently asserted.",
+    "result": "correspondence_only; reviewed source hashes are not a model, actual-Pi or runtime pass",
+    "reviewed_files": [
+      "packages/core/test/sdk-immutable-read.node.test.ts",
+      "packages/core/test/sdk-source-fixture.node.test.ts",
+      "scripts/sdk-source-fixture.mjs"
+    ]
+  },
+  "materialization_receipt_contract_review": {
+    "reviewed_base": "9582fcd9a4a2a4db4cd854f9cfb982b32637990e",
+    "reviewed_files": [
+      "packages/core/src/shared-source-materialization-management.ts",
+      "packages/core/src/shared-source-materialization-model.ts",
+      "packages/core/test/shared-source-materialization-receipt.test.ts"
+    ],
+    "correspondence": "Reviewed the actual already_ready counterexample: a second request performed zero semantic writes and the CLI accepted an empty source_revisions array which the Broker rejected. Final receipts now freshly verify target plus written Sources, and the CLI decoder requires the same target Source revision as the Broker for both successful statuses. The added production-output and malformed-receipt tests cover no-plan reuse, foreign Source Requires writes and contradictory current readback. Existing finite modules, bounds, case/rule inventories and modeled implementation mutation guards are unchanged. The SDK bridge observes actual consumer authentication, native SQLite invalidation and public scope rebinding; its transport child uses a controlled manager result and is not a fixed-manager or actual-Pi test.",
+    "result": "correspondence_only; source pins are not a formal result or a complete integration proof"
   }
 }

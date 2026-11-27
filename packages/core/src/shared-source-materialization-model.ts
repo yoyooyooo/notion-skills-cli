@@ -126,6 +126,11 @@ export function decodeSourceMaterializationReceipt(input: unknown): SourceMateri
     )
       throw new Error("Ready receipt must identify the exact physical root.")
     if (
+      ready &&
+      !value.source_revisions.some((source) => source.source_id === value.target.source_id)
+    )
+      throw new Error("Ready receipt must identify the actual current target Source revision.")
+    if (
       value.records.some(
         (record) =>
           record.locator.type !== "shared_skill" || record.locator.library_id !== value.library_id,
