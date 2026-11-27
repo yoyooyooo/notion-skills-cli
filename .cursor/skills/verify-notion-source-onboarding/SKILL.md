@@ -17,6 +17,9 @@ description: "验证当前 Source 计划、逐文件来源、完整目录、精�
 bun test packages/core/test/shared-current-source.test.ts packages/core/test/shared-current-source-input.test.ts packages/core/test/shared-current-source-management.test.ts packages/core/test/shared-current-source-write.test.ts packages/core/test/shared-current-source-file.test.ts packages/core/test/shared-current-source-lifecycle.test.ts packages/core/test/shared-acquisition-contract.test.ts packages/core/test/shared-current-resource.test.ts --timeout 60000
 bun test packages/core/test/shared-current-source-check.test.ts packages/core/test/shared-current-source-sync-guards.test.ts packages/core/test/shared-current-source-sync-batch.test.ts packages/cli/test/current-source-sync.test.ts packages/cli/test/management.test.ts --timeout 60000
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-source-ref-cache.node.test.ts
+bun test packages/core/test/shared-source-member-discovery.test.ts packages/core/test/shared-source-materialization-management.test.ts packages/core/test/shared-source-materialization-legacy-registration.test.ts packages/core/test/shared-source-materialization-invalidation.test.ts packages/core/test/shared-current-source-writer.test.ts --timeout 60000
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-source-fixture.node.test.ts
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/candidate-snapshot.node.test.ts packages/core/test/shared-sqlite.node.test.ts -t "actual SDK Source discovery|Source candidate metadata|unfinished materialization input"
 ~~~
 
 这些检查覆盖当前 plan、Git 声明、批量管理范围、真实协调 writer/HTTP、逐文件获取与原件资源。受控成员写入通过仍不能替代实库全量 Files 和阅读覆盖。
@@ -37,6 +40,8 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
     成功 Git ref 观察可跨进程复用 60 秒，`maxAge:0` 强制新观察。身份同时绑定 caller scope、cwd、normalized origin/ref 与实际 spawner 环境；仅忽略 TERM_SESSION_ID、ITERM_SESSION_ID、SHLVL、_、OLDPWD 五项终端噪音，凭据/helper/自定义环境变化必须 miss。不同请求预算不共用在途操作；先校验预算，成功 slot 可以复用。失败记 unknown，不延长上次成功时间，下一次可重试；旧迟到成功不能越过较新 success 或 unknown。
 
     `shared-source-ref-cache.node.test.ts` 使用实际 Node/SQLite/Git 和新 PID 核上述边界；`shared-current-source-check.test.ts` 另核同一 ref hint 仍逐项比较各自 Notion declaration，以及旧批次结果不能隐藏后来新 ref。ref 未变只提供上游提示，不证明 Notion 当前授权、完整 plan、Files/Contributions 或成员已发布；普通 Pi 消费固定对象，不因此探 HEAD 或切换选定 Source revision。
+
+11. 首次明确 `$` 引用的消费准备沿 [Source 物化](../verify-ntn-skills/features/source-materialization.md)。覆盖旧行缺 schema、仅 Source 无 Skill、Source Content/Contributions 全空和 manifest 增长四初态。固定 manager 在同一 Store fence 内追加已 ready 的 M 与本次 R，保留全部声明但不初始化未请求 sibling；use 包含真实 Requires，Members 惰性。受影响事实失效后仍走普通 readonly consume，Notion 阅读投影调用为 0。真实 Pi 新 PID 五分钟缓存、独立第二客户端和最终完整 provider 字节必须分别取得证据。
 
 [resource-sources](../verify-ntn-skills/features/resource-sources.md) 连接当前测试、精确原件与实际安装边界。来源读取、Source 写入和实库全文覆盖分别验收；未支持 provider 明确拒绝，没执行的真实范围记 not_run。
 

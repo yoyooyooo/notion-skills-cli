@@ -225,7 +225,7 @@ function queryTargets(library: SharedLibrary, skillIds: readonly string[]) {
     return result
   })
 }
-function relationIds(library: SharedLibrary, raw: unknown, field: SharedSkillRelationField) {
+export function relationIds(library: SharedLibrary, raw: unknown, field: SharedSkillRelationField) {
   return Effect.gen(function* () {
     const owner = yield* checked(() => record(library, raw))
     return yield* completeSharedSkillRelationIds(library, owner, raw, field, {

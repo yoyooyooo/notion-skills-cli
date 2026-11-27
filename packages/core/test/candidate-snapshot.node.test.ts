@@ -1,3 +1,4 @@
+import { sourceMemberCacheKey } from "../src/shared-source-materialization-state.ts"
 import { mkdtemp, realpath, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -7,6 +8,7 @@ import { expect, test } from "vitest"
 import {
   CANDIDATE_SNAPSHOT_CONTRACT_VERSION,
   listCatalog,
+  discoverSourceMembers,
   readCandidateSnapshot,
   readSkill,
 } from "../../cli/src/sdk.ts"
@@ -369,6 +371,56 @@ test("local snapshot rejects corrupt cached identities without remote repair", a
       c.options,
     )
     await expect(readCandidateSnapshot(c.options)).rejects.toMatchObject({ code: "STATE_CORRUPT" })
+    expect(c.source.requests).toHaveLength(requests)
+  } finally {
+    await finish(c)
+  }
+}, 30_000)
+
+test("actual SDK Source discovery and local candidate snapshots share the registered SQLite cache domain", async () => {
+  const c = await controlled()
+  try {
+    const catalog = await listCatalog({ ...c.options, refresh: true })
+    expect(await discoverSourceMembers({ library: c.library.library_id }, c.options)).toMatchObject(
+      { coverage: "complete", candidates: [], effects: { remote_writes: "none" } },
+    )
+    const candidate = {
+      type: "source_member" as const,
+      library_id: c.library.library_id,
+      scope: catalog.scope,
+      source_id: "registered-source",
+      member_key: "skills/first-use",
+      expected_skill_id: "first-use",
+      registration_digest: "b".repeat(64),
+      name: "First use",
+      alias: "first-use",
+      description: "Registered, not yet imported",
+      enabled: true,
+      readiness: "materializable" as const,
+    }
+    await runLocalRuntimeOperation(
+      () =>
+        Effect.flatMap(Store, (store) =>
+          store.writeJson(sourceMemberCacheKey(catalog.scope, c.library.library_id), {
+            version: 1,
+            library_id: c.library.library_id,
+            scope: catalog.scope,
+            candidates: [candidate],
+          }),
+        ),
+      c.options,
+    )
+    const requests = c.source.requests.length
+    expect(await readCandidateSnapshot(c.options)).toMatchObject({
+      kind: "snapshot",
+      source_members: [candidate],
+    })
+    expect(
+      await readCandidateSnapshot({
+        ...c.options,
+        env: { ...c.options.env, NOTION_API_TOKEN: "another-client-credential" },
+      }),
+    ).toMatchObject({ kind: "miss", reason: "scope_unavailable" })
     expect(c.source.requests).toHaveLength(requests)
   } finally {
     await finish(c)

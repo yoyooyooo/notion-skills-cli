@@ -483,7 +483,7 @@ test("supporting executable and binary takeovers keep originals and disabled Sou
 })
 
 test.each(["source-properties", "native-body"] as const)(
-  "%s accepted-lost resumes the same parent and physical File without replay",
+  "%s accepted-lost retains its parent and physical File without replay or false settlement",
   async (kind) => {
     const { f, http, page, index } = await seed()
     const request = change(index.main, "take-lost", { kind: "takeover", to: "native" })
@@ -502,7 +502,11 @@ test.each(["source-properties", "native-body"] as const)(
           : "contributions" in property(property(call.body).properties)),
     )
     expect(before).toHaveLength(1)
-    await f.run(http.use(changeCurrentSourceFileAuthority(library, { ...request, mode: "resume" })))
+    const mutations = f.mutations().length
+    await expect(
+      f.run(http.use(changeCurrentSourceFileAuthority(library, { ...request, mode: "resume" }))),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+    expect(f.mutations()).toHaveLength(mutations)
     expect(
       f.calls.filter(
         (call) =>
@@ -515,9 +519,8 @@ test.each(["source-properties", "native-body"] as const)(
     expect((await f.run(queryCurrentSkillIndex(library, page))).main).toMatchObject({
       page_id: page,
       file_id: index.main.file_id,
-      content: { kind: "native" },
     })
-    await ready(f)
+    expect(pending(f).length).toBeGreaterThan(0)
   },
 )
 
@@ -682,7 +685,7 @@ test("restore-follow rejects a new native author edit before replacing its descr
 })
 
 test.each(["source-ready", "source-retirement"] as const)(
-  "%s lost after a completed native child cleans up without rewriting later author edits",
+  "%s lost after a completed native child preserves author edits and only retires witnessed control writes",
   async (kind) => {
     const { f, http, page, index } = await seed()
     const request = change(index.main, "completed-native", { kind: "takeover", to: "native" })
@@ -698,13 +701,20 @@ test.each(["source-ready", "source-retirement"] as const)(
     const human = "# Published native author edit\n\nKeep after parent cleanup.\n"
     await author(f, page, human)
     f.clearCalls()
-    const result = await f.run(
+    const resume = f.run(
       http.use(changeCurrentSourceFileAuthority(library, { ...request, mode: "resume" })),
     )
-    expect(result).toMatchObject({
-      state: "ready",
-      targets: [{ page_id: page, status: "unchanged" }],
-    })
+    if (kind === "source-ready") {
+      await expect(resume).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+      expect(f.mutations()).toEqual([])
+      expect(pending(f)).toHaveLength(1)
+    } else {
+      expect(await resume).toMatchObject({
+        state: "ready",
+        targets: [{ page_id: page, status: "unchanged" }],
+      })
+      await ready(f)
+    }
     expect(
       f.calls.filter(
         (call) =>
@@ -718,6 +728,5 @@ test.each(["source-ready", "source-retirement"] as const)(
     expect(
       await f.run(http.use(readSkill(page, { library: library.library_id, refresh: true }))),
     ).toMatchObject({ content: expect.stringContaining(human) })
-    await ready(f)
   },
 )

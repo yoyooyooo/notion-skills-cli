@@ -1674,7 +1674,7 @@ test("restore keeps mixed native and resource authority while rebuilding its Sou
 })
 
 test.each(["accepted", "absent"] as const)(
-  "restore reconciles a %s untrash ACK through the same command",
+  "restore retains a %s unknown untrash request without replay or false settlement",
   async (outcome) => {
     const { f, written } = await seedSourceReading({ rows: false })
     await f.run(projectCurrentSkill(library, { target: written.page_id, mode: "auto" }))
@@ -1694,17 +1694,13 @@ test.each(["accepted", "absent"] as const)(
       restore: { page_id: written.page_id, policy: currentProjectionPolicy({}) },
     })
     f.clearCalls()
-    const result = await f.run(restoreCurrentSkillProjection(library, { target: written.page_id }))
-    expect(result.restoration).toEqual({
-      status: "restored",
-      operation_id: pending!.intent.operation_id,
-    })
-    expect(
-      f.mutations().filter((call) => call.path === `v1/pages/${written.page_id}`),
-    ).toHaveLength(outcome === "accepted" ? 0 : 1)
+    await expect(
+      f.run(restoreCurrentSkillProjection(library, { target: written.page_id })),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+    expect(f.mutations()).toEqual([])
     expect(
       await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
-    ).toBeUndefined()
+    ).toEqual(pending)
   },
 )
 
@@ -1713,26 +1709,39 @@ test.each([
   { kind: "owner-bind" as const, outcome: "accepted" as const },
   { kind: "operation-retirement" as const, outcome: "absent" as const },
   { kind: "operation-retirement" as const, outcome: "accepted" as const },
-])("restore finishes an interrupted $kind with $outcome ACK", async (fault) => {
-  const { f, written } = await seedSourceReading({ rows: false })
-  await f.run(projectCurrentSkill(library, { target: written.page_id, mode: "auto" }))
-  f.blocks.set(written.page_id, [])
-  f.pages.get(written.page_id)!.in_trash = true
-  f.failNext(fault)
-  await expect(
-    f.run(restoreCurrentSkillProjection(library, { target: written.page_id })),
-  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
-  const pending = await f.run(
-    readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
-  )
-  expect(pending?.intent).toHaveProperty("restore")
-  f.clearCalls()
-  await f.run(restoreCurrentSkillProjection(library, { target: written.page_id }))
-  expect(f.mutations().filter((call) => call.path === `v1/pages/${written.page_id}`)).toEqual([])
-  expect(
-    await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
-  ).toBeUndefined()
-})
+])(
+  "restore only finishes an interrupted $kind when its $outcome control witness settles",
+  async (fault) => {
+    const { f, written } = await seedSourceReading({ rows: false })
+    await f.run(projectCurrentSkill(library, { target: written.page_id, mode: "auto" }))
+    f.blocks.set(written.page_id, [])
+    f.pages.get(written.page_id)!.in_trash = true
+    f.failNext(fault)
+    await expect(
+      f.run(restoreCurrentSkillProjection(library, { target: written.page_id })),
+    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    const pending = await f.run(
+      readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
+    )
+    expect(pending?.intent).toHaveProperty("restore")
+    f.clearCalls()
+    if (fault.outcome === "absent") {
+      await expect(
+        f.run(restoreCurrentSkillProjection(library, { target: written.page_id })),
+      ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+      expect(f.mutations()).toEqual([])
+      expect(
+        await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
+      ).toEqual(pending)
+      return
+    }
+    await f.run(restoreCurrentSkillProjection(library, { target: written.page_id }))
+    expect(f.mutations().filter((call) => call.path === `v1/pages/${written.page_id}`)).toEqual([])
+    expect(
+      await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
+    ).toBeUndefined()
+  },
+)
 
 test("restore continues its normal projection after an accepted append without repeating the body", async () => {
   const { f, written } = await seedSourceReading({ rows: false })
@@ -2000,7 +2009,7 @@ test.each(["accepted", "absent"] as const)(
   },
 )
 
-test("an accepted unknown archive resumes from its exact retired page without another archive request", async () => {
+test("an accepted unknown archive stays pending after its target disappears from active queries", async () => {
   const { f, written } = await seedSourceReading()
   f.failNext({ kind: "retire-file", outcome: "accepted" })
   await expect(
@@ -2015,19 +2024,27 @@ test("an accepted unknown archive resumes from its exact retired page without an
   const pending = await f.run(
     readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
   )
-  f.clearCalls()
-  const resumed = await f.run(
-    projectCurrentSkill(library, {
-      target: written.page_id,
-      operation_id: "unknown-doc-archive",
-      mode: "resume",
-    }),
+  const before = (await f.run(queryCurrentSkillIndex(library, written.page_id))).files.map(
+    (file) => file.path,
   )
-  expect(pending?.intent.input_sha256).toBe(resumed.input_sha256)
+  f.clearCalls()
+  await expect(
+    f.run(
+      projectCurrentSkill(library, {
+        target: written.page_id,
+        operation_id: "unknown-doc-archive",
+        mode: "resume",
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+  expect(f.mutations()).toEqual([])
+  expect(
+    await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
+  ).toEqual(pending)
   expect(f.mutations().filter((call) => call.path === retired.path)).toEqual([])
   expect(
     (await f.run(queryCurrentSkillIndex(library, written.page_id))).files.map((file) => file.path),
-  ).toEqual(["references/render.md"])
+  ).toEqual(before)
 })
 
 test("a source descriptor relocates on its existing reading page without changing File ID", async () => {
@@ -2225,7 +2242,7 @@ test.each(["absent", "different", "native", "wrong-operation"] as const)(
 )
 
 test.each(["file-create", "retire-file"] as const)(
-  "public cancellation observes accepted %s without creating, pruning or rendering more pages",
+  "public cancellation only settles accepted %s with a unique creation witness",
   async (kind) => {
     const { f, written } = await seedSourceReading({ rows: kind !== "file-create" })
     f.failNext({ kind, outcome: "accepted" })
@@ -2237,6 +2254,26 @@ test.each(["file-create", "retire-file"] as const)(
     const before = await f.run(queryCurrentSkillIndex(library, written.page_id))
     const bodies = structuredClone([...f.blocks])
     f.clearCalls()
+    if (kind === "retire-file") {
+      await expect(
+        f.run(
+          cancelCurrentSkillProjection(library, {
+            target: written.page_id,
+            operation_id: "metadata-cancel",
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+      expect(f.mutations()).toEqual([])
+      expect([...f.blocks]).toEqual(bodies)
+      expect(logical(await f.run(queryCurrentSkillIndex(library, written.page_id)))).toEqual(
+        logical(before),
+      )
+      expect(
+        (await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })))
+          ?.intent.operation_id,
+      ).toBe("metadata-cancel")
+      return
+    }
     const result = await f.run(
       cancelCurrentSkillProjection(library, {
         target: written.page_id,

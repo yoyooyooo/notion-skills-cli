@@ -244,7 +244,7 @@ async function assertReady(f: ReturnType<typeof currentWriteFixture>) {
   expect(operationRecords(f)).toEqual([])
 }
 
-test("a complete Source successor replaces an uncertain child Skill creation while keeping existing identities and human native edits", async () => {
+test("a Source successor waits for the original unique child CREATE to settle and preserves identities and native edits", async () => {
   const f = currentWriteFixture(parent),
     native = await seedNative(f)
   const observed = observation(),
@@ -295,12 +295,33 @@ test("a complete Source successor replaces an uncertain child Skill creation whi
     }),
   )
   f.clearCalls()
+  await expect(
+    f.run(
+      http.use(
+        writePreparedCurrentSource(library, {
+          prepared: successor,
+          operation_id: "partial-source-new",
+          mode: { kind: "supersede", operation_id: "partial-source-old" },
+        }),
+      ),
+    ),
+  ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+  expect(f.mutations()).toEqual([])
+  await f.run(
+    http.use(
+      writePreparedCurrentSource(library, {
+        prepared: original,
+        operation_id: "partial-source-old",
+        mode: "resume",
+      }),
+    ),
+  )
+  f.clearCalls()
   const result = await f.run(
     http.use(
       writePreparedCurrentSource(library, {
         prepared: successor,
         operation_id: "partial-source-new",
-        mode: { kind: "supersede", operation_id: "partial-source-old" },
       }),
     ),
   )
@@ -322,9 +343,7 @@ test("a complete Source successor replaces an uncertain child Skill creation whi
     f.calls.some(
       (call) =>
         call.path === "v1/pages" &&
-        ["current-source:team-skills", "current-skill:skill-alpha"].includes(
-          fieldText(call.body, library.records.property_ids["Entity ID"]!),
-        ),
+        property(property(call.body).parent).data_source_id === library.skills.data_source_id,
     ),
   ).toBe(false)
   expect(
@@ -336,7 +355,7 @@ test("a complete Source successor replaces an uncertain child Skill creation whi
 })
 
 test.each(["before-child", "after-child"] as const)(
-  "another Source successor is admitted only after the %s handoff has actually selected its child",
+  "another Source successor cannot overtake an unknown %s parent or child request",
   async (stage) => {
     const f = currentWriteFixture(parent)
     await seedNative(f)
@@ -357,6 +376,15 @@ test.each(["before-child", "after-child"] as const)(
         ),
       ),
     ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    await f.run(
+      http.use(
+        writePreparedCurrentSource(library, {
+          prepared: plans[0]!,
+          operation_id: "handoff-p1",
+          mode: "resume",
+        }),
+      ),
+    )
     if (stage === "before-child") f.failNext({ kind: "source-properties", outcome: "accepted" })
     const alphaPage = String(skillPage(f, "skill-alpha")!.id)
     await expect(
@@ -368,7 +396,6 @@ test.each(["before-child", "after-child"] as const)(
             return yield* writePreparedCurrentSource(library, {
               prepared: plans[1]!,
               operation_id: "handoff-p2",
-              mode: { kind: "supersede", operation_id: "handoff-p1" },
             }).pipe(
               Effect.provideService(Notion, {
                 ...api,
@@ -408,70 +435,110 @@ test.each(["before-child", "after-child"] as const)(
       operation_id: "handoff-p3",
       mode: { kind: "supersede", operation_id: "handoff-p2" },
     })
-    if (stage === "before-child") {
-      await expect(f.run(http.use(attempt))).rejects.toMatchObject({
-        code: "CURRENT_SOURCE_HANDOFF_PENDING",
-        details: { operation_id: "handoff-p2", next: "reconcile_current" },
-      })
-      expect(f.mutations()).toEqual([])
-      expect(
-        (await f.run(queryCurrentSourceManagement(library, "team-skills")))?.state,
-      ).toMatchObject({ operation_id: "handoff-p2" })
-      // Repeating the same exact successor selects P2 again and pins its original
-      // commit; it does not rediscover a branch or start another handoff.
-      await f.run(
+    await expect(f.run(http.use(attempt))).rejects.toMatchObject({
+      code: "CURRENT_OPERATION_UNRESOLVED",
+    })
+    expect(f.mutations()).toEqual([])
+    await expect(
+      f.run(
         http.use(
           writePreparedCurrentSource(library, {
             prepared: plans[1]!,
             operation_id: "handoff-p2",
-            mode: { kind: "supersede", operation_id: "handoff-p1" },
+            mode: "resume",
           }),
         ),
-      )
-    } else {
-      const child = operationRecords(f).find(
-        (row) =>
-          fieldText(row, library.records.property_ids["Entity ID"]!) ===
-          "current-skill:skill-alpha",
-      )!
-      const savedChild = structuredClone(child)
-      const local = [...f.json.entries()].find(
-        ([key, value]) =>
-          key.startsWith("operations/current-write-pending/") &&
-          property(property(property(value).intent).owner).id === "skill-alpha",
-      )!
-      const envelope = JSON.parse(fieldText(child, library.records.property_ids.Payload!))
-      property(property(property(envelope).payload).intent).source = {
-        ...property(property(property(property(envelope).payload).intent).source),
-        authorization_sha256: "0".repeat(64),
-      }
-      const encoded = canonicalSharedJson(envelope),
-        fields = property(child.properties)
-      for (const [name, value] of [
-        ["Payload", encoded],
-        ["Hash", createHash("sha256").update(encoded).digest("hex")],
-      ] as const) {
-        const key = library.records.property_ids[name]!
-        fields[key] = { ...property(fields[key]), rich_text: sourceRich(value) }
-      }
-      // A caller with no local child cache still verifies the current grant
-      // before changing the parent. Four matching labels are insufficient.
-      f.json.delete(local[0])
-      await expect(f.run(http.use(attempt))).rejects.toMatchObject({
-        code: "CURRENT_SOURCE_HANDOFF_PENDING",
-      })
-      expect(f.mutations()).toEqual([])
-      f.pages.set(String(child.id), savedChild)
-      f.json.set(local[0], local[1])
-      expect(await f.run(http.use(attempt))).toMatchObject({
-        operation_id: "handoff-p3",
-        state: "ready",
-        resolved_commit: thirdCommit,
-      })
-    }
-    await assertReady(f)
+      ),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+    expect(f.mutations()).toEqual([])
+    expect(pendingKeys(f).length).toBeGreaterThan(0)
   },
 )
+
+test("a Source successor inspects every original child after the first child has completed", async () => {
+  const f = currentWriteFixture(parent)
+  const snapshots = [observation(), observation(secondCommit), observation("f".repeat(40))]
+  const http = provider(snapshots),
+    plans: PreparedCurrentSourceInput[] = []
+  for (const snapshot of snapshots)
+    plans.push(await f.run(prepareCurrentSourceFromDiscovery(directDeclaration, snapshot)))
+  await f.run(
+    http.use(
+      writePreparedCurrentSource(library, { prepared: plans[0]!, operation_id: "all-child-seed" }),
+    ),
+  )
+  const betaPage = String(skillPage(f, "skill-beta")!.id)
+  let lost = false
+  await expect(
+    f.run(
+      http.use(
+        Effect.gen(function* () {
+          const api = yield* Notion
+          return yield* writePreparedCurrentSource(library, {
+            prepared: plans[1]!,
+            operation_id: "all-child-original",
+          }).pipe(
+            Effect.provideService(Notion, {
+              ...api,
+              request: (path, body, options) =>
+                api.request(path, body, options).pipe(
+                  Effect.flatMap((response) => {
+                    if (
+                      !lost &&
+                      path === `v1/pages/${betaPage}` &&
+                      options?.method === "PATCH" &&
+                      library.skills.property_ids.Content! in property(property(body).properties)
+                    ) {
+                      lost = true
+                      return Effect.fail(
+                        fail(
+                          "WRITE_OUTCOME_UNKNOWN",
+                          "The second child's accepted Content response was lost.",
+                        ),
+                      )
+                    }
+                    return Effect.succeed(response)
+                  }),
+                ),
+            }),
+          )
+        }),
+      ),
+    ),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  expect(lost).toBe(true)
+  expect(
+    (await f.run(queryCurrentSkillIndex(library, String(skillPage(f, "skill-alpha")!.id)))).state,
+  ).toEqual({ state: "ready" })
+  expect(
+    operationRecords(f).some(
+      (row) =>
+        fieldText(row, library.records.property_ids["Entity ID"]!) === "current-skill:skill-alpha",
+    ),
+  ).toBe(false)
+  expect(
+    operationRecords(f).some(
+      (row) =>
+        fieldText(row, library.records.property_ids["Entity ID"]!) === "current-skill:skill-beta",
+    ),
+  ).toBe(true)
+  f.clearCalls()
+  await expect(
+    f.run(
+      http.use(
+        writePreparedCurrentSource(library, {
+          prepared: plans[2]!,
+          operation_id: "all-child-successor",
+          mode: { kind: "supersede", operation_id: "all-child-original" },
+        }),
+      ),
+    ),
+  ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+  expect(f.mutations()).toEqual([])
+  expect((await f.run(queryCurrentSourceManagement(library, "team-skills")))?.state).toMatchObject({
+    operation_id: "all-child-original",
+  })
+})
 
 test("one Source writes two current Skills, preserves native authorship and resource bytes, and refreshes/excludes/renames without new identities", async () => {
   const f = currentWriteFixture(parent),
@@ -700,7 +767,7 @@ test("one Source writes two current Skills, preserves native authorship and reso
 })
 
 test.each(["source-properties", "source-ready", "source-retirement"] as const)(
-  "accepted unknown %s resumes the parent operation and clears ready/retiring state without replay",
+  "accepted unknown %s only releases its parent when an original control witness settles it",
   async (kind) => {
     const f = currentWriteFixture(parent)
     await seedNative(f)
@@ -744,7 +811,7 @@ test.each(["source-properties", "source-ready", "source-retirement"] as const)(
       expect(property(property(f.json.get(pendingKeys(f)[0]!)).lifecycle).phase).toBe("retiring")
     }
     const resumedFrom = f.calls.length
-    const resumed = await f.run(
+    const resume = f.run(
       http.use(
         writePreparedCurrentSource(library, {
           prepared: updated,
@@ -753,7 +820,18 @@ test.each(["source-properties", "source-ready", "source-retirement"] as const)(
         }),
       ),
     )
-    expect(resumed.operation_id).toBe(operation)
+    if (kind !== "source-retirement") {
+      await expect(resume).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+      expect(
+        f.calls
+          .slice(resumedFrom)
+          .filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+      ).toEqual([])
+      expect(f.calls.filter((call) => sameRequest(call, original))).toHaveLength(1)
+      expect(pendingKeys(f).length).toBeGreaterThan(0)
+      return
+    }
+    expect((await resume).operation_id).toBe(operation)
     expect(f.calls.filter((call) => sameRequest(call, original))).toHaveLength(1)
     if (kind === "source-retirement") {
       expect(
@@ -771,7 +849,7 @@ test.each(["source-properties", "source-ready", "source-retirement"] as const)(
   },
 )
 
-test("an absent parent ready response resumes only its complete original child scope", async () => {
+test("an absent parent ready response remains unresolved with its complete original child scope", async () => {
   const f = currentWriteFixture(parent)
   const observed = observation(),
     http = provider([observed])
@@ -844,21 +922,22 @@ test("an absent parent ready response resumes only its complete original child s
   f.clearCalls()
   await expect(
     f.run(http.use(writePreparedCurrentSource(library, { ...options, mode: "resume" }))),
-  ).rejects.toMatchObject({ code: "CURRENT_OPERATION_PENDING" })
+  ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
   expect(f.mutations()).toEqual([])
   payload.rich_text = completePayload
   payloadHash.rich_text = completeHash
   f.clearCalls()
-  expect(
-    await f.run(http.use(writePreparedCurrentSource(library, { ...options, mode: "resume" }))),
-  ).toMatchObject({ state: "ready" })
+  await expect(
+    f.run(http.use(writePreparedCurrentSource(library, { ...options, mode: "resume" }))),
+  ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+  expect(f.mutations()).toEqual([])
   expect(f.calls.some((call) => call.path === "v1/pages" && call.method === "POST")).toBe(false)
   expect(
     f
       .mutations()
       .some((call) => [...skills, ...files].some((page) => call.path === "v1/pages/" + page)),
   ).toBe(false)
-  await assertReady(f)
+  expect(pendingKeys(f)).toHaveLength(1)
 })
 
 test("Source writes reach ready without projection bodies and preserve current native authorship", async () => {
@@ -1023,7 +1102,7 @@ test("an unobserved Source CREATE remains one finite parent intent and never bli
 })
 
 test.each(["accepted", "absent"] as const)(
-  "a %s lost Source child-start checkpoint resumes the existing child intent before product writes",
+  "a %s lost Source child-start checkpoint requires the original unique control witness",
   async (outcome) => {
     const f = currentWriteFixture(parent),
       native = await seedNative(f),
@@ -1069,14 +1148,31 @@ test.each(["accepted", "absent"] as const)(
     const original = f.calls.findLast(
       (call) => call.method === "PATCH" && call.path === `v1/pages/${parentRecord.id}`,
     )!
+    if (outcome === "absent") {
+      const count = f.mutations().length
+      await expect(
+        f.run(
+          http.use(
+            writePreparedCurrentSource(library, {
+              prepared,
+              operation_id: operation,
+              mode: "resume",
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+      expect(f.mutations()).toHaveLength(count)
+      expect(f.calls.filter((call) => sameRequest(call, original))).toHaveLength(1)
+      expect(pendingKeys(f)).toHaveLength(2)
+      expect(f.table("skills").map((row) => row.id)).toEqual([native.page_id])
+      return
+    }
     await f.run(
       http.use(
         writePreparedCurrentSource(library, { prepared, operation_id: operation, mode: "resume" }),
       ),
     )
-    expect(f.calls.filter((call) => sameRequest(call, original))).toHaveLength(
-      outcome === "accepted" ? 1 : 2,
-    )
+    expect(f.calls.filter((call) => sameRequest(call, original))).toHaveLength(1)
     const childCreates = f.calls.filter(
       (call) =>
         call.path === "v1/pages" &&
@@ -1091,6 +1187,51 @@ test.each(["accepted", "absent"] as const)(
     await assertReady(f)
   },
 )
+
+test("a Source cannot reconstruct a lost original Store while its control PATCH is unknown", async () => {
+  const f = currentWriteFixture(parent)
+  await seedNative(f)
+  const observed = observation(),
+    http = provider([observed]),
+    prepared = await f.run(prepareCurrentSourceFromDiscovery(declaration, observed)),
+    operation = "missing-original-store"
+  f.failNext({ kind: "source-progress", outcome: "absent" })
+  await expect(
+    f.run(
+      http.use(
+        writePreparedCurrentSource(library, {
+          prepared,
+          operation_id: operation,
+        }),
+      ),
+    ),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  const entry = [...f.json.entries()].find(
+    ([key, value]) =>
+      key.startsWith("operations/current-write-pending/") &&
+      property(property(value).intent).operation_id === operation,
+  )!
+  expect(entry).toBeDefined()
+  f.json.delete(entry[0])
+  f.clearCalls()
+  await expect(
+    f.run(
+      http.use(
+        writePreparedCurrentSource(library, {
+          prepared,
+          operation_id: operation,
+          mode: "resume",
+        }),
+      ),
+    ),
+  ).rejects.toMatchObject({
+    code: "CURRENT_OPERATION_UNRESOLVED",
+    details: { reason: "original_store_pending_missing" },
+  })
+  expect(f.mutations()).toEqual([])
+  expect(f.json.has(entry[0])).toBe(false)
+  expect(operationRecords(f)).toHaveLength(2)
+})
 
 test("Source manifest cleanup rechecks the current pointer after inspecting a candidate and never archives a newly referenced original", async () => {
   const f = currentWriteFixture(parent)
@@ -1418,7 +1559,7 @@ test("one declaration discovers additions, retires upstream removals and converg
 })
 
 test.each(["accepted", "absent"] as const)(
-  "a %s unknown member retirement resumes the exact archived File without losing its owner",
+  "a %s unknown member retirement retains its owner and never repeats the archive",
   async (outcome) => {
     const f = currentWriteFixture(parent),
       first = observation(),
@@ -1448,8 +1589,9 @@ test.each(["accepted", "absent"] as const)(
     )!
     expect(attempted).toBeDefined()
     expect(pendingKeys(f).length).toBeGreaterThan(0)
-    expect(
-      await f.run(
+    const count = f.mutations().length
+    await expect(
+      f.run(
         http.use(
           writePreparedCurrentSource(library, {
             prepared,
@@ -1458,19 +1600,12 @@ test.each(["accepted", "absent"] as const)(
           }),
         ),
       ),
-    ).toMatchObject({
-      state: "ready",
-      targets: expect.arrayContaining([
-        expect.objectContaining({ skill_id: "skill-beta", state: "removed", status: "removed" }),
-      ]),
-    })
-    expect(f.calls.filter((call) => sameRequest(call, attempted))).toHaveLength(
-      outcome === "accepted" ? 1 : 2,
-    )
-    expect(f.pages.get(betaPage)?.in_trash).toBe(true)
-    for (const file of beta.files) expect(f.pages.get(file.page_id)?.in_trash).toBe(true)
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+    expect(f.mutations()).toHaveLength(count)
+    expect(f.calls.filter((call) => sameRequest(call, attempted))).toHaveLength(1)
+    expect(f.pages.get(betaPage)?.in_trash).toBe(false)
+    expect(pendingKeys(f).length).toBeGreaterThan(0)
     expect(skillPage(f, "skill-alpha")).toBeDefined()
-    await assertReady(f)
   },
 )
 

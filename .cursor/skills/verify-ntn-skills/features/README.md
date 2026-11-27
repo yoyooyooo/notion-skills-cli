@@ -7,7 +7,7 @@
 | 公开命令、配置、安装与路由 | [verify-ntn-skills](../SKILL.md) | [发现与访问](discovery-config-auth-doctor.md)、[随包指引](builtin-management.md)、[独立包](portable-export-package-consumption.md) |
 | 当前四表、正文、原件与关系写入 | [verify-notion-management](../../verify-notion-management/SKILL.md) | [空库](empty-library.md)、[完整导入](import-create-recovery-dry-run.md)、[管理边界](skill-maintenance.md) |
 | 当前读取、依赖闭包、缓存与成本 | [verify-notion-consumption](../../verify-notion-consumption/SKILL.md) | [消费](skill-consumption.md)、[依赖图](skill-dependency-graph.md)、[请求引擎](request-engine.md)、[有限模型](request-engine-formal.md)、[Broker 交接](broker-consumption.md) |
-| 当前 Source、按需文件与原件 | [verify-notion-source-onboarding](../../verify-notion-source-onboarding/SKILL.md) | [来源读取与剩余发布边界](resource-sources.md) |
+| 当前 Source、按需文件与原件 | [verify-notion-source-onboarding](../../verify-notion-source-onboarding/SKILL.md) | [来源读取与剩余发布边界](resource-sources.md)、[首次引用物化](source-materialization.md) |
 | 当前权威与资源状态 | [resource lifecycle](../../verify-notion-resource-lifecycle/SKILL.md) | 当前生命周期模型与实际状态正反例、[引用与导入关系](skill-reference.md) |
 | unknown、partial 与有限对账 | [operation recovery](../../verify-notion-operation-recovery/SKILL.md) | 当前稳定身份、预算和恢复 |
 

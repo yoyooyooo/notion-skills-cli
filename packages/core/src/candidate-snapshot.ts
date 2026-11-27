@@ -1,3 +1,9 @@
+import { skillIdentity } from "./shared-content.ts"
+import {
+  SourceMemberCacheSchema,
+  sourceMemberCacheKey,
+} from "./shared-source-materialization-state.ts"
+import type { SourceMemberCandidate } from "./shared-source-materialization-model.ts"
 import { Clock, Effect } from "effect"
 import {
   catalogSelection,
@@ -50,6 +56,7 @@ export type CandidateSnapshotResult =
       readonly stale: boolean
       readonly coverage: "complete" | "partial"
       readonly records: readonly ContentRecord[]
+      readonly source_members?: readonly SourceMemberCandidate[]
       readonly denials: readonly CandidateDenial[]
       readonly generation: number
       readonly lastFailure?: { readonly code: string; readonly observed_at: number }
@@ -240,6 +247,19 @@ export function readCandidateSnapshot(options: { readonly library?: string } = {
         age >= maxAge,
       coverage: complete ? "complete" : "partial",
       records,
+      source_members:
+        (yield* store.readJson(
+          sourceMemberCacheKey(scope, libraryId),
+          SourceMemberCacheSchema,
+        ))?.candidates.filter(
+          (candidate) =>
+            candidate.enabled &&
+            !denied.has(skillIdentity(libraryId, candidate.expected_skill_id)) &&
+            (candidate.record === undefined ||
+              (!denied.has(candidate.record.id) &&
+                candidate.record.locator.type === "shared_skill" &&
+                !denied.has(candidate.record.locator.page_id))),
+        ) ?? [],
       denials,
       generation,
       ...(observation.last_failure === undefined ? {} : { lastFailure: observation.last_failure }),

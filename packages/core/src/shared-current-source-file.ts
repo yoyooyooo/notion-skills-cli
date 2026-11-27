@@ -1,3 +1,4 @@
+import { withCurrentSourceWriter } from "./shared-current-source-writer.ts"
 import { Effect, Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
@@ -552,6 +553,7 @@ export function changeCurrentSourceFileAuthority(
       childOperation,
     })
   }).pipe(
+    (effect) => withCurrentSourceWriter(library, effect),
     withCurrentInvocationBudget,
     Effect.map(({ result }) => result),
   )

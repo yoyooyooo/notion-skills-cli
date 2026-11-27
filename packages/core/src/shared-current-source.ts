@@ -179,7 +179,7 @@ type CurrentSourceContentSelection = {
   readonly content: CurrentSharedSourceContent
 }
 
-function currentSourcePlan(library: SharedLibrary, current: CurrentSourceContentSelection) {
+export function currentSourcePlan(library: SharedLibrary, current: CurrentSourceContentSelection) {
   return Effect.gen(function* () {
     yield* checked(() => {
       validateCurrentSourceId(current.source_id)

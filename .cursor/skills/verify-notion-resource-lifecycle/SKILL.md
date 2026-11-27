@@ -28,6 +28,8 @@ description: "验证当前 Skill/File 身份、Content 权威、有限 readiness
 | File identity/path/owner | 单 owner、stable File ID、完整分页、安全无冲突路径；删除不被 cache 复活 |
 | Exact resource | 单当前 object locator、hash/bytes/mode 完整、原件可用；历史 carrier 不 fallback |
 | 当前请求 | 预算、取消、scope 和合并边界继续有效，不用降低完整性换成本 |
+| Source 增量准备 | 单固定 manager 的 read–plan–write fence；保留 Contributions/manifest；ready 的 M 与请求 R 对应同 revision，未 ready sibling 不展开 |
+| 原未知写 | durable intent 先于派发；业务与控制请求不重放；唯一因果终结先于后继，取消不释放 gate |
 
 以上是当前状态义务，不是声称已有形式模型证明。父修订、原 ACK/review/completion 和永久旧选择可恢复不在目标内。
 
@@ -56,6 +58,8 @@ Broker 的 branch/turn/迟到目录沿其 consumer-state 的 LibrarySession。
 使用同一地址的证明；`library-import-sqlite-address` 恢复旧含 DS 校验来检出这类裂缝。
 
 检查全部正例/预期反例与条件进展；明确外部返回、显式 resume 及公平性假设。NoDeadlock 不等于最终恢复。实际 guard 原件通过、突变行为失败、恢复通过；导入/语法错误不算检出。
+
+首次引用物化和原请求晚到分别沿同一 suite 的 SourceMaterialization、SourceWriterSettlement 全部正负配置。审阅 [物化合同](../verify-ntn-skills/features/source-materialization.md) 中实际 read–plan–write、原业务/控制 PATCH、retire、父子准入和 input receipt 对应；管理 ACK 与内容核验不能合成一个成功位。完整 current-lifecycle 及实际 guard mutations 为最终门禁，局部模型开发检查不是产品通过。真实 Pi、HTTP/SQLite、独立第二客户端仍由原领域入口执行。
 
 ~~~sh
 bun test packages/core/test/shared-current-index.test.ts packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-resource.test.ts --timeout 60000

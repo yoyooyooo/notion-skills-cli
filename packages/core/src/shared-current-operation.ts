@@ -1,5 +1,10 @@
 import { Crypto, Effect, Schema } from "effect"
+import {
+  legacySourceRegistration,
+  sameLegacySourceRegistration,
+} from "./shared-current-source-legacy-registration.ts"
 import { withLocalLocks } from "./local-locks.ts"
+import { withCurrentSourceWriter } from "./shared-current-source-writer.ts"
 import { fail, property, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { normalizePath, pageId } from "./ref.ts"
@@ -13,6 +18,8 @@ import {
   archiveCurrentSharedOperationRecord,
   assertCurrentOperationRecordSize,
   currentRecordText,
+  observeCurrentSharedOperationRecord,
+  type CurrentOperationRecordWrite,
   queryCurrentSharedOperationRecord,
   replaceCurrentSharedOperationRecord,
   writeCurrentSharedOperationRecord,
@@ -128,8 +135,28 @@ const PayloadSchema = Schema.Struct({
   predecessor: Schema.optional(PredecessorSchema),
 })
 type CurrentPayload = typeof PayloadSchema.Type
+const ControlWriteSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("record"),
+    page_id: Schema.NullOr(Schema.String),
+    record_id: Schema.String,
+    entity_id: Schema.String,
+    operation_id: StableId,
+    write_id: StableId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("retire"),
+    page_id: Schema.String,
+    record_id: Schema.String,
+    operation_id: StableId,
+    hash: Hash,
+  }),
+  Schema.Struct({ kind: Schema.Literal("owner"), page_id: Schema.String, operation_id: StableId }),
+])
+type ControlWrite = typeof ControlWriteSchema.Type
 export const CurrentWritePendingSchema = Schema.Struct({
   version: Schema.Literal(2),
+  dispatch_protocol: Schema.optional(Schema.Literal(1)),
   library: SharedLibrarySchema,
   scope: Hash,
   library_id: Schema.String,
@@ -150,6 +177,8 @@ export const CurrentWritePendingSchema = Schema.Struct({
     }),
   ]),
   not_dispatched: Schema.optional(ActionSchema),
+  settled_action: Schema.optional(ActionSchema),
+  control_write: Schema.optional(ControlWriteSchema),
 }).check(
   Schema.makeFilter(
     (value) =>
@@ -494,6 +523,29 @@ export function currentOperationOwnerState(
   const header = currentOperationOwnerHeader(library, intent, page, input)
   const state = property(header.selection).name
   if (typeof state !== "string") throw invalid("The current owner has no state.")
+  if (
+    state === "applied" &&
+    intent.owner.kind === "source" &&
+    "source_input" in intent &&
+    intent.source_input.kind === "declaration" &&
+    intent.source_input.materialization_sha256 !== undefined &&
+    intent.source_input.legacy_registration !== undefined
+  ) {
+    const expected = intent.source_input.legacy_registration
+    const actual = legacySourceRegistration(library, input)
+    if (
+      expected.source_id !== intent.owner.id ||
+      expected.source_page_id !== page ||
+      !sameLegacySourceRegistration(expected, actual)
+    )
+      throw fail(
+        "SOURCE_LEGACY_REGISTRATION_CHANGED",
+        "The original legacy Source registration no longer matches.",
+      )
+    // Only this admitted writer sees an idle owner. Ordinary readers retain the
+    // strict current-state parser; the next status write is journaled applying.
+    return { state: "ready" as const }
+  }
   return parseCurrentSkillState(state, header.operation)
 }
 function definitive(error: SkillsError): boolean {
@@ -578,7 +630,7 @@ export function currentOperationFailure(
                 ...(sourceInput.kind === "enabled" ? { enabled: sourceInput.enabled } : {}),
               }),
           required_state:
-            "Keep the original local Store and credentials. An unknown write cannot be safely recreated from an empty local state.",
+            "Keep the original local Store and credentials. Stopping a process does not settle a remote write. Resume advances only after an acknowledged dispatch or a unique completion witness; unresolved requests cannot be replayed or superseded.",
         }),
     input_sha256: intent.input_sha256,
     next: "reconcile_current",
@@ -799,7 +851,11 @@ export function withCurrentOperation<A, R>(
   library: SharedLibrary,
   input: CurrentOperationInput<A, R>,
 ): Effect.Effect<A, SkillsError, R | Notion | Crypto.Crypto | Store> {
-  return runCurrentOperation(library, input, { kind: "write" })
+  const effect = runCurrentOperation(library, input, { kind: "write" })
+  return "source_input" in input.intent ||
+    ("source" in input.intent && input.intent.source !== undefined)
+    ? withCurrentSourceWriter(library, effect)
+    : effect
 }
 
 /** Close only the selected reading intent. Its observed prefix is not a completed projection. */
@@ -984,6 +1040,120 @@ function runCurrentOperation<A, R>(
           const original = pending.intent
           retainFailure = (error) => currentOperationFailure(error, original, null, suppliedPage)
         }
+        if (pending !== undefined && pending.dispatch_protocol !== 1)
+          return yield* Effect.fail(
+            fail(
+              "CURRENT_OPERATION_UNRESOLVED",
+              "This original Store contains a legacy pending intent without dispatch settlement evidence. Keep its original generation and inspect it before any retry or successor.",
+              { reason: "legacy_dispatch_protocol", operation_id: pending.intent.operation_id },
+            ),
+          )
+        const clearControlWrite = () =>
+          Effect.gen(function* () {
+            if (pending === undefined)
+              return yield* Effect.fail(invalid("The control write lost its local intent."))
+            const { control_write: _, ...next } = pending
+            yield* store.writeJson(key, next)
+            pending = next
+          })
+        // A timeout and a dead local process say nothing about the remote request.
+        // Control PATCHes carry a unique write witness in the existing envelope.
+        // The original is observed before any successor or additional write.
+        if (pending?.control_write !== undefined) {
+          const control = pending.control_write
+          let complete = false
+          if (control.kind === "record") {
+            const observed =
+              control.page_id === null
+                ? yield* queryCurrentSharedOperationRecord(library, {
+                    recordId: control.record_id,
+                    entityId: control.entity_id,
+                  })
+                : yield* observeCurrentSharedOperationRecord(library, control.page_id).pipe(
+                    Effect.map((value) => (value.retired ? undefined : value.record)),
+                  )
+            complete =
+              observed !== undefined &&
+              observed.record_id === control.record_id &&
+              observed.entity_id === control.entity_id &&
+              observed.operation_id === control.operation_id &&
+              observed.write_id === control.write_id &&
+              (control.page_id === null || observed.page_id === control.page_id)
+          } else if (control.kind === "retire") {
+            const observed = yield* observeCurrentSharedOperationRecord(library, control.page_id)
+            complete =
+              observed.retired &&
+              observed.record.record_id === control.record_id &&
+              observed.record.operation_id === control.operation_id &&
+              observed.record.hash === control.hash
+          } else {
+            const raw = yield* api.request("v1/pages/" + control.page_id)
+            const original = pending.intent
+            const state = yield* checked(() =>
+              currentOperationOwnerState(library, original, control.page_id, raw),
+            )
+            complete = state.state === "applying" && state.operation_id === control.operation_id
+          }
+          if (!complete)
+            return yield* Effect.fail(
+              fail(
+                "CURRENT_OPERATION_UNRESOLVED",
+                "The original control write has no unique completion witness. It cannot be replayed or superseded.",
+                { control_write: control.kind, page_id: control.page_id },
+              ),
+            )
+          yield* clearControlWrite()
+        }
+        const controlWrite = <B, R2>(
+          control: ControlWrite,
+          effect: Effect.Effect<B, SkillsError, R2>,
+        ) =>
+          Effect.gen(function* () {
+            if (pending === undefined || pending.control_write !== undefined)
+              return yield* Effect.fail(
+                invalid("A control write requires one idle durable intent."),
+              )
+            const next: LocalPending = { ...pending, control_write: control }
+            yield* store.writeJson(key, next)
+            pending = next
+            const result = yield* effect.pipe(Effect.result)
+            if (result._tag === "Success" || definitive(result.failure)) yield* clearControlWrite()
+            if (result._tag === "Failure") return yield* Effect.fail(result.failure)
+            return result.success
+          })
+        const writeRecord = (
+          write: Omit<CurrentOperationRecordWrite, "writeId">,
+          replacing = false,
+        ) =>
+          Effect.gen(function* () {
+            const writeId = yield* (yield* Crypto.Crypto)
+              .randomUUIDv4()
+              .pipe(
+                Effect.mapError(() =>
+                  fail(
+                    "STORAGE_ERROR",
+                    "A unique current control write identity could not be created.",
+                  ),
+                ),
+              )
+            const selected = { ...write, writeId }
+            return yield* controlWrite(
+              {
+                kind: "record",
+                page_id: write.current?.page_id ?? null,
+                record_id: write.recordId,
+                entity_id: write.entityId,
+                operation_id: write.operationId,
+                write_id: writeId,
+              },
+              replacing && selected.current !== null
+                ? replaceCurrentSharedOperationRecord(library, {
+                    ...selected,
+                    current: selected.current,
+                  })
+                : writeCurrentSharedOperationRecord(library, selected),
+            )
+          })
         let record = yield* queryCurrentSharedOperationRecord(library, { recordId, entityId })
         const observedRecordPayload = record?.payload
         let observedPayload =
@@ -1029,6 +1199,22 @@ function runCurrentOperation<A, R>(
           retainFailure = (error) =>
             currentOperationFailure(error, original.intent, original.in_flight, originalOwner)
         }
+        if (
+          pending === undefined &&
+          observedPayload !== undefined &&
+          ("source_input" in observedPayload.intent ||
+            ("source" in observedPayload.intent && observedPayload.intent.source !== undefined))
+        )
+          return yield* Effect.fail(
+            fail(
+              "CURRENT_OPERATION_UNRESOLVED",
+              "The live Source operation has no original local dispatch evidence. Restore its original manager Store before recovery.",
+              {
+                reason: "original_store_pending_missing",
+                operation_id: observedPayload.intent.operation_id,
+              },
+            ),
+          )
         if (
           pending !== undefined &&
           canonicalSharedJson(pending.intent.owner) !== canonicalSharedJson(intent.owner)
@@ -1130,6 +1316,64 @@ function runCurrentOperation<A, R>(
                 invalid("A file authority successor must select the same exact current target."),
               )
           }
+          const outstanding = observedPayload?.in_flight
+          if (
+            outstanding != null &&
+            canonicalSharedJson(pending?.not_dispatched ?? null) !==
+              canonicalSharedJson(outstanding) &&
+            canonicalSharedJson(pending?.settled_action ?? null) !==
+              canonicalSharedJson(outstanding)
+          )
+            return yield* Effect.fail(
+              fail(
+                "CURRENT_OPERATION_UNRESOLVED",
+                "Resume and settle the original action before admitting a successor.",
+                { operation_id: selectedIntent.operation_id, action: outstanding.key },
+              ),
+            )
+          // The parent cannot be replaced while any original child can still land.
+          // Checking only when that child is entered is too late: the parent
+          // Record would already have abandoned the original authorization.
+          if ("source_input" in selectedIntent) {
+            for (const skillId of selectedIntent.source_input.affected_skill_ids) {
+              const childAddress = yield* operationAddress(library, { kind: "skill", id: skillId })
+              const childPending = yield* store.readJson(
+                childAddress.key,
+                CurrentWritePendingSchema,
+              )
+              const childRecord = yield* queryCurrentSharedOperationRecord(library, {
+                recordId: childAddress.recordId,
+                entityId: childAddress.entityId,
+              })
+              const childPayload =
+                childRecord === undefined
+                  ? undefined
+                  : yield* checked(() => decodePayload(childRecord.payload))
+              const active = childPayload?.in_flight
+              if (
+                (childRecord !== undefined && childPending === undefined) ||
+                (childPending !== undefined &&
+                  (childPending.dispatch_protocol !== 1 ||
+                    childPending.control_write !== undefined)) ||
+                (active != null &&
+                  canonicalSharedJson(childPending?.not_dispatched ?? null) !==
+                    canonicalSharedJson(active) &&
+                  canonicalSharedJson(childPending?.settled_action ?? null) !==
+                    canonicalSharedJson(active))
+              )
+                return yield* Effect.fail(
+                  fail(
+                    "CURRENT_OPERATION_UNRESOLVED",
+                    "Settle every original Source child before admitting a successor parent.",
+                    {
+                      operation_id: selectedIntent.operation_id,
+                      child_skill_id: skillId,
+                      action: active?.key ?? null,
+                    },
+                  ),
+                )
+            }
+          }
           const priorOwner = record?.owner?.page_id ?? pending?.owner_page_id ?? suppliedPage
           if (priorOwner !== null) {
             if (suppliedPage !== null && priorOwner !== suppliedPage)
@@ -1168,6 +1412,7 @@ function runCurrentOperation<A, R>(
           if (pending === undefined) {
             pending = {
               version: 2,
+              dispatch_protocol: 1,
               library: structuredClone(library),
               scope,
               library_id: library.library_id,
@@ -1184,6 +1429,7 @@ function runCurrentOperation<A, R>(
           }
           const replacement: LocalPending = {
             version: 2,
+            dispatch_protocol: 1,
             library: structuredClone(library),
             scope,
             library_id: library.library_id,
@@ -1225,6 +1471,7 @@ function runCurrentOperation<A, R>(
           ) {
             pending = {
               version: 2,
+              dispatch_protocol: 1,
               library: structuredClone(library),
               scope,
               library_id: library.library_id,
@@ -1260,7 +1507,7 @@ function runCurrentOperation<A, R>(
             const creating: LocalPending = { ...staged, lifecycle: { phase: "creating" } }
             yield* store.writeJson(key, creating)
             pending = creating
-            record = yield* writeCurrentSharedOperationRecord(library, {
+            record = yield* writeRecord({
               current: null,
               recordId,
               entityId,
@@ -1280,17 +1527,20 @@ function runCurrentOperation<A, R>(
               return yield* Effect.fail(
                 invalid("The current Record changed before its successor handoff."),
               )
-            record = yield* replaceCurrentSharedOperationRecord(library, {
-              current: record,
-              recordId,
-              entityId,
-              operationId: intent.operation_id,
-              owner:
-                staged.owner_page_id === null
-                  ? null
-                  : { kind: intent.owner.kind, page_id: staged.owner_page_id },
-              payload: freshPayload(predecessor),
-            })
+            record = yield* writeRecord(
+              {
+                current: record,
+                recordId,
+                entityId,
+                operationId: intent.operation_id,
+                owner:
+                  staged.owner_page_id === null
+                    ? null
+                    : { kind: intent.owner.kind, page_id: staged.owner_page_id },
+                payload: freshPayload(predecessor),
+              },
+              true,
+            )
           } else if (
             canonicalSharedJson(observedPayload!.predecessor) !==
               canonicalSharedJson(predecessor) ||
@@ -1321,35 +1571,43 @@ function runCurrentOperation<A, R>(
                 ),
               )
             if (state.state === "ready" || state.operation_id !== intent.operation_id) {
-              const result = yield* api.request(
-                "v1/pages/" + ownerPage,
-                {
-                  properties: {
-                    [binding(library, intent.owner, "Current State")]: {
-                      select: { name: "applying" },
+              yield* controlWrite(
+                { kind: "owner", page_id: ownerPage, operation_id: intent.operation_id },
+                Effect.gen(function* () {
+                  const result = yield* api.request(
+                    "v1/pages/" + ownerPage,
+                    {
+                      properties: {
+                        [binding(library, intent.owner, "Current State")]: {
+                          select: { name: "applying" },
+                        },
+                        [binding(library, intent.owner, "Operation")]: {
+                          rich_text: currentRecordText(intent.operation_id),
+                        },
+                      },
                     },
-                    [binding(library, intent.owner, "Operation")]: {
-                      rich_text: currentRecordText(intent.operation_id),
-                    },
-                  },
-                },
-                { method: "PATCH" },
-              )
-              yield* checked(() => {
-                const current = currentOperationOwnerState(library, intent, ownerPage, result)
-                if (current.state !== "applying" || current.operation_id !== intent.operation_id)
-                  throw fail(
-                    "WRITE_OUTCOME_UNKNOWN",
-                    "The successor owner binding was not confirmed.",
+                    { method: "PATCH" },
                   )
-              }).pipe(
-                Effect.mapError((error) =>
-                  fail(
-                    "WRITE_OUTCOME_UNKNOWN",
-                    "The successor owner acknowledgement could not be verified.",
-                    { cause_code: error.code },
-                  ),
-                ),
+                  yield* checked(() => {
+                    const current = currentOperationOwnerState(library, intent, ownerPage, result)
+                    if (
+                      current.state !== "applying" ||
+                      current.operation_id !== intent.operation_id
+                    )
+                      throw fail(
+                        "WRITE_OUTCOME_UNKNOWN",
+                        "The successor owner binding was not confirmed.",
+                      )
+                  }).pipe(
+                    Effect.mapError((error) =>
+                      fail(
+                        "WRITE_OUTCOME_UNKNOWN",
+                        "The successor owner acknowledgement could not be verified.",
+                        { cause_code: error.code },
+                      ),
+                    ),
+                  )
+                }),
               )
             }
           }
@@ -1513,10 +1771,15 @@ function runCurrentOperation<A, R>(
           return yield* Effect.fail(
             fail("CURRENT_OPERATION_NOT_FOUND", "No unfinished current intent was found."),
           )
-        const saveLocal = (lifecycle: LocalPending["lifecycle"], notDispatched?: ActionMarker) =>
+        const saveLocal = (
+          lifecycle: LocalPending["lifecycle"],
+          notDispatched?: ActionMarker,
+          settledAction?: ActionMarker,
+        ) =>
           Effect.gen(function* () {
             const next: LocalPending = {
               version: 2,
+              dispatch_protocol: 1,
               library: structuredClone(library),
               scope,
               library_id: library.library_id,
@@ -1527,6 +1790,7 @@ function runCurrentOperation<A, R>(
               ...(payload.predecessor === undefined ? {} : { predecessor: payload.predecessor }),
               lifecycle,
               ...(notDispatched === undefined ? {} : { not_dispatched: notDispatched }),
+              ...(settledAction === undefined ? {} : { settled_action: settledAction }),
             }
             yield* store.writeJson(key, next)
             pending = next
@@ -1534,11 +1798,14 @@ function runCurrentOperation<A, R>(
         const alreadyRetiring = pending?.lifecycle.phase === "retiring"
         let ownerRetired = false
         const notDispatched = pending?.not_dispatched
+        const settledAction = pending?.settled_action
         let settled =
           (cancelProjection && alreadyRetiring) ||
           payload.in_flight === null ||
           (notDispatched !== undefined &&
-            canonicalSharedJson(notDispatched) === canonicalSharedJson(payload.in_flight))
+            canonicalSharedJson(notDispatched) === canonicalSharedJson(payload.in_flight)) ||
+          (settledAction !== undefined &&
+            canonicalSharedJson(settledAction) === canonicalSharedJson(payload.in_flight))
         let ownerReady = alreadyRetiring
         let dispatching = false
         let closed = false
@@ -1549,8 +1816,20 @@ function runCurrentOperation<A, R>(
         const retainCurrentFailure = (error: SkillsError) =>
           currentOperationFailure(error, intent, settled ? null : payload.in_flight, owner)
         if (record !== undefined || pending !== undefined) retainFailure = retainCurrentFailure
+        if (!settled && payload.in_flight?.replay === "idempotent")
+          return yield* Effect.fail(
+            fail(
+              "CURRENT_OPERATION_UNRESOLVED",
+              "The original PATCH has no unique completion witness. Matching current values do not settle an outstanding request.",
+              { action: payload.in_flight.key },
+            ),
+          )
         if (record !== undefined && !alreadyRetiring)
-          yield* saveLocal({ phase: "active", record_page_id: record.page_id }, notDispatched)
+          yield* saveLocal(
+            { phase: "active", record_page_id: record.page_id },
+            notDispatched,
+            settledAction,
+          )
         const persist = (marker: ActionMarker | null) =>
           Effect.gen(function* () {
             if (record === undefined)
@@ -1559,7 +1838,7 @@ function runCurrentOperation<A, R>(
               )
             const next: CurrentPayload = { ...payload, in_flight: marker }
             payloadWriteUncertain = true
-            record = yield* writeCurrentSharedOperationRecord(library, {
+            record = yield* writeRecord({
               current: record,
               recordId,
               operationId: intent.operation_id,
@@ -1624,7 +1903,7 @@ function runCurrentOperation<A, R>(
             }
             if (record !== undefined) {
               payloadWriteUncertain = true
-              record = yield* writeCurrentSharedOperationRecord(library, {
+              record = yield* writeRecord({
                 current: record,
                 recordId,
                 operationId: intent.operation_id,
@@ -1661,7 +1940,7 @@ function runCurrentOperation<A, R>(
               )
             yield* saveLocal({ phase: "creating" })
             retainFailure = retainCurrentFailure
-            const written = yield* writeCurrentSharedOperationRecord(library, {
+            const written = yield* writeRecord({
               current: null,
               recordId,
               operationId: intent.operation_id,
@@ -1815,11 +2094,11 @@ function runCurrentOperation<A, R>(
                     "A ready owner cannot resume an incomplete earlier write.",
                   ),
                 )
-              if (active !== null && (mode !== "resume" || action.replay === "never"))
+              if (active !== null)
                 return yield* Effect.fail(
                   fail(
                     "CURRENT_OPERATION_UNRESOLVED",
-                    "The earlier write is not yet visible. A CREATE or append is not repeated from absence.",
+                    "The earlier write is not yet visible. An unknown request is never repeated from absence.",
                     { action: action.key },
                   ),
                 )
@@ -1874,7 +2153,11 @@ function runCurrentOperation<A, R>(
                     "A retired current operation cannot dispatch.",
                   ),
                 )
-              yield* saveLocal({ phase: "active", record_page_id: record.page_id }, marker)
+              yield* saveLocal(
+                { phase: "active", record_page_id: record.page_id },
+                marker,
+                pending?.settled_action,
+              )
               yield* persist(marker)
               yield* saveLocal({ phase: "active", record_page_id: record.page_id })
               const response = yield* api
@@ -1887,6 +2170,14 @@ function runCurrentOperation<A, R>(
                 }
                 return yield* Effect.fail(response.failure)
               }
+              // A complete successful response terminates this dispatched request.
+              // Content verification can still fail without making the request live again.
+              yield* saveLocal(
+                { phase: "active", record_page_id: record.page_id },
+                undefined,
+                marker,
+              )
+              settled = true
               const result = yield* (
                 action.acknowledge === undefined
                   ? action
@@ -1909,11 +2200,10 @@ function runCurrentOperation<A, R>(
                   fail(
                     "WRITE_OUTCOME_UNKNOWN",
                     "The current action acknowledgement could not be verified.",
-                    { cause_code: error.code },
+                    { cause_code: error.code, action: marker.key, dispatch_settled: true },
                   ),
                 ),
               )
-              settled = true
               return result
             }).pipe(
               Effect.ensuring(
@@ -2270,9 +2560,9 @@ function runCurrentOperation<A, R>(
               (alreadyRetiring || (!cancelProjection && payload.in_flight?.key === "$owner.ready"))
             ) {
               ownerReady = true
-              // The exact ready owner (with an empty Operation) is the actual
-              // acknowledgement of a lost ready PATCH. Keep the finite Record
-              // until full target verification, but allow only read-only children.
+              // The dispatch is already settled by a durable ACK above. Keep the
+              // finite Record until full target verification, and allow only
+              // read-only children while completing the original ready intent.
               if (!cancelProjection && payload.in_flight?.key === "$owner.ready") settled = true
             } else if (state.state === "ready" && record !== undefined && !preserveReadyOwner)
               yield* changeOwner("applying")
@@ -2343,8 +2633,21 @@ function runCurrentOperation<A, R>(
           else yield* changeOwner("ready")
           ownerReady = true
           if (record !== undefined) {
-            yield* saveLocal({ phase: "retiring", record_page_id: record.page_id })
-            yield* archiveCurrentSharedOperationRecord(library, record)
+            yield* saveLocal(
+              { phase: "retiring", record_page_id: record.page_id },
+              undefined,
+              pending?.settled_action,
+            )
+            yield* controlWrite(
+              {
+                kind: "retire",
+                page_id: record.page_id,
+                record_id: record.record_id,
+                operation_id: record.operation_id,
+                hash: record.hash,
+              },
+              archiveCurrentSharedOperationRecord(library, record),
+            )
           } else if (pending?.lifecycle.phase === "retiring") {
             yield* observeRetiredOperation(library, pending.lifecycle.record_page_id)
           }
@@ -2369,6 +2672,8 @@ function runCurrentOperation<A, R>(
                   "RATE_LIMITED",
                   "CANCELLED",
                   "SOURCE_CANCELLED",
+                  "WRITE_OUTCOME_UNKNOWN",
+                  "CURRENT_OPERATION_UNRESOLVED",
                 ].includes(error.code)
               )
                 yield* changeOwner("attention").pipe(Effect.catch(() => Effect.void))

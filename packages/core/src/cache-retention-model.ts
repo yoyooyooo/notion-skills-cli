@@ -12,6 +12,7 @@ export const REBUILDABLE_CACHE_PREFIXES = [
   "cache/shared-derived-graphs/",
   "cache/current-source-sync/",
   "cache/shared-source-refs/",
+  "cache/source-members/",
 ] as const
 
 /** This one predicate owns admission, diagnostics and reclamation. */
@@ -20,7 +21,10 @@ export function rebuildableCacheKey(key: string): boolean {
     /^cache\/shared-github-blobs\/[a-f0-9]{40}\.json$/u.test(key) ||
     /^cache\/shared-derived-graphs\/[a-f0-9]{64}\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u.test(key) ||
     /^cache\/current-source-sync\/[a-f0-9]{64}\/latest\.json$/u.test(key) ||
-    /^cache\/shared-source-refs\/[a-f0-9]{64}\/latest\.json$/u.test(key)
+    /^cache\/shared-source-refs\/[a-f0-9]{64}\/latest\.json$/u.test(key) ||
+    /^cache\/source-members\/[a-f0-9]{64}\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$/u.test(
+      key,
+    )
   )
 }
 

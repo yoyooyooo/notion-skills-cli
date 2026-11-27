@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { LegacySourceRegistrationSchema } from "./shared-current-source-legacy-registration.ts"
 import { CurrentSourceFileInputSchema } from "./shared-current-source-file-input.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
@@ -37,7 +38,21 @@ export const CurrentSourceInputSchema = Schema.Union([
     resolved_commit: Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/u)),
     affected_skill_ids: Scope,
     retirements: Retirements,
+    materialization_sha256: Schema.optional(Hash),
+    legacy_registration: Schema.optional(LegacySourceRegistrationSchema),
   }).check(
+    Schema.makeFilter(
+      (input) =>
+        input.legacy_registration === undefined ||
+        input.materialization_sha256 !== undefined ||
+        "Legacy Source initialization requires an exact materialization scope.",
+    ),
+    Schema.makeFilter(
+      (input) =>
+        !input.legacy_registration?.last_revision ||
+        input.resolved_commit === input.legacy_registration.last_revision ||
+        "Legacy Source initialization must preserve the accepted Git commit.",
+    ),
     Schema.makeFilter(
       (input) =>
         input.retirements.every((row) => input.affected_skill_ids.includes(row.skill_id)) ||

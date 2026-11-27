@@ -13,7 +13,7 @@ description: "定位 ntn-skills 当前实现、公共 CLI 与独立安装的验�
 | --- | --- | --- |
 | 原生 CRUD、完整树、Trash 恢复、关系与清理 | [管理](../verify-notion-management/SKILL.md) | 作者命令、当前字段、同页恢复；全库治理单列 |
 | 当前读取、选择、缓存、导出 | [消费](../verify-notion-consumption/SKILL.md) | 字节、目录、权限和成本 |
-| 当前 Source、来源获取和阅读投影 | [来源](../verify-notion-source-onboarding/SKILL.md) | 精确来源；成员发布与投影单列 |
+| 当前 Source、来源获取、首次引用物化和阅读投影 | [来源](../verify-notion-source-onboarding/SKILL.md) | [精确物化](features/source-materialization.md)、成员发布与独立投影 |
 | 当前权威和资源状态 | [资源状态](../verify-notion-resource-lifecycle/SKILL.md) | 可执行当前不变量；旧模型不继承 |
 | unknown、partial 和有限对账 | [操作恢复](../verify-notion-operation-recovery/SKILL.md) | Profile/resource 的当前边界；完整 writer 单列 |
 

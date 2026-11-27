@@ -1,3 +1,7 @@
+import { materializeSource } from "./management.ts"
+import { discoverSourceMembers } from "./sdk.ts"
+import { runSourceManagerEntry } from "./source-manager-entry.ts"
+import { decodeSourceMaterializationRequest } from "../../core/src/shared-source-materialization-model.ts"
 import { ByteSize, Crypto, Effect, FileSystem, Option, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { libraryId } from "../../core/src/catalog.ts"
@@ -287,6 +291,83 @@ function runCurrentSource(options: SourceOptions, request: SourceRequest) {
 const description =
   "Synchronize the complete selected Git member set through one current Source intent. Existing contribution assignments preserve stable Skill IDs; newly discovered members receive deterministic identities. Removed pure Source members and their Files are retired, including a completely empty selected set. Provider failures and incomplete discovery never authorize deletion. Regular Git files keep exact upstream bytes, paths and modes; unsupported transformations and symbolic links fail before writes. GitHub and credential-free HTTP(S) Git origins use local machine authentication. Contributions declare exact member-relative mappings/exclusions; Selection.include/exclude selects member roots. Explicit desired paths replace matching native/resource authority, reported by dry-run; excluded and unrelated content remains preserved, and another Source cannot be overwritten. Complete manifests and Contributions define all consumption files. Refresh creates main pages and updates existing support pages; projection creates selected reading Files, so scripts and tests need no Notion row. Reports separate source_files from notion_pages. Generated reading projections do not block current consumption. Dry-run reads Notion and acquires exact provider files. Resume uses the same operation and frozen commit. --supersede OLD --operation NEW replaces an unfinished intent only after exact predecessor reconciliation. HTTP budgets cover library lookup, Source reads and Notion writes; Git subprocess acquisition shares the deadline and reports separate known object bytes, with unknown wire bytes. There is no distributed lock or atomic multi-Skill transaction."
 
+export const materializeCurrentSourceCommand = defineCommand(
+  "materialize",
+  { input: Argument.String("input"), library: flags.library },
+  (options) =>
+    Effect.gen(function* () {
+      const request = yield* loadCurrentSourceJson(options.input, (value) => {
+        if (value === null || typeof value !== "object" || Array.isArray(value))
+          throw invalid("Use a Source materialization JSON request.")
+        if ("library" in value && value.library !== options.library)
+          throw invalid("The file and CLI selected different Libraries.")
+        return decodeSourceMaterializationRequest({ ...value, library: options.library })
+      })
+      const receipt = yield* Effect.tryPromise({
+        try: () => materializeSource(request, { env: process.env, cwd: process.cwd() }),
+        catch: (error) =>
+          error instanceof SkillsError ? error : invalid("The Source manager request failed."),
+      })
+      yield* emit(receipt)
+    }),
+).pipe(
+  Command.withDescription(
+    "Materialize one exact registered member and its required use closure through the configured manager. Preserve existing contributions and native/resource authority; no reading projection. INPUT is bounded version 1 JSON with request_id, purpose and target. Ordinary read/use never calls this management action.",
+  ),
+)
+
+export const discoverCurrentSourceMembersCommand = defineCommand(
+  "members",
+  {
+    library: flags.library,
+    query: singleton("query", "Exact name, alias, member path or stable Skill ID"),
+    sourceId: singleton("source-id", "Limit discovery to one registered Source"),
+    requiresOf: singleton(
+      "requires-of",
+      "Discover missing Source dependencies of this exact stable root Skill ID",
+    ),
+  },
+  (options) =>
+    Effect.gen(function* () {
+      const result = yield* Effect.tryPromise({
+        try: () =>
+          discoverSourceMembers(
+            {
+              library: options.library,
+              ...(Option.isSome(options.query) ? { query: options.query.value } : {}),
+              ...(Option.isSome(options.sourceId) ? { source_id: options.sourceId.value } : {}),
+              ...(Option.isSome(options.requiresOf)
+                ? { requires_of: options.requiresOf.value }
+                : {}),
+            },
+            { env: process.env, cwd: process.cwd() },
+          ),
+        catch: (error) =>
+          error instanceof SkillsError ? error : invalid("Registered member discovery failed."),
+      })
+      yield* emit(result)
+    }),
+).pipe(
+  Command.withDescription(
+    "Discover registered Source members without semantic Notion writes. Candidate identity and readiness are hints; explicit management revalidates them.",
+  ),
+)
+
+export const currentSourceManagerCommand = defineCommand(
+  "manager",
+  { config: requiredSingleton("config", "Absolute private fixed-manager binding file") },
+  (options) =>
+    Effect.tryPromise({
+      try: () => runSourceManagerEntry(options.config),
+      catch: (error) =>
+        error instanceof SkillsError ? error : invalid("The fixed Source manager failed."),
+    }),
+).pipe(
+  Command.withDescription(
+    "Fixed manager entry: one bounded request on stdin, one response on stdout. Validate the configured host, installation, credential and canonical Store.",
+  ),
+)
+
 export const applyCurrentSourceCommand = defineCommand(
   "apply",
   {
@@ -440,6 +521,9 @@ export const currentSourceCommand = defineCommand("source").pipe(
     "Manage current Source declarations, eligibility and exact file authority through finite intents; remove only unreferenced Sources.",
   ),
   Command.withSubcommands([
+    materializeCurrentSourceCommand,
+    discoverCurrentSourceMembersCommand,
+    currentSourceManagerCommand,
     applyCurrentSourceCommand,
     refreshCurrentSourceCommand,
     checkCurrentSourcesCommand,

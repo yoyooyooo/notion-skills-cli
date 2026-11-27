@@ -19,6 +19,7 @@ guides for later changes and the reference documents for exact behavior.
 | Apply native maintenance instructions | [Maintenance Skill](../skills/notion/ntn-skills-maintain/SKILL.md) |
 | Manage Git Sources, file authority, or shared Profile rules | [Profile and Source Skill](../skills/notion/ntn-skills-sync/SKILL.md) |
 | Check or synchronize upstream Git from a CLI, SDK or external scheduler | [Source synchronization](source-sync.md) |
+| Prepare an exact registered Git member on first explicit use | [Source materialization](source-materialization.md) |
 | Understand four-table ownership and current implementation limits | [Library contract](current-contract.md) |
 | Look up output fields, cache rules, request limits, and local storage | [Protocol](protocol.md) |
 | Check implemented behavior and its verification scope | [Maintenance verification](maintenance-verification-review.md) |

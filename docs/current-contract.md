@@ -839,6 +839,22 @@ external actor trashed its owner, restoration refuses without replacing that
 intent or its in-flight marker. This command restores a current Trash page; it
 does not create a replacement owner or reconstruct lost human content from Git.
 
+### First-use Source materialization
+
+An actual explicit Pi `$` selection can request separate management for one
+registered Git member and its required closure. Read-only discovery returns typed
+candidates without fake physical locators. The fixed manager revalidates identity,
+registration, accepted commit and Requires authorization before preparing current
+consumption facts. Ordinary list/read/use/files and prefetch remain zero-write.
+
+Preparation preserves the existing materialized set and exact legacy identities.
+A same-commit manifest extension rebinds every materialized owner to the new plan
+hash. Members remain lazy, native/resource authority and manual metadata remain
+owned by their existing writers, and Notion reading projections are not generated.
+A validated receipt invalidates local facts before ordinary SDK consumption.
+See [Source materialization](source-materialization.md) for commands, bindings and
+verification requirements.
+
 ### Source operation recovery
 
 One finite parent intent freezes its action and affected Skill IDs. Declaration
@@ -885,8 +901,11 @@ interruption without a permanent ACK log. Completed state becomes ready before
 the operation is retired. Unknown CREATE or append is never repeated from absence;
 an observed partial append is not automatically replayed.
 
-After stopping the old writer, `--operation NEW --supersede OLD` explicitly
-replaces its goal with a complete new input. The local pending row and the same
+After the original dispatches have terminal evidence,
+`--operation NEW --supersede OLD` explicitly replaces the goal with a complete new
+input. Stopping the old process or observing a desired value is not terminal
+evidence for an unknown PATCH. The Source checks every unfinished child before
+changing its parent record. The local pending row and the same
 physical Operation Record retain one finite predecessor while their pointers
 change; ordinary pending updates still cannot change intent identity. Product
 mutations wait until the handoff is coherent. Source successors remain within
@@ -896,11 +915,14 @@ ready and deletion of the handoff. A bare abandon does not clear Operation and
 pretend partial content is complete.
 
 The local owner lock excludes cooperating writers sharing that Store. It cannot
-cancel an already dispatched request or fence another machine. Explicit supersede
-therefore cannot promise that an unknown CREATE will never arrive later. Visible
-duplicate identities and changed bindings fail closed; completion proves the
-observed current result. No permanent tombstone or predecessor chain watches for
-unbounded late responses.
+cancel an already dispatched request or fence another machine. Configured Source
+clients route publication through one designated manager and canonical Store.
+Unknown writes keep the original intent blocked; they are not replayed or
+superseded from a timeout, process death or a merely equal GET. Exact ACKs and
+operation-specific unique witnesses settle dispatch separately from final
+content verification. Missing original pending state and legacy pending protocol
+versions fail closed. Visible duplicate identities and changed bindings also
+fail closed. No distributed-lock guarantee is inferred from a local lock.
 
 `ctl library operation OWNER_ID --kind skill|source --library LIBRARY_ID` reads the exact
 current intent, local phase, remote Record, owner observation and in-flight action

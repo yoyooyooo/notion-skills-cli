@@ -1,3 +1,4 @@
+import { sourceDefinitionOptions } from "./shared-source-definition-options.ts"
 import { Cause, Config, Crypto, Effect, Exit, Schema, Stream } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from "effect/http"
 import { fail, property, SkillsError } from "./model.ts"
@@ -49,7 +50,7 @@ export function sourceDiscoveryInput(input: SourceDefinitionInput): DiscoverSour
   const definition = validateSourceDefinition(input)
   if (definition.adapter.type === "linear")
     throw fail("SOURCE_ADAPTER_INVALID", "Linear does not use Git selection.")
-  const options = definition.options
+  const options = sourceDefinitionOptions(definition.options)
   if (options.external_assets !== undefined || options.external_markdown !== undefined) {
     if (
       options.external_assets !== true ||

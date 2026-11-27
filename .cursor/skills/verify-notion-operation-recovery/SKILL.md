@@ -31,17 +31,17 @@ bun test packages/core/test/shared-current-projection-write.test.ts --timeout 60
 
 1. 完整相等的输入只读观察，确认没有 Operation、owner 状态或正文写入。首个必要 mutation 才创建当前意图。
 2. CREATE/append 已发出但响应丢失时，用 `ctl library import INPUT --library LIBRARY_ID --skill-id ID --operation ID --resume` 重传相同完整输入。实际当前结果满足同一动作才继续，不能因一次查询没有结果重发非幂等请求。
-3. 幂等属性替换或归档，只在同一冻结意图、显式 resume 和当前 owner 校验下重试。若 append 只落了一部分，保留 pending 并拒绝盲目重放；明确报告未自动收敛。
+3. 属性替换或归档已派发而结果未知时，即使标为 idempotent，也不得在 resume 重发；desired 值当前相等不能证明原请求已经终结。Operation Record PATCH 用原 write_id，退役用 exact physical Record 的单调 Trash 状态核唯一原写；业务 PATCH 没有足够因果见证则保留 unresolved。ACK 只终结派发，不保证后续内容校验成功。若 append 只落了一部分，同样保留 pending 并拒绝重放。
 4. Files 或 Resource 已归档却丢 ACK，完整目录查询中已没有该行。通过在途动作的 exact page 核对归档状态，再收敛，不能丢掉这个动作或新建替代行。
 5. 当前内容写入的 applying/attention 阻止普通消费在正文前继续。最后核完整目录和当前字节，发布 ready 并清 Operation，然后退役远端意图、删除本地 pending。Projection 意图保持真实 Skill ready，正文渲染失败不应阻断原有消费。不要先删恢复指针。
 6. 本地只剩 retiring 且下一个输入不同，只有当前 owner ready、逻辑 Operation 完整查询为空、已知物理 Record 明确在 Trash 时才能清这个本地残留。404、权限失败或半页不是完成依据。
 7. 预算耗尽和取消停止派发；同 invocation 的重试、排队、上传、下载共用预算。不得开另一个 runtime 写 attention。新一次明确 resume 才有新预算。
 8. 附件上传用当前 owner、operation、path 和 wire hash 定位，未知分配不重复 CREATE；multipart 按已观察的完整前缀继续。最终从实际附件下载并核原件，缓存旧 bytes 不能证明新附件正确。
 9. Source 父意图冻结 declaration/commit/affected IDs；实际 Source 属性、ready 或 child append 已接受却丢响应时，对外恢复必须指回原父 operation。第一个子任务中断后用原 apply input --resume，核已完成子只读验证、未开始子继续、人工 native 改动保留、父子 pending 全清。父游标自身响应丢失也按当前 payload 对账；不新增历史或另一套恢复 runner。
-10. 原 writer 停止后，用同一管理命令的 `--operation NEW --supersede OLD` 和完整新目标接续 partial 或放弃的旧输入。核同一个 owner/Record、一个有限前意图、SQLite expected-old 原子交接；Record 和 owner Operation 的响应丢失都能核当前结果继续。旧 writer/旧输入不能重新进入，新意图完成后无历史副本。Source 只能替代同类动作，文件动作还必须是同一文件；普通 import 不能接走 Source 子意图。
+10. `--operation NEW --supersede OLD` 只有在全部原业务和控制写可证明已经终结时才接续 partial 输入；旧进程退出、SSH 断开、取消或当前值相等都不够。任一 Source child 尚有 control_write 或未 ACK 的 in_flight 时，父操作必须在首个 mutation 前零写拒绝。允许的接续仍核同 owner/Record、有限前意图和 SQLite expected-old 原子交接；旧 writer/旧输入不能进入新意图。Source 只替代同类动作，文件动作必须同一文件；普通 import 不能接走 Source 子意图。没有 dispatch_protocol 标记的旧 pending 保留并明确 unresolved。
 11. Source remove 在完整元数据反查无 Content/Origin 引用后退役资源和 exact Source 页。owner Trash 已落与未落但响应丢失分别验证；恢复后清 Operation/pending，整个路径没有 ready 发布。新引用、孤儿 Files 和不完整枚举阻止清退。
 
-Notion 属性和本地 mutex 不提供跨机器 CAS。显式 supersede 不能撤回已经发出的请求；未知 CREATE 以后仍可能出现，观察到重复身份就拒绝。当前结果满足意图并不恢复原请求的网络 ACK，也不需要永久证据链或长期墓碑。
+Notion 属性和本地 mutex 不提供跨机器 CAS。已配置的 Source 写入口统一通过固定 manager 的 canonical Store 串行；客户端不得绕过绑定本地回退，也不因租期/超时自动换主。显式 supersede 不能撤回已发出的请求；业务 PATCH、CREATE 和控制记录都须保留原未知派发边界。当前结果满足意图并不恢复原请求的网络 ACK，也不需要永久证据链或长期墓碑。
 
 用 `ctl library operation OWNER_ID --kind skill|source --library LIBRARY_ID` 只读查看当前意图及物理定位。没有可见意图不等于 owner ready。Source 连续 supersede 时，若当前父尚未接走祖父的 child，下一轮必须在父首次写前拒绝并指回现父 resume；已接走则可用新的完整目标继续，不保留历史链。
 

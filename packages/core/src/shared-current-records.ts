@@ -17,6 +17,7 @@ export type CurrentSharedOperationRecord = {
   readonly owner: CurrentResourceOwner | null
   readonly hash: string
   readonly payload: SharedJson
+  readonly write_id?: string
 }
 export type CurrentSharedResourceRecord = Omit<CurrentSharedOperationRecord, "owner"> & {
   readonly kind: "resource"
@@ -26,6 +27,7 @@ const MAX_BYTES = 64 * 1024
 const Envelope = Schema.Struct({
   version: Schema.Literal(1),
   operation_id: Schema.String,
+  write_id: Schema.optional(Schema.String),
   payload: Schema.Unknown,
 })
 const invalid = (message: string, details?: unknown) =>
@@ -107,9 +109,15 @@ function relation(raw: unknown, id: string): string[] {
     return uuid(id)
   })
 }
-function envelope(operationId: string, payload: unknown) {
+function envelope(operationId: string, payload: unknown, writeId?: string) {
   identity(operationId)
-  const encoded = canonicalSharedJson({ version: 1, operation_id: operationId, payload })
+  if (writeId !== undefined) identity(writeId)
+  const encoded = canonicalSharedJson({
+    version: 1,
+    operation_id: operationId,
+    payload,
+    ...(writeId === undefined ? {} : { write_id: writeId }),
+  })
   if (new TextEncoder().encode(encoded).length > MAX_BYTES)
     throw fail(
       "CURRENT_RECORD_TOO_LARGE",
@@ -149,7 +157,7 @@ function decodeRecord(library: SharedLibrary, input: unknown) {
       const body = Schema.decodeUnknownSync(Envelope)(JSON.parse(encoded), {
         onExcessProperty: "error",
       })
-      const canonical = envelope(body.operation_id, body.payload)
+      const canonical = envelope(body.operation_id, body.payload, body.write_id)
       const skill = relation(row, binding(library, "Skill"))
       const source = relation(row, binding(library, "Origin"))
       if (skill.length + source.length > 1)
@@ -160,6 +168,7 @@ function decodeRecord(library: SharedLibrary, input: unknown) {
         page_id: uuid(row.id),
         record_id: recordId,
         operation_id: body.operation_id,
+        ...(body.write_id === undefined ? {} : { write_id: body.write_id }),
         entity_id: entityId,
         kind,
         skill,
@@ -247,6 +256,7 @@ function operationRecord(
           : null,
     hash: row.hash,
     payload: row.payload,
+    ...(row.write_id === undefined ? {} : { write_id: row.write_id }),
   }
 }
 export function queryCurrentSharedOperationRecord(
@@ -295,6 +305,21 @@ export function queryCurrentSharedOperationRecord(
     return operationRecord(row)
   })
 }
+/** Exact physical read for a pending control write. A retired operation Record
+ * is never restored by this protocol, so its retirement is monotonic. */
+export function observeCurrentSharedOperationRecord(library: SharedLibrary, page: string) {
+  return Effect.gen(function* () {
+    const id = yield* checked(() => uuid(page))
+    const raw = property(yield* (yield* Notion).request(`v1/pages/${id}`))
+    if (raw.id !== id) return yield* Effect.fail(invalid("The operation Record changed identity."))
+    const retired = raw.in_trash === true || raw.archived === true
+    const row = yield* decodeRecord(library, { ...raw, in_trash: false, archived: false })
+    if (row.kind !== "operation")
+      return yield* Effect.fail(invalid("The physical target is not an operation Record."))
+    return { record: operationRecord(row), retired }
+  })
+}
+
 /** Validate the bounded wire envelope before any handoff state is changed. */
 export function assertCurrentOperationRecordSize(operationId: string, payload: unknown): void {
   const prepared = envelope(operationId, payload)
@@ -307,13 +332,14 @@ export function assertCurrentOperationRecordSize(operationId: string, payload: u
     )
 }
 
-type CurrentOperationRecordWrite = {
+export type CurrentOperationRecordWrite = {
   readonly current: CurrentSharedOperationRecord | null
   readonly recordId: string
   readonly operationId: string
   readonly entityId: string
   readonly owner: CurrentResourceOwner | null
   readonly payload: unknown
+  readonly writeId: string
 }
 
 export function writeCurrentSharedOperationRecord(
@@ -357,7 +383,7 @@ function writeOperationRecord(
         canonicalSharedJson(input.current.owner) !== canonicalSharedJson(owner)
       )
         throw fail("CURRENT_OPERATION_CONFLICT", "A bound current operation cannot change owner.")
-      return { ...envelope(input.operationId, input.payload), owner }
+      return { ...envelope(input.operationId, input.payload, input.writeId), owner }
     })
     const hash = yield* sha256(prepared.encoded),
       rich = (value: string) => ({ rich_text: currentRecordText(value) })

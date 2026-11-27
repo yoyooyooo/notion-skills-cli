@@ -10,6 +10,7 @@ import { fail, property, SkillsError, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import {
   withCurrentOperation,
+  CurrentWritePendingSchema,
   cancelCurrentProjectionOperation,
   inspectCurrentOperation,
   readCurrentOperationIntent,
@@ -1024,6 +1025,19 @@ describe("finite reading projection", () => {
         failure: { code: "WRITE_OUTCOME_UNKNOWN" },
       })
       expect([...f.json.values()]).toMatchObject([{ lifecycle: { phase: "retiring" } }])
+      if (outcome === "absent") {
+        const writes = f.calls.filter(
+          (call) => call.method !== "GET" && !call.path.includes("/query"),
+        ).length
+        await expect(f.run(cancel(f))).rejects.toMatchObject({
+          code: "CURRENT_OPERATION_UNRESOLVED",
+        })
+        expect(
+          f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+        ).toHaveLength(writes)
+        expect(f.json.size).toBe(1)
+        return
+      }
       expect(
         await f.run(cancel(f, () => Effect.die("Retiring intent has no new body work"))),
       ).toMatchObject({ status: "cancelled" })
@@ -1385,7 +1399,7 @@ describe("finite reading projection", () => {
     ready(f)
   })
 
-  test("projection resumes an accepted File archive without repeating it", async () => {
+  test("projection keeps an ambiguous archive pending even when its target is currently archived", async () => {
     const f = fixture({ projection: true }),
       row = seedFile(f)
     const action = fileAction(f, {
@@ -1399,12 +1413,14 @@ describe("finite reading projection", () => {
       failure: { code: "WRITE_OUTCOME_UNKNOWN" },
     })
     expect(row.in_trash).toBe(true)
-    await f.run(writeFile(f, action, "resume"))
+    await expect(f.run(writeFile(f, action, "resume"))).rejects.toMatchObject({
+      code: "CURRENT_OPERATION_UNRESOLVED",
+    })
     expect(
       f.calls.filter((call) => call.path === `v1/pages/${row.id}` && call.method === "PATCH"),
     ).toHaveLength(1)
-    expect(f.activeRecords()).toEqual([])
-    expect(f.json.size).toBe(0)
+    expect(f.activeRecords()).toHaveLength(1)
+    expect(f.json.size).toBe(1)
     ready(f)
   })
 
@@ -1551,13 +1567,28 @@ describe("one finite current write", () => {
     expect(f.productRequests()).toBe(1)
     expect(f.json.size).toBe(1)
   })
-  test("explicit resume may retry the same idempotent request after fresh observation", async () => {
-    const f = fixture()
-    f.fault({ target: "product", outcome: "absent" })
-    await f.run(f.apply({ replay: "idempotent" }).pipe(Effect.result))
-    expect(await f.run(f.apply({ mode: "resume", replay: "idempotent" }))).toBe(1)
-    expect(f.productRequests()).toBe(2)
-  })
+  test.each(["absent", "visible"] as const)(
+    "unknown idempotent action %s is neither replayed nor settled by current equality",
+    async (outcome) => {
+      const f = fixture()
+      f.fault({ target: "product", outcome })
+      await expect(f.run(f.apply({ replay: "idempotent" }))).rejects.toMatchObject({
+        code: "WRITE_OUTCOME_UNKNOWN",
+      })
+      const writes = f.calls.filter(
+        (call) => call.method !== "GET" && !call.path.includes("/query"),
+      ).length
+      await expect(f.run(f.apply({ mode: "resume", replay: "idempotent" }))).rejects.toMatchObject({
+        code: "CURRENT_OPERATION_UNRESOLVED",
+      })
+      expect(
+        f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+      ).toHaveLength(writes)
+      expect(f.productRequests()).toBe(1)
+      expect(f.json.size).toBe(1)
+    },
+  )
+
   test("completed earlier actions do not clear a different unresolved marker", async () => {
     const f = fixture()
     f.values.push("first")
@@ -1597,17 +1628,17 @@ describe("one finite current write", () => {
           verify: () => Effect.void,
         }),
       ),
-    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_CONFLICT" })
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
     expect(
       f.calls.slice(calls).filter((call) => call.method !== "GET" && !call.path.includes("/query")),
     ).toEqual([])
     expect(await f.run(readCurrentOperationIntent(library, intent.owner))).toEqual(pending)
     expect(f.productRequests()).toBe(1)
-    expect(await f.run(f.apply({ mode: "resume", values: [original], replay: "idempotent" }))).toBe(
-      1,
-    )
+    await expect(
+      f.run(f.apply({ mode: "resume", values: [original], replay: "idempotent" })),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
     expect(f.productRequests()).toBe(1)
-    expect(f.json.size).toBe(0)
+    expect(f.json.size).toBe(1)
   })
   test("a failed final scope stays attention and can finish without another append", async () => {
     const f = fixture()
@@ -1628,6 +1659,40 @@ describe("one finite current write", () => {
     expect(property(property(f.owner.properties).state).select).toEqual({ name: "applying" })
     expect(await f.run(f.apply({ mode: "resume" }))).toBe(1)
     expect(f.productRequests()).toBe(2)
+  })
+  test("a rejected next control checkpoint retains the previous action acknowledgement", async () => {
+    const f = fixture()
+    let rejectCheckpoint = true
+    const attempt = (mode: "apply" | "resume") =>
+      withCurrentOperation(library, {
+        intent,
+        ownerPageId: ownerId,
+        mode,
+        run: (session) =>
+          Effect.gen(function* () {
+            yield* f.action(session, "first", "idempotent")
+            if (rejectCheckpoint) {
+              rejectCheckpoint = false
+              f.fault({
+                target: "record-replace",
+                outcome: "absent",
+                error: fail("REQUEST_BUDGET_EXHAUSTED", "Budget refused the next checkpoint."),
+              })
+            }
+            yield* f.action(session, "second", "idempotent")
+            return f.values.length
+          }),
+        verify: () => Effect.sync(() => expect(f.values).toEqual(["first", "second"])),
+      })
+    await expect(f.run(attempt("apply"))).rejects.toMatchObject({
+      code: "REQUEST_BUDGET_EXHAUSTED",
+    })
+    expect(f.values).toEqual(["first"])
+    expect(f.productRequests()).toBe(1)
+    expect(await f.run(attempt("resume"))).toBe(2)
+    expect(f.productRequests()).toBe(2)
+    expect(f.activeRecords()).toEqual([])
+    expect(f.json.size).toBe(0)
   })
   test("a definitive Notion rate limit stops all follow-up requests and retains the rejected action for explicit resume", async () => {
     const f = fixture()
@@ -1686,6 +1751,107 @@ describe("one finite current write", () => {
     ).toHaveLength(1)
     expect(f.productRequests()).toBe(0)
   })
+  test("a legacy pending control write cannot be replayed or upgraded from matching remote values", async () => {
+    const f = fixture()
+    f.fault({ target: "record-replace", outcome: "absent" })
+    await expect(f.run(f.apply())).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    const original = f.calls.findLast(
+      (call) => call.method === "PATCH" && f.records.has(call.path.replace("v1/pages/", "")),
+    )!
+    const [key, value] = [...f.json.entries()][0]!
+    const legacy = structuredClone(property(value))
+    delete legacy.dispatch_protocol
+    delete legacy.control_write
+    delete legacy.settled_action
+    f.json.set(key, legacy)
+    const writes = f.calls.filter(
+      (call) => call.method !== "GET" && !call.path.includes("/query"),
+    ).length
+    await expect(f.run(f.apply({ mode: "resume" }))).rejects.toMatchObject({
+      code: "CURRENT_OPERATION_UNRESOLVED",
+      details: { reason: "legacy_dispatch_protocol" },
+    })
+    const row = f.records.get(original.path.replace("v1/pages/", ""))!
+    row.properties = { ...property(row.properties), ...fields(property(original.body).properties) }
+    await expect(f.run(f.apply({ mode: "resume" }))).rejects.toMatchObject({
+      code: "CURRENT_OPERATION_UNRESOLVED",
+      details: { reason: "legacy_dispatch_protocol" },
+    })
+    await expect(
+      f.run(
+        f.apply({
+          mode: { kind: "supersede", operation_id: intent.operation_id },
+          nextIntent: { ...intent, operation_id: "legacy-successor", input_sha256: "b".repeat(64) },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+    expect(
+      f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+    ).toHaveLength(writes)
+    expect(f.json.get(key)).toEqual(legacy)
+    expect(f.productRequests()).toBe(0)
+  })
+
+  test("unknown control PATCH is dispatched once and only its original write witness releases the intent", async () => {
+    const f = fixture()
+    f.fault({ target: "record-replace", outcome: "absent" })
+    await expect(f.run(f.apply())).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    const original = f.calls.findLast(
+      (call) => call.method === "PATCH" && f.records.has(call.path.replace("v1/pages/", "")),
+    )!
+    const pending = structuredClone([...f.json.values()][0])
+    Schema.decodeUnknownSync(CurrentWritePendingSchema)(pending)
+    expect(pending).toMatchObject({
+      dispatch_protocol: 1,
+      control_write: { kind: "record", write_id: expect.any(String) },
+    })
+    const writes = f.calls.filter(
+      (call) => call.method !== "GET" && !call.path.includes("/query"),
+    ).length
+    await expect(f.run(f.apply({ mode: "resume" }))).rejects.toMatchObject({
+      code: "CURRENT_OPERATION_UNRESOLVED",
+    })
+    await expect(
+      f.run(
+        f.apply({
+          mode: { kind: "supersede", operation_id: intent.operation_id },
+          nextIntent: { ...intent, operation_id: "next", input_sha256: "b".repeat(64) },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+    expect(
+      f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+    ).toHaveLength(writes)
+    expect(f.productRequests()).toBe(0)
+    const row = f.records.get(original.path.replace("v1/pages/", ""))!
+    row.properties = { ...property(row.properties), ...fields(property(original.body).properties) }
+    await f.run(f.apply({ mode: "resume" }))
+    expect(f.productRequests()).toBe(1)
+    expect(f.json.size).toBe(0)
+  })
+
+  test("unknown control retirement is never replayed before the original physical Record becomes retired", async () => {
+    const f = fixture()
+    f.fault({ target: "retirement", outcome: "absent" })
+    await expect(f.run(f.apply())).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    const writes = f.calls.filter(
+      (call) => call.method !== "GET" && !call.path.includes("/query"),
+    ).length
+    await expect(f.run(f.apply({ mode: "resume" }))).rejects.toMatchObject({
+      code: "CURRENT_OPERATION_UNRESOLVED",
+    })
+    expect(
+      f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+    ).toHaveLength(writes)
+    const row = f.activeRecords()[0]!
+    row.in_trash = true
+    await f.run(f.apply({ mode: "resume" }))
+    expect(
+      f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+    ).toHaveLength(writes)
+    expect(f.json.size).toBe(0)
+  })
+
   test("unknown successful retirement resumes with no product or owner write", async () => {
     const f = fixture()
     f.fault({ target: "retirement", outcome: "visible" })
@@ -1762,8 +1928,14 @@ describe("explicit current intent succession and terminal removal", () => {
   const successor = { ...intent, operation_id: "write-successor", input_sha256: "b".repeat(64) }
   const supersede = { kind: "supersede", operation_id: intent.operation_id } as const
   const unfinished = async (f: ReturnType<typeof fixture>) => {
-    f.fault({ target: "product", outcome: "absent" })
-    await expect(f.run(f.apply())).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    f.fault({
+      target: "product",
+      outcome: "absent",
+      error: fail("REQUEST_BUDGET_EXHAUSTED", "No mutation was admitted.", {
+        phase: "input_rejected",
+      }),
+    })
+    await expect(f.run(f.apply())).rejects.toMatchObject({ code: "REQUEST_BUDGET_EXHAUSTED" })
   }
   const recordCreates = (f: ReturnType<typeof fixture>) =>
     f.calls.filter(
@@ -1772,7 +1944,7 @@ describe("explicit current intent succession and terminal removal", () => {
         property(property(call.body).parent).data_source_id === library.records.data_source_id,
     )
 
-  test("supersede replaces one current Record and never repeats the old unknown append", async () => {
+  test("supersede replaces one current Record after the original mutation was definitively rejected", async () => {
     const f = fixture()
     await unfinished(f)
     const before = await f.run(inspectCurrentOperation(library, intent.owner))
@@ -1824,6 +1996,28 @@ describe("explicit current intent succession and terminal removal", () => {
         local_lifecycle: { phase: "replacing" },
         predecessor: { intent },
       })
+      if (outcome === "absent") {
+        const writes = f.calls.filter(
+          (call) => call.method !== "GET" && !call.path.includes("/query"),
+        ).length
+        await expect(
+          f.run(f.apply({ mode: "resume", nextIntent: successor, values: ["second"] })),
+        ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+        expect(
+          f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+        ).toHaveLength(writes)
+        const original = f.calls.findLast(
+          (call) => call.method === "PATCH" && property(call.body).properties !== undefined,
+        )!
+        const row =
+          target === "owner-rebind"
+            ? f.owner
+            : f.records.get(original.path.replace("v1/pages/", ""))!
+        row.properties = {
+          ...property(row.properties),
+          ...fields(property(original.body).properties),
+        }
+      }
       await f.run(f.apply({ mode: "resume", nextIntent: successor, values: ["second"] }))
       expect(recordCreates(f)).toHaveLength(1)
       expect(f.values).toEqual(["second"])
@@ -1833,71 +2027,45 @@ describe("explicit current intent succession and terminal removal", () => {
     },
   )
 
-  test("an explicitly abandoned invisible Operation CREATE can be superseded, but the new unknown CREATE is not replayed", async () => {
+  test("an unknown Operation CREATE cannot be abandoned to admit a successor", async () => {
     const f = fixture()
     f.fault({ target: "record-create", outcome: "absent" })
     await expect(f.run(f.apply())).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
-    const before = await f.run(inspectCurrentOperation(library, intent.owner))
-    expect(before).toMatchObject({
-      intent,
-      owner_page_id: ownerId,
-      record_page_id: null,
-      record_observed: false,
-      local_lifecycle: { phase: "creating" },
-    })
-    f.fault({ target: "record-create", outcome: "absent" })
+    const original = recordCreates(f)[0]!
     await expect(
       f.run(f.apply({ mode: supersede, nextIntent: successor, values: ["second"] })),
-    ).rejects.toMatchObject({
-      code: "WRITE_OUTCOME_UNKNOWN",
-      details: { operation_id: successor.operation_id },
-    })
-    expect(recordCreates(f)).toHaveLength(2)
-    await expect(
-      f.run(f.apply({ mode: "resume", nextIntent: successor, values: ["second"] })),
     ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
-    expect(recordCreates(f)).toHaveLength(2)
+    expect(recordCreates(f)).toHaveLength(1)
     expect(f.productRequests()).toBe(0)
-    expect(f.json.size).toBe(1)
+    expect([...f.json.values()][0]).toMatchObject({ intent, control_write: { kind: "record" } })
+    // Only the unique original witness arriving later can settle the CREATE.
+    f.records.set(id(998), {
+      object: "page",
+      id: id(998),
+      in_trash: false,
+      parent: property(original.body).parent,
+      properties: fields(property(original.body).properties),
+    })
+    await f.run(f.apply({ mode: "resume" }))
+    expect(recordCreates(f)).toHaveLength(1)
+    expect(f.values).toEqual(["first"])
   })
 
-  test("a visible late predecessor Record is reported before the successor can publish ready", async () => {
+  test("a successor is refused while the original target request may still arrive", async () => {
     const f = fixture()
-    f.fault({ target: "record-create", outcome: "absent" })
+    f.fault({ target: "product", outcome: "absent" })
     await expect(f.run(f.apply())).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
-    const oldRequest = recordCreates(f)[0]!
-    const delayedId = id(998)
+    const writes = f.calls.filter(
+      (call) => call.method !== "GET" && !call.path.includes("/query"),
+    ).length
     await expect(
-      f.run(
-        withCurrentOperation(library, {
-          intent: successor,
-          ownerPageId: ownerId,
-          mode: supersede,
-          run: (session) =>
-            Effect.gen(function* () {
-              yield* f.action(session, "second")
-              f.records.set(delayedId, {
-                object: "page",
-                id: delayedId,
-                in_trash: false,
-                parent: property(oldRequest.body).parent,
-                properties: fields(property(oldRequest.body).properties),
-              })
-            }),
-          verify: () => Effect.void,
-        }),
-      ),
-    ).rejects.toMatchObject({
-      code: "CURRENT_OPERATION_CONFLICT",
-      details: {
-        record_page_ids: expect.arrayContaining([delayedId]),
-        operation_id: successor.operation_id,
-      },
-    })
-    expect(property(property(f.owner.properties).state).select).not.toEqual({ name: "ready" })
-    expect(f.records.get(delayedId)?.in_trash).toBe(false)
-    expect(f.json.size).toBe(1)
-    expect(f.productRequests()).toBe(1)
+      f.run(f.apply({ mode: supersede, nextIntent: successor, values: ["second"] })),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+    expect(
+      f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+    ).toHaveLength(writes)
+    expect(f.values).toEqual([])
+    expect([...f.json.values()][0]).toMatchObject({ intent })
   })
 
   test("ordinary supersede cannot steal a Source-bound child", async () => {
@@ -1935,31 +2103,26 @@ describe("explicit current intent succession and terminal removal", () => {
       verify: () => Effect.void,
     })
   test.each(["visible", "absent"] as const)(
-    "terminal owner archive %s resumes without publishing ready",
+    "unknown terminal owner archive %s stays pending without a new write",
     async (outcome) => {
       const f = fixture()
       f.fault({ target: "owner-retirement", outcome })
       await expect(f.run(remove(f))).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+      const writes = f.calls.filter(
+        (call) => call.method !== "GET" && !call.path.includes("/query"),
+      ).length
+      await expect(f.run(remove(f, "resume"))).rejects.toMatchObject({
+        code: "CURRENT_OPERATION_UNRESOLVED",
+      })
+      expect(
+        f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+      ).toHaveLength(writes)
       expect(f.owner.in_trash).toBe(outcome === "visible")
-      const result = await f.run(remove(f, "resume"))
-      expect(result.retiredAlready).toBe(outcome === "visible")
-      expect(f.owner.in_trash).toBe(true)
-      expect(
-        f.calls.filter(
-          (call) => call.path === "v1/pages/" + ownerId && property(call.body).in_trash === true,
-        ),
-      ).toHaveLength(outcome === "visible" ? 1 : 2)
-      expect(
-        f.calls.filter(
-          (call) =>
-            property(property(property(property(call.body).properties).state).select).name ===
-            "ready",
-        ),
-      ).toEqual([])
-      expect(f.activeRecords()).toEqual([])
-      expect(f.json.size).toBe(0)
+      expect(f.activeRecords()).toHaveLength(1)
+      expect(f.json.size).toBe(1)
     },
   )
+
   test("terminal owner and retired Record lost response leave only an exact removable breadcrumb", async () => {
     const f = fixture()
     f.fault({ target: "retirement", outcome: "visible" })

@@ -541,7 +541,7 @@ test("Source disable/enable preserves Skill metadata and exposes exact affected 
 })
 
 for (const outcome of ["accepted", "absent"] as const)
-  test(`Source enabled ${outcome} response loss resumes the same finite action`, async () => {
+  test(`Source enabled ${outcome} response loss remains pending without another dispatch`, async () => {
     const f = currentWriteFixture(parent)
     await seedSkill(f)
     await seedSource(f)
@@ -551,11 +551,13 @@ for (const outcome of ["accepted", "absent"] as const)
       "Failure",
     )
     expect(pendingKeys(f)).toHaveLength(1)
-    expect(
-      await f.run(changeCurrentSourceEnabled(library, { ...input, mode: "resume" })),
-    ).toMatchObject({ state: "ready" })
-    expect(pendingKeys(f)).toEqual([])
-    expect(operations(f)).toEqual([])
+    const count = f.mutations().length
+    await expect(
+      f.run(changeCurrentSourceEnabled(library, { ...input, mode: "resume" })),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+    expect(f.mutations()).toHaveLength(count)
+    expect(pendingKeys(f)).toHaveLength(1)
+    expect(operations(f)).toHaveLength(1)
   })
 
 test("Source removal protects an unprojected contribution with no Origin until explicitly excluded", async () => {
@@ -668,7 +670,7 @@ test("Source removal finds semantic Main/Files references even without Origin, a
   expect(f.mutations()).toHaveLength(0)
 })
 
-test("an explicit successor can change an interrupted enabled intent without replacing the Source or Skill", async () => {
+test("an explicit successor cannot overtake an unknown enabled request", async () => {
   const f = currentWriteFixture(parent)
   const skill = await seedSkill(f),
     source = await seedSource(f)
@@ -692,23 +694,18 @@ test("an explicit successor can change an interrupted enabled intent without rep
     operation_id: "new-enable",
     mode: { kind: "supersede", operation_id: "old-disable" },
   } satisfies Parameters<typeof changeCurrentSourceEnabled>[1]
-  f.failNext({ kind: "source-enabled", outcome: "accepted" })
-  expect(
-    (await f.run(changeCurrentSourceEnabled(library, successor).pipe(Effect.result)))._tag,
-  ).toBe("Failure")
-  const result = await f.run(changeCurrentSourceEnabled(library, successor))
-  expect(result).toMatchObject({
-    action: "enabled",
-    enabled: true,
-    state: "ready",
-    source_page_id: source.page_id,
-    operation_id: "new-enable",
+  await expect(f.run(changeCurrentSourceEnabled(library, successor))).rejects.toMatchObject({
+    code: "CURRENT_OPERATION_UNRESOLVED",
   })
-  expect(f.calls.some((call) => call.path === "v1/pages" && call.method === "POST")).toBe(false)
-  expect(f.pages.get(String(record))?.in_trash).toBe(true)
-  expect(f.mutations().some((call) => call.path === `v1/pages/${skill.page_id}`)).toBe(false)
-  expect(pendingKeys(f)).toEqual([])
-  expect(operations(f)).toEqual([])
+  await expect(f.run(changeCurrentSourceEnabled(library, successor))).rejects.toMatchObject({
+    code: "CURRENT_OPERATION_UNRESOLVED",
+  })
+  expect(f.mutations()).toEqual([])
+  expect(f.pages.get(String(record))?.in_trash).toBe(false)
+  expect(f.pages.get(source.page_id)?.in_trash).toBe(false)
+  expect(f.pages.get(skill.page_id)?.in_trash).toBe(false)
+  expect(pendingKeys(f)).toHaveLength(1)
+  expect(operations(f)).toHaveLength(1)
 })
 
 test("complete Source reference census catches an orphan File and paginates independent Files without body GETs", async () => {
@@ -815,7 +812,7 @@ test("Source resource retirement rechecks references after reading the candidate
 })
 
 for (const outcome of ["accepted", "absent"] as const)
-  test(`unreferenced Source and owned resources retire; ${outcome} owner archive loss resumes without publishing ready`, async () => {
+  test(`unreferenced Source and owned resources retire; ${outcome} owner archive loss remains unresolved without replay or publishing ready`, async () => {
     const f = currentWriteFixture(parent)
     const skill = await seedSkill(f),
       source = await seedSource(f, false)
@@ -840,24 +837,14 @@ for (const outcome of ["accepted", "absent"] as const)
       "Failure",
     )
     expect(pendingKeys(f)).toHaveLength(1)
-    const result = await f.run(removeCurrentSource(library, { ...input, mode: "resume" }))
-    expect(result).toMatchObject({
-      action: "remove",
-      state: "removed",
-      status: "removed",
-      source_page_id: source.page_id,
-    })
-    expect(f.table("sources")).toEqual([])
-    expect(
-      f.table("records").filter((row) => {
-        const relation = property(property(row.properties).origin).relation
-        return (
-          Array.isArray(relation) && relation.some((entry) => property(entry).id === source.page_id)
-        )
-      }),
-    ).toEqual([])
-    expect(operations(f)).toEqual([])
-    expect(pendingKeys(f)).toEqual([])
+    const count = f.mutations().length
+    await expect(
+      f.run(removeCurrentSource(library, { ...input, mode: "resume" })),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+    expect(f.mutations()).toHaveLength(count)
+    expect(f.pages.get(source.page_id)?.in_trash).toBe(outcome === "accepted")
+    expect(operations(f)).toHaveLength(1)
+    expect(pendingKeys(f)).toHaveLength(1)
     expect((await f.run(queryCurrentSkillIndex(library, skill.page_id))).state).toEqual({
       state: "ready",
     })

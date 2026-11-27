@@ -69,7 +69,11 @@ console.log('loaded');`,
   })
 })
 
-function program(root: string, phase: "write" | "resume" | "consume") {
+function program(
+  root: string,
+  phase: "write" | "resume" | "consume",
+  fault: "resource-create" | "retire-file",
+) {
   const from = (file: string) => JSON.stringify(new URL(file, core).href)
   return `
 import assert from 'node:assert/strict';
@@ -85,7 +89,7 @@ import {prepareCurrentSkillWrite,writeCurrentSkill} from ${from("shared-current-
 import {openSharedSnapshot} from ${from("shared-snapshot.ts")};
 import {snapshotPortable,exportPortable} from ${from("export.ts")};
 import {currentWriteFixture,library} from ${JSON.stringify(new URL("./shared-current-write-fixture.ts", import.meta.url).href)};
-const root=${JSON.stringify(root)},phase=${JSON.stringify(phase)},samples=${JSON.stringify(samples)};
+const root=${JSON.stringify(root)},phase=${JSON.stringify(phase)},fault=${JSON.stringify(fault)},samples=${JSON.stringify(samples)};
 const base=root+(phase==='consume'?'/consumer':'/writer');
 process.env.NTN_SKILLS_HOME=base+'/state';
 process.env.NTN_SKILLS_CONFIG_HOME=base+'/config';
@@ -110,9 +114,9 @@ await Effect.runPromise(Effect.gen(function*(){
  const pending=()=>run(store.listKeys('operations/current-write-pending'));
  const plan=await run(prepareCurrentSkillWrite(input));
  if(phase==='write'){
-  const seed=await run(prepareCurrentSkillWrite({...input,files:[...files,{path:'obsolete.txt',bytes:new TextEncoder().encode('Remove this current File.\\n')}]}));
+  const seed=await run(prepareCurrentSkillWrite({...input,files:[...files.map((file,index)=>index===0?{...file,bytes:new TextEncoder().encode('# Before replacement\\n')}:file),{path:'obsolete.txt',bytes:new TextEncoder().encode('Remove this current File.\\n')}]}));
   await run(writeCurrentSkill(library,{plan:seed,operation_id:'seed-current'}));
-  f.clearCalls();f.failNext({kind:'retire-file',outcome:'accepted'});
+  f.clearCalls();f.failNext({kind:fault,outcome:'accepted'});
   const failed=await run(writeCurrentSkill(library,{plan,operation_id:'replace-current'}).pipe(Effect.result));
   assert.equal(failed._tag,'Failure');assert.equal(failed.failure.code,'WRITE_OUTCOME_UNKNOWN');
   assert.equal((await pending()).length,1);
@@ -131,16 +135,30 @@ await Effect.runPromise(Effect.gen(function*(){
   await run(clearCache(undefined,{all:true}));
   assert.deepEqual(await run(store.readJson(key,Schema.Unknown)),before);
   f.clearCalls();
+  if(fault==='retire-file'){
+   const unresolved=await run(writeCurrentSkill(library,{plan,operation_id:'replace-current',mode:'resume'}).pipe(Effect.result));
+   assert.equal(unresolved._tag,'Failure');assert.equal(unresolved.failure.code,'CURRENT_OPERATION_UNRESOLVED');
+   assert.equal((await pending()).length,1);assert.equal(f.mutations().length,0);
+   assert.deepEqual(await run(store.readJson(key,Schema.Unknown)),before);
+   const successor=await run(writeCurrentSkill(library,{plan,operation_id:'unsafe-successor',mode:{kind:'supersede',operation_id:'replace-current'}}).pipe(Effect.result));
+   assert.equal(successor._tag,'Failure');assert.equal(successor.failure.code,'CURRENT_OPERATION_UNRESOLVED');
+   assert.equal(f.mutations().length,0);assert.equal((await pending()).length,1);
+   console.log(JSON.stringify({phase,unknown_archive_retained:true,replayed_writes:0,pending:1}));
+   return;
+  }
   const resumed=await run(writeCurrentSkill(library,{plan,operation_id:'replace-current',mode:'resume'}));
   assert.equal(resumed.state,'ready');assert.equal((await pending()).length,0);
   assert.equal(f.calls.filter(call=>call.method==='POST'&&call.path==='v1/pages').length,0);
   const fileIds=new Set(f.table('files',false).map(page=>String(page.id)));
-  assert.equal(f.calls.filter(call=>call.method==='PATCH'&&fileIds.has(call.path.split('/')[2])).length,0);
+  const fileWrites=f.calls.filter(call=>call.method==='PATCH'&&fileIds.has(call.path.split('/')[2]));
+  const archives=fileWrites.filter(call=>call.body.in_trash===true);assert.equal(archives.length,1);
+  assert.ok(fileWrites.every(call=>call.path===archives[0].path));
+  assert.equal(new Set(fileWrites.map(call=>JSON.stringify(call))).size,fileWrites.length);
   f.clearCalls();
   assert.equal((await run(writeCurrentSkill(library,{plan,operation_id:'current-noop'}))).status,'unchanged');
   assert.equal(f.mutations().length,0);
   await writeFile(root+'/remote.json',JSON.stringify({pages:[...f.pages],blocks:[...f.blocks]}));
-  console.log(JSON.stringify({phase,changed_links_refused:true,pending:0,repeated_file_archives:0,noop_writes:0}));
+  console.log(JSON.stringify({phase,changed_links_refused:true,pending:0,resource_create_replays:0,file_archives:1,noop_writes:0}));
  }else{
   assert.equal((await pending()).length,0);
   const page=String(f.table('skills')[0].id);
@@ -163,12 +181,26 @@ await Effect.runPromise(Effect.gen(function*(){
 `
 }
 
-test("current intent survives real SQLite restart and a cold consumer gets every exact authored file", async () => {
+test("a uniquely witnessed CREATE survives SQLite restart and a cold consumer gets every exact authored file", async () => {
   const root = await mkdtemp(join(tmpdir(), "ntn-current-node-lifecycle-"))
   try {
     for (const phase of ["write", "resume", "consume"] as const) {
-      const result = await child(program(root, phase))
+      const result = await child(program(root, phase, "resource-create"))
       // Runtime warnings are diagnostics; exit and the child assertions decide success.
+      expect(result.exit, result.stderr + result.stdout).toBe(0)
+      expect(result.signal).toBeNull()
+      expect(JSON.parse(result.stdout).phase).toBe(phase)
+    }
+  } finally {
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
+  }
+}, 60_000)
+
+test("an unknown PATCH remains blocked after real SQLite restart without replay or successor writes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ntn-current-node-unknown-patch-"))
+  try {
+    for (const phase of ["write", "resume"] as const) {
+      const result = await child(program(root, phase, "retire-file"))
       expect(result.exit, result.stderr + result.stdout).toBe(0)
       expect(result.signal).toBeNull()
       expect(JSON.parse(result.stdout).phase).toBe(phase)
