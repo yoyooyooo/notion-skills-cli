@@ -118,7 +118,10 @@ root can authorize ordinary consumption. Receipts also bind request ID, Library,
 consumer credential scope, Source target and any Requires authorization root.
 The management SDK authenticates the consumer independently and retains the
 manager credential scope as `manager_scope`; different credentials do not become
-interchangeable cache identities. The client
+interchangeable cache identities. Successful receipts include the verified current
+revision of the target Source even when it was already ready and only another
+Source required a write. The CLI and Broker reject successful receipts that omit
+that target revision. The client
 invalidates affected discovery, snapshot and body facts before consuming again.
 A blocked preflight receipt also retires its exact candidate, even when no remote
 write occurred and its affected set is empty. A later explicit selection can then

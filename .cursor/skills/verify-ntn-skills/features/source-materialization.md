@@ -20,10 +20,16 @@ node scripts/sdk-fixture.ts --outdir /absolute/owned/materialization-fixture --c
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-source-fixture.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-source-manager-dispatch.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/candidate-snapshot.node.test.ts packages/core/test/shared-sqlite.node.test.ts -t "actual SDK Source discovery|Source candidate metadata|unfinished materialization input"
-bun test packages/core/test/shared-source-member-discovery.test.ts packages/core/test/shared-source-materialization-management.test.ts packages/core/test/shared-current-source-writer.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-source-write.test.ts --timeout 60000
+bun test packages/core/test/shared-source-member-discovery.test.ts packages/core/test/shared-source-materialization-management.test.ts packages/core/test/shared-source-materialization-receipt.test.ts packages/core/test/shared-source-materialization-legacy-registration.test.ts packages/cli/test/management.test.ts packages/cli/test/source-manager-transport.test.ts packages/core/test/shared-current-source-writer.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-source-write.test.ts --timeout 60000
 ~~~
 
-这些命令分别证明 fixture 机制、实际 core 管理和恢复，不代表 Pi 已取得正文。新增持久地址必须通过真实 SQLite 与另一 Node 进程：候选缓存可更新、清理且不能跨 scope；冻结物化输入不可替换、不能被 cache retirement 清掉，完成才物理退役。只用 Map Store 的管理单测无法覆盖地址分类和 schema，不能替代这一层。正式命令按仓库当前测试入口执行，不能把未找到测试、编译错误或超时算作反例杀死。
+这些命令分别证明 fixture 机制、实际 core 管理和恢复，不代表 Pi 已取得正文。 fixture 预检必须经过生产 Source、current owner、Members 和 Requires parser；惰性 Members 保持 enabled 但缺正文，另保留 disabled 关系拒绝反例。新增持久地址必须通过真实 SQLite 与另一 Node 进程：候选缓存可更新、清理且不能跨 scope；冻结物化输入不可替换、不能被 cache retirement 清掉，完成才物理退役。只用 Map Store 的管理单测无法覆盖地址分类和 schema，不能替代这一层。正式命令按仓库当前测试入口执行，不能把未找到测试、编译错误或超时算作反例杀死。
+
+## 幂等管理回执
+
+用 `shared-source-materialization-receipt.test.ts` 核验真实 writer 返回值：另一 request 已完成后，原候选的新 request 返回 `already_ready`、零写和真实 target Source revision；目标已 ready、仅另一 Source 的 Requires 发生写时，回执同时保留目标与写入 Source 的 revision。成功回执缺 target revision 必须同时被 CLI 与 Broker decoder 拒绝，pending/blocked 仍可没有 revision。矛盾的 Source Content/plan/hash 不得产生成功回执。
+
+跨 SDK 边界另留实际消费者鉴权、scope 重绑定、SQLite 失效和严格 Broker 解码的原始证据。普通暖 Pi 的 management=0 证明未调用管理端，不能替代 `already_ready` 管理回执验证。有限模型中的成功事件是抽象，不证明真实 JSON 字段完整。
 
 ## 真实管理进程的未决派发
 

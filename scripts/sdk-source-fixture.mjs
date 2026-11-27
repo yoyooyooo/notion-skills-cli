@@ -244,7 +244,9 @@ export function materializationServiceFacts(sample, gitUrl, initial) {
       "relation",
       member === root ? [{ id: sibling.legacy_page_id }] : [],
     )
-    set(row, library.skills, "Enabled", "checkbox", member !== sibling)
+    // Members are metadata candidates and may remain uninitialized. A disabled
+    // target is an invalid relation in the ordinary consumption contract.
+    set(row, library.skills, "Enabled", "checkbox", true)
     set(row, library.skills, "Default Context", "checkbox", false)
     row.properties["Source Member"] = {
       id: "source-member",

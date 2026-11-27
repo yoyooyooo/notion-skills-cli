@@ -24,8 +24,8 @@
     "packages/core/src/resource-read.ts": "3cbef77d02517e65c100e852370bc5f35e02e2767093f48a72fc8b2645f56920",
     "packages/cli/src/runtime.ts": "caf2f0f585967759155e88114cf584def84e10933fd5cc937b32bed7d94c3556",
     "packages/core/test/shared-immutable-read.test.ts": "7f5d980fbfcfb381327b565c48c8928e8c62ac76184bb18f4b0f04b640113658",
-    "packages/core/test/sdk-immutable-read.node.test.ts": "738d92bb05a12a3b061671f052ec79cd3b4e491bc02cee3edc17f92ebad0e75a",
-    "scripts/sdk-source-fixture.mjs": "5bde54b32ceeeb550cd22286eed5d76c92af5be5eaa2c62e79c53690c4488b0b",
+    "packages/core/test/sdk-immutable-read.node.test.ts": "8daffd3d6a4738ebe8a70a00d2535462e9ed4d2c2ab036a750333db81b14593c",
+    "scripts/sdk-source-fixture.mjs": "0b9751bf871f15d87ecd72ed68f25bc26a47e224e34da39904da91a38dc46a2a",
     "vitest.config.ts": "af31568d9aee84d21f3ba5622d68ba4706ca49e901e63538fa42db137399d01d",
     "packages/core/src/shared-current-resource.ts": "6e2ccfacd1bcdc1955c9a6d084e59f95178b4c07b0e3f3ae596ad483f255c4d8",
     "packages/core/test/shared-current-fixture.ts": "ed69b28c12a69b12dbcc5fbbe6f5dd8015982689734756db4cbcf28ee4f5ccaa",
@@ -583,5 +583,14 @@
     "reviewed_files": ["scripts/sdk-source-fixture.mjs"],
     "correspondence": "The shared HTTP fixture adds only staging of exact selected manager runtime executables into a task-owned directory. It checks original/copy SHA, owner, mode and non-overwrite, with separate tests of version and Git exec-path. No request scheduling, retry, budget, HTTP interpretation, model bound or expected rule changed.",
     "result": "correspondence_only; source hashes identify reviewed bytes, not a model or runtime pass"
+  },
+  "ci_fixture_contract_review": {
+    "reviewed_base": "9582fcd9a4a2a4db4cd854f9cfb982b32637990e",
+    "correspondence": "Reviewed the exact CI and immutable actual-Pi counterexamples. A Members target remains enabled with absent Content/Current State, so the ordinary relation contract admits metadata without eagerly reading or materializing its body. All five initial states are checked through production Source, current-owner, Members and Requires parsers; the disabled Members variant retains its existing strict refusal. The shared 429 test gives two real eligibility passes room to join before Retry-After, asserts the original held request is still open and then completes with status 200, and measures each caller separately from its original public-call start. Both independent deadlines must expire before the 20-second retry delay, expose no files and publish no object; subsequent applying rejection and revision selection remain unchanged. No production guard, finite model, state bound, expected rule or mutation target changed. The outer test envelope is 45 seconds because it also observes the real shared 20-second cooldown and subsequent independent revision reads; the two inner 10-second caller deadlines remain independently asserted.",
+    "result": "correspondence_only; reviewed source hashes are not a model, actual-Pi or runtime pass",
+    "reviewed_files": [
+      "packages/core/test/sdk-immutable-read.node.test.ts",
+      "scripts/sdk-source-fixture.mjs"
+    ]
   }
 }

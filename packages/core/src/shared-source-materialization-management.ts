@@ -626,7 +626,7 @@ export function materializeRegisteredSource(
           ]),
         ]
         if (saved === undefined && frozen.plans.length !== 0) yield* store.writeJson(key, frozen)
-        const revisions: { source_id: string; revision: string }[] = []
+        const expectedRevisions = new Map<string, string>()
         for (const plan of frozen.plans) {
           operation = plan.operation_id
           const prepared =
@@ -647,10 +647,10 @@ export function materializeRegisteredSource(
             prepared,
             materialization: plan.scope,
           })
-          revisions.push({
-            source_id: plan.declaration.definition.source_id,
-            revision: prepared.prepared_source.revision,
-          })
+          expectedRevisions.set(
+            plan.declaration.definition.source_id,
+            prepared.prepared_source.revision,
+          )
         }
         const rawRows = yield* queryMaterializationPages(library, "skills", {
           or: frozen.skill_ids.map((id) => ({
@@ -691,6 +691,50 @@ export function materializeRegisteredSource(
               ),
             )
           records.push(record)
+        }
+        // Successful receipts identify the target even when it needed no write.
+        // Read actual current owners after the closure, never copy an expected
+        // revision or omit the target when only another Source's Requires changed.
+        const revisions: { source_id: string; revision: string }[] = []
+        for (const sourceId of new Set([request.target.source_id, ...expectedRevisions.keys()])) {
+          const registration = yield* readMaterializationRegistration(library, sourceId)
+          const current = registration.current
+          const frozenPlan = frozen.plans.find(
+            (plan) => plan.declaration.definition.source_id === sourceId,
+          )
+          if (
+            current === undefined ||
+            current.state.state !== "ready" ||
+            !registration.definition.enabled ||
+            (expectedRevisions.has(sourceId) &&
+              current.revision !== expectedRevisions.get(sourceId))
+          )
+            return yield* Effect.fail(
+              fail(
+                "SOURCE_MATERIALIZATION_READBACK_FAILED",
+                "The exact materialized Source is not ready at its accepted revision.",
+              ),
+            )
+          if (
+            (yield* sourceRegistrationDigest(registration)) !==
+            (frozenPlan?.scope.registration_digest ?? request.target.registration_digest)
+          )
+            return yield* Effect.fail(
+              fail("SOURCE_REGISTRATION_CHANGED", "The accepted Source registration changed."),
+            )
+          const plan = yield* currentSourcePlan(library, { ...current, source_id: sourceId })
+          const commit = frozenPlan?.commit ?? request.target.expected_source_commit
+          if (
+            commit !== undefined &&
+            (plan.base?.kind !== "git" || plan.base.source.commit !== commit)
+          )
+            return yield* Effect.fail(
+              fail(
+                "SOURCE_MATERIALIZATION_REVISION_CHANGED",
+                "The accepted Source commit changed before receipt publication.",
+              ),
+            )
+          revisions.push({ source_id: sourceId, revision: current.revision })
         }
         if (frozen.plans.length !== 0) yield* store.retireKeys([key])
         return {

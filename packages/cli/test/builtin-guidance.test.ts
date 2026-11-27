@@ -278,6 +278,7 @@ test("the published documentation allowlist contains only current guides", () =>
     "docs/usage.md",
     "docs/notion-mcp.md",
     "docs/source-sync.md",
+    "docs/source-materialization.md",
     "docs/shared-authoring.md",
     "docs/protocol.md",
     "docs/skill-reference-redesign.md",

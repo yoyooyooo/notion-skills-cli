@@ -7,6 +7,11 @@ import { join } from "node:path"
 import { promisify } from "node:util"
 import { fileURLToPath } from "node:url"
 import { expect, test, vi } from "vitest"
+import { Effect } from "effect"
+import { Notion } from "../src/notion.ts"
+import { sharedRecordFromPage } from "../src/shared-content.ts"
+import { readCurrentSkillMetadata } from "../src/shared-current-index.ts"
+import { querySharedSkillRelation } from "../src/shared-router-members.ts"
 import { parseMaterializationRegistration } from "../src/shared-source-materialization-registration.ts"
 
 // The verification fixture is deliberately standalone JavaScript, shared by the
@@ -219,7 +224,9 @@ test("materialization facts preserve two missing-owner initial states and an unt
   expect(root.properties["Current State"]).toBeUndefined()
   expect(root.properties.Requires.relation).toEqual([{ id: "old-page-required" }])
   expect(root.properties.Members.relation).toEqual([{ id: "old-page-sibling" }])
-  expect(legacy.expected.untouched_sibling.properties.Enabled.checkbox).toBe(false)
+  expect(legacy.expected.untouched_sibling.properties.Enabled.checkbox).toBe(true)
+  expect(legacy.expected.untouched_sibling.properties.Content).toBeUndefined()
+  expect(legacy.expected.untouched_sibling.properties["Current State"]).toBeUndefined()
   expect(legacy.contributions).toHaveLength(3)
   const onlySource = materializationServiceFacts(
     fixture,
@@ -302,7 +309,7 @@ test("materialization facts preserve two missing-owner initial states and an unt
   expect(fixture).toEqual(original)
 })
 
-test("the real materialization generator produces Source facts accepted by the production parser", async () => {
+test("the real materialization generator produces Source and relation facts accepted by production parsers", async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "sdk-materialization-parser-")))
   const output = join(directory, "fixture")
   const generated = await promisify(execFile)(
@@ -319,7 +326,9 @@ test("the real materialization generator produces Source facts accepted by the p
   await writeFile(join(directory, "generator.stdout.log"), generated.stdout)
   await writeFile(join(directory, "generator.stderr.log"), generated.stderr)
   const sample = JSON.parse(await readFile(join(output, "fixture.json"), "utf8"))
-  const description = "完整说明 😀".repeat(400)
+  // Stay inside the 2000-codepoint Description limit while exceeding a single
+  // 2000-UTF-16-unit rich-text fragment.
+  const description = "完整说明 😀".repeat(300)
   sample.source_materialization.members[0].description = description
   for (const initial of [
     "source-only",
@@ -339,6 +348,101 @@ test("the real materialization generator produces Source facts accepted by the p
     const registration = parseMaterializationRegistration(facts.sample.notion.library, source)
     expect(registration.definition.source_id).toBe(facts.source_id)
     expect(registration.state.state).toBe(initial === "legacy-source" ? "uninitialized" : "ready")
+    if (initial !== "source-only") {
+      const library = facts.sample.notion.library
+      const metadataOnly = {
+        request: () => Effect.die("Complete fixture metadata must not acquire member bodies."),
+        version: Effect.succeed("2025-09-03"),
+        credentialIdentity: Effect.succeed("fixture-relation-preflight"),
+      }
+      for (const member of facts.members) {
+        const owner = facts.sample.notion.skills.find(
+          (value: { id: string }) => value.id === member.legacy_page_id,
+        )
+        if (!owner) {
+          expect(initial).toBe("manifest-growth")
+          expect(member.member_key).toBe(facts.members[1].member_key)
+          continue
+        }
+        const current = readCurrentSkillMetadata(library, owner.id, owner).pipe(
+          Effect.provideService(Notion, metadataOnly),
+        )
+        if (initial === "manifest-growth" && member.member_key === facts.root.member_key) {
+          expect(await Effect.runPromise(current)).toMatchObject({
+            state: { state: "ready" },
+            main: {
+              file_id: member.legacy_main_file_id,
+              content: { kind: "source", source_id: facts.source_id, revision: facts.revision },
+            },
+          })
+        } else {
+          expect(await Effect.runPromise(Effect.flip(current))).toMatchObject({
+            code: "CURRENT_SCHEMA_REQUIRED",
+          })
+        }
+      }
+      const row = facts.sample.notion.skills.find(
+        (value: { id: string }) =>
+          value.id === (facts.native_root?.page_id ?? facts.root.legacy_page_id),
+      )
+      const record = sharedRecordFromPage(
+        row,
+        {
+          alias: library.library_id,
+          title: "",
+          role: "content",
+          database_id: library.skills.database_id,
+          data_source_ids: [library.skills.data_source_id],
+          shared_library: library,
+        },
+        library.skills.data_source_id,
+      )
+      const relation = (pages: readonly unknown[], field: "Members" | "Requires" = "Members") =>
+        querySharedSkillRelation(library, {
+          record,
+          rawPage: row,
+          field,
+          inventory: {
+            data_source_id: library.skills.data_source_id,
+            complete: true,
+            pages,
+          },
+        }).pipe(Effect.provideService(Notion, metadataOnly))
+      const members = await Effect.runPromise(relation(facts.sample.notion.skills))
+      expect(members.map((member) => member.metadata.page_id)).toEqual([
+        facts.members[2].legacy_page_id,
+      ])
+      const required = await Effect.runPromise(relation(facts.sample.notion.skills, "Requires"))
+      expect(required.map((member) => member.metadata.page_id)).toEqual(
+        initial === "manifest-growth"
+          ? []
+          : [facts.members[initial === "native-root" ? 0 : 1].legacy_page_id],
+      )
+      expect(facts.expected.untouched_sibling.properties.Content).toBeUndefined()
+      expect(facts.expected.untouched_sibling.properties["Current State"]).toBeUndefined()
+      if (initial === "native-root") {
+        expect(
+          await Effect.runPromise(
+            readCurrentSkillMetadata(library, row.id, row).pipe(
+              Effect.provideService(Notion, metadataOnly),
+            ),
+          ),
+        ).toMatchObject({ state: { state: "ready" }, main: { content: { kind: "native" } } })
+      }
+      const disabled = structuredClone(facts.sample.notion.skills)
+      const sibling = disabled.find(
+        (value: { id: string }) => value.id === facts.members[2].legacy_page_id,
+      )
+      sibling.properties.Enabled.checkbox = false
+      expect(await Effect.runPromise(Effect.flip(relation(disabled)))).toMatchObject({
+        code: "SHARED_ROUTER_MEMBER_UNAVAILABLE",
+        details: {
+          field: "Members",
+          page_id: facts.members[2].legacy_page_id,
+          reason: "disabled",
+        },
+      })
+    }
     for (const row of [...facts.sample.notion.sources, ...facts.sample.notion.skills]) {
       for (const value of Object.values(row.properties) as Array<{
         rich_text?: Array<{ text?: { content?: string }; plain_text?: string }>
