@@ -27,6 +27,55 @@ const canonicalJson = (value) =>
       : item,
   )
 
+/** The fixed manager requires tools owned by its user. CI's system Git and
+ * setup-node installation may belong to root; copy their exact bytes into this
+ * fixture's private directory instead of relaxing the production owner check. */
+export async function stageSdkManagerTools(directory, selected) {
+  assert.ok(isAbsolute(directory))
+  await fs.promises.mkdir(directory, { mode: 0o700 })
+  const root = await fs.promises.realpath(directory)
+  assert.equal(root, directory)
+  const digestFile = async (path) => {
+    const digest = createHash("sha256")
+    for await (const chunk of fs.createReadStream(path)) digest.update(chunk)
+    return digest.digest("hex")
+  }
+  const result = { version: 1, root }
+  for (const role of ["node", "git"]) {
+    const source = await fs.promises.realpath(selected[role])
+    const original = await fs.promises.lstat(source)
+    assert.ok(original.isFile() && (original.mode & 0o111) !== 0)
+    const sourceHash = await digestFile(source)
+    const path = join(root, role)
+    await fs.promises.copyFile(
+      source,
+      path,
+      fs.constants.COPYFILE_EXCL | fs.constants.COPYFILE_FICLONE,
+    )
+    await fs.promises.chmod(path, 0o500)
+    const copied = await fs.promises.lstat(path)
+    assert.equal(copied.uid, process.getuid())
+    assert.ok(copied.isFile())
+    assert.equal(await digestFile(source), sourceHash, "The selected tool changed while copying")
+    assert.equal(
+      await digestFile(path),
+      sourceHash,
+      "The private tool differs from the selected executable",
+    )
+    result[role] = {
+      source,
+      source_uid: original.uid,
+      source_sha256: sourceHash,
+      path,
+      sha256: sourceHash,
+      uid: copied.uid,
+      bytes: copied.size,
+      mode: copied.mode & 0o777,
+    }
+  }
+  return result
+}
+
 /** Declare remote facts independently of the writer. The Git URL belongs to the
  * running owned HTTP backend; every consumer still starts with its own Store. */
 export function materializationServiceFacts(sample, gitUrl, initial) {

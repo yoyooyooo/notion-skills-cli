@@ -155,12 +155,7 @@
   {
     "name": "unobserved-nonidempotent-write-not-replayed",
     "file": "packages/core/src/shared-current-operation.ts",
-    "replacements": [
-      [
-        "if (active !== null && (mode !== \"resume\" || action.replay === \"never\"))",
-        "if (active !== null && mode !== \"resume\")"
-      ]
-    ],
+    "replacements": [["if (active !== null)", "if (active !== null && mode !== \"resume\")"]],
     "test": "packages/core/test/shared-current-operation.test.ts",
     "pattern": "unknown invisible append stays actionable",
     "rule": "UnknownCreateNotReplayed"

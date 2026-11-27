@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { execFile } from "node:child_process"
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises"
+import { lstat, mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises"
 import { request } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -12,9 +12,12 @@ import { parseMaterializationRegistration } from "../src/shared-source-materiali
 // The verification fixture is deliberately standalone JavaScript, shared by the
 // installed SDK smoke and the actual Pi driver without importing product state.
 const helperUrl = new URL("../../../scripts/sdk-source-fixture.mjs", import.meta.url)
-const { startSdkSourceFixture, startSdkGitFixture, materializationServiceFacts } = await import(
-  helperUrl.href
-)
+const {
+  startSdkSourceFixture,
+  startSdkGitFixture,
+  materializationServiceFacts,
+  stageSdkManagerTools,
+} = await import(helperUrl.href)
 type Source = Awaited<ReturnType<typeof startSdkSourceFixture>>
 
 function sample() {
@@ -96,6 +99,36 @@ async function settled(source: Source, count: number) {
 }
 
 const sha256 = (value: Uint8Array) => createHash("sha256").update(value).digest("hex")
+
+test("fixed manager fixtures bind private tools to the exact selected executable bytes", async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "sdk-manager-tools-")))
+  const execute = promisify(execFile)
+  const probe = await execute("/bin/sh", ["-c", "command -v git"], {
+    env: { PATH: process.env.PATH },
+  })
+  const tools = await stageSdkManagerTools(join(directory, "tools"), {
+    node: process.execPath,
+    git: probe.stdout.trim(),
+  })
+  for (const role of ["node", "git"] as const) {
+    const tool = tools[role]
+    expect(tool.path).not.toBe(tool.source)
+    expect(tool.sha256).toBe(tool.source_sha256)
+    expect(sha256(await readFile(tool.path))).toBe(sha256(await readFile(tool.source)))
+    expect((await lstat(tool.path)).uid).toBe(process.getuid?.())
+    expect((await lstat(tool.path)).mode & 0o777).toBe(0o500)
+    expect((await execute(tool.path, ["--version"])).stdout).toBe(
+      (await execute(tool.source, ["--version"])).stdout,
+    )
+  }
+  expect((await execute(tools.git.path, ["--exec-path"])).stdout).toBe(
+    (await execute(tools.git.source, ["--exec-path"])).stdout,
+  )
+  await expect(
+    stageSdkManagerTools(tools.root, { node: process.execPath, git: probe.stdout.trim() }),
+  ).rejects.toMatchObject({ code: "EEXIST" })
+  console.info(JSON.stringify({ controlledManagerToolsEvidence: directory }))
+})
 
 test("materialization facts preserve two missing-owner initial states and an untouched legacy sibling", () => {
   const base = sample()

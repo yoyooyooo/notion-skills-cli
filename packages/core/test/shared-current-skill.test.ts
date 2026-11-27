@@ -13,7 +13,13 @@ import {
   prepareCurrentSkillWrite,
   type CurrentSkillWriteInput,
 } from "../src/shared-current-write-input.ts"
-import { currentWriteFixture, id, library, testBytes } from "./shared-current-write-fixture.ts"
+import {
+  currentWriteFixture,
+  id,
+  library,
+  pauseAfterCurrentActionAcknowledgement,
+  testBytes,
+} from "./shared-current-write-fixture.ts"
 
 const parent = mkdtempSync(join(tmpdir(), "ntn-current-skill-management-"))
 afterAll(async () => {
@@ -52,6 +58,16 @@ function input(overrides: Partial<CurrentSkillWriteInput> = {}): CurrentSkillWri
 }
 function pending(f: Fixture) {
   return [...f.json.keys()].filter((key) => key.startsWith("operations/current-write-pending/"))
+}
+async function expectUnknownWriteRetained(f: Fixture, retry: () => Promise<unknown>) {
+  const keys = pending(f)
+  expect(keys).toHaveLength(1)
+  const original = structuredClone(f.json.get(keys[0]!))
+  f.clearCalls()
+  await expect(retry()).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+  expect(f.mutations()).toEqual([])
+  expect(pending(f)).toEqual(keys)
+  expect(f.json.get(keys[0]!)).toEqual(original)
 }
 async function body(f: Fixture, page: string) {
   return property(
@@ -394,7 +410,7 @@ function automaticLinkWriter(loseCorrection: boolean, dropSkillLinks = false) {
 }
 
 test.each([false, true])(
-  "native authoring corrects plain links through the same intent, including accepted response loss: %s",
+  "native plain-link correction preserves its exact result or fences an unknown response: %s",
   async (loseCorrection) => {
     const f = automaticLinkWriter(loseCorrection)
     const markdown = "A new Skill requires root SKILL.md. Source options.storage are rejected."
@@ -406,19 +422,18 @@ test.each([false, true])(
       ),
     )
     const frozen = structuredClone(plan)
-    let operation: string | undefined
     if (loseCorrection) {
       await expect(f.run(createCurrentNotionSkill(library, { plan }))).rejects.toMatchObject({
         code: "WRITE_OUTCOME_UNKNOWN",
       })
-      expect(pending(f)).toHaveLength(1)
-      const value = property(property(f.json.get(pending(f)[0]!)).intent).operation_id
-      if (typeof value !== "string") throw new Error("Expected the original pending operation")
-      operation = value
+      expect(f.mutations().filter((call) => call.path.includes("/markdown"))).toHaveLength(1)
+      expect(f.mutations().filter((call) => call.path === `v1/blocks/${f.blockId}`)).toHaveLength(1)
+      expect(plan).toEqual(frozen)
+      await expectUnknownWriteRetained(f, () => f.run(createCurrentNotionSkill(library, { plan })))
+      return
     }
     const created = createdResult(await f.run(createCurrentNotionSkill(library, { plan })))
     expect(created).toMatchObject({ state: "ready", native: { verified: 1 } })
-    if (operation !== undefined) expect(created.operation_id).toBe(operation)
     expect(pending(f)).toEqual([])
     expect(await body(f, created.page_id)).toBe(markdown)
     expect(f.mutations().filter((call) => call.path.includes("/markdown"))).toHaveLength(1)
@@ -474,7 +489,7 @@ test.each(
     [false, true].map((loseCorrection) => ({ href: href!, wire: wire!, loseCorrection })),
   ),
 )(
-  "native authoring restores $href in the same intent, including response loss: $loseCorrection",
+  "native authoring restores $href and fences response loss: $loseCorrection",
   async ({ href, wire, loseCorrection }) => {
     const f = automaticLinkWriter(loseCorrection, true)
     const markdown = `[Two](${href})`
@@ -486,19 +501,18 @@ test.each(
       ),
     )
     const frozen = structuredClone(plan)
-    let operation: string | undefined
     if (loseCorrection) {
       await expect(f.run(createCurrentNotionSkill(library, { plan }))).rejects.toMatchObject({
         code: "WRITE_OUTCOME_UNKNOWN",
       })
-      expect(pending(f)).toHaveLength(1)
-      const value = property(property(f.json.get(pending(f)[0]!)).intent).operation_id
-      if (typeof value !== "string") throw new Error("Expected the original pending operation")
-      operation = value
+      expect(f.mutations().filter((call) => call.path.includes("/markdown"))).toHaveLength(1)
+      expect(f.mutations().filter((call) => call.path === `v1/blocks/${f.blockId}`)).toHaveLength(1)
+      expect(plan).toEqual(frozen)
+      await expectUnknownWriteRetained(f, () => f.run(createCurrentNotionSkill(library, { plan })))
+      return
     }
     const created = createdResult(await f.run(createCurrentNotionSkill(library, { plan })))
     expect(created).toMatchObject({ state: "ready", native: { verified: 1 } })
-    if (operation !== undefined) expect(created.operation_id).toBe(operation)
     expect(pending(f)).toEqual([])
     expect(await body(f, created.page_id)).toBe(`[Two](${wire})`)
     const markdownWrites = f.mutations().filter((call) => call.path.includes("/markdown"))
@@ -552,7 +566,7 @@ test("a definitive native URL rejection resumes the original input, owner and op
 })
 
 for (const kind of ["skill-create", "native-body"] as const)
-  test(`create automatically resumes the same input after an accepted ${kind} response is lost`, async () => {
+  test(`create reconciles a witnessed ${kind} create but retains an unknown PATCH`, async () => {
     const f = currentWriteFixture(parent),
       plan = await f.run(prepareCurrentSkillWrite(input()))
     f.failNext({ kind, outcome: "accepted" })
@@ -561,6 +575,11 @@ for (const kind of ["skill-create", "native-body"] as const)
     })
     expect(pending(f)).toHaveLength(1)
     const original = property(property(f.json.get(pending(f)[0]!)).intent).operation_id
+    if (kind === "native-body") {
+      expect(f.table("skills")).toHaveLength(1)
+      await expectUnknownWriteRetained(f, () => f.run(createCurrentNotionSkill(library, { plan })))
+      return
+    }
     const resumed = await f.run(createCurrentNotionSkill(library, { plan }))
     expect(resumed).toMatchObject({
       action: "create",
@@ -593,8 +612,7 @@ test("create preserves an unfinished creation and refuses changed input before a
   })
   expect(f.mutations()).toHaveLength(0)
   expect(pending(f)).toHaveLength(1)
-  await f.run(createCurrentNotionSkill(library, { plan }))
-  expect(pending(f)).toEqual([])
+  await expectUnknownWriteRetained(f, () => f.run(createCurrentNotionSkill(library, { plan })))
 })
 
 test("update changes selected main and metadata while preserving unselected author body and exact resource; repeat writes nothing", async () => {
@@ -664,7 +682,7 @@ test("metadata-only update preserves every current body and File identity", asyn
   ).toBe(true)
 })
 
-test("update resumes the original selected input, rejects a changed pending input, and preserves the rest", async () => {
+test("an unknown update preserves the original input and body without replay or a changed successor", async () => {
   const f = currentWriteFixture(parent),
     { result } = await create(f)
   const original = {
@@ -689,17 +707,39 @@ test("update resumes the original selected input, rejects a changed pending inpu
   ).rejects.toMatchObject({ code: "CURRENT_OPERATION_PENDING" })
   expect(f.mutations()).toHaveLength(0)
   expect(pending(f)).toHaveLength(1)
-  const resumed = await f.run(updateCurrentNotionSkill(library, original))
-  expect(resumed).toMatchObject({
-    action: "update",
-    state: "ready",
-    operation_id: intent.operation_id,
+  await expectUnknownWriteRetained(f, () => f.run(updateCurrentNotionSkill(library, original)))
+  expect(await body(f, result.page_id)).toBe("# Main\n")
+  expect(property(property(f.json.get(pending(f)[0]!)).intent).operation_id).toBe(
+    intent.operation_id,
+  )
+})
+
+test("an acknowledged native body resumes after its persisted checkpoint without another body PATCH", async () => {
+  const f = pauseAfterCurrentActionAcknowledgement(
+    currentWriteFixture(parent),
+    (key) => key.startsWith("native:") && key.endsWith(":body"),
+  )
+  const plan = await f.run(prepareCurrentSkillWrite(input()))
+  await expect(f.run(createCurrentNotionSkill(library, { plan }))).rejects.toMatchObject({
+    code: "REQUEST_BUDGET_EXHAUSTED",
   })
-  expect(await body(f, result.page_id)).toBe("# Original pending update\n")
-  expect(pending(f)).toEqual([])
+  expect(f.paused()).toBe(true)
+  expect(pending(f)).toHaveLength(1)
+  const original = property(f.json.get(pending(f)[0]!))
+  expect(property(original.settled_action).key).toMatch(/^native:.*:body$/u)
+  expect(f.mutations().filter((call) => call.path.includes("/markdown"))).toHaveLength(1)
   f.clearCalls()
-  expect(await f.run(updateCurrentNotionSkill(library, original))).toMatchObject({
-    status: "unchanged",
-  })
-  expect(f.mutations()).toHaveLength(0)
+  const operationId = property(original.intent).operation_id
+  const ownerPageId = original.owner_page_id
+  if (typeof operationId !== "string" || typeof ownerPageId !== "string")
+    throw new Error("Expected the original acknowledged operation and owner.")
+  const result = createdResult(await f.run(createCurrentNotionSkill(library, { plan })))
+  expect(result.operation_id).toBe(operationId)
+  expect(result.page_id).toBe(ownerPageId)
+  expect(result.state).toBe("ready")
+  expect(await body(f, result.page_id)).toBe("# Main\n")
+  expect(
+    f.mutations().filter((call) => call.path === `v1/pages/${result.page_id}/markdown`),
+  ).toEqual([])
+  expect(pending(f)).toEqual([])
 })

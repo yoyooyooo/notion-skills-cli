@@ -829,6 +829,47 @@ export function currentWriteFixture(parent: string) {
   }
 }
 
+/** Stop one invocation only after the real action ACK has reached its original Store.
+ * This models a checkpoint interruption, separately from an unknown HTTP outcome. */
+export function pauseAfterCurrentActionAcknowledgement(
+  fixture: ReturnType<typeof currentWriteFixture>,
+  matchesAction: (key: string) => boolean,
+) {
+  let paused = false
+  const run: typeof fixture.run = (effect) =>
+    fixture.run(
+      Effect.flatMap(Store, (store) =>
+        effect.pipe(
+          Effect.provideService(Store, {
+            ...store,
+            writeJson: (key, value, options) =>
+              store.writeJson(key, value, options).pipe(
+                Effect.flatMap(() => {
+                  const action = property(property(value).settled_action).key
+                  if (
+                    !paused &&
+                    key.startsWith("operations/current-write-pending/") &&
+                    typeof action === "string" &&
+                    matchesAction(action)
+                  ) {
+                    paused = true
+                    return Effect.fail(
+                      fail(
+                        "REQUEST_BUDGET_EXHAUSTED",
+                        "Stopped after persisting the real action ACK.",
+                      ),
+                    )
+                  }
+                  return Effect.void
+                }),
+              ),
+          }),
+        ),
+      ),
+    )
+  return { ...fixture, run, paused: () => paused }
+}
+
 /** Existing reading rows are explicit fixture state, independent of Source apply. */
 export async function seedSourceFileRows(
   f: ReturnType<typeof currentWriteFixture>,

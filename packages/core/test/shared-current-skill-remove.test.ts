@@ -10,7 +10,13 @@ import { withCurrentOperation } from "../src/shared-current-operation.ts"
 import { removeCurrentNotionSkill } from "../src/shared-current-skill-remove.ts"
 import { prepareCurrentSkillWrite, writeCurrentSkill } from "../src/shared-current-write.ts"
 import { sourceRich } from "../src/shared-source-definitions.ts"
-import { currentWriteFixture, id, library, testBytes } from "./shared-current-write-fixture.ts"
+import {
+  currentWriteFixture,
+  id,
+  library,
+  pauseAfterCurrentActionAcknowledgement,
+  testBytes,
+} from "./shared-current-write-fixture.ts"
 
 const parent = mkdtempSync(join(tmpdir(), "ntn-current-skill-remove-"))
 afterAll(async () => {
@@ -175,9 +181,63 @@ test("remove exhausts Files pagination before freezing every owned File", async 
   expect(pending(f)).toEqual([])
 })
 
-for (const kind of ["relations", "retire-file", "retire-resource", "operation-retirement"] as const)
+for (const [kind, prefix] of [
+  ["relations", "remove:relation:"],
+  ["retire-file", "remove:file:"],
+  ["retire-resource", "remove:resource:"],
+  ["owner retirement", "$owner.retired"],
+] as const)
+  test(`automatic removal resumes the same finite intent after acknowledged ${kind}`, async () => {
+    const f = pauseAfterCurrentActionAcknowledgement(currentWriteFixture(parent), (key) =>
+      key.startsWith(prefix),
+    )
+    const target = await seed(f),
+      other = await seed(f, "referrer", 0)
+    setRelations(f, other.page_id, "Members", [target.page_id])
+    await expect(
+      f.run(removeCurrentNotionSkill(library, { target: target.page_id })),
+    ).rejects.toMatchObject({ code: "REQUEST_BUDGET_EXHAUSTED" })
+    expect(f.paused()).toBe(true)
+    expect(pending(f)).toHaveLength(1)
+    const stored = property(f.json.get(pending(f)[0]!)),
+      original = property(stored.intent)
+    expect(property(original.skill_action).kind).toBe("remove")
+    expect(String(property(stored.settled_action).key).startsWith(prefix)).toBe(true)
+    const acknowledgedWrites = f
+      .mutations()
+      .filter((call) =>
+        kind === "relations"
+          ? call.path === `v1/pages/${other.page_id}`
+          : property(call.body).in_trash === true,
+      )
+    const acknowledged = acknowledgedWrites.at(-1)!
+    expect(acknowledged).toBeDefined()
+    f.clearCalls()
+    expect(await f.run(removeCurrentNotionSkill(library, { target: "remove-me" }))).toMatchObject({
+      status: "removed",
+      operation_id: original.operation_id,
+    })
+    expect(
+      f
+        .mutations()
+        .filter(
+          (call) =>
+            call.path === acknowledged.path &&
+            JSON.stringify(call.body) === JSON.stringify(acknowledged.body),
+        ),
+    ).toEqual([])
+    expect(pending(f)).toEqual([])
+    expect(operationRows(f)).toEqual([])
+    expect(relations(f, other.page_id, "Members")).toEqual([])
+    expect(f.pages.get(target.page_id)?.in_trash).toBe(true)
+    f.clearCalls()
+    await f.run(removeCurrentNotionSkill(library, { target: target.page_id }))
+    expect(f.mutations()).toHaveLength(0)
+  })
+
+for (const kind of ["relations", "retire-file", "retire-resource"] as const)
   for (const outcome of ["accepted", "absent"] as const)
-    test(`automatic removal resumes the same finite intent after ${kind} ${outcome}`, async () => {
+    test(`automatic removal preserves an unknown ${kind} ${outcome} without replaying it`, async () => {
       const f = currentWriteFixture(parent),
         target = await seed(f),
         other = await seed(f, "referrer", 0)
@@ -187,23 +247,61 @@ for (const kind of ["relations", "retire-file", "retire-resource", "operation-re
         f.run(removeCurrentNotionSkill(library, { target: target.page_id })),
       ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
       expect(pending(f)).toHaveLength(1)
-      const stored = property(f.json.get(pending(f)[0]!)),
-        original = property(stored.intent)
-      expect(property(original.skill_action).kind).toBe("remove")
-      expect(await f.run(removeCurrentNotionSkill(library, { target: "remove-me" }))).toMatchObject(
-        { status: "removed", operation_id: original.operation_id },
-      )
-      expect(pending(f)).toEqual([])
-      expect(operationRows(f)).toEqual([])
-      expect(relations(f, other.page_id, "Members")).toEqual([])
-      expect(f.pages.get(target.page_id)?.in_trash).toBe(true)
+      const key = pending(f)[0]!,
+        original = structuredClone(property(f.json.get(key)).intent)
+      expect(property(property(original).skill_action).kind).toBe("remove")
       f.clearCalls()
-      await f.run(removeCurrentNotionSkill(library, { target: target.page_id }))
+      await expect(
+        f.run(removeCurrentNotionSkill(library, { target: "remove-me" })),
+      ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
       expect(f.mutations()).toHaveLength(0)
+      expect(property(f.json.get(key)).intent).toEqual(original)
+      expect(pending(f)).toHaveLength(1)
+      expect(operationRows(f)).toHaveLength(1)
+      expect(f.pages.get(target.page_id)?.in_trash).toBe(false)
     })
 
+test("removal reconciles the uniquely observed retirement of its exact operation Record", async () => {
+  const f = currentWriteFixture(parent),
+    target = await seed(f)
+  f.failNext({ kind: "operation-retirement", outcome: "accepted" })
+  await expect(
+    f.run(removeCurrentNotionSkill(library, { target: target.page_id })),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  const original = property(property(f.json.get(pending(f)[0]!)).intent)
+  expect(f.pages.get(target.page_id)?.in_trash).toBe(true)
+  f.clearCalls()
+  expect(await f.run(removeCurrentNotionSkill(library, { target: "remove-me" }))).toMatchObject({
+    status: "removed",
+    operation_id: original.operation_id,
+  })
+  expect(f.mutations()).toEqual([])
+  expect(pending(f)).toEqual([])
+  expect(operationRows(f)).toEqual([])
+})
+
+test("removal retains an unobserved operation Record retirement without replay", async () => {
+  const f = currentWriteFixture(parent),
+    target = await seed(f)
+  f.failNext({ kind: "operation-retirement", outcome: "absent" })
+  await expect(
+    f.run(removeCurrentNotionSkill(library, { target: target.page_id })),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  const key = pending(f)[0]!,
+    original = structuredClone(property(f.json.get(key)).intent)
+  expect(f.pages.get(target.page_id)?.in_trash).toBe(true)
+  f.clearCalls()
+  await expect(
+    f.run(removeCurrentNotionSkill(library, { target: "remove-me" })),
+  ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+  expect(f.mutations()).toEqual([])
+  expect(property(f.json.get(key)).intent).toEqual(original)
+  expect(pending(f)).toHaveLength(1)
+  expect(operationRows(f)).toHaveLength(1)
+})
+
 for (const outcome of ["accepted", "absent"] as const)
-  test(`owner retirement ${outcome} is reconciled by the same removal kernel`, async () => {
+  test(`unknown owner retirement ${outcome} retains the original intent without replay`, async () => {
     const f = currentWriteFixture(parent),
       target = await seed(f)
     const api = await f.run(Notion)
@@ -233,10 +331,16 @@ for (const outcome of ["accepted", "absent"] as const)
     ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
     expect(fired).toBe(true)
     expect(pending(f)).toHaveLength(1)
-    expect((await f.run(removeCurrentNotionSkill(library, { target: "remove-me" }))).status).toBe(
-      "removed",
-    )
-    expect(pending(f)).toEqual([])
+    const key = pending(f)[0]!,
+      original = structuredClone(property(f.json.get(key)).intent)
+    f.clearCalls()
+    await expect(
+      f.run(removeCurrentNotionSkill(library, { target: "remove-me" })),
+    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_UNRESOLVED" })
+    expect(f.mutations()).toEqual([])
+    expect(property(f.json.get(key)).intent).toEqual(original)
+    expect(pending(f)).toHaveLength(1)
+    expect(f.pages.get(target.page_id)?.in_trash).toBe(outcome === "accepted")
   })
 
 test("more than 100 remaining relation targets is rejected before any mutation", async () => {
@@ -256,32 +360,53 @@ test("more than 100 remaining relation targets is rejected before any mutation",
 })
 
 test("an external relation edit after interruption is preserved and blocks resume", async () => {
-  const f = currentWriteFixture(parent),
-    target = await seed(f),
+  const f = pauseAfterCurrentActionAcknowledgement(currentWriteFixture(parent), (key) =>
+    key.startsWith("remove:relation:"),
+  )
+  const target = await seed(f),
     other = await seed(f, "referrer", 0)
   setRelations(f, other.page_id, "Members", [target.page_id])
-  f.failNext({ kind: "relations", outcome: "accepted" })
   await expect(
     f.run(removeCurrentNotionSkill(library, { target: target.page_id })),
-  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  ).rejects.toMatchObject({ code: "REQUEST_BUDGET_EXHAUSTED" })
+  expect(f.paused()).toBe(true)
+  const key = pending(f)[0]!,
+    saved = property(f.json.get(key)),
+    originalIntent = structuredClone(saved.intent),
+    originalFiles = structuredClone(f.table("files", false)),
+    recordPage = property(saved.lifecycle).record_page_id
+  expect(typeof recordPage).toBe("string")
   setRelations(f, other.page_id, "Members", [id(30000)])
   f.clearCalls()
   await expect(
     f.run(removeCurrentNotionSkill(library, { target: target.page_id })),
   ).rejects.toMatchObject({ code: "CURRENT_SKILL_REMOVE_CONFLICT" })
   expect(relations(f, other.page_id, "Members")).toEqual([id(30000)])
-  expect(f.mutations().every((call) => call.path === `v1/pages/${target.page_id}`)).toBe(true)
+  expect(
+    f
+      .mutations()
+      .every(
+        (call) =>
+          call.method === "PATCH" &&
+          [target.page_id, recordPage].some((page) => call.path === `v1/pages/${page}`) &&
+          !("in_trash" in property(call.body)),
+      ),
+  ).toBe(true)
+  expect(property(f.json.get(key)).intent).toEqual(originalIntent)
+  expect(f.table("files", false)).toEqual(originalFiles)
   expect(f.pages.get(target.page_id)?.in_trash).toBe(false)
   expect(pending(f)).toHaveLength(1)
 })
 
 test("a new owned File after interruption cannot be adopted into the frozen deletion", async () => {
-  const f = currentWriteFixture(parent),
-    target = await seed(f)
-  f.failNext({ kind: "retire-file", outcome: "accepted" })
+  const f = pauseAfterCurrentActionAcknowledgement(currentWriteFixture(parent), (key) =>
+    key.startsWith("remove:file:"),
+  )
+  const target = await seed(f)
   await expect(
     f.run(removeCurrentNotionSkill(library, { target: target.page_id })),
-  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  ).rejects.toMatchObject({ code: "REQUEST_BUDGET_EXHAUSTED" })
+  expect(f.paused()).toBe(true)
   const original = f.table("files")[0]!
   const extra = structuredClone(original),
     properties = property(extra.properties)
@@ -443,13 +568,16 @@ test("an externally trashed owner does not certify cleanup of its live children"
 })
 
 test("terminal resume tolerates Notion hiding only the retired owner's relation on frozen retired children", async () => {
-  const f = currentWriteFixture(parent),
-    target = await seed(f)
+  const f = pauseAfterCurrentActionAcknowledgement(
+    currentWriteFixture(parent),
+    (key) => key === "$owner.retired",
+  )
+  const target = await seed(f)
   hideTrashedRelations(f)
-  f.failNext({ kind: "operation-retirement", outcome: "absent" })
   await expect(
     f.run(removeCurrentNotionSkill(library, { target: target.page_id })),
-  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  ).rejects.toMatchObject({ code: "REQUEST_BUDGET_EXHAUSTED" })
+  expect(f.paused()).toBe(true)
   expect(f.pages.get(target.page_id)?.in_trash).toBe(true)
   expect(pending(f)).toHaveLength(1)
   expect((await f.run(removeCurrentNotionSkill(library, { target: target.page_id }))).status).toBe(
@@ -475,13 +603,16 @@ test("hidden relations cannot make an externally trashed ready owner appear comp
 
 for (const table of ["files", "records"] as const)
   test(`terminal resume never accepts a foreign owner on a frozen retired ${table} page`, async () => {
-    const f = currentWriteFixture(parent),
-      target = await seed(f)
+    const f = pauseAfterCurrentActionAcknowledgement(
+      currentWriteFixture(parent),
+      (key) => key === "$owner.retired",
+    )
+    const target = await seed(f)
     hideTrashedRelations(f)
-    f.failNext({ kind: "operation-retirement", outcome: "absent" })
     await expect(
       f.run(removeCurrentNotionSkill(library, { target: target.page_id })),
-    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    ).rejects.toMatchObject({ code: "REQUEST_BUDGET_EXHAUSTED" })
+    expect(f.paused()).toBe(true)
     const row = f
       .table(table, false)
       .find(

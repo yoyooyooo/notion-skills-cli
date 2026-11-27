@@ -11,6 +11,7 @@ import { RequestBudget } from "../../core/src/request-budget.ts"
 import {
   currentWriteFixture,
   library,
+  pauseAfterCurrentActionAcknowledgement,
   testBytes,
 } from "../../core/test/shared-current-write-fixture.ts"
 import { readCurrentOperationIntent } from "../../core/src/shared-current-operation.ts"
@@ -325,7 +326,10 @@ test("the same daily CLI command resumes its interrupted Skill then completes th
 test.each(["include", "exclude", "both"] as const)(
   "public restore recovery round-trips an explicitly empty %s filter",
   async (empty) => {
-    const f = currentWriteFixture(await mkdtemp(join(tmpdir(), "ntn-cli-restore-empty-")))
+    const f = pauseAfterCurrentActionAcknowledgement(
+      currentWriteFixture(await mkdtemp(join(tmpdir(), "ntn-cli-restore-empty-"))),
+      (key) => key === "$owner.restore",
+    )
     const plan = await f.run(
       prepareCurrentSkillWrite({
         skill_id: "empty-filter",
@@ -346,7 +350,6 @@ test.each(["include", "exclude", "both"] as const)(
       ...(empty !== "exclude" ? { include: [] } : {}),
       ...(empty !== "include" ? { exclude: [] } : {}),
     }).policy
-    f.failNext({ kind: "skill-restore", outcome: "absent" })
     let failure: unknown
     try {
       await f.run(
@@ -356,9 +359,10 @@ test.each(["include", "exclude", "both"] as const)(
       failure = error
     }
     expect(failure).toMatchObject({
-      code: "WRITE_OUTCOME_UNKNOWN",
+      code: "REQUEST_BUDGET_EXHAUSTED",
       details: { projection_policy: expected },
     })
+    expect(f.paused()).toBe(true)
     const argv = property(property(property(failure).details).next).argv
     if (!Array.isArray(argv) || !argv.every((part) => typeof part === "string"))
       throw new Error("Missing exact public recovery argv")
@@ -370,6 +374,60 @@ test.each(["include", "exclude", "both"] as const)(
     f.clearCalls()
     await f.run(projectionCLI(argv.slice(4)))
     expect(f.mutations()).toEqual([])
+  },
+)
+
+test.each(["accepted", "absent"] as const)(
+  "public restore preserves its empty policy and refuses an unknown %s write without replay",
+  async (outcome) => {
+    const f = currentWriteFixture(await mkdtemp(join(tmpdir(), "ntn-cli-restore-unknown-")))
+    const plan = await f.run(
+      prepareCurrentSkillWrite({
+        skill_id: "unknown-restore",
+        kind: "skill",
+        name: "Unknown restore",
+        description: "Keep the original restore intent until its write is settled",
+        files: [{ path: "SKILL.md", bytes: testBytes("# Main\n") }],
+      }),
+    )
+    const written = await f.run(writeCurrentSkill(library, { plan, operation_id: "unknown-seed" }))
+    f.pages.get(written.page_id)!.in_trash = true
+    f.failNext({ kind: "skill-restore", outcome })
+    let failure: unknown
+    try {
+      await f.run(
+        projectionCLI([
+          written.page_id,
+          "--restore",
+          "--library",
+          library.library_id,
+          "--include",
+          "",
+          "--exclude",
+          "",
+        ]),
+      )
+    } catch (error) {
+      failure = error
+    }
+    expect(failure).toMatchObject({
+      code: "WRITE_OUTCOME_UNKNOWN",
+      details: { projection_policy: { include: [], exclude: [] } },
+    })
+    const saved = [...f.json.entries()].find(([key]) =>
+      key.startsWith("operations/current-write-pending/"),
+    )!
+    const original = structuredClone(property(saved[1]).intent)
+    const argv = property(property(property(failure).details).next).argv
+    if (!Array.isArray(argv) || !argv.every((part) => typeof part === "string"))
+      throw new Error("Missing exact public recovery argv")
+    f.clearCalls()
+    await expect(f.run(projectionCLI(argv.slice(4)))).rejects.toMatchObject({
+      code: "CURRENT_OPERATION_UNRESOLVED",
+    })
+    expect(f.mutations()).toEqual([])
+    expect(property(f.json.get(saved[0])).intent).toEqual(original)
+    expect(f.pages.get(written.page_id)?.in_trash).toBe(outcome === "absent")
   },
 )
 
