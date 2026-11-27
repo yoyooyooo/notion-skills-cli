@@ -5,6 +5,7 @@ import { Clock, Crypto, Effect, FileSystem, Path, Schema } from "effect"
 import { bindEntryTarget, catalog } from "./catalog.ts"
 import { identitySegment, identityFromSegment } from "./cache-address.ts"
 import { resolveCatalogReference } from "./catalog-reference.ts"
+import { CurrentEvidenceSchema, type CurrentEvidence } from "./current-evidence-model.ts"
 import { trashPath } from "./local-locks.ts"
 import { CURRENT_MATERIALIZATION_VERSION } from "./materialization.ts"
 import {
@@ -125,6 +126,7 @@ export const ObservationSchema = Schema.Struct({
   metadata_only: Schema.optional(Schema.Literal(true)),
   shared_body_valid_until: Schema.optional(Schema.Number),
   current_snapshot: Schema.optional(SnapshotSchema),
+  current_evidence: Schema.optional(CurrentEvidenceSchema),
   access_denied: Schema.optional(Schema.Literals(["AUTH_REQUIRED", "ACCESS_DENIED"])),
 })
 export type AccessDenial = "AUTH_REQUIRED" | "ACCESS_DENIED"
@@ -142,6 +144,7 @@ export interface Freshness {
   readonly current_eligibility_max_age_ms?: number
 }
 export interface ObservedSnapshot extends Snapshot {
+  readonly current_evidence?: CurrentEvidence
   readonly shared_body_valid_until?: number
   readonly source?: "notion" | "local_cache" | "local_snapshot"
   readonly freshness?: Freshness
@@ -406,6 +409,7 @@ export function publishSnapshotObservation(
     readonly metadataOnly?: true
     readonly sharedBodyValidUntil?: number
     readonly sharedMaterializedPaths?: readonly string[]
+    readonly currentEvidence?: CurrentEvidence
   } = {},
 ) {
   return Effect.gen(function* () {
@@ -464,12 +468,21 @@ export function publishSnapshotObservation(
         ...(options.sharedBodyValidUntil === undefined
           ? {}
           : { shared_body_valid_until: options.sharedBodyValidUntil }),
+        ...(options.currentEvidence === undefined
+          ? {}
+          : { current_evidence: options.currentEvidence }),
       },
+      options.currentEvidence === undefined
+        ? undefined
+        : { expectedCurrentEvidence: options.currentEvidence },
     )
     yield* recordScope(snapshot.scope)
     return {
       ...snapshot,
       source: "notion" as const,
+      ...(options.currentEvidence === undefined
+        ? {}
+        : { current_evidence: options.currentEvidence }),
       ...(options.sharedMaterializedPaths === undefined
         ? {}
         : {
@@ -782,6 +795,7 @@ export function cachedRemoteObservation(
       validated_at: latest.validated_at,
       metadata_only: latest.metadata_only,
       shared_body_valid_until: latest.shared_body_valid_until,
+      current_evidence: latest.current_evidence,
       invalidated: latest.invalidated,
     }
   })

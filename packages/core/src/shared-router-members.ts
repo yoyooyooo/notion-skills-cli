@@ -1,4 +1,10 @@
-import { Effect, Schema } from "effect"
+import { Crypto, Effect, Option, Schema } from "effect"
+import {
+  beginCurrentEvidence,
+  currentEvidenceForResponse,
+  currentRelationFact,
+  observeCurrentFacts,
+} from "./current-evidence.ts"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import {
   decode,
@@ -18,6 +24,7 @@ import {
 } from "./shared-content.ts"
 import type { SharedLibrary, SharedSkillRelationField } from "./shared-library-model.ts"
 import { sharedGraphSkillTargets } from "./shared-graph-read-context.ts"
+import { Store } from "./store.ts"
 export type { SharedSkillRelationField } from "./shared-library-model.ts"
 
 export interface SharedSkillRelationTarget {
@@ -181,6 +188,18 @@ export function completeSharedSkillRelationIds(
     )
     if (!relation.has_more) return relation.inline
     const api = yield* Notion
+    const store = Option.getOrUndefined(yield* Effect.serviceOption(Store))
+    const crypto = Option.getOrUndefined(yield* Effect.serviceOption(Crypto.Crypto))
+    if (store?.currentEvidence !== undefined && crypto === undefined)
+      return yield* Effect.fail(
+        fail("CACHE_INVALIDATED", "Current relation metadata requires its evidence runtime."),
+      )
+    let attempt =
+      store?.currentEvidence === undefined || crypto === undefined
+        ? undefined
+        : yield* beginCurrentEvidence(api.credentialIdentity, api.apiOrigin).pipe(
+            Effect.provideService(Crypto.Crypto, crypto),
+          )
     const ids = new Set<string>()
     const cursors = new Set<string>()
     let cursor: string | undefined
@@ -192,6 +211,7 @@ export function completeSharedSkillRelationIds(
       const raw = yield* api.request(
         `v1/pages/${router.locator.page_id}/properties/${relation.id}?${query}`,
       )
+      attempt = yield* currentEvidenceForResponse(attempt, raw)
       const page = yield* checked(() => {
         const value = property(raw)
         const metadata = property(value.property_item)
@@ -240,7 +260,14 @@ export function completeSharedSkillRelationIds(
           "Router membership changed while its complete relation was being observed; read it again.",
         ),
       )
-    return [...ids]
+    const complete = [...ids]
+    if (attempt !== undefined && crypto !== undefined) {
+      const fact = yield* currentRelationFact(router.locator.page_id, relation.id, complete).pipe(
+        Effect.provideService(Crypto.Crypto, crypto),
+      )
+      yield* observeCurrentFacts(attempt, [fact])
+    }
+    return complete
   })
 }
 

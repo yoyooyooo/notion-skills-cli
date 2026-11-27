@@ -2,6 +2,7 @@ import { Config, Context, Crypto, Effect, FileSystem, Layer, Option, Path, Schem
 import { cacheCapacity, DEFAULT_CACHE_CAPACITY } from "./cache-retention-model.ts"
 import { ConfigSchema, decode, fail, property, SkillsError, SnapshotSchema } from "./model.ts"
 import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
+import type { CurrentEvidence, CurrentFact } from "./current-evidence-model.ts"
 import { publicSourceResourceConfiguration } from "./shared-source-config-model.ts"
 import { retainedSnapshotIdentityInputs } from "./snapshot-identity.ts"
 
@@ -70,12 +71,30 @@ function comparableSnapshotContent(input: unknown): string {
   })
 }
 
+export type StoreWriteOptions =
+  | { readonly expectedCurrentWritePending: unknown }
+  | { readonly expectedCurrentEvidence: CurrentEvidence }
+
 export class Store extends Context.Service<
   Store,
   {
     readonly root: string
     readonly configRoot: string
     readonly cacheRoot: string
+    readonly currentEvidence?: {
+      readonly observe: (input: {
+        readonly scope: string
+        readonly generation: number
+        readonly observed_at: number
+        readonly facts: readonly CurrentFact[]
+      }) => Effect.Effect<void, SkillsError>
+      readonly capture: (
+        scope: string,
+        facts: readonly CurrentFact[],
+        records?: readonly string[],
+      ) => Effect.Effect<CurrentEvidence, SkillsError>
+      readonly matches: (evidence: CurrentEvidence) => Effect.Effect<boolean, SkillsError>
+    }
     readonly reserveCacheGeneration: (
       scope: string,
       pageId: string,
@@ -113,7 +132,7 @@ export class Store extends Context.Service<
     readonly writeJson: (
       key: string,
       value: unknown,
-      options?: { readonly expectedCurrentWritePending: unknown },
+      options?: StoreWriteOptions,
     ) => Effect.Effect<void, SkillsError>
     readonly readBytes: (key: string) => Effect.Effect<Uint8Array, SkillsError>
     readonly writeBytes: (key: string, bytes: Uint8Array) => Effect.Effect<void, SkillsError>
@@ -348,6 +367,7 @@ export const StoreLive = Layer.effect(
       configRoot,
       cacheRoot,
       reserveCacheGeneration: state.reserve,
+      currentEvidence: state.currentEvidence,
       listKeys: state.list,
       retireKeys: state.retire,
       reclaimDerived: state.reclaimDerived,
@@ -355,14 +375,11 @@ export const StoreLive = Layer.effect(
       backup: state.backup,
       writeBytes,
       readBytes,
-      writeJson: (
-        key: string,
-        value: unknown,
-        options?: { readonly expectedCurrentWritePending: unknown },
-      ) =>
+      writeJson: (key: string, value: unknown, options?: StoreWriteOptions) =>
         Effect.gen(function* () {
           if (
             options !== undefined &&
+            "expectedCurrentWritePending" in options &&
             !/^operations\/current-write-pending\/[a-f0-9]{64}\/pending\.json$/u.test(key)
           )
             return yield* Effect.fail(

@@ -162,6 +162,29 @@ source_pending_bypass = [
      'false && parent !== undefined &&\n      (own?.phase !== "content" ||'),
 ]
 lifecycle_cases = [
+    ("current-files-complete-pagination", "packages/core/src/shared-current-index.ts",
+     [("if (!page.has_more) break", "if (true) break")],
+     "packages/core/test/shared-current-evidence.node.test.ts",
+     "partial Files pagination cannot publish empty membership or replace the previous complete fact",
+     "FullClosureEvidence"),
+    ("current-evidence-publication-fence", "packages/core/src/sqlite-state.ts",
+     [("if (!(yield* evidenceMatches(evidence, property(value).record_identity as string)))",
+       "if (false && !(yield* evidenceMatches(evidence, property(value).record_identity as string)))")],
+     "packages/core/test/current-evidence.node.test.ts",
+     "guarded current publication rejects a newly known change and preserves the prior observation",
+     "PublicationFence"),
+    ("current-evidence-closure-fence", "packages/core/src/graph-prepare.ts",
+     [("yield* assertCurrentEvidenceSet(currentReadSets)",
+       "void currentReadSets")],
+     "packages/core/test/current-evidence.node.test.ts",
+     "graph preparation rejects a root change after the Required node reaches its derived directory",
+     "KnownChangeWins"),
+    ("source-ref-late-result-return", "packages/core/src/shared-source-ref-cache.ts",
+     [("if (latest !== undefined && latest.generation > generation) {",
+       "if (false && latest !== undefined && latest.generation > generation) {")],
+     "packages/core/test/shared-source-ref-cache.node.test.ts",
+     "a late real Git result cannot overwrite or return ahead of a newer accepted observation",
+     "NoOldResultPublication"),
     ("library-root-intent-before-create", "packages/core/src/shared-library-initialization.ts",
      [('                  yield* save({ ...current, in_flight: marker })', '                  void marker')],
      "packages/core/test/library-lifecycle-guards.test.ts",
@@ -233,8 +256,9 @@ lifecycle_cases = [
      "packages/core/test/shared-profile-binding.node.test.ts",
      "a Profile owner keeps the same local fence", "FrozenOperationTarget"),
     ("current-read-final-fence", "packages/core/src/shared-snapshot.ts",
-     [("if (consumptionFence(finalIndex, finalConsumption) !== consumptionFence(index, consumption))",
-       "if (false && consumptionFence(finalIndex, finalConsumption) !== consumptionFence(index, consumption))")],
+     [("rootFact?.fingerprint !== finalRootFact?.fingerprint ||", "false ||"),
+      ("consumptionFence(finalIndex, finalConsumption) !== consumptionFence(index, consumption)",
+       "false")],
      "packages/core/test/shared-current-snapshot.test.ts",
      "a writer starting or completing during body reads", "NoMixedCurrentPublication"),
     ("non-content-owner-activation", operation,
@@ -372,7 +396,7 @@ summary = {
                    if args.suite == "request-engine" else None),
     "scope": ("Controlled public Notion service/coalescer/scheduler and SDK code. The immutable runtime case uses an owned local HTTP server, independent public SDK runtimes and a frozen fixture; no real credentials or remote Notion mutations."
               if args.suite == "request-engine" else
-              "Production current reader, finite operation kernel and Source sync coordinator with controlled Notion/Git service responses. Each guard is removed in an isolated source copy and checked by its behavioral assertion. The pending-before-decision case deliberately removes both local-pipeline and remote-intent checks. Library guards use independently fixed root/DB/DS facts and the original Store intent; the SQLite binding and coordinator/address cases exercise real owned local storage across independent process restart. No live Notion, Pi, real provider, cross-machine locking, power-loss, or read-after-check CAS claim."
+              "Production current reader, finite operation kernel and Source sync coordinator with controlled Notion service responses. Each guard is removed in an isolated source copy and checked by its behavioral assertion. The pending-before-decision case deliberately removes both local-pipeline and remote-intent checks. The current-read-final-fence case removes both the root-page and original consumption comparisons; either rejects its existing writer trace. Library guards use independently fixed root/DB/DS facts and the original Store intent; the SQLite binding and coordinator/address cases exercise real owned local storage across independent process restart. The Source ref late-return case uses real Git, SQLite and separate OS processes against an owned local repository. No live Notion, Pi, real provider, cross-machine locking, power-loss, or read-after-check CAS claim."
               if args.suite == "current-lifecycle" else
               "Production MCP authorization and credential store with real loopback OAuth HTTP, fake credentials, independent Node processes and an owned SIGKILL crash. Every mutation must fail an existing behavior assertion, then restore and pass. The pre-exchange, abandoned-refresh and expired-publication cases remove multiple defensive checks. No real OAuth, remote Notion, browser, cross-machine or power-loss guarantee."
               if args.suite == "notion-mcp-auth" else

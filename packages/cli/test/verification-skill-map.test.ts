@@ -7,7 +7,12 @@ import { Schema } from "effect"
 const root = fileURLToPath(new URL("../../../", import.meta.url))
 const featureRoot = ".cursor/skills/verify-ntn-skills/features"
 const ordinaryWorkflowPi = "pi --provider magpie --model group/worker --thinking high"
-const cacheReuseScenarios = ["http-warm-restart", "http-warm-directory-expired"]
+const cacheReuseScenarios = [
+  "http-warm-restart",
+  "http-warm-directory-expired",
+  "http-smart-revalidate",
+  "http-smart-current",
+]
 const domainSchema = Schema.Struct({
   id: Schema.String,
   skill: Schema.String,

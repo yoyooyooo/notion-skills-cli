@@ -5,6 +5,7 @@ CurrentLifecycle 检查 C06/C07b 与 current 读取的有限交错；SourceSync 
 SourceSyncProgress 检查投影和 full 批次的两个有限完成前缀。
 LibraryLifecycle 检查独立根页面的初始化、真实物理归属与原操作绑定。
 四者不恢复旧 ACK、永久 pin 或历史管理模型。
+智能缓存另沿 [证据与准入合同](smart-cache.md) 检查观察、闭包、固定选择、请求进展及信息能力边界。
 源码行为由实际 reader/operation 测试回放；模型与生产 guard mutation 各有独立结果。
 
 ## 运行
@@ -27,12 +28,15 @@ PSTACK_STATECHART_ROOT/TLA2TOOLS 可替代两项工具参数。使用本次新�
 CurrentLifecycle 正例为 content/projection/restore 三个配置；四个反例分别移除读回 fence、projection 分类、unknown 不重放和非内容完成资格。
 SourceSync 有 fresh/resume/projection/foreign 四个正例和七个故意缺陷配置。
 SourceSyncProgress 有 full/resume/hard/completion/foreign-completion 五个正例和八个故意缺陷配置。
-LibraryLifecycle 有一个正例和十三个故意缺陷配置；完整套件共 45 个配置。
+LibraryLifecycle 有一个正例和十三个故意缺陷配置；上述四个模型共 45 个配置。
+智能缓存五个模型另有 16 个配置，完整套件共 61 个配置。
 同一模型的每个配置检查同一份完整规则清单，expected_broken 独立维护。
 缺工具、规则遗漏、cut、超时和解析异常都不算通过。
 
 单独定位时使用 `--model SourceSync`、`--model SourceSyncProgress` 或 `--model LibraryLifecycle`；
-完整 current-lifecycle 组运行四个模型的全部配置。
+完整 current-lifecycle 组运行九个模型的全部配置。
+新增 ObservationSafety、ClosureEvidence、SelectionPins、AdmissionProgress 和 InformationLimit
+也可通过 `--model` 运行各自全部正负配置；合同与实现绑定状态以 coverage 为准。
 
 ## Library 根页面与操作身份
 
@@ -211,7 +215,7 @@ Source 已 ready 但父意图尚未退役时，仍沿原 operation 完成退役�
 | NoFalseSyncCompletion | 完成回执要求原 Source 意图退役、目标完成且无旧投影 | 在所有配置检查，不用 ready 位替代这些事实 |
 
 `shared-current-source-sync-guards.test.ts` 只替换 Git provider 边界，实际运行同步协调、Source writer、投影 writer 和有限 operation 内核。
-统一 mutation runner 增加五条真实回放；连同 CurrentLifecycle 的四条为原有九条；再加十三条 Library 守卫和三条 Profile binding/fence 回放，当前共二十五条。
+统一 mutation runner 增加五条真实回放；连同 CurrentLifecycle 的四条为原有九条；再加十三条 Library 守卫和三条 Profile binding/fence 回放，原有共二十五条；智能缓存新增回放见 [对应合同](smart-cache.md)。
 
 | 真实 mutation | 对应回放 |
 | --- | --- |
