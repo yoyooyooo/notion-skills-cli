@@ -35,12 +35,12 @@
     "packages/cli/src/sdk.ts": "7fbe46c5d8b3103ed6984c210005a09b40f0c130e75155d47275e0ed4df41a3d",
     "packages/cli/src/operation-runtime.ts": "a9c344a05035502216f5ccb355e63f8dac0d61f7d4ba3a035cccc1087648f538",
     "packages/cli/test/sdk.test.ts": "71fe42ac3cee2aec463f32a6f32ff8532335326d18e848bcba5e6e73d7d86af3",
-    "packages/core/src/upstream-source.ts": "a20acf3f675c7c023ae04ab63b820ec88da9c38463833a7e8fa9314f0cd80b62",
+    "packages/core/src/upstream-source.ts": "35a68d3a05aa5d92e92bfada7b82dfcf13f4b058e875e1d5e13690748651f387",
     "packages/core/test/source-git-runtime.test.ts": "2687b96d0bfba82ed3f5f454454ae50d84e5aad90f4fe694c2b1a136a8f02165",
     "packages/core/node_modules/@effect/platform-node-shared/src/NodeChildProcessSpawner.ts": "0e1b55d9e2a52d8d05b720098f485f9d427fa41100795c340bf1ffa1406e1ee3",
     "packages/core/node_modules/@effect/platform-node-shared/src/internal/nodeChildProcessSpawner.ts": "01c3a18cbb62c17952ff1c28e1011ac6fb4bbb04b9be532ad06467032d2093f4",
-    "packages/core/src/shared-source-member-discovery.ts": "1056beb323e3a6d55b6edbfb1e87c7b63891962dae7e638b21b1527790b6c5c9",
-    "packages/core/test/shared-source-directory.test.ts": "2b58a8f96ff7c6cdf48df1071297e0e5a711006d888851e20e95830533827362"
+    "packages/core/src/shared-source-member-discovery.ts": "0ea680924b3f5e0496c73768c2b2cdbcb940c4aa70c3f9db0ed3e75211004f77",
+    "packages/core/test/shared-source-directory.test.ts": "4b3d600ed4d25112f63d6647a5d0323f74b07b9b5cfedce4437b3124ce385c23"
   },
   "models": {
     "SharedProducer": {
@@ -644,5 +644,14 @@
     ],
     "boundary": "presence-tested GIT_CURL_VERBOSE is removed; Git authority, requests, deadlines, cancellation and directory completeness are unchanged",
     "proof_scope": "real Git plus owned HTTP regression; model definitions, case/rule inventories and mutation guards unchanged"
+  },
+  "source_member_admission_review": {
+    "base_commit": "ffa49e8e609a73ae9d70f40394ebf8199cf01086",
+    "reviewed_files": [
+      "packages/core/src/upstream-source.ts",
+      "packages/core/src/shared-source-member-discovery.ts",
+      "packages/core/test/shared-source-directory.test.ts"
+    ],
+    "scope": "Member-specific capability facts and candidate cache generations do not change request coalescing, parent budgets or process cancellation. SourceMemberAdmission belongs to current-lifecycle; this suite retains its existing models, cases, rules and mutations. Real Git metadata and shared deadline behavior are still tested at the directory boundary."
   }
 }

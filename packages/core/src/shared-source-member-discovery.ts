@@ -1,5 +1,6 @@
 import {
   SourceMemberCacheSchema,
+  SOURCE_MEMBER_CACHE_VERSION,
   sourceMemberCacheKey,
 } from "./shared-source-materialization-state.ts"
 import { readMaterializationClosure } from "./shared-source-materialization-closure.ts"
@@ -14,6 +15,7 @@ import {
 } from "./shared-current-source-management.ts"
 import {
   resolveCurrentSourceContributions,
+  currentSourceMemberWriteReason,
   validateCurrentSourceInput,
 } from "./shared-current-source-input.ts"
 import { uninitializedSourceSkill } from "./shared-current-source-adoption.ts"
@@ -235,6 +237,12 @@ function discoverDirectSourceMembers(
             )
               return yield* Effect.fail(writable.failure)
             const writeReason = writable._tag === "Failure" ? writable.failure.code : undefined
+            // Existing ready records do not acquire a new write requirement.
+            // Some read-only registrations cannot be parsed as fixed Git inputs.
+            const discoveryInput =
+              writeReason === undefined
+                ? yield* materializationChecked(() => sourceDiscoveryInput(registration.definition))
+                : undefined
             const base = {
               type: "source_member" as const,
               library_id: library.library_id,
@@ -271,7 +279,11 @@ function discoverDirectSourceMembers(
                         uninitializedSourceSkill(library, entry.raw),
                       )
                     : false
-                const blocked = uninitialized && writeReason !== undefined
+                const memberWriteReason =
+                  discoveryInput === undefined
+                    ? writeReason
+                    : currentSourceMemberWriteReason(discoveryInput, member_key)
+                const blocked = uninitialized && memberWriteReason !== undefined
                 const candidate = {
                   ...base,
                   member_key,
@@ -292,7 +304,7 @@ function discoverDirectSourceMembers(
                             : ("materializable" as const)
                           : ("ready" as const),
                   ...(blocked && available && entry.record.enabled !== false
-                    ? { reason: writeReason }
+                    ? { reason: memberWriteReason }
                     : {}),
                 }
                 if (matches(input.query, candidate)) found.push(candidate)
@@ -324,6 +336,25 @@ function discoverDirectSourceMembers(
               overrides: registration.contributions,
             })
             for (const member of observation.members) {
+              const memberWriteReason =
+                discoveryInput === undefined
+                  ? writeReason
+                  : currentSourceMemberWriteReason(
+                      discoveryInput,
+                      member.member_key,
+                      member.git_representation,
+                    )
+              // A name lookup observes the complete pinned layout as well as the
+              // existing physical row. Ready content does not require a new write.
+              if (memberWriteReason !== undefined)
+                for (let index = 0; index < found.length; index++) {
+                  const candidate = found[index]!
+                  if (
+                    candidate.member_key === member.member_key &&
+                    candidate.readiness === "materializable"
+                  )
+                    found[index] = { ...candidate, readiness: "blocked", reason: memberWriteReason }
+                }
               if (bindings.get(member.member_key)?.some((entry) => entry.record !== undefined))
                 continue
               const rows = assigned.filter((entry) => entry.member_key === member.member_key)
@@ -339,10 +370,12 @@ function discoverDirectSourceMembers(
                   enabled: true,
                   readiness: !available
                     ? ("preparing" as const)
-                    : writeReason === undefined
+                    : memberWriteReason === undefined
                       ? ("materializable" as const)
                       : ("blocked" as const),
-                  ...(available && writeReason !== undefined ? { reason: writeReason } : {}),
+                  ...(available && memberWriteReason !== undefined
+                    ? { reason: memberWriteReason }
+                    : {}),
                 }
                 if (matches(input.query, candidate)) found.push(candidate)
               }
@@ -362,10 +395,12 @@ function discoverDirectSourceMembers(
     if (Option.isSome(budget)) yield* budget.value.check
     const previous = yield* store.readJson(key, SourceMemberCacheSchema)
     const cached = new Map(
-      (previous?.candidates ?? []).map((entry) => [
-        JSON.stringify([entry.source_id, entry.member_key, entry.expected_skill_id]),
-        entry,
-      ]),
+      (previous?.version === SOURCE_MEMBER_CACHE_VERSION ? previous.candidates : []).map(
+        (entry) => [
+          JSON.stringify([entry.source_id, entry.member_key, entry.expected_skill_id]),
+          entry,
+        ],
+      ),
     )
     for (const entry of candidates)
       cached.set(
@@ -376,7 +411,7 @@ function discoverDirectSourceMembers(
     // is not a completed observation and must not publish a late candidate slot.
     if (Option.isSome(budget)) yield* budget.value.check
     yield* store.writeJson(key, {
-      version: 1,
+      version: SOURCE_MEMBER_CACHE_VERSION,
       library_id: library.library_id,
       scope,
       candidates: [...cached.values()],

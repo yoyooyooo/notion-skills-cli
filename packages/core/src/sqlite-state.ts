@@ -123,7 +123,7 @@ const sharedLocalDomains: readonly {
     prefix: SOURCE_MEMBER_CACHE_PREFIX,
     category: "cache",
     address:
-      /^cache\/source-members\/[a-f0-9]{64}\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$/u,
+      /^cache\/source-members\/[a-f0-9]{64}\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}(?:\.v2)?\.json$/u,
   },
   {
     prefix: SOURCE_MATERIALIZATION_PENDING_PREFIX,

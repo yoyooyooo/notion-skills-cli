@@ -3,11 +3,16 @@ import { fail, SkillsError } from "./model.ts"
 import { SourceMemberCandidateSchema } from "./shared-source-materialization-model.ts"
 
 export const SOURCE_MEMBER_CACHE_PREFIX = "cache/source-members"
+/** v1 predated member-specific fixed-Git eligibility. Its original address stays
+ * valid for older readers, but current reads, writes and retirement use only v2. */
+export const SOURCE_MEMBER_CACHE_VERSION = 2
 export const SOURCE_MATERIALIZATION_PENDING_PREFIX = "operations/current-source-materialization"
+const sourceMemberCacheAddress = (scope: string, library: string, version: 1 | 2) =>
+  `${SOURCE_MEMBER_CACHE_PREFIX}/${scope}/${library}${version === SOURCE_MEMBER_CACHE_VERSION ? ".v2" : ""}.json`
 export const sourceMemberCacheKey = (scope: string, library: string) =>
-  `${SOURCE_MEMBER_CACHE_PREFIX}/${scope}/${library}.json`
+  sourceMemberCacheAddress(scope, library, SOURCE_MEMBER_CACHE_VERSION)
 export const SourceMemberCacheSchema = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literals([1, SOURCE_MEMBER_CACHE_VERSION]),
   library_id: Schema.String,
   scope: Schema.String,
   candidates: Schema.Array(SourceMemberCandidateSchema),
@@ -23,7 +28,7 @@ export function decodeSourceMemberCache(key: string, input: unknown) {
     throw fail("STATE_CORRUPT", "The Source member cache has an invalid stored shape.")
   }
   if (
-    key !== sourceMemberCacheKey(value.scope, value.library_id) ||
+    key !== sourceMemberCacheAddress(value.scope, value.library_id, value.version) ||
     value.candidates.some(
       (candidate) =>
         candidate.scope !== value.scope ||

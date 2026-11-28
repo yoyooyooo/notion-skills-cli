@@ -89,6 +89,10 @@ export const SourceSnapshotSchema = Schema.Struct({
 })
 export type SourceSnapshot = typeof SourceSnapshotSchema.Type
 
+/** Layout facts only. Regular tree entries still require full blob verification
+ * before the current writer may publish them. This is not a content manifest. */
+export type SourceMemberGitRepresentation = "regular_git" | "transformed_git" | "unavailable"
+
 /** A complete name roster at one fixed Git tree. This is not acquired content. */
 export interface SourceDirectory {
   readonly kind: "source_directory"
@@ -101,6 +105,7 @@ export interface SourceDirectory {
     readonly name: string
     readonly description: string
     readonly main: string
+    readonly git_representation: SourceMemberGitRepresentation
   }[]
 }
 
@@ -1397,12 +1402,24 @@ export function discoverSourceDirectory(
           memberMetadata(decoded, key, files, readPortableMetadata(files)),
         )
         yield* resolve(key, at(key, metadata.main))
+        const selected = entries.filter((entry) => under(entry.path, key))
+        const git_representation: SourceMemberGitRepresentation =
+          decoded.patch !== undefined ||
+          decoded.member_patches?.[key] !== undefined ||
+          selected.some((entry) => entry.mode === "120000")
+            ? "transformed_git"
+            : selected.every(
+                  (entry) => entry.type === "blob" && ["100644", "100755"].includes(entry.mode),
+                )
+              ? "regular_git"
+              : "unavailable"
         members.push({
           member_key: key,
           source_path: key,
           name: metadata.name,
           description: metadata.description,
           main: metadata.main,
+          git_representation,
         })
       }
       // Duplicate aliases are complete information, not a truncated roster. The

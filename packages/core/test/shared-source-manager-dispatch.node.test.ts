@@ -20,7 +20,12 @@ import { DatabaseSync } from "node:sqlite"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { promisify } from "node:util"
 import { afterAll, beforeAll, expect, test, vi } from "vitest"
+import { Effect } from "effect"
+import { runLocalRuntimeOperation } from "../../cli/src/operation-runtime.ts"
+import { Store } from "../src/store.ts"
+import { sourceMemberCacheKey } from "../src/shared-source-materialization-state.ts"
 import type {
+  SourceMemberCandidate,
   SourceMaterializationRequest,
   SourceMaterializationReceipt,
 } from "../src/shared-source-materialization-model.ts"
@@ -239,10 +244,61 @@ const operations = (snapshot: ReturnType<typeof databaseSnapshot>) =>
 const intent = (row: PendingRow) => object(row.payload.intent)
 const operationOwner = (row: PendingRow) => object(intent(row).owner)
 
-async function fixture(name: string) {
+async function fixture(name: string, memberPatch = false) {
   const out = join(evidence, name)
   await mkdir(out, { mode: 0o700 })
   const facts = helper.materializationServiceFacts(sample, git.url, "source-only")
+  if (memberPatch) {
+    const source = facts.sample.notion.sources.find(
+      (row: { id: string }) => row.id === facts.source_page_id,
+    )
+    assert.ok(source)
+    const root = facts.members[0]
+    field(source, facts.sample.notion.library.sources.property_ids.Options).rich_text = [
+      {
+        type: "text",
+        text: {
+          content: JSON.stringify({
+            version: 1,
+            adapter: {},
+            settings: {
+              member_patches: {
+                [root.member_key]: {
+                  version: 1,
+                  files: [
+                    {
+                      path: "SKILL.md",
+                      replacements: [
+                        {
+                          from: "description: " + root.description,
+                          to: "description: " + JSON.stringify(root.description),
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+        },
+      },
+    ]
+    const unrelated = structuredClone(source)
+    unrelated.id = "00000000-0000-4000-8000-0000000fff70"
+    const text = (id: string, content: string) => {
+      field(unrelated, id).rich_text = [{ type: "text", text: { content } }]
+    }
+    text(facts.sample.notion.library.sources.property_ids["Source ID"], "unrelated-unsupported")
+    text(
+      facts.sample.notion.library.sources.property_ids.Options,
+      JSON.stringify({
+        version: 1,
+        adapter: {},
+        settings: { storage: "retained" },
+      }),
+    )
+    facts.sample.notion.sources.push(unrelated)
+  }
   const service = await helper.startSdkSourceFixture(facts.sample, join(out, "source-http.jsonl"), {
     allowCurrentWrites: true,
     forbidProjectionWrites: true,
@@ -266,17 +322,22 @@ async function fixture(name: string) {
   }
   const library = facts.sample.notion.library
   await sdk.selectLibrary({ library: library.library_id, cwd: out, env })
-  const found = await sdk.discoverSourceMembers(
-    { library: library.library_id, source_id: facts.source_id, query: facts.members[0].name },
-    { cwd: out, env },
-  )
+  const lookup = (query: string) =>
+    sdk.discoverSourceMembers(
+      { library: library.library_id, source_id: facts.source_id, query },
+      { cwd: out, env },
+    )
+  const found = await lookup(facts.members[0].name)
   expect(found.coverage).toBe("complete")
   expect(found.candidates).toHaveLength(1)
   const candidate = found.candidates[0]!
-  const request: SourceMaterializationRequest = {
+  const requestFor = (
+    candidate: SourceMemberCandidate,
+    label: string,
+  ): SourceMaterializationRequest => ({
     version: 1,
     library: library.library_id,
-    request_id: "dispatch-" + name,
+    request_id: "dispatch-" + name + label,
     purpose: "use",
     target: {
       source_id: candidate.source_id,
@@ -290,7 +351,8 @@ async function fixture(name: string) {
         ? { expected_source_revision: candidate.expected_source_revision }
         : {}),
     },
-  }
+  })
+  const request = requestFor(candidate, "")
   const credentials = join(out, "credentials.json"),
     config = join(out, "manager.json")
   await save(credentials, { NOTION_API_TOKEN: env.NOTION_API_TOKEN })
@@ -489,6 +551,10 @@ async function fixture(name: string) {
     service,
     library,
     roots,
+    env,
+    candidate,
+    lookup,
+    requestFor,
     request,
     launch,
     run,
@@ -498,6 +564,155 @@ async function fixture(name: string) {
     close,
   }
 }
+
+test("fixed manager separates patched members, old candidate caches and unrelated Source write policies", async () => {
+  const f = await fixture("member-write-capability", true)
+  const controls = { cwd: f.out, env: f.env }
+  try {
+    expect.soft(f.candidate).toMatchObject({
+      readiness: "blocked",
+      reason: "CURRENT_SOURCE_WRITE_UNSUPPORTED",
+    })
+    const catalog = await sdk.listCatalog({
+      library: f.library.library_id,
+      ...controls,
+      refresh: true,
+    })
+    const legacy = { ...f.candidate, readiness: "materializable" as const }
+    delete legacy.reason
+    const stale = {
+      ...legacy,
+      member_key: "skills/old-unobserved",
+      expected_skill_id: "old-unobserved",
+      alias: "old-unobserved",
+      name: "old-unobserved",
+    }
+    const key = sourceMemberCacheKey(catalog.scope, f.library.library_id)
+    const legacyKey = `cache/source-members/${catalog.scope}/${f.library.library_id}.json`
+    const legacyPayload = {
+      version: 1,
+      library_id: f.library.library_id,
+      scope: catalog.scope,
+      candidates: [legacy, stale],
+    }
+    await runLocalRuntimeOperation(
+      () =>
+        Effect.gen(function* () {
+          const store = yield* Store
+          // The initial SDK lookup established the exact candidate identity.
+          // Construct the controlled upgrade starting state: only its v1 slot.
+          yield* store.retireKeys([key])
+          yield* store.writeJson(legacyKey, legacyPayload)
+        }),
+      controls,
+    )
+    const beforeLocal = f.service.requests.length
+    const old = await sdk.readCandidateSnapshot({ library: f.library.library_id, ...controls })
+    expect.soft(old).toMatchObject({ kind: "snapshot", source_members: [] })
+    expect(f.service.requests).toHaveLength(beforeLocal)
+    const fresh = await f.lookup(f.facts.members[0].name)
+    expect
+      .soft(fresh.candidates)
+      .toMatchObject([{ readiness: "blocked", reason: "CURRENT_SOURCE_WRITE_UNSUPPORTED" }])
+    const beforeSnapshot = f.service.requests.length
+    const local = await sdk.readCandidateSnapshot({ library: f.library.library_id, ...controls })
+    expect.soft(local).toMatchObject({
+      kind: "snapshot",
+      records: catalog.records,
+      source_members: fresh.candidates,
+    })
+    expect.soft(local.kind === "snapshot" ? local.source_members : []).toHaveLength(1)
+    expect(
+      await sdk.readCandidateSnapshot({
+        library: f.library.library_id,
+        ...controls,
+        env: {
+          ...f.env,
+          NOTION_API_TOKEN: "foreign-member-policy-scope",
+        },
+      }),
+    ).toMatchObject({ kind: "miss", reason: "scope_unavailable" })
+    expect(f.service.requests).toHaveLength(beforeSnapshot)
+    const database = new DatabaseSync(join(f.roots.home, "state.sqlite"), { readOnly: true })
+    let cached: unknown
+    try {
+      const row = database
+        .prepare("SELECT payload FROM shared_local_records WHERE key = ?")
+        .get(key)
+      assert.ok(row)
+      cached = JSON.parse(String(row.payload))
+      expect.soft(cached).toMatchObject({ version: 2, candidates: fresh.candidates })
+      const retained = database
+        .prepare("SELECT payload FROM shared_local_records WHERE key = ?")
+        .get(legacyKey)
+      expect(JSON.parse(String(retained?.payload))).toEqual(legacyPayload)
+    } finally {
+      database.close()
+    }
+    await save(join(f.out, "cache-transition.json"), { old, fresh, local, cached })
+    const original = structuredClone(f.service.notion)
+    expect(await f.noWrites("patched-forged-request")).toMatchObject({
+      status: "blocked",
+      reason: "CURRENT_SOURCE_WRITE_UNSUPPORTED",
+      records: [],
+      effects: { remote_writes: "none", projection: "none" },
+    })
+    expect(f.service.notion).toEqual(original)
+    for (const [index, label] of [
+      [1, "old-member"],
+      [2, "new-sibling"],
+    ] as const) {
+      const selected = await f.lookup(f.facts.members[index].name)
+      expect(selected).toMatchObject({ coverage: "complete", failures: [] })
+      expect(selected.candidates).toHaveLength(1)
+      expect(selected.candidates[0]).toMatchObject({ readiness: "materializable" })
+      const start = f.service.requests.length
+      const receipt = await f.run(label, f.requestFor(selected.candidates[0]!, "-" + label))
+      expect(receipt).toMatchObject({
+        status: "ready",
+        effects: { remote_writes: "management", projection: "none" },
+      })
+      expect(receipt.records.map((record) => record.name)).toEqual([f.facts.members[index].name])
+      const rows = f.service.requests.slice(start)
+      expect(rows.some((row: { semantic_write?: boolean }) => row.semantic_write)).toBe(true)
+      expect(rows.filter((row: { projection_write?: boolean }) => row.projection_write)).toEqual([])
+      const source = f.service.notion.sources.find(
+        (row: { id: string }) => row.id === f.facts.source_page_id,
+      )
+      const contributions = JSON.parse(rich(source, f.library.sources.property_ids.Contributions))
+      expect(contributions.map((row: { member_key: string }) => row.member_key).sort()).toEqual(
+        f.facts.members
+          .slice(1, index + 1)
+          .map((row: { member_key: string }) => row.member_key)
+          .sort(),
+      )
+      const read = await sdk.consume(
+        { version: 1, purpose: "use", targets: [receipt.records[0]!.id] },
+        { ...controls, library: f.library.library_id },
+      )
+      expect(read.status).toBe("ready")
+      if (read.status !== "ready") throw new Error("The unpatched member was not consumable")
+      const main = f.facts.members[index].files.find(
+        (file: { path: string }) => file.path === "SKILL.md",
+      )
+      const node = read.preparation.nodes.find((node) => node.id === receipt.records[0]!.id)
+      expect(node?.state).toBe("prepared")
+      expect(node?.state === "prepared" ? node.content : undefined).toBe(main.content)
+      await save(join(f.out, label + "-receipt.json"), { receipt, consume: read, requests: rows })
+    }
+    const unrelated = f.service.notion.sources.find(
+      (row: { id: string }) => row.id === "00000000-0000-4000-8000-0000000fff70",
+    )
+    expect(unrelated).toEqual(
+      original.sources.find((row: { id: string }) => row.id === unrelated.id),
+    )
+    await f.snapshot("after")
+    await f.close()
+    results.push({ name: "member-write-capability", status: "completed", evidence: f.out })
+  } finally {
+    await f.close()
+  }
+}, 180_000)
 
 type Fixture = Awaited<ReturnType<typeof fixture>>
 async function scenario(name: string, body: (f: Fixture) => Promise<void>) {

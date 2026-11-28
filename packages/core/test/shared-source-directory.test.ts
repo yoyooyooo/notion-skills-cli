@@ -194,6 +194,117 @@ test("an unrelated broken resource does not make the exact name directory incomp
   }
 }, 30000)
 
+test.each(["SKILL.md", "resource.txt", "empty"])(
+  "registered member capability retains a legacy %s patch without blocking its sibling",
+  async (path) => {
+    const f = await fixture(
+      new Map([
+        ["skills/patched/SKILL.md", skill("patched")],
+        ["skills/patched/resource.txt", "Original resource"],
+        ["skills/plain/SKILL.md", skill("plain")],
+      ]),
+    )
+    try {
+      const id = library.sources.property_ids.Options!
+      property(f.pages.get(f.sourcePage)!.properties)[id] = {
+        id,
+        type: "rich_text",
+        rich_text: sourceRich(
+          JSON.stringify({
+            version: 1,
+            adapter: {},
+            settings: {
+              member_patches: {
+                "skills/patched": {
+                  version: 1,
+                  files:
+                    path === "empty"
+                      ? []
+                      : [
+                          {
+                            path,
+                            replacements: [
+                              {
+                                from:
+                                  path === "SKILL.md"
+                                    ? "description: Complete source directory metadata"
+                                    : "Original resource",
+                                to:
+                                  path === "SKILL.md"
+                                    ? 'description: "Complete source directory metadata"'
+                                    : "Customized resource",
+                              },
+                            ],
+                          },
+                        ],
+                },
+              },
+            },
+          }),
+        ),
+      }
+      const blocked = await f.lookup("patched")
+      expect(blocked.value).toMatchObject({ coverage: "complete", failures: [] })
+      expect(blocked.value.candidates).toHaveLength(1)
+      expect(blocked.value.candidates[0]).toMatchObject({
+        member_key: "skills/patched",
+        readiness: "blocked",
+        reason: "CURRENT_SOURCE_WRITE_UNSUPPORTED",
+      })
+      const plain = await f.lookup("plain")
+      expect(plain.value).toMatchObject({ coverage: "complete", failures: [] })
+      expect(plain.value.candidates[0]).toMatchObject({
+        member_key: "skills/plain",
+        readiness: "materializable",
+      })
+      expect(plain.value.candidates[0]?.reason).toBeUndefined()
+      expect(blocked.metrics.source_acquisitions?.cat_file_bytes).toBe(
+        utf8.encode(skill("patched") + skill("plain")).length,
+      )
+      expect(f.mutations()).toEqual([])
+    } finally {
+      await f.transport.close()
+    }
+  },
+  30000,
+)
+
+test("a directory identifies non-regular member trees without acquiring supporting link bytes", async () => {
+  const f = await fixture(
+    new Map([
+      ["skills/linked/SKILL.md", skill("linked")],
+      ["skills/linked/resource.txt", "Complete original resource"],
+      ["skills/plain/SKILL.md", skill("plain")],
+    ]),
+    false,
+    { "skills/linked/alias.txt": "resource.txt" },
+  )
+  try {
+    const blocked = await f.lookup("linked")
+    expect(blocked.value).toMatchObject({ coverage: "complete", failures: [] })
+    expect(blocked.value.candidates[0]).toMatchObject({
+      readiness: "blocked",
+      reason: "CURRENT_SOURCE_WRITE_UNSUPPORTED",
+    })
+    expect(blocked.metrics.source_acquisitions?.cat_file_bytes).toBe(
+      utf8.encode(skill("linked") + skill("plain")).length,
+    )
+    const full = await f.run(
+      prepareCurrentSource(
+        { version: 1, definition: f.definition(), contributions: [] },
+        { memberKeys: ["skills/linked"] },
+      ).pipe(Effect.result),
+    )
+    expect(full).toMatchObject({
+      _tag: "Failure",
+      failure: { code: "CURRENT_SOURCE_WRITE_UNSUPPORTED" },
+    })
+    expect(f.mutations()).toEqual([])
+  } finally {
+    await f.transport.close()
+  }
+}, 30000)
+
 test("typed metadata and complete content share mapping, portable and patch semantics", async () => {
   const manifest = JSON.stringify({
     format: "ntn-skills",
@@ -261,6 +372,7 @@ test("typed metadata and complete content share mapping, portable and patch sema
         name: "mapped-plain",
         description: "Patched frontmatter description",
         main: "SKILL.md",
+        git_representation: "transformed_git",
       },
       {
         member_key: "skills/portable",
@@ -268,6 +380,7 @@ test("typed metadata and complete content share mapping, portable and patch sema
         name: "mapped-portable",
         description: "Patched portable description",
         main: "ALT.md",
+        git_representation: "transformed_git",
       },
     ])
     expect(metrics.snapshot().source_acquisitions?.cat_file_bytes).toBe(
@@ -281,6 +394,7 @@ test("typed metadata and complete content share mapping, portable and patch sema
         name: member.portable.name,
         description: member.portable.description,
         main: member.portable.main,
+        git_representation: "transformed_git",
       })),
     ).toEqual(directory.members)
     expect(

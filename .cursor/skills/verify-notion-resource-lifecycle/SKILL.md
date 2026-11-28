@@ -59,7 +59,7 @@ Broker 的 branch/turn/迟到目录沿其 consumer-state 的 LibrarySession。
 
 检查全部正例/预期反例与条件进展；明确外部返回、显式 resume 及公平性假设。NoDeadlock 不等于最终恢复。实际 guard 原件通过、突变行为失败、恢复通过；导入/语法错误不算检出。
 
-首次引用物化和原请求晚到分别沿同一 suite 的 SourceMaterialization、SourceWriterSettlement 全部正负配置。审阅 [物化合同](../verify-ntn-skills/features/source-materialization.md) 中实际 read–plan–write、原业务/控制 PATCH、retire、父子准入和 input receipt 对应；管理 ACK 与内容核验不能合成一个成功位。完整 current-lifecycle 及实际 guard mutations 为最终门禁，局部模型开发检查不是产品通过。真实 Pi、HTTP/SQLite、独立第二客户端仍由原领域入口执行。
+首次引用物化、原请求晚到和成员能力分别沿同一 suite 的 SourceMaterialization、SourceWriterSettlement、SourceMemberAdmission 全部正负配置。审阅 [物化合同](../verify-ntn-skills/features/source-materialization.md) 中实际 read–plan–write、原业务/控制 PATCH、retire、父子准入和 input receipt 对应；管理 ACK 与内容核验不能合成一个成功位。完整 current-lifecycle 及实际 guard mutations 为最终门禁，局部模型开发检查不是产品通过。真实 Pi、HTTP/SQLite、独立第二客户端仍由原领域入口执行。 SourceMemberAdmission 的旧槽整数只抽象地址/格式保持；payload 字节、真实旧/新 SDK 共用 Store 和固定 manager 零写拒绝须各有实际回放。它假设完整元信息已经返回，不证明 provider 获取终止。
 
 ~~~sh
 bun test packages/core/test/shared-current-index.test.ts packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-resource.test.ts --timeout 60000

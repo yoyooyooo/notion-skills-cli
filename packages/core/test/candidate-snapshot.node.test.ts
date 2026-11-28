@@ -402,7 +402,7 @@ test("actual SDK Source discovery and local candidate snapshots share the regist
       () =>
         Effect.flatMap(Store, (store) =>
           store.writeJson(sourceMemberCacheKey(catalog.scope, c.library.library_id), {
-            version: 1,
+            version: 2,
             library_id: c.library.library_id,
             scope: catalog.scope,
             candidates: [candidate],
@@ -419,6 +419,94 @@ test("actual SDK Source discovery and local candidate snapshots share the regist
       await readCandidateSnapshot({
         ...c.options,
         env: { ...c.options.env, NOTION_API_TOKEN: "another-client-credential" },
+      }),
+    ).toMatchObject({ kind: "miss", reason: "scope_unavailable" })
+    expect(c.source.requests).toHaveLength(requests)
+  } finally {
+    await finish(c)
+  }
+}, 30_000)
+
+test("versioned candidate slots preserve legacy readers and reject crossed address or scope", async () => {
+  const c = await controlled()
+  try {
+    const catalog = await listCatalog({ ...c.options, refresh: true })
+    const candidate = {
+      type: "source_member" as const,
+      library_id: c.library.library_id,
+      scope: catalog.scope,
+      source_id: "registered-source",
+      member_key: "skills/patched",
+      expected_skill_id: "patched",
+      registration_digest: "a".repeat(64),
+      name: "Patched",
+      alias: "patched",
+      description: "Legacy transformation",
+      enabled: true,
+      readiness: "materializable" as const,
+    }
+    const legacyKey = `cache/source-members/${catalog.scope}/${c.library.library_id}.json`
+    const currentKey = sourceMemberCacheKey(catalog.scope, c.library.library_id)
+    const legacy = {
+      version: 1,
+      library_id: c.library.library_id,
+      scope: catalog.scope,
+      candidates: [candidate],
+    }
+    const current = {
+      ...legacy,
+      version: 2,
+      candidates: [
+        { ...candidate, readiness: "blocked", reason: "CURRENT_SOURCE_WRITE_UNSUPPORTED" },
+      ],
+    }
+    const write = (key: string, value: unknown) =>
+      runLocalRuntimeOperation(
+        () => Effect.flatMap(Store, (store) => store.writeJson(key, value)),
+        c.options,
+      )
+    await write(legacyKey, legacy)
+    const requests = c.source.requests.length
+    expect(await readCandidateSnapshot(c.options)).toMatchObject({
+      kind: "snapshot",
+      source_members: [],
+    })
+    await write(currentKey, current)
+    expect(await readCandidateSnapshot(c.options)).toMatchObject({
+      kind: "snapshot",
+      records: catalog.records,
+      source_members: current.candidates,
+    })
+    const database = new DatabaseSync(join(c.options.env.NTN_SKILLS_HOME, "state.sqlite"), {
+      readOnly: true,
+    })
+    try {
+      const persisted = (key: string) =>
+        JSON.parse(
+          String(
+            database
+              .prepare("SELECT payload FROM shared_local_records WHERE key = ? AND retired = 0")
+              .get(key)?.payload,
+          ),
+        )
+      expect(persisted(legacyKey)).toEqual(legacy)
+      expect(persisted(currentKey)).toEqual(current)
+    } finally {
+      database.close()
+    }
+    for (const [key, value] of [
+      [legacyKey, current],
+      [currentKey, legacy],
+      [currentKey, { ...current, scope: "b".repeat(64) }],
+    ] as const)
+      await expect(write(key, value)).rejects.toMatchObject({ code: "STATE_CONFLICT" })
+    await expect(write(currentKey, { ...current, version: 3 })).rejects.toMatchObject({
+      code: "STATE_CORRUPT",
+    })
+    expect(
+      await readCandidateSnapshot({
+        ...c.options,
+        env: { ...c.options.env, NOTION_API_TOKEN: "foreign-candidate-reader" },
       }),
     ).toMatchObject({ kind: "miss", reason: "scope_unavailable" })
     expect(c.source.requests).toHaveLength(requests)

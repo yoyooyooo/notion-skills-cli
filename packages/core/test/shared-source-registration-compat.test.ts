@@ -174,6 +174,48 @@ test("a ready physical member is not downgraded by a new write-policy restrictio
   expect(f.mutations()).toEqual([])
 })
 
+test("exact physical identity rejects a declared member patch before Git while ready content remains readable", async () => {
+  const f = await materializationFixture(root)
+  const options = legacy({
+    member_patches: {
+      "skills/root": {
+        version: 1,
+        files: [
+          {
+            path: "SKILL.md",
+            replacements: [
+              {
+                from: "description: Complete root skill",
+                to: 'description: "Complete root skill"',
+              },
+            ],
+          },
+        ],
+      },
+    },
+  })
+  setText(f, "Options", options)
+  const before = await f.run(discoverRegisteredSourceMembers(library, { query: "legacy-root" }))
+  expect(before).toMatchObject({ coverage: "complete", failures: [] })
+  expect(before.candidates[0]).toMatchObject({
+    expected_skill_id: "legacy-root",
+    readiness: "blocked",
+    reason: "CURRENT_SOURCE_WRITE_UNSUPPORTED",
+  })
+  expect(f.mutations()).toEqual([])
+  // Establish a genuinely ready current record with the ordinary unpatched
+  // writer, then observe the new restriction without downgrading that record.
+  setText(f, "Options", {})
+  expect(await f.materialize(await f.request())).toMatchObject({ status: "ready" })
+  setText(f, "Options", options)
+  f.clearCalls()
+  const ready = await f.run(discoverRegisteredSourceMembers(library, { query: "legacy-root" }))
+  expect(ready).toMatchObject({ coverage: "complete", failures: [] })
+  expect(ready.candidates[0]).toMatchObject({ readiness: "ready" })
+  expect(ready.candidates[0]?.reason).toBeUndefined()
+  expect(f.mutations()).toEqual([])
+})
+
 test("partial discovery reports the exact registered identities whose options failed", async () => {
   const f = await materializationFixture(root)
   setText(f, "Options", legacy({ unknown_setting: true }))
@@ -196,5 +238,23 @@ test("partial discovery reports the exact registered identities whose options fa
     { source_id: sourceId, code: "SOURCE_ADAPTER_OPTIONS_UNSUPPORTED" },
     { source_id: "second-failed-source", code: "SOURCE_ADAPTER_OPTIONS_UNSUPPORTED" },
   ])
+  expect(f.mutations()).toEqual([])
+})
+
+test("ready exact physical records do not require a newly unsupported acquisition declaration", async () => {
+  const f = await materializationFixture(root)
+  expect(await f.materialize(await f.request())).toMatchObject({ status: "ready" })
+  setText(f, "Options", legacy({ external_assets: true, external_markdown: ["README.md"] }))
+  const definition = parseCurrentSourceConfiguration(library, f.pages.get(f.sourcePage)).definition
+  // This source still selects skills/, so the external-resource acquisition
+  // contract is unsupported. The existing exact current record needs no fetch.
+  expect(() => sourceDiscoveryInput(definition)).toThrow()
+  f.clearCalls()
+  const result = await f.run(discoverRegisteredSourceMembers(library, { query: "legacy-root" }))
+  expect(result).toMatchObject({ coverage: "complete", failures: [] })
+  expect(result.candidates[0]).toMatchObject({
+    readiness: "ready",
+    expected_skill_id: "legacy-root",
+  })
   expect(f.mutations()).toEqual([])
 })

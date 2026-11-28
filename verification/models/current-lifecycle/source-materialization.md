@@ -1,6 +1,6 @@
 # 增量物化与原未知写
 
-本页属于现役 current-lifecycle suite。SourceMaterialization 的七个配置和 SourceWriterSettlement 的九个配置使用同一固定 pstack/TLC 工具、coverage、source hash gate 和 mutation runner。它们不建立另一套产品状态或验收入口。
+本页属于现役 current-lifecycle suite。SourceMaterialization 的七个、SourceWriterSettlement 的九个和 SourceMemberAdmission 的八个配置使用同一固定 pstack/TLC 工具、coverage、source hash gate 和 mutation runner。它们不建立另一套产品状态或验收入口。
 
 ## SourceMaterialization
 
@@ -15,6 +15,31 @@
 | MaterializationEventuallyExplained | 有限两个请求在声明的弱公平和外部动作返回下解释为 complete/blocked | 不把 blocked 当作物化成功 |
 
 ReadAndFreeze 是 admission 之后的完整观察，PublishPlan 是 Source applying 期间的计划发布，BindSelectedOwners 抽象已经核验的 M∪R 写入，Finish 才开放普通 current 消费。完整 owner 写入不是 Notion 原子事务；其真实子操作、失败、预算、取消和未知结果由下一模型及 HTTP/Store 回放承担。
+
+## SourceMemberAdmission
+
+三个成员分别表示未转换的 plain、需要转换的 patched 和已有可消费记录 ready。
+legacy/current 两个正初态分别从旧候选槽与当前 v2 槽开始；六个反例移除成员分类、
+旧候选隔离、地址分代、manager 独立拒绝、ready 保持或 blocked 零派发。
+每个配置检查同一完整规则清单，view 保留所有违例组合。
+
+| 规则 | 实现对应 |
+| --- | --- |
+| CurrentCandidatesRequireV2 | 新快照不采用旧 v1 materializable 声明，fresh 发现后才复用 v2 |
+| UnsupportedIsBlocked | 已声明 patch 或已知非普通 Git 表示的待物化成员明确 blocked |
+| ReadyRemainsReadable | 已 ready 精确物理记录不因新写能力或 acquisition 限制降级 |
+| OldCacheSlotPreserved | 新实现使用 `.v2.json`，保留旧地址与格式 |
+| BlockedCandidateDoesNotDispatch | consumer 选择 blocked 候选不调用 manager |
+| WriterRechecksTransformation | 即使绕过候选直接提交，manager 仍独立拒绝转换字节 |
+| AdmissionEventuallyExplained | 在完整元信息已经返回的有限流程中，成员最终得到解释 |
+
+`oldSlot` 的整数只抽象旧地址/格式保持，不证明原 payload 全部字节或整个 Store 不变。
+真实 SQLite 回放核 version/address/scope 严格匹配、旧槽字节不变与 fresh v2 可读；
+实际旧 SDK 与新 SDK 对同一 Store 的 catalog/snapshot/consume 兼容另留包身份和原件。
+模型假设元信息、物理 ready 与成员身份已经可信，弱公平不保证 provider 获取能够终止。
+exact stable ID 快路径没有获取完整树时，未知表示仍由 manager 完整验证；该未知分支没有
+被模型中的已分类 patched/plain 替代。真实 Git 模式、文件内容、前台授权和 Pi wire
+属于实现和配对 integration 回放，不从此有限模型推导。
 
 ## SourceWriterSettlement
 

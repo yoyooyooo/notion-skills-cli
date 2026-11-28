@@ -20,7 +20,7 @@ node scripts/sdk-fixture.ts --outdir /absolute/owned/materialization-fixture --c
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-source-fixture.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-source-manager-dispatch.node.test.ts
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/catalog-retirement.node.test.ts packages/core/test/source-materialization-finalization.node.test.ts
-node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/candidate-snapshot.node.test.ts packages/core/test/shared-sqlite.node.test.ts -t "actual SDK Source discovery|Source candidate metadata|unfinished materialization input"
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/candidate-snapshot.node.test.ts packages/core/test/shared-sqlite.node.test.ts -t "actual SDK Source discovery|versioned candidate slots|Source candidate metadata|unfinished materialization input"
 bun test packages/core/test/shared-source-registration-compat.test.ts packages/core/test/shared-source-member-discovery.test.ts packages/core/test/shared-source-materialization-management.test.ts packages/core/test/shared-source-materialization-receipt.test.ts packages/core/test/shared-source-materialization-legacy-registration.test.ts packages/cli/test/management.test.ts packages/cli/test/source-manager-transport.test.ts packages/core/test/shared-current-source-writer.test.ts packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-source-write.test.ts --timeout 60000
 bun test packages/core/test/shared-source-directory.test.ts packages/core/test/upstream-source.test.ts packages/core/test/upstream-source-batch.test.ts packages/core/test/source-git-runtime.test.ts packages/core/test/shared-current-portable.test.ts --timeout 60000
 ~~~
@@ -41,6 +41,27 @@ manager 重读声明后独立拒绝；已有 ready 物理记录仍可按普通�
 仍拒绝。每个失败绑定已验证的 Source ID；不能因无匹配候选而隐藏 partial，不能跳过
 一个未完成的 Source 来证明名字全库唯一。新回归使用实际注册 parser、只读发现和
 core manager 的远端写账本；真实 Git/包/宿主和多 Source 覆盖另验，不扩大有限模型结论。
+
+### 成员转换与候选缓存代次
+
+Source 声明本身可写不等于每个 member 都能保留原 Git bytes。目录以声明 patch 和已观察的
+完整 tree 模式记录内部 `git_representation`，不读取附件来制造完整 manifest。已知 patch、
+链接物化或缺少普通 Git 表示的未就绪成员返回 blocked/CURRENT_SOURCE_WRITE_UNSUPPORTED；
+同 Source 未转换的 sibling 仍可 materializable。已 ready 的物理行仍可读取，也不因新的
+外部资源 acquisition 声明无法解析而降级。exact stable ID 快路径没有额外树扫描，未观察到的
+布局不在该预拒绝保证内；manager 必须独立读取、验证实际完整 snapshot 与每个固定 blob。
+
+私有 SourceMemberCache v1 原址 `<library>.json` 保留。新实现只读取、写入和退休
+`<library>.v2.json`，其 payload.version 必须为 2；version 与地址、Library、scope 严格绑定。
+旧 materializable 候选不能进入新快照或与 fresh v2 合并。旧包仍使用其原地址，这不表示旧
+cache 管理命令理解所有新地址。不要删除日用缓存来模拟升级成功。
+
+`candidate-snapshot.node.test.ts` 用真实 SQLite 检查旧槽不可见、新发现后的 v2 复用、
+原槽字节保持和跨 scope/地址拒绝。`shared-source-manager-dispatch.node.test.ts` 另用真实
+Git、公开 SDK、完整已安装 CLI 和固定 manager：对 patched 候选强制提交仍零语义写；
+同 Source 未转换目标与旧 M 可正常物化和消费，无关 unsupported Source 不变，投影为零。
+回放旧包与新包共用 Store 时须保存两套实际 SDK 路径/hash、catalog/snapshot/consume 原值和
+v1/v2 SQLite 原行；这份实际兼容证据与有限模型的地址抽象分开。
 
 ## 固定树上的完整名字目录
 
@@ -98,7 +119,7 @@ blocked 后消费者鉴权失败，以及取得回执后的实际 abort。实际
 
 ## 真实管理进程的未决派发
 
-`shared-source-manager-dispatch.node.test.ts` 已进入标准 `test:node`。正常测试链先完成当前 build；该 suite 只执行一次正常 `npm pack` 与独立 consumer install，四例共用完整只读安装。已有 paired artifact 时设置 `NTN_SKILLS_MANAGER_TEST_GENERATION` 为包含依赖的完整 installed/cli prefix，不能只给 dist。`NTN_SKILLS_MANAGER_TEST_OUT` 可指定一个尚不存在的绝对证据目录；不指定时保留 suite 新建的目录，并在输出中报告路径。
+`shared-source-manager-dispatch.node.test.ts` 已进入标准 `test:node`。正常测试链先完成当前 build；该 suite 只执行一次正常 `npm pack` 与独立 consumer install，成员能力用例与四个未决派发用例共用完整只读安装。已有 paired artifact 时设置 `NTN_SKILLS_MANAGER_TEST_GENERATION` 为包含依赖的完整 installed/cli prefix，不能只给 dist。`NTN_SKILLS_MANAGER_TEST_OUT` 可指定一个尚不存在的绝对证据目录；不指定时保留 suite 新建的目录，并在输出中报告路径。
 
 每例建立自己的 canonical SQLite Store、固定 manager 配置和真实 HTTP 服务。等精确 mutation 的完整请求到达后终止该自有 manager 进程，服务端保留原请求；随后用相同 Store 与原 intent 启动新 manager，先重试，再释放原请求迟到应用，再次重试。按原始账本核 exact method/page/body hash 只派发一次，核被拒绝的重试和后继没有语义写、全程没有投影写，保存 manager PID/exit、原 SQLite 与一致副本。
 
@@ -142,7 +163,7 @@ blocked 后消费者鉴权失败，以及取得回执后的实际 abort。实际
 
 ## 形式化与 statechart
 
-在同一 current-lifecycle suite 中维护 SourceMaterialization 与 SourceWriterSettlement。前者覆盖 additive 集合、同一 Source writer、完整 revision 绑定和惰性 sibling；后者覆盖 durable dispatch、晚到写、唯一因果见证、取消和后继准入。枚举有限模型的边界、外部 actor 假设和每条预期失败规则，保存 TLC、完整投影和 pstack statechart。
+在同一 current-lifecycle suite 中维护 SourceMaterialization、SourceWriterSettlement 与 SourceMemberAdmission。前两者覆盖 additive 集合、同一 Source writer、完整 revision 绑定、惰性 sibling、durable dispatch、晚到写、唯一因果见证、取消和后继准入。SourceMemberAdmission 另覆盖 member blocked 到零派发、ready 不降级、旧候选不可 actionable、fresh v2 复用与旧槽保持，以及绕过目录时 manager 的独立拒绝。枚举有限模型的边界、外部 actor 假设和每条预期失败规则，保存 TLC、完整投影和 pstack statechart。
 
 先审阅实际实现差异和 behavioral tests，再更新 coverage source hashes，运行整个现役 current-lifecycle 正负配置和实际 guard mutations。mutation 必须从 baseline pass 到行为断言失败，再精确还原通过。模型不证明 Notion 原子事务、外部非协作 writer、跨主机 CAS、fsync 或真实 provider；单 Source/有限动作抽象必须由实际多客户端/父子故障回放补齐。
 
