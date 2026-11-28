@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { ConsumptionEffectsSchema } from "./consumption-effects.ts"
 import {
   PrepareBindingSchema,
   PrepareFailureSchema,
@@ -29,14 +30,11 @@ export const VerifiedManifestSchema = Schema.Struct({
   complete: Schema.Literal(true),
   scope: PrepareBindingSchema.fields.scope,
   snapshot_id: PrepareBindingSchema.fields.snapshot_id,
-  historical_snapshot_id: SnapshotSchema.fields.historical_snapshot_id,
   version_id: PrepareBindingSchema.fields.version_id,
   record: SnapshotSchema.fields.record,
   entrypoint: SnapshotSchema.fields.entrypoint,
   files: SnapshotSchema.fields.files,
   file_bindings: SnapshotSchema.fields.file_bindings,
-  // This describes upstream source provenance, not a model-context compiler.
-  source_projection: SnapshotSchema.fields.source_projection,
 })
 export type VerifiedManifest = typeof VerifiedManifestSchema.Type
 
@@ -74,6 +72,7 @@ export type ConsumeEntry = typeof ConsumeEntrySchema.Type
 export const ConsumeReadySchema = Schema.Struct({
   version: Schema.Literal(CONSUMER_CONTRACT_VERSION),
   status: Schema.Literal("ready"),
+  effects: Schema.optional(ConsumptionEffectsSchema),
   preparation: PrepareReadySchema,
   entries: Schema.Array(ConsumeEntrySchema),
   export: Schema.Struct({ status: Schema.Literal("not_requested") }),
@@ -86,11 +85,13 @@ export const ConsumeResultSchema = Schema.Union([
   Schema.Struct({
     version: Schema.Literal(CONSUMER_CONTRACT_VERSION),
     status: Schema.Literal("failed"),
+    effects: Schema.optional(ConsumptionEffectsSchema),
     error: PrepareFailureSchema,
   }),
   Schema.Struct({
     version: Schema.Literal(CONSUMER_CONTRACT_VERSION),
     status: Schema.Literal("cancelled"),
+    effects: Schema.optional(ConsumptionEffectsSchema),
     reason: Schema.Literal("interrupted"),
   }),
 ])

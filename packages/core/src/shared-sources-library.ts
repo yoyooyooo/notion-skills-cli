@@ -1,348 +1,182 @@
-import { Effect, Schema } from "effect"
-import { fail, property, text } from "./model.ts"
+import { Effect } from "effect"
+import { fail, property, SkillsError } from "./model.ts"
+import { matchesNotionRollup } from "./notion-rollup.ts"
 import { Notion } from "./notion.ts"
-import { pageId } from "./ref.ts"
-import { LIBRARY_MARKER, SharedLibrarySchema, type SharedLibrary } from "./shared-library-model.ts"
-import {
-  inspectTable,
-  libraryFromDatabase,
-  loadSharedLibrary,
-  initializeSharedLibrary,
-} from "./shared-library.ts"
-import { sourceDefinitionLayout } from "./shared-sources-model.ts"
-import { guardedSourceMutation, sourceChecked, sourceRich } from "./shared-source-definitions.ts"
-import { canonicalSharedJson } from "./shared-records.ts"
+import type { SharedLibrary, TableBinding } from "./shared-library-model.ts"
 
-/** Attach only an explicitly supplied fourth-table descriptor. Existing library
- * identities and property bindings are frozen; this is not schema discovery by title. */
-export function attachSourceLibrary(entry: string, input: unknown, dryRun = false) {
-  return Effect.gen(function* () {
-    const current = yield* loadSharedLibrary(entry)
-    const candidate = yield* sourceChecked(() =>
-      Schema.decodeUnknownSync(SharedLibrarySchema)(structuredClone(input), {
-        onExcessProperty: "error",
-      }),
-    )
-    yield* sourceChecked(() => {
-      if (!candidate.sources)
-        throw fail(
-          "SOURCES_NOT_ATTACHED",
-          "Supply the Sources table and exact relation identities.",
-        )
-      for (const key of ["version", "library_id", "operation_id", "parent_page_id"] as const)
-        if (current[key] !== candidate[key])
-          throw fail("SOURCE_LIBRARY_CONFLICT", "The existing library identity cannot be replaced.")
-      for (const role of ["skills", "files", "records"] as const) {
-        const before = current[role],
-          after = candidate[role]
-        if (
-          before.database_id !== after.database_id ||
-          before.data_source_id !== after.data_source_id
-        )
-          throw fail("SOURCE_LIBRARY_CONFLICT", "The existing tables cannot be replaced.")
-        for (const [key, value] of Object.entries(before.property_ids))
-          if (after.property_ids[key] !== value)
-            throw fail(
-              "SOURCE_LIBRARY_CONFLICT",
-              "An existing property binding cannot be replaced.",
-              { role, property: key },
-            )
-      }
-      if (
-        current.sources &&
-        canonicalSharedJson(current.sources) !== canonicalSharedJson(candidate.sources)
-      )
-        throw fail(
-          "SOURCE_LIBRARY_CONFLICT",
-          "An attached Sources database cannot be silently replaced.",
-        )
-      libraryFromDatabase({
-        id: current.skills.database_id,
-        description: sourceRich(LIBRARY_MARKER + JSON.stringify(candidate)),
-      })
-    })
-    yield* inspectTable(
-      candidate.sources!.database_id,
-      sourceDefinitionLayout(candidate.skills.data_source_id, candidate.records.data_source_id),
-      candidate.parent_page_id,
-      candidate.sources,
-    )
-    for (const role of ["skills", "records"] as const)
-      yield* inspectTable(
-        candidate[role].database_id,
-        {
-          Origin: {
-            relation: { data_source_id: candidate.sources!.data_source_id, single_property: {} },
-          },
-          ...(role === "skills" ? { "Source Member": { rich_text: {} } } : {}),
-        },
-        candidate.parent_page_id,
-        candidate[role],
-      )
-    if (canonicalSharedJson(current) === canonicalSharedJson(candidate))
-      return { library: candidate, status: "unchanged", writes: 0 }
-    const result = yield* guardedSourceMutation(
-      current,
-      {
-        identity: `${current.library_id}:sources-descriptor`,
-        path: `v1/databases/${current.skills.database_id}`,
-        method: "PATCH",
-        body: { description: sourceRich(LIBRARY_MARKER + JSON.stringify(candidate)) },
-        dryRun,
-      },
-      Effect.gen(function* () {
-        const observed = yield* loadSharedLibrary(entry)
-        return canonicalSharedJson(observed) === canonicalSharedJson(candidate)
-          ? observed
-          : undefined
-      }),
-    )
-    return { ...result, library: candidate }
+const checked = <A>(read: () => A) =>
+  Effect.try({
+    try: read,
+    catch: (error) =>
+      error instanceof SkillsError
+        ? error
+        : fail("LIBRARY_SCHEMA_CONFLICT", "Sources relation metadata is invalid."),
   })
+function dataSource(raw: unknown, table: TableBinding) {
+  const row = property(raw)
+  if (
+    row.object !== "data_source" ||
+    row.id !== table.data_source_id ||
+    row.in_trash === true ||
+    row.archived === true ||
+    property(row.parent).database_id !== table.database_id
+  )
+    throw fail("LIBRARY_SCHEMA_CONFLICT", "A Sources relation refers to another data-source owner.")
+  return property(row.properties)
+}
+function fieldById(fields: Record<string, unknown>, id: string | undefined) {
+  const found = Object.values(fields)
+    .map(property)
+    .filter((field) => field.id === id)
+  if (!id || found.length !== 1)
+    throw fail("LIBRARY_SCHEMA_CONFLICT", "A registered Sources property is missing or ambiguous.")
+  return found[0]!
+}
+function propertyId(field: Record<string, unknown>): string {
+  if (typeof field.id !== "string" || !field.id || field.id.length > 256)
+    throw fail("LIBRARY_SCHEMA_CONFLICT", "A Sources relation has no bounded property identity.")
+  return field.id
 }
 
-export function initializeSourceLibrary(library: SharedLibrary) {
+/** Complete the one current four-table initialization. Reconciliation only reads
+ * visible schema; missing or unknown writes never authorize another PATCH. */
+export function initializeCurrentSourceRelations(library: SharedLibrary, reconcile: boolean) {
   return Effect.gen(function* () {
-    if (library.sources) {
-      yield* initializeSharedLibrary({ entry: library.skills.database_id })
-      return { library, reused: true }
+    const sources = library.sources
+    const details = {
+      operation_id: library.operation_id,
+      parent_page_id: library.library_id,
+      role: "Sources",
+      stage: "origins",
     }
-    const api = yield* Notion,
-      marker = `ntn-skills-sources:v1 ${JSON.stringify({ version: 1, library_id: library.library_id, parent_page_id: library.parent_page_id })}`
-    const discover = Effect.gen(function* () {
-      const found: unknown[] = [],
-        seen = new Set<string>()
-      let cursor: string | undefined
-      do {
-        const params = new URLSearchParams({
-          page_size: "100",
-          ...(cursor ? { start_cursor: cursor } : {}),
-        })
-        const response = property(
-          yield* api.request(`v1/blocks/${library.parent_page_id}/children?${params}`),
-        )
-        if (
-          response.object !== "list" ||
-          !Array.isArray(response.results) ||
-          typeof response.has_more !== "boolean"
-        )
-          return yield* Effect.fail(
-            fail(
-              "SOURCES_INCOMPLETE",
-              "Source initialization requires complete parent enumeration.",
-            ),
-          )
-        for (const child of response.results) {
-          const block = property(child)
-          if (
-            block.type !== "child_database" ||
-            [
-              library.skills.database_id,
-              library.files.database_id,
-              library.records.database_id,
-            ].includes(String(block.id))
-          )
-            continue
-          const db = yield* api.request(`v1/databases/${block.id}`)
-          if (text(property(db).description) === marker) found.push(db)
-        }
-        if (response.has_more) {
-          if (
-            typeof response.next_cursor !== "string" ||
-            !response.next_cursor ||
-            seen.has(response.next_cursor)
-          )
-            return yield* Effect.fail(fail("SOURCES_INCOMPLETE", "Invalid parent cursor."))
-          cursor = response.next_cursor
-          seen.add(cursor)
-        } else {
-          if (response.next_cursor !== null)
-            return yield* Effect.fail(fail("SOURCES_INCOMPLETE", "Unexpected terminal cursor."))
-          cursor = undefined
-        }
-      } while (cursor)
-      if (found.length > 1)
-        return yield* Effect.fail(
-          fail("SOURCE_LIBRARY_CONFLICT", "Several tables claim this exact Sources identity."),
-        )
-      return found[0]
-    })
-    const before = property(yield* api.request(`v1/data_sources/${library.skills.data_source_id}`))
-    const origin = property(property(before.properties).Origin)
-    if (origin.id && property(origin.relation).data_source_id === library.records.data_source_id) {
-      if (property(before.properties)["Source Archive"])
-        return yield* Effect.fail(
-          fail("SOURCE_LIBRARY_CONFLICT", "Preserved archive relation name is already occupied."),
-        )
-      yield* guardedSourceMutation(
-        library,
-        {
-          identity: "preserve-origin-archive",
-          path: `v1/data_sources/${library.skills.data_source_id}`,
-          method: "PATCH",
-          body: { properties: { [String(origin.id)]: { name: "Source Archive" } } },
-        },
-        Effect.gen(function* () {
-          const row = property(
-            yield* api.request(`v1/data_sources/${library.skills.data_source_id}`),
-          )
-          return Object.values(property(row.properties)).some(
-            (v) => property(v).id === origin.id && property(v).name === "Source Archive",
-          )
-            ? row
-            : undefined
-        }),
-      )
-    }
-    let database = yield* discover
-    if (database === undefined) {
-      const created = yield* guardedSourceMutation(
-        library,
-        {
-          identity: "initialize-sources-table",
-          path: "v1/databases",
-          method: "POST",
-          body: {
-            parent: { type: "page_id", page_id: library.parent_page_id },
-            title: sourceRich("Sources"),
-            description: sourceRich(marker),
-            is_inline: false,
-            initial_data_source: {
-              properties: sourceDefinitionLayout(
-                library.skills.data_source_id,
-                library.records.data_source_id,
-              ),
-            },
-          },
-        },
-        discover,
-      )
-      database = "result" in created ? created.result : undefined
-    }
-    const db = property(database)
-    if (
-      typeof db.id !== "string" ||
-      pageId(db.id) !== db.id ||
-      db.is_inline !== false ||
-      property(db.parent).page_id !== library.parent_page_id
-    )
+    if (sources === undefined)
       return yield* Effect.fail(
         fail(
-          "SOURCE_LIBRARY_CONFLICT",
-          "Sources table readback does not match its declared parent and mode.",
+          "LIBRARY_INIT_INCOMPLETE",
+          "Current initialization requires the exact Sources table.",
+          details,
         ),
       )
-    const sourceBinding = yield* inspectTable(
-      db.id,
-      sourceDefinitionLayout(library.skills.data_source_id, library.records.data_source_id),
-      library.parent_page_id,
-    )
-    const schema = property(yield* api.request(`v1/data_sources/${sourceBinding.data_source_id}`))
-    const reverse = (name: string) =>
-      property(property(property(property(schema.properties)[name]).relation).dual_property)
-        .synced_property_id
-    const skillOrigin = yield* sourceChecked(() => {
-      const id = reverse("Skills")
-      if (typeof id !== "string" || !id)
-        throw fail("SOURCE_LIBRARY_CONFLICT", "Sources Skills reverse relation is missing.")
-      return id
-    })
-    const recordOrigin = yield* sourceChecked(() => {
-      const id = reverse("Records")
-      if (typeof id !== "string" || !id)
-        throw fail("SOURCE_LIBRARY_CONFLICT", "Sources Records reverse relation is missing.")
-      return id
-    })
-    let skillSchema = property(
-      yield* api.request(`v1/data_sources/${library.skills.data_source_id}`),
-    )
-    const existingMember = property(property(skillSchema.properties)["Source Member"])
-    if (existingMember.id && existingMember.type !== "rich_text")
-      return yield* Effect.fail(
-        fail("SOURCE_LIBRARY_CONFLICT", "Source Member is occupied by another property type."),
-      )
-    if (!existingMember.id) {
-      const result = yield* guardedSourceMutation(
-        library,
-        {
-          identity: "initialize-source-member",
-          path: `v1/data_sources/${library.skills.data_source_id}`,
-          method: "PATCH",
-          body: { properties: { "Source Member": { rich_text: {} } } },
-        },
-        Effect.gen(function* () {
-          const row = property(
-            yield* api.request(`v1/data_sources/${library.skills.data_source_id}`),
+    const api = yield* Notion
+    const sourceRaw = yield* api.request(`v1/data_sources/${sources.data_source_id}`)
+    const sourceFields = yield* checked(() => dataSource(sourceRaw, sources))
+    const bindings: Record<"skills" | "records", string> = { skills: "", records: "" }
+    for (const [role, name] of [
+      ["skills", "Skills"],
+      ["records", "Records"],
+    ] as const) {
+      const target = library[role]
+      const forward = yield* checked(() => fieldById(sourceFields, sources.property_ids[name]))
+      const reverseId = yield* checked(() => {
+        const relation = property(forward.relation),
+          dual = property(relation.dual_property)
+        if (
+          forward.type !== "relation" ||
+          relation.type !== "dual_property" ||
+          relation.data_source_id !== target.data_source_id ||
+          typeof dual.synced_property_id !== "string" ||
+          !dual.synced_property_id
+        )
+          throw fail(
+            "LIBRARY_SCHEMA_CONFLICT",
+            "Sources must bind the exact Skills and Records tables through complete dual relations.",
           )
-          return property(property(row.properties)["Source Member"]).type === "rich_text"
-            ? row
-            : undefined
-        }),
-      )
-      skillSchema = property("result" in result ? result.result : undefined)
+        return dual.synced_property_id
+      })
+      const targetRaw = yield* api.request(`v1/data_sources/${target.data_source_id}`)
+      const reverse = yield* checked(() => fieldById(dataSource(targetRaw, target), reverseId))
+      yield* checked(() => {
+        const relation = property(reverse.relation)
+        if (
+          reverse.type !== "relation" ||
+          relation.type !== "dual_property" ||
+          relation.data_source_id !== sources.data_source_id ||
+          property(relation.dual_property).synced_property_id !== propertyId(forward)
+        )
+          throw fail(
+            "LIBRARY_SCHEMA_CONFLICT",
+            "A reverse Origin relation does not identify its exact Sources property.",
+          )
+        if (target.property_ids.Origin !== undefined && target.property_ids.Origin !== reverseId)
+          throw fail(
+            "LIBRARY_SCHEMA_CONFLICT",
+            "Initialization cannot replace a registered Origin property.",
+          )
+      })
+      bindings[role] = reverseId
     }
-    const memberId = property(property(skillSchema.properties)["Source Member"]).id
-    if (typeof memberId !== "string")
-      return yield* Effect.fail(
-        fail("SOURCE_LIBRARY_CONFLICT", "Source Member identity is unavailable."),
+    const expected = {
+      relation_property_id: library.files.property_ids.Skill,
+      rollup_property_id: bindings.skills,
+      function: "show_unique",
+    }
+    const fileRaw = yield* api.request(`v1/data_sources/${library.files.data_source_id}`)
+    const fileFields = yield* checked(() => dataSource(fileRaw, library.files))
+    const existing = yield* checked(() =>
+      library.files.property_ids.Origin === undefined
+        ? property(fileFields.Origin)
+        : fieldById(fileFields, library.files.property_ids.Origin),
+    )
+    const validateOrigin = (field: Record<string, unknown>) => {
+      if (field.type !== "rollup" || !matchesNotionRollup(field.rollup, expected))
+        throw fail(
+          "LIBRARY_SCHEMA_CONFLICT",
+          "Files Origin must derive the selected Skills Origin through its existing Skill relation.",
+        )
+      return propertyId(field)
+    }
+    let fileOrigin: string
+    if (existing.id !== undefined) fileOrigin = yield* checked(() => validateOrigin(existing))
+    else {
+      if (Object.keys(existing).length !== 0)
+        return yield* Effect.fail(
+          fail(
+            "LIBRARY_SCHEMA_CONFLICT",
+            "Files Origin has an incomplete existing property.",
+            details,
+          ),
+        )
+      if (reconcile)
+        return yield* Effect.fail(
+          fail(
+            "LIBRARY_INIT_INCOMPLETE",
+            "The original Files Origin schema write is not visible; reconciliation cannot repeat it.",
+            details,
+          ),
+        )
+      const result = yield* api.request(
+        `v1/data_sources/${library.files.data_source_id}`,
+        { properties: { Origin: { rollup: expected } } },
+        { method: "PATCH" },
       )
-    const candidate: SharedLibrary = {
+      fileOrigin = yield* checked(() =>
+        validateOrigin(property(dataSource(result, library.files).Origin)),
+      )
+    }
+    return {
       ...library,
-      sources: sourceBinding,
       skills: {
         ...library.skills,
-        property_ids: {
-          ...library.skills.property_ids,
-          Origin: skillOrigin,
-          "Source Member": memberId,
-        },
+        property_ids: { ...library.skills.property_ids, Origin: bindings.skills },
       },
       records: {
         ...library.records,
-        property_ids: { ...library.records.property_ids, Origin: recordOrigin },
+        property_ids: { ...library.records.property_ids, Origin: bindings.records },
+      },
+      files: {
+        ...library.files,
+        property_ids: { ...library.files.property_ids, Origin: fileOrigin },
       },
     }
-    // A source is derived for Files rather than maintained in a second mutable relation.
-    const fs = property(yield* api.request(`v1/data_sources/${library.files.data_source_id}`))
-    const fileOrigin = property(property(fs.properties).Origin)
-    if (!fileOrigin.id) {
-      yield* guardedSourceMutation(
-        library,
-        {
-          identity: "initialize-file-origin-rollup",
-          path: `v1/data_sources/${library.files.data_source_id}`,
-          method: "PATCH",
-          body: {
-            properties: {
-              Origin: {
-                rollup: {
-                  relation_property_id: library.files.property_ids.Skill,
-                  rollup_property_id: skillOrigin,
-                  function: "show_unique",
-                },
-              },
-            },
-          },
-        },
-        Effect.gen(function* () {
-          const row = property(
-              yield* api.request(`v1/data_sources/${library.files.data_source_id}`),
-            ),
-            value = property(property(row.properties).Origin)
-          return value.type === "rollup" &&
-            property(value.rollup).rollup_property_id === skillOrigin
-            ? row
-            : undefined
-        }),
-      )
-    } else if (
-      fileOrigin.type !== "rollup" ||
-      property(fileOrigin.rollup).rollup_property_id !== skillOrigin
-    )
-      return yield* Effect.fail(
-        fail("SOURCE_LIBRARY_CONFLICT", "Files Origin is not the selected Skill-derived source."),
-      )
-    const attached = yield* attachSourceLibrary(library.skills.database_id, candidate)
-    return { library: attached.library, reused: false }
-  })
+  }).pipe(
+    Effect.mapError((error) =>
+      fail(error.code, error.message, {
+        ...property(error.details),
+        operation_id: library.operation_id,
+        parent_page_id: library.library_id,
+        role: "Sources",
+        stage: "origins",
+      }),
+    ),
+  )
 }

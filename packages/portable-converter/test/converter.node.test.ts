@@ -1,13 +1,14 @@
 import { expect, test } from "vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect } from "effect"
-import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from "node:fs/promises"
+import { mkdtemp, mkdir, writeFile, readFile, realpath, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createHash } from "node:crypto"
 import { convertPath, convertPortable } from "../src/converter.ts"
 import { readPortable } from "../../core/src/portable.ts"
 import { readImportZip } from "../../core/src/import.ts"
+import { trashPath } from "../../core/src/local-locks.ts"
 const encode = (value: string) => new TextEncoder().encode(value)
 const fixture = () => [
   {
@@ -19,12 +20,6 @@ const fixture = () => [
         name: "Portable Conversion",
         description: "Preserve all bytes",
         main: "workflow.md",
-        projection: {
-          name: "Portable Conversion",
-          description: "Preserve all bytes",
-          body: "Read guide",
-          references: { "references/guide.md": "Reference bytes" },
-        },
       }),
     ),
   },
@@ -34,7 +29,7 @@ const fixture = () => [
 ]
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
 test("independent converter preserves original FS bytes, main, references and binary hashes; normal consumes only v2", async () => {
-  const root = await mkdtemp(join(tmpdir(), "portable-cutover-"))
+  const root = await realpath(await mkdtemp(join(tmpdir(), "portable-cutover-")))
   try {
     const input = join(root, "input")
     await mkdir(input)
@@ -53,7 +48,7 @@ test("independent converter preserves original FS bytes, main, references and bi
     const restored = readPortable(readImportZip(await readFile(join(output, "converted.zip"))))!
     expect(restored.kind).toBe("skill")
     expect(restored.main).toBe("workflow.md")
-    expect(restored.projection?.references).toEqual({ "references/guide.md": "Reference bytes" })
+    expect(restored).not.toHaveProperty("projection")
     for (const file of fixture()) {
       expect(hash(await readFile(join(input, file.path)))).toBe(hash(file.bytes))
       if (file.path !== ".ntn-skills.json")
@@ -74,11 +69,35 @@ test("independent converter preserves original FS bytes, main, references and bi
     ).rejects.toThrow()
     await expect(stat(join(root, "rejected"))).rejects.toThrow()
   } finally {
-    await rm(root, { recursive: true, force: true })
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
   }
 })
 test("converter rejects incomplete manifest, duplicate manifest and absent main; explicit kind is audited", () => {
   expect(() => convertPortable(fixture().filter((file) => file.path !== "workflow.md"))).toThrow()
   expect(() => convertPortable([...fixture(), fixture()[0]!])).toThrow()
   expect(convertPortable(fixture(), "prompt").kindSelection).toBe("explicit")
+})
+
+test("converter rejects retained projection authority without changing its input", () => {
+  const files = fixture().map((file) =>
+    file.path === ".ntn-skills.json"
+      ? {
+          ...file,
+          bytes: encode(
+            JSON.stringify({
+              ...JSON.parse(new TextDecoder().decode(file.bytes)),
+              projection: {
+                body: "retained",
+                materialization: { authored: "old", generated: "new" },
+              },
+            }),
+          ),
+        }
+      : file,
+  )
+  const original = files.map((file) => hash(file.bytes))
+  expect(() => convertPortable(files)).toThrow(
+    expect.objectContaining({ code: "PORTABLE_CURRENT_SELECTION_REQUIRED" }),
+  )
+  expect(files.map((file) => hash(file.bytes))).toEqual(original)
 })

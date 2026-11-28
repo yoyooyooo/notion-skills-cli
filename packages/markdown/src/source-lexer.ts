@@ -22,7 +22,9 @@ export class SourceLexer {
     return Lexer.lex(source, { ...defaults, tokenizer: new LiteralTildeTokenizer() })
   }
 
-  static lexInline(source: string) {
-    return Lexer.lexInline(source, { ...defaults, tokenizer: new LiteralTildeTokenizer() })
+  static lexInline(source: string, links?: ReturnType<typeof Lexer.lex>["links"]) {
+    const lexer = new Lexer({ ...defaults, tokenizer: new LiteralTildeTokenizer() })
+    if (links !== undefined) lexer.tokens.links = { ...links }
+    return lexer.inlineTokens(source)
   }
 }

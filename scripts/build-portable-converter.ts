@@ -10,14 +10,7 @@ const result = await Bun.build({
   naming: "ntn-skills-portable-convert.js",
   target: "node",
   format: "esm",
-  external: [
-    "effect",
-    "effect/*",
-    "@effect/platform-node",
-    "@effect/platform-node/*",
-    "@effect/sql-sqlite-node",
-    "@effect/sql-sqlite-node/*",
-  ],
+  external: ["effect", "effect/*", "@effect/platform-node", "@effect/platform-node/*"],
 })
 if (!result.success) throw new AggregateError(result.logs, "Portable converter build failed")
 await chmod(resolve(output, "ntn-skills-portable-convert.js"), 0o755)
@@ -31,11 +24,10 @@ await writeFile(
       type: "module",
       bin: { "ntn-skills-portable-convert": "ntn-skills-portable-convert.js" },
       files: ["ntn-skills-portable-convert.js"],
-      engines: { node: "^22.22.3 || >=24.20.0" },
+      engines: { node: "^22.23.5 || ^24.22.3 || ^26.13.1" },
       dependencies: {
         effect: "4.0.5",
         "@effect/platform-node": "4.0.5",
-        "@effect/sql-sqlite-node": "4.0.5",
       },
       license: "MIT",
     },

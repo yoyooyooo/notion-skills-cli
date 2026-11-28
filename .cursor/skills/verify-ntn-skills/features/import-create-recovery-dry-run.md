@@ -1,164 +1,95 @@
-# Create, replace, dry-run and recovery
+# 完整当前树导入与恢复
 
-Users submit a local Skill folder, ZIP or Markdown file to a selected database. `create` refuses an existing invocation name; `replace --target` requires an exact existing page identity and reuses identical content or replaces that page's complete file set.
+复用 [当前管理 Skill](../../verify-notion-management/SKILL.md) 和 [当前恢复 Skill](../../verify-notion-operation-recovery/SKILL.md)。本旅程只使用当前 `ctl library import`，输入为完整替换树。
 
-For daily changes to an existing page, use one pinned `apply` with sparse files/removals and explicit properties; [the pinned-change recipe](reference-write-version-conflict.md) maps it to the existing conflict and recovery cases. This document retains complete create/replace and publication regressions.
+## 必要样本
 
-The product has no same-name `import` command. Helper `import` selects `create` or an exact-ID `replace` from the refreshed catalog. P5/C12–C13 in the [matrix](sync-cache-verification-plan.md#command-acceptance), [command map](README.md#accepted-design-coverage) and [protocol](../../../../docs/protocol.md#mutation-contract) own wider coverage. Helper IMPORT_PLAN remains distinct from product SYNC_PLAN_ID/FILE. Every fresh readback below refreshes a current page, never a pinned baseline. Recipes are unrun until evidence is recorded.
+选一个授权 Skill，含主文、子文档、代码、相对链接和一种 opaque 原件。需要验证不支持的上传类型时用字体单原件 ZIP。每种变更只补它影响的边界，不为所有 Skill 重跑矩阵。
 
-## Sub-features
+~~~sh
+bun test packages/core/test/load-import.test.ts packages/cli/test/current-import.test.ts packages/core/test/shared-current-write.test.ts packages/core/test/shared-current-projection.test.ts packages/core/test/shared-current-upload.test.ts --timeout 60000
+~~~
 
-- `import-inputs`: folder, ZIP and single Markdown selection with metadata overrides.
-- `import-selection`: explicit database, configured default and sole-discovery creation scope.
-- `import-dry-run`: preflight decision with unchanged remote contents.
-- `import-actions`: create, identical reuse, update and create conflict.
-- `import-verification`: live main/reference Markdown and inclusion paths must match submitted instructions independently of the preserved source ZIP; check initial publication and identical reuse with Files, page-only normalization and binary source preservation.
-- `import-recovery`: retained frozen input, guarded resume, completed-result reuse and explicit unresolved outcomes.
-- `import-plan`: real selected-plan import, file/hash acceptance and repeat reuse.
-- `import-target`: existing current/pinned main target, rename preservation, no creation fallback and stale/reference rejection.
-- `builtin-publish`: first publication rejects any same-name page; intentional updates require an exact page/main/pinned identity and preserve ordinary version/recovery protections.
-- `publication-progress`: opt-in JSONL stderr stage/timing events while stdout remains one final JSON.
-- `publication-pacing`: shared 350ms request-start spacing, concurrent cancellation and read retries under a controlled Effect Clock.
+这组执行真实文件输入与受控 Notion 变更、下载和导出。它不能证明业务库已转换或真实 Notion 接受所有格式。
 
-When historical state migration changes, its separate recovery acceptance starts from a real old-layout environment imported with the independent migration executable. Ordinary current-state publication recovery does not require migration. Preserve publication `operation_id`, ordered intent bodies/status/response identities, frozen object hashes, guards and pending/unknown creation. Inspect through `ctl operation show ID`; `receipt_path=sqlite:publications/ID` is a database locator. A killed process or released SQL/local lock must not erase the operation or authorize replay. Unknown creation without a proved response remains unresolved. Exercise recovery with a fresh installed Node process and report controlled-provider evidence separately from real Notion.
+## Members 的真实库验收
 
-These recipes are developer regression/audit procedures. Ordinary imports finish on the non-dry command's exit 0, `ok: true` and `verified: true`; callers do not repeat the read/files/export matrix.
+`scripts/members-live.ts` 复用 EMPTY 初始化留下的 library descriptor 和 scope guard。先用既有 paired launcher 的 packed 安装包、独立 config/state/cache 和 `empty-library.ts` 初始化专用测试库；本脚本不创建另一套库，不读取生产关系来准备自动导入结果。显式传入当前选中的安装包入口及 Node，每次使用新输出目录和新 prefix。
 
-## How to get to it (user POV)
+~~~sh
+bun .cursor/skills/verify-ntn-skills/scripts/members-live.ts \
+  --cli "$INSTALLED_CLI_ENTRY" --runtime "$NODE_ENTRY" \
+  --scope "$EMPTY_LIBRARY_STATE_JSON" \
+  --corpus "$FIXED_CORPUS_JSON" --output "$NEW_EVIDENCE_DIRECTORY"
+~~~
 
-Select the affected entry points and retain their outcomes separately:
+调用环境必须显式设置本 run 的 `NTN_SKILLS_CONFIG_HOME`、`NTN_SKILLS_HOME` 和 `NTN_SKILLS_CACHE_HOME`。凭据仍只通过 launcher 已授权的 `--pass-env` 进入，不复制日常配置。`--scope` 接受 `empty-library/state.json`、含 `library` 的初始化结果或完整 `SharedLibrary` 描述；所有管理和消费命令继续显式选择该库。脚本通过选定包的只读 `ctl api v1/pages/ID` 独立核对实际 Members / Requires，拒绝截断关系。其他 Supporting Files 的截断不影响这两组完整关系的读回。
 
-- `create` and `replace --target` for each accepted folder/ZIP/Markdown input shape being claimed, including `--name`/`--description` overrides.
-- Each command's `--dry-run` path.
-- Explicit `--database`, configured creation default, and sole fresh discovery when actually available.
-- Create-new, shared original-intent reuse and `NAME_CONFLICT`, and legacy `CREATE_CONFLICT`; exact-target replace-reuse and replace-update.
-- `ctl operation resume OPERATION_ID` after a naturally observed partial/uncertain live outcome; record controlled fault scenarios separately from live evidence.
-- `replace --target` with current and pinned main baselines; metadata rename retaining page ID, missing/inaccessible/stale target and reference-file rejection.
+`--corpus` 是 version 1 JSON，记录 `repository_url`、`source_checkout` 和六项 `skills`。每项包含 `name`、`commit`、`repository_path`、绝对 `input_path`、`file_count`、`total_bytes`、`main_sha256`、`manifest_sha256` 和完整 `files`。文件项为 `path`、`bytes`、`sha256`、`git_blob`、`mode`（100644 或 100755）。脚本在任何远端操作前重验完整 inventory、原字节、Git blob ID 和 mode，并对 `source_checkout` 执行只读 `git ls-tree -r -z --full-tree COMMIT -- PATH/`，将每项 blob/mode/path 绑定到真实固定提交。禁用 lazy fetch 和 optional locks，缺少 commit/tree 即停止；不会下载缺失 blob，也不会回退到自报 manifest。manifest digest 为按路径排序后拼接 `path + NUL + sha256 + LF` 的 UTF-8 SHA256。
 
-## Independent installed author lifecycle
+这条旅程使用 cursor/plugins 的两个固定提交：`aaeb0ea3a0584995aa8f55ce44c6c5259414b896` 的 poteto-mode（41 files）与 unslop，以及 `c742dd61706fbacc1b95f1a20b7b988cf096ce6c` 的 principle-minimize-reader-load、principle-guard-the-context-window、architect、arena。原始 poteto 名称和代码示例必须得到自动 Members=0、Requires=0；另一个明确标注的 portable 副本才设置两项 Members 和 unslop Requires。minimize 的跨根链接和 architect 子文档中的 `../../arena/SKILL.md` 使用真实目标页的精确 bindings，各验证一个 Member；不会用 synthetic 同名页冒充真实 target。
 
-The existing package gate exercises successful public author commands in fresh Node processes against an owned loopback Notion service:
+合成样本单独覆盖：canonical 首次自动关系；同名、foreign、missing、disabled 和错误 File ID 不被推断；嵌套路径、BOM、CRLF、binary 和 executable mode；未确认绑定或共享 image definition 不输出 portable；显式 `[]` 优先；已有集合和人工删除保留；完整树更新保留 File ID，再导出并重复检查零写。最后用真实显式 poteto 执行 read、inspect、use：Members 保持候选，use 只准备 root 与明确 Requires。此项只证明真实 CLI 消费结果，不声称模型已收到或激活内容。
 
-```bash
-bun scripts/package-smoke.ts --archive "$CLI_TGZ" --migration-archive "$MIGRATION_TGZ" --runtime "$NODE"
-```
+每个首次 import 的成功回执之后、任何人工关系修改之前，立即保存实际页面独立读回。缺失或错误自动关系会立即停止，不能补写后宣称自动成功。dry-run、no-op 和消费的零写断言必须有实际 `request_metrics.requests.notion_write`；缺 metrics 不作零写。命令、独立观察和报告仅保存在 task 私有输出目录；保留脱敏 stderr、非 JSON stdout 和退出 signal 便于追踪首个失败，token、Authorization 和附件 URL 查询参数不进入报告。未知结果或非零退出停止当前流程，保留原 operation/state，不自动换 operation 重试。
 
-`scripts/package-smoke/authoring.ts` reuses the existing shared-create fixture and its durable-before-create assertion, plus the strict body/property request boundary used by the shared-apply fixture. The service observes the original dispatch retained by the installed consumer; it never seeds or edits that consumer's SQLite state, receipts or snapshots. Every command uses the independently installed Node bin. The fixture service is verification code, not a consumer source fallback.
+脚本回归使用 injected driver/probe 验证这个验收顺序，不访问 Notion，也不替代上述 live 结果：
 
-The owned lifecycle creates one main file and two resources, reads their canonical native projection through returned refs, and retains all three original pins. It then verifies body-only `write`, explicit sparse `update`, `apply` preserving omitted files, and `replace` removing one omitted resource. Shared replacement supports one isolated layout change; this gate does not pretend that a multi-file deletion is supported. Main frontmatter that disagrees with native metadata is a `SHARED_METADATA_CONFLICT` with no writes. A verified repeat of the exact original shared creation reuses its original operation; a different creation intent with the same name is `NAME_CONFLICT`. Legacy `CREATE_CONFLICT` recipes retain their separate boundary.
+~~~sh
+bun test ./.cursor/skills/verify-ntn-skills/scripts/members-live.test.ts
+~~~
 
-Each dry-run, unchanged apply, stale-pin refusal and name/frontmatter conflict must send zero source mutations. The service loses one response only after storing the original body-write outcome. A fresh current read must return `SHARED_BODY_WRITE_RECONCILED` with that exact operation and `read_again: true`; the next read must deliver the complete new body without another body PATCH or a duplicate outcome. This is native shared recovery, not the legacy `ctl operation resume` protocol. `ctl views` and its historical alias must return the same metadata, and `ctl status` must not write. The existing migration-consumption part of this same package gate continues to cover installed `ctl sync local status`, refresh rejection and retained unbind behavior.
+### 超过 25 个 Members 的实库边界
 
-The shared replace regression first validates the complete input, then removes exact unchanged file bytes and metadata proven unchanged by the existing read-only metadata plan before selecting the supported single layout operation. Keep the public regression for an isolated deletion alongside zero-write rejection of real body/metadata changes plus deletion, multiple deletions, and duplicate unchanged input paths. The shared apply layout restriction remains the final dispatch gate.
+这是 core 验收全部通过后的后置旅程；实际 adapter 放在 E2E 的私有 run 中，复用同一安装包、测试库、driver 和证据目录约定。不要把它加入已冻结的 core helper，也不要把下面的步骤当成已经执行的结果。重跑时保留上次实际目标 ID 和完整选择集合，先读回，再决定是否还需要补充样本。
 
-The same installed lifecycle now includes an independently seeded native Notion draft, without a CLI identity or consumer-cache seed. Verify adopt dry-run and real execution preserve that original page/body/disabled state, ordinary read rejects it, exact authoring read/write/update succeed while disabled, enable makes it consumable, and disable removes current eligibility while its original pin remains readable. Repeat adopt after later edits as historical-only reconciliation, with no body read/PATCH or new page. The evidence records `native_draft` separately from the original create operation. This fixture does not claim real Notion acceptance.
+1. 从 core 报告取得实际创建的 enabled、ready Skill targets，逐项核对仍属于这个测试库，排除 explicit-poteto owner、自身重复 ID 和 disabled target。仅为不足的数量创建简单叶子 Skill，最终选择 26 个唯一 Members。可将真实 unslop 包含在这 26 个候选中，明确记录是否选入。
+2. 读取并记录 explicit-poteto 当前 Requires 恰为真实 unslop。使用公开 `ctl library skill update OWNER --library LIBRARY_ID`，重复 26 个 `--members TARGET` 显式替换 Members，省略 `--requires`。保存完整 argv 和第一次写入结果；本步骤验证显式关系维护，不计为自动 Members 发现。
+3. 独立读取 owner 的 raw Notion page，按 library descriptor 注册的 Members property ID 找到关系属性，确认 `has_more: true` 并记录 inline 返回数量。然后由独立只读 probe 按该 property ID 读取 page-property endpoint，显式使用 `page_size=25`，沿 `next_cursor` 读到 `has_more: false`。保留每页响应，核对最终正好 26 个唯一页面 UUID，并与显式选择集合精确相等。单独核对 Requires 仍只有原 unslop；不能用 import/update 的成功回执代替这些读回。
+4. 对 exact owner ref 执行 `read --refresh --metrics`、`ctl prepare --purpose inspect --refresh --metrics` 和 `use --refresh --json --metrics`，每次显式选择测试库。read 的 Members 与 inspect 的 root candidates 都必须完整包含同一组 26 个目标；inspect 仅准备 owner。use 只准备 owner 与明确 Requires 的 unslop。如果 unslop 同时在 Members 中，它应是同一个 prepared node；其余 Members 仍为 known，不加载它们的正文或依赖。核对全部消费命令的实际 `request_metrics.requests.notion_write` 为 0。
+5. 原样重放第 2 步的公开 update，要求实际 Notion 写请求为 0，再独立核对 Members 和 Requires 的完整集合。任何不确定结果都保留原 operation/state，沿既有恢复流程处理，不换 operation 盲重试。
 
-For the linked-reference path, the Core public regression executes add → fresh authoring read → write of the complete main → pinned resource read, retaining an existing clickable Notion reference alongside the new one. Preserve the original read/write RED that replaced native URLs with relative text. Regress balanced-parenthesis/encoded paths, supporting-page parent references, escaped/code literals and exact unchanged readback under alternate native URL spellings. The latter must keep original body bytes, send zero body/Records mutations and create no recovery operation. Real Notion/Pi delivery remains a separate owned live run.
+这组 26 条实库样本跨过的是 Notion page response 的 inline 25 条截断分支。独立 oracle 用 `page_size=25` 跨两页读回，不能据此声称产品使用 `page_size=100` 时也经历了多页请求；报告应分别记录实际产品请求与 oracle 请求。更大的分页和关系写入上限继续由已有受控测试证明。
 
-Retain the complete command JSON, installed executable hash, original pin hashes, service method/path/byte ledger, original dispatch hashes and cleanup result in the printed consumer scratch directory's `controlled-authoring/evidence.json`. Public read/files metrics are reconciled with the actual received requests; author commands without a metrics flag use the independent service ledger. Request observations and source mutations must remain distinct. The service closes in `finally`; cleanup never touches production Notion or the user's configuration. This controlled gate does not establish real Notion author permission, alternate input formats or arbitrary legacy operation recovery.
+## 输入与 dry-run
 
-## Driving it with control-ntn-skills
+确认 exact current Skills database、稳定 Skill ID 和实际本地路径。目录/ZIP 必须在根保留 `SKILL.md`；只有明确选择一个 Markdown 文件时才把入口命名为 `SKILL.md`。当前 portable v2 的 Router/Prompt 使用各自规范入口。
 
-Preconditions:
+拒绝 symlink，包括父目录别名；先用真实物理路径。完整上限为 10,000 文件、128 MiB，单个原件 64 MiB。保留 executable mode，拒绝读取过程中变化的完整输入。
 
-- Follow the [index](./README.md). The selected plan identifies the database and entries approved by the task/user authorization; the JSON itself grants no authority. Only one writer uses that database; never invent new names or change a retained Skill merely to obtain another action.
-- Create-new needs an approved input name absent from the selected database. Replacement needs an approved exact existing PAGE_ID and approved input. Bind `CHANGED_INPUT` to the approved differing input. Bind `ZIP_INPUT` and `MARKDOWN_INPUT` to authorized alternate inputs; `TITLE`/`DESCRIPTION` come from approved source metadata.
-- Record fresh online snapshots, catalog/page identities, remote body/properties/reference membership and files before every dry-run or mutation. Save bytes and comparisons in `$RUN/evidence`.
+~~~sh
+ntn-skills ctl library import "$INPUT" --library "$CURRENT_LIBRARY" --skill-id "$SKILL_ID" --dry-run
+~~~
 
-- **Folder preflight.** Run dry-run commands against the appropriate approved absent-name and existing-page fixtures. Create reports its prospective create decision or existing-name conflict; replace reports reuse/update with `dry_run=true`. Read the current target/database again afterward and compare remote state to the baseline. These commands may use network and populate caches but must not upload or change remote contents.
+检查将移除的 Files 和权威变化。dry-run 不创建 operation，也不宣称正文已核验。portable 的 Members/Requires 以同库 stable ref 表示；省略保持、[] 清空、数组完整替换。Prompt 关系、旧 projection/materialization 和未知字段必须拒绝。
 
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- create "$INPUT" --database "$DATABASE" --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- replace "$INPUT" --target "$PAGE_ID" --database "$DATABASE" --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- list --database "$DATABASE" --refresh
-  ```
+## 写入、读回与 no-op
 
-  For an existing preflight target, bind PAGE_ID to that canonical page and run current `read "$PAGE_ID" --database "$DATABASE" --refresh` through cli mode after each dry-run. When no page exists, compare fresh catalog identities instead; pinned reads cannot establish an unchanged live target.
+~~~sh
+ntn-skills ctl library import "$INPUT" --library "$CURRENT_LIBRARY" --skill-id "$SKILL_ID"
+ntn-skills ctl library files "$PAGE_ID" --library "$CURRENT_LIBRARY"
+ntn-skills read "$PAGE_ID" --library "$CURRENT_LIBRARY" --refresh --metrics
+ntn-skills files "$PAGE_ID" --library "$CURRENT_LIBRARY" --refresh
+ntn-skills export "$PAGE_ID" --library "$CURRENT_LIBRARY" --output "$EXPORT_DIR"
+ntn-skills ctl library import "$INPUT" --library "$CURRENT_LIBRARY" --skill-id "$SKILL_ID"
+~~~
 
-- **Alternate input entries.** Drive create and exact-target replace separately for each authorized input shape. The commands below preview ZIP and single Markdown with real metadata overrides; repeat without `--dry-run` only for authorized mutations, then obtain fresh readback. A successful folder run does not prove ZIP/Markdown parsing. A manifest-selected main file or single Markdown filename must remain the actual entrypoint.
+使用实际返回的 PAGE_ID 和后续文件 refs。Source/resource 比对导出路径、bytes、hash、mode；native 比对完整读回的内容结构及实际当前正文+frontmatter/mode，不把格式规范化说成原字节保真。从 Skills→Files 检查全文和下载。第二次写入即使使用新的 operation，也应语义 0 写，active Operation 为零。
 
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- create "$ZIP_INPUT" --database "$DATABASE" --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- replace "$ZIP_INPUT" --target "$PAGE_ID" --database "$DATABASE" --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- create "$MARKDOWN_INPUT" --database "$DATABASE" --name "$TITLE" --description "$DESCRIPTION" --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- replace "$MARKDOWN_INPUT" --target "$PAGE_ID" --database "$DATABASE" --name "$TITLE" --description "$DESCRIPTION" --dry-run
-  ```
+本地完整导入默认 resource authority，原件保存在当前 Records；不支持直接上传的类型使用只含该原件的 ZIP。导入后显式运行 `ctl library projection PAGE_ID --library LIBRARY_ID`，验证 main 与全部文本 Files 的实际全文，再重复核零写。Native 正文只读验证，非文本报告 skipped；不得把 import 成功代称投影已完成。
 
-- **Create/new and conflict.** For an approved absent name, create once, retain the returned page ID and pinned snapshot, then read the returned current page ID online. In a shared library, repeating the exact original intent reuses its verified original operation without new writes; a different intent with the same name returns `NAME_CONFLICT`. Legacy creation retains its `CREATE_CONFLICT` behavior. Select and record the actual branch, and compare remote state afterward.
+## 覆盖与清理
 
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- create "$INPUT" --database "$DATABASE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- read "$PAGE_ID" --database "$DATABASE" --refresh
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- create "$INPUT" --database "$DATABASE"
-  ```
+用一个明确修改后的完整输入覆盖相同 Skill ID。保留 Skill 页和仍在用的 File ID；被移除的 Files 和不再引用的当前 Resource 进入 Trash。共享原件的多个投影必须一次收敛。遗漏 Enabled/Default Context/关系不隐式重写。导出→本地修改→再导入必须保留两组完整关系；覆盖超过25条分页、超过100条原样保留和写前拒绝变更、错库/重复/停用/非ready目标、Requires环、unknown关系PATCH及完成前漂移。复用 `shared-current-relations.test.ts`；未实现的跨对象治理单独报告。
 
-- **Replacement actions.** Replace the approved exact page and read its returned current page ID; repeat identical input to prove `action=reuse`, `reused=true`, unchanged identity/content/version and no upload/mutation. Approved differing input reports `action=update`; fresh read/files/export must show the replaced body/metadata/whole file set and the same page ID. Omitted reference pages remain in Notion but leave the current logical file set. An absent name requires a separate `create` command; replacement never creates.
+## 恢复
 
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- replace "$INPUT" --target "$PAGE_ID" --database "$DATABASE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- read "$PAGE_ID" --database "$DATABASE" --refresh
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- replace "$INPUT" --target "$PAGE_ID" --database "$DATABASE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- replace "$CHANGED_INPUT" --target "$PAGE_ID" --database "$DATABASE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- files "$PAGE_ID" --database "$DATABASE" --refresh
-  ```
+~~~sh
+ntn-skills ctl library import "$INPUT" --library "$CURRENT_LIBRARY" --skill-id "$SKILL_ID" --operation "$OPERATION_ID" --resume
+~~~
 
-- **Explicit target and rename.** Use a dedicated approved fixture, not retained user content. Bind PINNED_MAIN_REF from a fresh baseline and RENAMED_INPUT to an authorized complete Skill with differing valid metadata. Preview/apply against that exact target, then refresh the canonical page ID and export its new pinned snapshot. Prove page/reference identity, Name/Description, complete files and hashes. Repeat against a current page selector to cover that branch. `--database` constrains ownership and imported metadata cannot redirect selection. In separate authorized cases, exercise missing/inaccessible targets, an older baseline after an independent approved edit, and a pinned reference-file target; verify no new page/content writes and WRITE_CONFLICT for stale baseline.
+重传原输入并核同一指纹。覆盖 CREATE 响应丢失、完整 append 响应丢失和已归档行退出查询。不得重发未知非幂等请求，不得暂时改 ready。部分 append 未能收敛时保留 pending，明确记录这个限制。
 
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- replace "$RENAMED_INPUT" --target "$PINNED_MAIN_REF" --database "$DATABASE" --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- replace "$RENAMED_INPUT" --target "$PINNED_MAIN_REF" --database "$DATABASE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- read "$PAGE_ID" --database "$DATABASE" --refresh
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- files "$PAGE_ID" --database "$DATABASE" --refresh
-  ```
+预算沿 `shared-current-invocation.test.ts` 核实：初始库查询、重试、provider、multipart、正文和退役共用额度；耗尽后不再发 attention 或 cleanup。新一次显式 resume 使用新额度，不重置同一调用的预算。
 
-- **Creation selection.** Explicit selection is already driven above. To prove configured-default selection, set the approved database default and omit `--database` in create dry-runs; compare the selected database with the explicit result. Unset the default and prove omission only if fresh discovery really contains one accessible database and no failed sources. Replacement remains bound to its exact target regardless of creation defaults. Otherwise record the ambiguity/unmet condition; never infer sole discovery from the selected plan alone.
-
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config set default_database "$DATABASE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- create "$INPUT" --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- replace "$INPUT" --target "$PAGE_ID" --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config unset default_database
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl database list
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- create "$INPUT" --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- replace "$INPUT" --target "$PAGE_ID" --dry-run
-  ```
-
-- **Prepare the plan and drive acceptance.** Bind `SKILL_DIR` to an authorized absolute source directory. Prepare performs dry-run and freezes names, paths, SHA-256 hashes and byte counts at `$RUN/evidence/plan.json`; repeat `--input` once for each actual authorized directory, including all six in the current scenario. Capture fresh remote before/after state to prove preparation did not mutate it. Use the resulting plan without renaming entries, and drive modes sequentially. Import is the sole authorized writer; verify reads real remote state and compares expected files; reuse repeats identical inputs to prove stable identities and decisions. Keep each mode's evidence and individual CLI results. If selecting an existing authorized plan instead, use its absolute `PLAN` path with the same modes.
-
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts prepare --run "$RUN" --database "$DATABASE" --input "$SKILL_DIR"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts import --run "$RUN" --plan "$RUN/evidence/plan.json"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts verify --run "$RUN" --plan "$RUN/evidence/plan.json"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts reuse --run "$RUN" --plan "$RUN/evidence/plan.json"
-  ```
-
-- **Official package publication.** Use the exact ID from `ctl builtin list`, currently `notion/ntn-skills-maintain`, and an authorized database. Drive `ctl builtin publish ID --database "$DATABASE" --dry-run`, compare fresh catalog/page state, then publish once only when authorized. Freshly read the returned page ID, enumerate/read its references and compare export bytes (or normalized Markdown without Files). Repeating first publication must return `CREATE_CONFLICT`, including an identical earlier copy. For an authorized differing update, freshly read and review the chosen page, retain PINNED_MAIN_REF, preview/apply `ctl builtin publish ID --target "$PINNED_MAIN_REF"`, and confirm the same page ID and complete package file set. Names/unqualified built-in IDs/reference-file targets must fail before mutation; a stale pinned baseline must return `WRITE_CONFLICT`. Set a different built-in/ordinary default in scratch and prove it cannot redirect an explicit update; explicit --database constrains ownership. Controlled core regressions establish conflict/version cases, while live service acceptance requires these actual readbacks. The [package recipe](portable-export-package-consumption.md) separately owns offline bytes/provenance/output protection.
-
-- **Source provenance and equal-content publication.** Retain authorized raw Notion schema/page-property readback; public record JSON is unchanged. Exact builtin IDs are `notion/ntn-skills`, `notion/ntn-skills-maintain`, `notion/ntn-skills-sync`. Deliberately publish each approved exact target and read back builtin plus its exact Builtin ID. Never create duplicates to avoid collisions or trust remote metadata as local identity. Missing/incompatible fields must reject builtin/upstream publication before mutation with initialization guidance. Equal bytes with differing requested provenance must update with `reused: false` using only journaled metadata assignment and no body/reference/resource/source upload; complete equality must reuse without remote mutation. Cover native and markdown_files plus dry-run. Upstream reads back upstream and empty Builtin ID; fork/tracked retains upstream. Ordinary replace/write preserve provenance, including unset. Retain request traces to prove mutation boundaries; this recipe claims no live pass.
-- **Frozen source recovery.** Prove interruption/resume/reconcile/metadata retry retain original source intent, property IDs and exact combined ownership/source request despite local source/package changes. Historical supersede/preparation cases belong to `ntn-skills-operator` and apply only when those retained paths change. Property label renames retain frozen ID authority; delete/recreate cannot acquire an old ID. Ordinary legacy create freezes unavailable fields; old receipts without source intent never gain inferred provenance. Unknown arbitrary metadata remains unresolved. Completed/upstream fast paths cannot report reuse with unfinished or externally changed requested metadata. Record each exercised result separately.
-- **Acknowledged metadata with failed readback.** Interrupt the first GET after a successful source PATCH through the transport. Exercise both direct resume and reconcile followed by resume after renaming the bound source labels, for native and markdown_files storage. Require exact source values, unchanged content/resources, one original source PATCH and the retained acknowledged response; do not manufacture this state by editing the receipt. For editable files, include complete equal content whose live file order differs from the frozen source, and require recovery without appending file blocks.
-- **Recovery.** Retain `operation_id`, `receipt_path`, stage, completed operations and page/expected-version identities on WRITE_PARTIAL/WRITE_OUTCOME_UNKNOWN. Within the original authorization, drive `ctl operation resume "$OPERATION_ID" --progress`, then refresh the current returned PAGE_ID and compare main/reference/file content and page IDs. Inspect database locators through `ctl operation show`; do not open mutable JSON state. It must use frozen original input despite later local edits or builtin upgrades. Repeating a completed receipt must add no mutation. External edits must yield WRITE_CONFLICT and preserve remote content; unknown creation without a proven response must yield PUBLICATION_UNRESOLVED without repeating POST. Core publication-recovery tests cover deterministic failures, scope drift, pending writes and concurrent ownership; the built Node CLI must separately exercise a controlled provider scenario and report that boundary explicitly. Never present injected transport faults as real Notion evidence. Sync receipts use `ctl operation reconcile OPERATION_ID`.
-
-- **Interrupted validation and result replay.** In isolated controlled-provider runs, edit the remote root/reference during version validation, after recovery preflight and immediately before final readback. Kill the actual Node CLI after it reads the edit but before comparison; the next resume must reject the external state with no additional mutation. A failed final readback followed by resume must also preserve that edit. For a completed single-file write, compare the whole replayed JSON result and ensure `path`, target-file `ref` and original `previous_version_id` match; create/replace replay retains `input_type` and `main_path`. Keep actual process-kill evidence separate from deterministic Effect interruption fixtures.
-
-- **Progress and pacing.** Run an authorized publish with and without `--progress`. Default stderr stays empty; opt-in stderr contains only parseable PublicationProgress events with matching operation IDs, ordered start/end status and nonnegative total/stage milliseconds. stdout remains one final JSON in success and failure. The live control helper intentionally retains only stderr hashes; use a separate owned direct CLI capture for these safe progress events. `packages/core/test/notion.test.ts` uses a controlled Effect Clock to prove request starts at least 350ms apart, no extra delay after a slow response, cancellation and retry admission. Record comparable request counts for repeated-refresh performance claims; do not infer wall-time speedup solely from tests.
-
-- **Live property envelopes.** Repeated reads of an unchanged References property can carry different top-level `request_id` values. Preserve that response evidence and confirm dry-run/update/resume accepts unchanged property content while still rejecting changed membership, links or pagination. Do not copy the transport trace ID into a content baseline or remove a conflict fence from an older failed receipt.
-
-- **Automatic revision properties.** Use a real library with a `last_edited_time` property, write a body and read the page back. Its automatic property and top-level edit time can advance together; this alone must not fail publication. Editable metadata, References and parent changes must still conflict. Keep the failed-before and passed-after page/receipt evidence without resetting conflict flags.
-
-- **Markdown fidelity.** Include GFM tables containing inline-code spans separated by a literal `+`, labeled and unlabeled fenced code with an internal blank line, bold text spanning inline code, prose after a list, and inline/reference-style links. Import once and require `verified: true`; fresh main/reference readback must retain literal operators, code contents/languages, joined emphasis and list/prose boundaries, independently of source-ZIP byte preservation. Change a table operator, command argument, code-block language/blank line, link destination or list inclusion in controlled fixtures and require verification failure. Capture parser warnings as failures. Use a separate disposable page for format probes and confirm its move to Notion Trash; do not weaken equality to accept corrupted text.
-
-- **Native default and literal-to-native correction.** For daily/upstream publication, require a rendered main body and all supporting Markdown documents as rendered child pages included through References, preserving original root/nested paths (commonly `references/**`). Include root `mocking.md`/`tests.md` and nested Markdown outside `references/`; their links must reach the corresponding pages, read/export must retain their paths, and the historical page-title fallback must remain compatible when no explicit Markdown path label exists. Scripts/non-Markdown assets remain complete in Files/the source bundle. Start from an explicitly selected literal Skill and drive exact-target `replace INPUT --target EXACT --storage notion_blocks` with complete source/resources; require the root page ID and upstream ownership to remain, existing resources to survive, and the current read to use rendered main/reference content. Retain chapter/list/table/code/link/resource evidence. Accept only whitespace/equivalent local formatting differences; whole-document source-code blocks cannot satisfy native rendering. A conversion/verification failure must remain a failure, without automatic `markdown_files` fallback. Exercise explicit source-file maintenance mode separately; do not use it as the default bulk migration. This recipe defines acceptance and claims no live conversion pass.
-
-- **Editable file consumption.** Drive `create` and exact-target `replace --storage markdown_files` on an authorized LF text-only Skill with nested Markdown, scripts, relative links, literal fences, Unicode and an empty resource. CR/CRLF and binary/NUL-bearing input must fail before mutation; the service normalizes carriage returns. Fresh independent-state read/files/source export must contain the complete current Notion file bytes; edit an owned code block and prove the next read changes rather than restoring a ZIP. Verify file-only write preserves page metadata/other files and stale pins fail. For an interrupted multi-chunk file, resume only the missing suffix; absent/partial/edited unknown append trees must remain unresolved without another mutation. Historical distinct-page supersede through `ntn-skills-operator` retains the old unknown receipt/page and advances only a fully committed new pointer; it is not an ordinary publication prerequisite. Report native normalization separately from literal-file proof; neither requires unlimited arbitrary Markdown↔Notion reversibility.
-
-For editable-file pages, an out-of-band code edit with unchanged publication ownership becomes the current read source after the recorded marker revision itself is validated; it must never restore old ZIP bytes. Tracked upstream planning still compares current content with the accepted Published Hash and rejects unaccepted edits. Ownership drift and an invalid marker continue to fail. Verify these as separate boundaries; a raw decoder fixture alone does not prove tracked edit handling.
-
-## Gotchas
-
-- Dry-run proves preflight only, not Notion service acceptance. Cache changes do not violate it; remote mutation does.
-- Creation priority is explicit database, configured default, then sole fresh discovery. Failed defaults never fall back. Imported page IDs are metadata; only explicit --target selects an existing page and missing/inaccessible targets never create by name.
-- Page-only databases normalize main/reference Markdown. Exact source hashes and arbitrary supporting files require Files; distinguish normalized proof from byte preservation rather than inventing a match.
-- Strong mutation checks never accept a warm old cache as authority. Body/properties/references/uploads are separate requests, not atomic transactions. Fresh readback uses current --refresh; pinned export/read remains immutable.
-- Input ZIP/folder safety and size limits still apply. No imported script is auto-executed. Cleanup retains evidence and user Notion skills; do not archive remote pages as harness teardown.
+完成后重新查询当前树与有限状态，确认只有当前内容。复用已有 runner 的临时输出即可；不保存版本库、永久 ACK、历史 body review 或清理证明档案。

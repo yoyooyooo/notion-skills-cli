@@ -1,130 +1,55 @@
-export * from "./model.ts"
-export * from "./ref.ts"
-export * from "./notion.ts"
-export * from "./store.ts"
+/** Current CLI facade. Internal models stay with their owning modules; retired
+ * publication, sync and historical recovery routes are not package exports. */
+export { SkillsError, fail, property } from "./model.ts"
+export { Notion, NotionLive } from "./notion.ts"
+export {
+  Store,
+  StoreLive,
+  configuration,
+  publicConfiguration,
+  setToken,
+  sha256,
+} from "./store.ts"
 export {
   authScope,
-  databaseId,
+  libraryId,
+  selectedLibraryId,
   explicitSource,
-  discoverDatabases,
-  creationSource,
-  setDefaultDatabase,
+  discoverLibraries,
+  setDefaultLibrary,
   catalog,
-  addSource,
   type CatalogOptions,
 } from "./catalog.ts"
-export * from "./views.ts"
+export { listViews, type ViewOptions } from "./views.ts"
 export { resolveCatalogReference } from "./catalog-reference.ts"
-export * from "./snapshot.ts"
-export * from "./graph-prepare-model.ts"
+export {
+  openSkill,
+  readSkill,
+  listSkill,
+  resolveSkillRef,
+  resolveReference,
+  type ReadOptions,
+  type ResolveReferenceOptions,
+} from "./snapshot.ts"
 export { prepareGraph } from "./graph-prepare.ts"
-export * from "./consumer.ts"
+export { consume, type ConsumeOptions } from "./consumer.ts"
+export { exportSkill, exportPortable, snapshotPortable, type ExportOptions } from "./export.ts"
 export {
-  GRAPH_RELEASE_DEFAULT_BUDGET,
-  GraphReleaseBudgetSchema,
-  GraphReleaseManifestSchema,
-  GraphReleasePlanSchema,
-  type GraphReleaseBudget,
-  type GraphReleaseManifest,
-  type GraphReleasePlan,
-} from "./shared-graph-release-model.ts"
+  DEFAULT_CACHE_POLICY,
+  parseDuration,
+  effectiveCachePolicy,
+  configureCachePolicy,
+  clearCache,
+  cacheStatus,
+  garbageCollectCache,
+  type ReadPolicyOptions,
+} from "./cache.ts"
 export {
-  prepareGraphRelease,
-  saveGraphRelease,
-  inspectGraphRelease,
-  restoreGraphRelease,
-} from "./shared-graph-release.ts"
-export {
-  createSkill,
-  createPortable,
-  replaceSkill,
-  writeSkill,
-  applySkill,
-  resumePublication,
-  resumePreparedPublication,
-  skillDocument,
-  type CreateOptions,
-  type ReplaceOptions,
-  type WriteOptions,
-  type ApplyOptions,
-} from "./mutation.ts"
-export * from "./export.ts"
-export * from "./cache.ts"
-export * from "./sync-local.ts"
-export * from "./sync.ts"
-export * from "./builtin.ts"
-export * from "./builtin-install.ts"
-export * from "./publication.ts"
-export { recoverPublication } from "./publication-recovery.ts"
-export {
-  PublicationReceiptSchema,
-  type Receipt,
-  type PublicationSource,
-} from "./publication-model.ts"
-export { reconcilePublication } from "./publication-reconcile.ts"
-export * from "./command-operations.ts"
-export {
-  recoverPreparedPublication,
-  type PreparedPublicationRecovery,
-} from "./publication-prepare-recovery.ts"
-export * from "./database-init.ts"
-export {
-  UpstreamPublisherLive,
-  readUpstreamBaseline,
-  inspectPublicationEdit,
-  acceptPublicationEdit,
-} from "./upstream-publication.ts"
-export {
-  PublicationMarkerSchema,
-  publicationMarker,
-  verifyPublicationRead,
-  PublicationReadOperation,
-  PublicationInspectDivergence,
-} from "./publication-integrity.ts"
-export * from "./upstream-member-links.ts"
-export * from "./upstream-member-snapshot.ts"
-export {
-  planMapCheckpointAdoption,
-  applyMapCheckpointAdoption,
-} from "./upstream-map-checkpoint-adoption.ts"
-export { rebuildUpstream, restoreDeletedUpstream } from "./upstream-rebuild.ts"
-export {
-  planSourceRichTextRepair,
-  applySourceRichTextRepair,
-  reconcileSourceRichTextRepair,
-  showSourceRichTextRepair,
-} from "./upstream-source-rich-text-repair.ts"
-export {
-  SourceRichTextRepairInputSchema,
-  SourceRichTextRepairPlanSchema,
-  SourceRichTextRepairReceiptSchema,
-} from "./upstream-source-rich-text-repair-model.ts"
-export {
-  planSourceRootCompletion,
-  applySourceRootCompletion,
-  reconcileSourceRootCompletion,
-  showSourceRootCompletion,
-} from "./upstream-source-root-completion.ts"
-export {
-  SourceRootCompletionInputSchema,
-  SourceRootCompletionPlanSchema,
-  SourceRootCompletionReceiptSchema,
-} from "./upstream-source-root-completion-model.ts"
-export {
-  planSourceRootFidelity,
-  applySourceRootFidelity,
-  reconcileSourceRootFidelity,
-  showSourceRootFidelity,
-} from "./upstream-source-root-fidelity.ts"
-export {
-  SourceRootFidelityInputSchema,
-  SourceRootFidelityPlanSchema,
-  SourceRootFidelityReceiptSchema,
-} from "./upstream-source-root-fidelity-model.ts"
-export * from "./shared-source-plan-binding.ts"
-export * from "./shared-source-registration-reconcile.ts"
-export * from "./shared-source-selection.ts"
-export * from "./shared-source-config.ts"
-export * from "./shared-selected-source.ts"
-export * from "./shared-file-restore.ts"
-export { reviewSharedBodyWrite } from "./shared-body-write-review.ts"
+  defineBuiltin,
+  builtinInfo,
+  selectBuiltin,
+  readBuiltin,
+  type BuiltinSkill,
+} from "./builtin.ts"
+
+export { resolveLibrary } from "./shared-library.ts"

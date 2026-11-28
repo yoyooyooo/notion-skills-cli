@@ -1,7 +1,9 @@
 /**
  * Offline AH-513 inventory. Run with Node 24; this never imports the application
  * runtime, opens current state, discovers credentials, or executes source files.
- * The output is evidence for `ctl library migration plan`, not a migration.
+ * AH-513 evidence for preserving bytes from explicit old backups.
+ * Its legacy inventory format is not current CLI input and does not prove
+ * current Notion content or completed conversion.
  */
 import { createHash } from "node:crypto"
 import {
@@ -1040,7 +1042,7 @@ if (
 ) {
   if (process.argv.slice(2).length === 1 && process.argv[2] === "--help") {
     process.stdout.write(
-      "Node 24 read-only shared migration inventory\nnode .cursor/skills/verify-ntn-skills/scripts/shared-migration-inventory.ts --catalog ABS --backup ABS --target-library ID --run NEW_OWNED_ABS\nReads only the explicit catalog and standalone backup/state.sqlite plus referenced backup/objects hashes. Creates a new private run with complete input.json, summary.json and byte-verification evidence. Cached snapshots remain candidates, approval is empty, and this does not execute a migration or an import.\n",
+      "Node 24 read-only shared migration inventory\nnode .cursor/skills/verify-ntn-skills/scripts/shared-migration-inventory.ts --catalog ABS --backup ABS --target-library ID --run NEW_OWNED_ABS\nReads only the explicit catalog and standalone backup/state.sqlite plus referenced backup/objects hashes. Creates a new private run with complete input.json, summary.json and byte-verification evidence. Cached snapshots remain candidates, approval is empty, and this does not execute a migration or an import.\nAH-513 only: legacy inventory evidence, not current CLI input or proof of current Notion content or completed conversion.\n",
     )
   } else {
     try {

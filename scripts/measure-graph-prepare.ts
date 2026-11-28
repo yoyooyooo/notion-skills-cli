@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { prepareGraph } from "../packages/core/src/graph-prepare.ts"
 import { nativeGraphFixture } from "../packages/core/test/graph-prepare-live-fixture.ts"
-import { library } from "../packages/core/test/shared-snapshot-fixture.ts"
+import { currentLibrary as library } from "../packages/core/test/shared-current-fixture.ts"
 
 const directory = process.env.NTN_NG16_EVIDENCE_DIR
 const phase = process.env.NTN_NG16_PHASE
@@ -41,7 +41,7 @@ for (const topology of ["diamond", "wide-101"] as const) {
     const f = nativeGraphFixture(topology === "diamond" ? {} : { width: 100 })
     const roots = topology === "diamond" ? [f.pageIds[0]!, f.pageIds[2]!] : [f.pageIds[0]!]
     const input = { roots, purpose: "use" as const, budget }
-    await f.run(prepareGraph(input, { database: library.skills.database_id }))
+    await f.run(prepareGraph(input, { library: library.library_id }))
     f.json.clear()
     f.objects.clear()
     for (const condition of ["cold", "warm", "metadata_revalidate"] as const) {
@@ -55,7 +55,7 @@ for (const topology of ["diamond", "wide-101"] as const) {
               ? { freshness: { policy: "max_age" as const, max_age_ms: 1 } }
               : {}),
           },
-          { database: library.skills.database_id, metrics: phase === "optimized" },
+          { library: library.library_id, metrics: phase === "optimized" },
         ),
       )
       const elapsed = performance.now() - start

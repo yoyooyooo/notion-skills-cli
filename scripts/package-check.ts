@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { mkdtemp, readFile, readdir } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, readdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join, relative as relativePath } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -29,7 +29,10 @@ function documentLinks(tokens: readonly Token[]): string[] {
 }
 
 const root = fileURLToPath(new URL("../", import.meta.url))
-const destination = await mkdtemp(join(tmpdir(), "ntn-skills-pack-"))
+const evidenceRoot = process.env.NTN_SMOKE_EVIDENCE_ROOT
+if (evidenceRoot) await mkdir(evidenceRoot, { recursive: true, mode: 0o700 })
+const destination = await mkdtemp(join(evidenceRoot ?? tmpdir(), "ntn-skills-pack-"))
+const target = join(destination, "package")
 async function run(command: string[], cwd = root) {
   const child = Bun.spawn(command, { cwd, stdin: "ignore", stdout: "pipe", stderr: "pipe" })
   const [stdout, stderr, exit] = await Promise.all([
@@ -40,10 +43,8 @@ async function run(command: string[], cwd = root) {
   if (exit) throw new Error(`${command[0]} failed: ${stderr || stdout}`)
   return stdout
 }
-const packed = await run(
-  ["bun", "pm", "pack", "--destination", destination, "--quiet"],
-  join(root, "packages/cli"),
-)
+await run(["bun", join(root, "packages/cli/build.ts"), "--outdir", target])
+const packed = await run(["bun", "pm", "pack", "--destination", destination, "--quiet"], target)
 const name = packed.trim().split("\n").at(-1)!
 const archive = name.startsWith("/") ? name : join(destination, name)
 const entries = (await run(["tar", "-tzf", archive]))
@@ -67,10 +68,23 @@ if (
   !entries.includes("package/dist/sdk.js")
 )
   throw new Error("Packed SDK export or generated declarations are missing.")
-if (manifest.engines?.node !== "^22.22.3 || >=24.20.0" || manifest.engines?.bun)
-  throw new Error(
-    "Packed consumer runtime must be Node.js 22.22.3+ within 22.x, or Node.js 24.20.0+.",
-  )
+if (
+  manifest.exports?.["./management"]?.import !== "./dist/management.js" ||
+  manifest.exports?.["./management"]?.default !== "./dist/management.js" ||
+  manifest.exports?.["./management"]?.types !== "./dist/types/cli/src/management.d.ts" ||
+  !entries.includes("package/dist/management.js")
+)
+  throw new Error("Packed management export or generated declarations are missing.")
+if (
+  manifest.exports?.["./ref"]?.import !== "./dist/ref.js" ||
+  manifest.exports?.["./ref"]?.require !== "./dist/ref.cjs" ||
+  manifest.exports?.["./ref"]?.types !== "./dist/types/core/src/skill-ref.d.ts" ||
+  !entries.includes("package/dist/ref.js") ||
+  !entries.includes("package/dist/ref.cjs")
+)
+  throw new Error("Packed pure Skill reference protocol is missing.")
+if (manifest.engines?.node !== "^22.23.5 || ^24.22.3 || ^26.13.1" || manifest.engines?.bun)
+  throw new Error("Packed consumer runtime must be Node.js ^22.23.5, ^24.22.3, or ^26.13.1.")
 for (const section of ["dependencies", "optionalDependencies", "peerDependencies"])
   for (const [dependency, value] of Object.entries(manifest[section] ?? {}))
     if (typeof value !== "string" || /^(?:catalog|workspace|file|link):/.test(value))
@@ -86,38 +100,34 @@ const publicFiles = [
   "CHANGELOG.md",
   "THIRD_PARTY_NOTICES.md",
   "docs/README.md",
+  "docs/current-contract.md",
+  "docs/library-roots.md",
+  "docs/library-root-migration.md",
   "docs/usage.md",
-  "docs/protocol.md",
+  "docs/notion-mcp.md",
+  "docs/source-sync.md",
+  "docs/source-materialization.md",
   "docs/shared-authoring.md",
-  "docs/sources-management.md",
-  "docs/shared-migration-activation.md",
-  "docs/shared-ssot-architecture.md",
-  "docs/historical-operations.md",
-  "docs/host-integration.md",
-  "docs/graph-releases.md",
-  "docs/graph-preparation-performance.md",
-  "docs/consumer-contract.md",
-  "docs/resource-read-contract.md",
-  "docs/selected-snapshot-consumption.md",
-  "docs/shared-metadata-consumption.md",
-  "docs/releasing.md",
-  "docs/portable-converter.md",
-  "docs/remote-proof-converter.md",
+  "docs/protocol.md",
+  "docs/skill-reference-redesign.md",
+  "docs/maintenance-verification-review.md",
   "skills/ntn-skills/SKILL.md",
   "skills/ntn-skills/references/commands.md",
   "skills/ntn-skills/references/integration.md",
   "skills/notion/ntn-skills-maintain/SKILL.md",
   "skills/notion/ntn-skills-maintain/references/operations.md",
+  "skills/notion/ntn-skills-maintain/references/setup.md",
   "skills/notion/ntn-skills-sync/SKILL.md",
   "skills/notion/ntn-skills-sync/references/synchronization.md",
 ]
-const declarations = (await readdir(join(root, "packages/cli/dist/types"), { recursive: true }))
+const declarations = (await readdir(join(target, "dist/types"), { recursive: true }))
   .filter((file) => file.endsWith(".d.ts"))
   .map((file) => `dist/types/${file}`)
-if (!declarations.includes("dist/types/cli/src/sdk.d.ts"))
-  throw new Error("Public SDK declaration entrypoint is missing.")
+for (const entry of ["sdk", "management"])
+  if (!declarations.includes(`dist/types/cli/src/${entry}.d.ts`))
+    throw new Error(`Public ${entry} declaration entrypoint is missing.`)
 for (const file of declarations) {
-  const declaration = await readFile(join(root, "packages/cli", file), "utf8")
+  const declaration = await readFile(join(target, file), "utf8")
   const packedDeclaration = await run(["tar", "-xOf", archive, `package/${file}`])
   if (
     declaration !== packedDeclaration ||
@@ -129,6 +139,9 @@ const expected = new Set([
   "package/package.json",
   "package/dist/ntn-skills.js",
   "package/dist/sdk.js",
+  "package/dist/management.js",
+  "package/dist/ref.js",
+  "package/dist/ref.cjs",
   ...declarations.map((file) => `package/${file}`),
   ...publicFiles.map((file) => `package/${file}`),
 ])
@@ -140,6 +153,14 @@ for (const file of publicFiles) {
   const bytes = await readFile(join(root, file))
   const bundled = await run(["tar", "-xOf", archive, `package/${file}`])
   if (bundled !== bytes.toString("utf8")) throw new Error(`Bundled document is stale: ${file}`)
+  if (
+    /(?:\/Users\/[^/\s]+\/|\/home\/[^/\s]+\/|https:\/\/(?:linear\.app|app\.notion\.com|(?:www\.)?notion\.so)\/)/u.test(
+      bundled,
+    )
+  )
+    throw new Error(
+      `Public document contains a private workspace path or workspace-only link: ${file}`,
+    )
   // Examples describe a Skill's own file tree. Only rendered document links,
   // including nested and reference links, must resolve inside this package.
   const links = documentLinks(SourceLexer.lex(bundled))
@@ -185,55 +206,8 @@ for (const section of ["dependencies", "optionalDependencies", "peerDependencies
     )
       throw new Error(`Packed Effect runtime must use official 4.0.5: ${dependency}`)
   }
-const migrationSource = join(destination, "migration-package")
-await run(["bun", join(root, "scripts/build-migration.ts"), migrationSource])
-const migrationPacked = JSON.parse(
-  await run(["npm", "pack", migrationSource, "--pack-destination", destination, "--json"]),
-)
-const migrationArchive = join(destination, migrationPacked[0].filename)
-const migrationEntries = (await run(["tar", "-tzf", migrationArchive]))
-  .trim()
-  .split("\n")
-  .filter((entry) => !entry.endsWith("/"))
-const migrationFiles = ["package.json", "ntn-skills-migrate.js", "ntn-skills-operator.js"]
-const expectedMigration = new Set(migrationFiles.map((file) => `package/${file}`))
-if (
-  migrationEntries.length !== expectedMigration.size ||
-  migrationEntries.some((entry) => !expectedMigration.has(entry))
-)
-  throw new Error(
-    `Independent migration archive has unexpected or missing files: ${migrationEntries.join(", ")}`,
-  )
-const migrationManifest = JSON.parse(
-  await run(["tar", "-xOf", migrationArchive, "package/package.json"]),
-)
-if (
-  migrationManifest.name !== "ntn-skills-state-migration" ||
-  migrationManifest.private !== true ||
-  Object.keys(migrationManifest.bin ?? {})
-    .sort()
-    .join(",") !== "ntn-skills-migrate,ntn-skills-operator" ||
-  migrationManifest.bin["ntn-skills-migrate"] !== "ntn-skills-migrate.js" ||
-  migrationManifest.bin["ntn-skills-operator"] !== "ntn-skills-operator.js" ||
-  migrationManifest.engines?.node !== manifest.engines.node
-)
-  throw new Error(
-    "Independent migration archive identity, executables or runtime contract differs.",
-  )
-for (const file of migrationFiles.slice(1)) {
-  const compiled = await run(["tar", "-xOf", migrationArchive, `package/${file}`])
-  if (!compiled.startsWith("#!/usr/bin/env node\n"))
-    throw new Error(`Independent ${file} must launch with Node.js.`)
-}
 const smoke = JSON.parse(
-  await run([
-    "bun",
-    join(root, "scripts/package-smoke.ts"),
-    "--archive",
-    archive,
-    "--migration-archive",
-    migrationArchive,
-  ]),
+  await run(["bun", join(root, "scripts/package-smoke.ts"), "--archive", archive]),
 )
 const sdkFixture = join(destination, "sdk-fixture")
 const sdkConsumer = join(destination, "sdk-consumer")
@@ -255,31 +229,38 @@ try {
 }
 const sdkReport = join(sdkConsumer, "report.json")
 const sdk = await readFile(sdkReport, "utf8")
-  .then((text) => JSON.parse(text))
+  .then((value) => JSON.parse(value))
   .catch(() => null)
 console.log(
   JSON.stringify({
     name: manifest.name,
     version: manifest.version,
+    contract: "current-only",
     archive,
-    migration_archive: migrationArchive,
-    migration_files: migrationFiles,
-    migration_integrity: `sha512-${createHash("sha512")
-      .update(await readFile(migrationArchive))
-      .digest("base64")}`,
     integrity: `sha512-${createHash("sha512")
       .update(await readFile(archive))
       .digest("base64")}`,
-    files: entries.map((entry) => entry.slice("package/".length)),
+    files: entries.map((file) => file.slice("package/".length)),
     smoke,
-    // Inline the original report so CI and the existing cleanup receipt retain
-    // every SDK case and its metrics even after this owned scratch is retired.
     sdk,
     sdk_report: sdkReport,
     sdk_error: sdkFailure === undefined ? undefined : String(sdkFailure),
-    scratch: dirname(archive),
+    scratch: destination,
   }),
 )
 if (sdkFailure !== undefined) throw sdkFailure
-if (sdk?.selection !== "all" || sdk.failed !== 0 || sdk.passed < 22)
-  throw new Error("The independent installed SDK gate did not complete all original cases.")
+if (
+  sdk?.contract !== "current-only" ||
+  sdk.selection !== "all" ||
+  sdk.failed !== 0 ||
+  sdk.passed !== 14 ||
+  !sdk.cases.some(
+    (entry: { name: string; status: string }) =>
+      entry.name === "installed-pure-reference-module" && entry.status === "passed",
+  ) ||
+  !sdk.cases.some(
+    (entry: { name: string; status: string }) =>
+      entry.name === "installed-library-selection-is-local-and-fresh" && entry.status === "passed",
+  )
+)
+  throw new Error("The installed current SDK gate did not complete its 14 current contract cases.")

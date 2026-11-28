@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { ConsumptionEffectsSchema } from "./consumption-effects.ts"
 import { ContentKindSchema, ContentRecordSchema, FileEntrySchema } from "./model.ts"
 import {
   NativeReferenceIndexSchema,
@@ -78,6 +79,10 @@ const Freshness = Schema.Struct({
   max_age_ms: Schema.optional(Schema.Number),
   stale: Schema.optional(Schema.Boolean),
   validation: Schema.optional(Schema.Literal("metadata")),
+  policy_source: Schema.optional(Schema.Literals(["explicit", "skill", "profile", "product"])),
+  profile_fingerprint: Schema.optional(Schema.String),
+  full_body_max_age_ms: Schema.optional(Natural),
+  current_eligibility_max_age_ms: Schema.optional(Natural),
 })
 export const PreparedNodeSchema = Schema.Struct({
   ...NodeIdentity,
@@ -131,6 +136,7 @@ export const PrepareGraphLockSchema = Schema.Struct({
 })
 const ResultFields = {
   version: Schema.Literal(1),
+  effects: Schema.optional(ConsumptionEffectsSchema),
   purpose: PreparePurposeSchema,
   scope: Sha,
   roots: Schema.Array(Root),

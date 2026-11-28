@@ -48,6 +48,21 @@ export const SourcePatchSchema = Schema.Struct({
   ),
 })
 export type SourcePatch = typeof SourcePatchSchema.Type
+/** Complete original Git entries, before portable transformations or link materialization. */
+export const SourceGitManifestSchema = Schema.Struct({
+  commit: Schema.String,
+  tree: Schema.String,
+  root: Schema.String,
+  files: Schema.Array(
+    Schema.Struct({
+      path: Schema.String,
+      source_path: Schema.String,
+      git_oid: Schema.String,
+      bytes: Schema.Number,
+      mode: Schema.optional(Schema.Literals(["100644", "100755"])),
+    }),
+  ),
+})
 export const GitMaterializationSchema = Schema.Struct({
   source_hash: Schema.String,
   derived_hash: Schema.String,

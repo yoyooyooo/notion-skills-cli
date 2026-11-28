@@ -2,25 +2,35 @@ import { describe, expect, test } from "bun:test"
 import { Effect, type Crypto, type FileSystem, type Path } from "effect"
 import type { HttpClient } from "effect/http"
 import { catalog } from "../src/catalog.ts"
-import { fail, property } from "../src/model.ts"
+import { fail, property, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
 import {
-  encode,
-  id,
-  library,
-  rich,
-  sharedSnapshotFixture,
-  skillPage,
-} from "./shared-snapshot-fixture.ts"
+  currentBytes as encode,
+  currentId as id,
+  currentLibrary as library,
+  currentRich as rich,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+} from "./shared-current-fixture.ts"
 
-const owner = "shared_skill:library-snapshot:stable-skill"
+const owner = "skill://demo?library=00000000-0000-4000-8000-000000000002"
 const rootRef = fileRef(owner, "SKILL.md")
-const options = { database: library.skills.database_id }
-const fields = ["title", "description", "kind", "skill_id", "enabled", "default"]
+const options = { library: library.library_id }
+const fields = ["title", "description", "kind", "skill-id", "enabled", "default"]
+const claimFields = [
+  ...fields,
+  "main-id",
+  "content",
+  "state",
+  "operation",
+  "origin",
+  "members",
+  "requires",
+]
 const skillQuery = "/v1/data_sources/" + library.skills.data_source_id + "/query"
 const pageUrl = (page: string) => "https://www.notion.so/" + page.replaceAll("-", "")
 type Services =
@@ -38,6 +48,7 @@ type MetadataPage = {
   request_status?: { type: "complete" | "incomplete"; incomplete_reason?: string }
 }
 type Query = {
+  filtered: boolean
   cursor: string | undefined
   fields: readonly string[]
   body: unknown
@@ -45,10 +56,10 @@ type Query = {
   responseBytes: number
 }
 
-/** Only Skills queries are replaced. Every current-page, Files, Records and body
- * operation still follows the shared snapshot fixture's real core boundary. */
+/** Skills identity filters run before pagination; only declared related-page
+ * metadata is added. Bodies, Files and current-owner reads keep the core boundary. */
 function fixture(count = 2, relations = false) {
-  const base = sharedSnapshotFixture({ fileCount: 1 })
+  const base = currentSnapshotFixture({ fileCount: 0 })
   const registered = relations
     ? {
         ...library,
@@ -69,9 +80,9 @@ function fixture(count = 2, relations = false) {
       id: id(1000 + index),
       properties: {
         ...structuredClone(property(base.main.properties)),
-        title: { id: "title", type: "title", title: [{ plain_text: "Other " + index }] },
-        description: rich("description", "Metadata for other " + index),
-        skill_id: rich("skill_id", "other-" + index),
+        Name: { id: "title", type: "title", title: [{ plain_text: "Other " + index }] },
+        Description: rich("description", "Metadata for other " + index),
+        "Skill ID": rich("skill-id", "other-" + index),
       },
     })
   const externalPage = String(rows.at(-1)!.id)
@@ -104,6 +115,7 @@ function fixture(count = 2, relations = false) {
     denySelectedGet?: boolean
     beforeSelectedGet?: () => void
     reply?: (input: {
+      filtered: boolean
       cursor: string | undefined
       projected: readonly unknown[]
       response: MetadataPage
@@ -117,6 +129,13 @@ function fixture(count = 2, relations = false) {
           Effect.provideService(Notion, {
             ...api,
             credentialIdentity: Effect.sync(() => controls.credential),
+            connectionIdentity: Effect.sync(() => ({
+              principal: "current-principal",
+              credential: controls.credential,
+              connection: "current-fixture",
+              workspace: null,
+              api_origin: "https://api.notion.com",
+            })),
             request: (path, body, requestOptions) =>
               Effect.suspend(() => {
                 const url = new URL(path, "https://fixture.invalid/")
@@ -130,16 +149,46 @@ function fixture(count = 2, relations = false) {
                     })),
                   )
                 if (url.pathname === skillQuery) {
+                  const filter = property(body).filter
+                  const parts = Array.isArray(property(filter).or)
+                    ? (property(filter).or as unknown[])
+                    : [filter]
+                  const identities =
+                    filter === undefined
+                      ? undefined
+                      : new Set(
+                          parts.map((raw) => {
+                            const part = property(raw),
+                              value = property(part.rich_text).equals
+                            if (
+                              part.property !== registered.skills.property_ids["Skill ID"] ||
+                              typeof value !== "string"
+                            )
+                              throw fail(
+                                "UNEXPECTED_REQUEST",
+                                "The fixture requires exact registered Skill ID filters.",
+                              )
+                            return value
+                          }),
+                        )
                   const selectedFields = url.searchParams.getAll("filter_properties")
                   const selected = new Set(selectedFields)
-                  const projected = rows.map((row) => ({
-                    ...structuredClone(row),
-                    properties: Object.fromEntries(
-                      Object.entries(property(row.properties)).filter(([, value]) =>
-                        selected.has(String(property(value).id)),
+                  const projected = rows
+                    .filter(
+                      (row) =>
+                        identities === undefined ||
+                        identities.has(
+                          text(property(property(row.properties)["Skill ID"]).rich_text),
+                        ),
+                    )
+                    .map((row) => ({
+                      ...structuredClone(row),
+                      properties: Object.fromEntries(
+                        Object.entries(property(row.properties)).filter(([, value]) =>
+                          selected.has(String(property(value).id)),
+                        ),
                       ),
-                    ),
-                  }))
+                    }))
                   const input = property(body)
                   const cursor =
                     typeof input.start_cursor === "string" ? input.start_cursor : undefined
@@ -154,8 +203,14 @@ function fixture(count = 2, relations = false) {
                     next_cursor: end < projected.length ? "offset-" + end : null,
                   }
                   const response =
-                    controls.reply?.({ cursor, projected, response: ordinary }) ?? ordinary
+                    controls.reply?.({
+                      filtered: filter !== undefined,
+                      cursor,
+                      projected,
+                      response: ordinary,
+                    }) ?? ordinary
                   queries.push({
+                    filtered: filter !== undefined,
                     cursor,
                     fields: selectedFields,
                     body: structuredClone(body),
@@ -172,6 +227,17 @@ function fixture(count = 2, relations = false) {
                   const update = controls.beforeSelectedGet
                   controls.beforeSelectedGet = undefined
                   update?.()
+                } else if (
+                  method === "GET" &&
+                  url.pathname !== "/v1/pages/" + library.library_id &&
+                  /^\/v1\/pages\/[^/]+$/u.test(url.pathname)
+                ) {
+                  const row = rows.find((row) => url.pathname === "/v1/pages/" + row.id)
+                  return row === undefined
+                    ? Effect.fail(
+                        fail("NOT_FOUND", "The declared relation target is unavailable.", { path }),
+                      )
+                    : Effect.succeed(structuredClone(row))
                 }
                 return api.request(path, body, requestOptions)
               }),
@@ -215,7 +281,9 @@ function privateKeys(value: unknown, at = ""): string[] {
 describe("scalar current metadata consumption", () => {
   for (const count of [3, 101])
     test(
-      "a logical read shares its " + count + "-row observation with Members and Requires",
+      "a logical read keeps exact relation claims separate from its " +
+        count +
+        "-row native reference inventory",
       async () => {
         const f = fixture(count, true)
         const result = await f.run(readSkill(rootRef, options))
@@ -223,27 +291,46 @@ describe("scalar current metadata consumption", () => {
         const logicalBodies = bodies(f)
         const snapshot = f.base.json.get("snapshots/" + result.snapshot_id + ".json")
         const physical = await f.run(readSkill(skillPage, { ...options, refresh: true }))
-        expect({ ...result, freshness: undefined }).toEqual({ ...physical, freshness: undefined })
+        // The selected content is identical, but effects belong to each call.
+        expect({ ...result, freshness: undefined, effects: undefined }).toEqual({
+          ...physical,
+          freshness: undefined,
+          effects: undefined,
+        })
+        expect(result.effects).toEqual({
+          version: 1,
+          remote_writes: "none",
+          author_content: "unchanged",
+        })
+        expect(physical.effects).toEqual({
+          version: 1,
+          remote_writes: "none",
+          author_content: "unchanged",
+        })
         expect(f.base.json.get("snapshots/" + physical.snapshot_id + ".json")).toEqual(snapshot)
         expect(result.members?.map((entry) => entry.id)).toEqual([
-          "shared_skill:library-snapshot:other-1",
+          "skill://other-1?library=00000000-0000-4000-8000-000000000002",
         ])
         expect(result.required?.map((entry) => entry.id)).toEqual([
-          "shared_skill:library-snapshot:other-" + (count - 1),
+          `skill://other-${count - 1}?library=00000000-0000-4000-8000-000000000002`,
         ])
         expect(logicalBodies).toEqual(["/v1/pages/" + skillPage + "/markdown"])
         expect(bodies(f).every((path) => path === "/v1/pages/" + skillPage + "/markdown")).toBe(
           true,
         )
-        expect(rootGets(f)).toHaveLength(2)
+        expect(rootGets(f)).toHaveLength(4)
         expect(privateKeys(result)).toEqual([])
         expect(
           f.queries
             .slice(0, logicalQueries)
-            .every((query) => JSON.stringify(query.fields) === JSON.stringify(fields)),
+            .every(
+              (query) =>
+                JSON.stringify(query.fields) ===
+                JSON.stringify(query.filtered ? claimFields : fields),
+            ),
         ).toBe(true)
-        expect(logicalQueries).toBe(Math.ceil(count / 100))
-        expect(f.queries.length - logicalQueries).toBe(3 * Math.ceil(count / 100))
+        expect(logicalQueries).toBe(3 + Math.ceil(count / 100))
+        expect(f.queries.length - logicalQueries).toBe(2 + Math.ceil(count / 100))
       },
     )
 
@@ -251,11 +338,14 @@ describe("scalar current metadata consumption", () => {
     const f = fixture(3, true)
     const first = await f.run(readSkill(rootRef, options))
     const before = f.queries.length
-    property(f.rows[1]!.properties).description = rich("description", "Updated Member metadata")
-    property(f.rows[2]!.properties).description = rich("description", "Updated Requires metadata")
+    property(f.rows[1]!.properties)["Description"] = rich("description", "Updated Member metadata")
+    property(f.rows[2]!.properties)["Description"] = rich(
+      "description",
+      "Updated Requires metadata",
+    )
     const second = await f.run(readSkill(rootRef, { ...options, refresh: true }))
     expect(second.scope).toBe(first.scope)
-    expect(second.snapshot_id).not.toBe(first.snapshot_id)
+    expect(second.snapshot_id).toBe(first.snapshot_id)
     expect(property(second.members?.[0]?.metadata).description).toBe("Updated Member metadata")
     expect(property(second.required?.[0]?.metadata).description).toBe("Updated Requires metadata")
     const afterRefresh = f.requests.length
@@ -267,7 +357,7 @@ describe("scalar current metadata consumption", () => {
     expect(fixed.required).toEqual(first.required)
     expect(fixed.snapshot_id).toBe(first.snapshot_id)
     expect(f.requests).toHaveLength(afterRefresh)
-    expect(f.queries.length - before).toBe(1)
+    expect(f.queries.length - before).toBe(4)
   })
 
   test("a fresh inventory never replaces the selected page permission check", async () => {
@@ -279,7 +369,7 @@ describe("scalar current metadata consumption", () => {
     expect(f.queries).toHaveLength(1)
     expect(rootGets(f)).toHaveLength(1)
     expect(bodies(f)).toEqual([])
-    expect(f.base.writeCount()).toBe(0)
+    expect(f.base.semanticWrites().length).toBe(0)
   })
 
   test("a relation target absent from the complete observation cannot become an empty relation", async () => {
@@ -287,12 +377,40 @@ describe("scalar current metadata consumption", () => {
     f.rows.pop()
     const result = await f.run(readSkill(rootRef, options).pipe(Effect.result))
     expect(result._tag).toBe("Failure")
-    if (result._tag === "Failure")
+    if (result._tag === "Failure") {
       expect(result.failure.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
+      expect(property(result.failure.details).field).toBe("Requires")
+      expect(property(result.failure.details).reason).toBeUndefined()
+      expect(result.failure.message).toContain("Requires")
+    }
     expect(bodies(f)).toEqual([])
-    expect(f.base.writeCount()).toBe(0)
-    expect(f.queries).toHaveLength(1)
+    expect(f.base.semanticWrites().length).toBe(0)
+    expect(f.queries).toHaveLength(2)
   })
+
+  for (const relation of ["Members", "Requires"] as const)
+    test(
+      "disabled " + relation + " metadata reports the selected field without reading bodies",
+      async () => {
+        const f = fixture(3, true)
+        const target = f.rows[relation === "Members" ? 1 : 2]!
+        property(property(target.properties).Enabled).checkbox = false
+        const result = await f.run(readSkill(rootRef, options).pipe(Effect.result))
+        expect(result._tag).toBe("Failure")
+        if (result._tag === "Failure") {
+          expect(result.failure.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
+          expect(property(result.failure.details)).toMatchObject({
+            field: relation,
+            page_id: target.id,
+            reason: "disabled",
+          })
+          expect(result.failure.message).toBe(`A selected ${relation} target is disabled.`)
+        }
+        expect(bodies(f)).toEqual([])
+        expect(f.base.semanticWrites()).toEqual([])
+        expect(f.queries).toHaveLength(relation === "Members" ? 2 : 3)
+      },
+    )
 
   test("incomplete current relations still fail even after a complete inventory", async () => {
     const f = fixture(3, true)
@@ -301,83 +419,81 @@ describe("scalar current metadata consumption", () => {
     expect(result._tag).toBe("Failure")
     expect(f.requests.some((request) => request.path.includes("/properties/requires"))).toBe(true)
     expect(bodies(f)).toEqual([])
-    expect(f.base.writeCount()).toBe(0)
-    expect(f.queries).toHaveLength(1)
+    expect(f.base.semanticWrites().length).toBe(0)
+    expect(f.queries).toHaveLength(2)
   })
 
   for (const count of [1, 10, 100, 101, 300])
     test(
-      "a cold logical read observes " + count + " Skills once with the exact six fields",
+      "a cold logical read keeps identity and native reference inventory distinct in a " +
+        count +
+        "-Skill library",
       async () => {
         const f = fixture(count)
         const result = await f.run(readSkill(rootRef, options))
         expect(result.record.id).toBe(owner)
-        expect(rootGets(f)).toHaveLength(1)
+        expect(rootGets(f)).toHaveLength(2)
         expect(bodies(f)).toEqual(["/v1/pages/" + skillPage + "/markdown"])
-        expect(f.queries).toHaveLength(Math.ceil(count / 100))
-        expect(f.queries.map((query) => query.cursor ?? null)).toEqual(
-          Array.from({ length: Math.ceil(count / 100) }, (_, index) =>
+        const claims = f.queries.filter((query) => query.filtered)
+        const inventory = f.queries.filter((query) => !query.filtered)
+        expect(claims).toHaveLength(1)
+        expect(claims[0]!.response.results).toHaveLength(1)
+        expect(claims[0]!.fields).toEqual(claimFields)
+        expect(property(claims[0]!.body).filter).toEqual({
+          property: "skill-id",
+          rich_text: { equals: "demo" },
+        })
+        expect(inventory).toHaveLength(count === 1 ? 0 : Math.ceil(count / 100))
+        expect(inventory.map((query) => query.cursor ?? null)).toEqual(
+          Array.from({ length: count === 1 ? 0 : Math.ceil(count / 100) }, (_, index) =>
             index === 0 ? null : "offset-" + index * 100,
           ),
         )
-        for (const query of f.queries) {
+        for (const query of inventory) {
           expect(query.fields).toEqual(fields)
           expect(property(query.body).page_size).toBe(100)
           expect(property(query.body).filter).toBeUndefined()
           expect(query.responseBytes).toBeGreaterThan(0)
           for (const row of query.response.results)
-            expect(Object.keys(property(property(row).properties)).sort()).toEqual(
-              [...fields].sort(),
-            )
+            expect(
+              Object.values(property(property(row).properties))
+                .map((field) => property(field).id)
+                .sort(),
+            ).toEqual([...fields].sort())
         }
         const entries = result.native_references?.entries ?? []
         expect(entries.find((entry) => entry.page_id === skillPage)?.id).toBe(owner)
         if (count > 1)
           expect(entries.find((entry) => entry.page_id === f.externalPage)).toMatchObject({
-            id: "shared_skill:library-snapshot:other-" + (count - 1),
+            id: `skill://other-${count - 1}?library=00000000-0000-4000-8000-000000000002`,
             name: "Other " + (count - 1),
             availability: "available",
           })
         expect(result.native_references?.unresolved).toEqual([])
         expect(privateKeys(result)).toEqual([])
-        if (process.env.NTN_SKILLS_SC11_EVIDENCE === "1")
-          console.log(
-            "SC11_METADATA_COST " +
-              JSON.stringify({
-                count,
-                measurement: "controlled decoded JSON bytes",
-                wire_bytes: null,
-                request_count: f.queries.length,
-                pages: f.queries.map((query) => ({
-                  fields: query.fields,
-                  cursor: query.cursor ?? null,
-                  rows: query.response.results.length,
-                  responseBytes: query.responseBytes,
-                })),
-                total_response_bytes: f.queries.reduce(
-                  (sum, query) => sum + query.responseBytes,
-                  0,
-                ),
-                selected_page_gets: rootGets(f).length,
-                body_reads: bodies(f).length,
-              }),
-          )
       },
     )
 
   test("disabled external Skills remain in the complete observation without target body reads", async () => {
     const f = fixture()
-    property(f.rows[1]!.properties).enabled = { id: "enabled", type: "checkbox", checkbox: false }
+    property(f.rows[1]!.properties)["Enabled"] = {
+      id: "enabled",
+      type: "checkbox",
+      checkbox: false,
+    }
     const result = await f.run(readSkill(rootRef, options))
     expect(
       result.native_references?.entries.find((entry) => entry.page_id === f.externalPage),
     ).toMatchObject({
-      id: "shared_skill:library-snapshot:other-1",
+      id: "skill://other-1?library=00000000-0000-4000-8000-000000000002",
       availability: "disabled",
     })
     expect(result.native_references?.unresolved).toEqual([])
-    expect(f.queries).toHaveLength(1)
+    expect(f.queries).toHaveLength(2)
     expect(bodies(f)).toEqual(["/v1/pages/" + skillPage + "/markdown"])
+    expect([...f.base.json.keys()].filter((key) => key.startsWith("cache/catalogs/"))).toEqual([])
+    const complete = await f.run(catalog({ ...options, refresh: true }))
+    expect(complete.records).toEqual([expect.objectContaining({ id: owner })])
     const cached = [...f.base.json.entries()].find(([key]) =>
       key.startsWith("cache/catalogs/"),
     )?.[1]
@@ -393,27 +509,28 @@ describe("scalar current metadata consumption", () => {
     expect(result.native_references?.unresolved).toEqual([
       expect.objectContaining({ page_id: unknown, availability: "unmanaged_or_unavailable" }),
     ])
-    expect(f.queries).toHaveLength(1)
+    expect(f.queries).toHaveLength(2)
     expect(f.requests.some((request) => request.path.includes(unknown))).toBe(false)
   })
 
   test("an empty intermediate page is exhausted before the referenced final-page target is resolved", async () => {
     const f = fixture()
-    f.controls.reply = ({ cursor, projected }) =>
-      cursor === undefined
-        ? { object: "list", results: [projected[0]], has_more: true, next_cursor: "offset-100" }
-        : cursor === "offset-100"
-          ? { object: "list", results: [], has_more: true, next_cursor: "offset-200" }
-          : { object: "list", results: [projected[1]], has_more: false, next_cursor: null }
+    f.controls.reply = ({ filtered, cursor, projected, response }) =>
+      filtered
+        ? response
+        : cursor === undefined
+          ? { object: "list", results: [projected[0]], has_more: true, next_cursor: "offset-100" }
+          : cursor === "offset-100"
+            ? { object: "list", results: [], has_more: true, next_cursor: "offset-200" }
+            : { object: "list", results: [projected[1]], has_more: false, next_cursor: null }
     const result = await f.run(readSkill(rootRef, options))
     expect(
       result.native_references?.entries.some((entry) => entry.page_id === f.externalPage),
     ).toBe(true)
-    expect(f.queries.map((query) => query.cursor ?? null)).toEqual([
-      null,
-      "offset-100",
-      "offset-200",
-    ])
+    expect(f.queries.filter((query) => query.filtered)).toHaveLength(1)
+    expect(
+      f.queries.filter((query) => !query.filtered).map((query) => query.cursor ?? null),
+    ).toEqual([null, "offset-100", "offset-200"])
   })
 
   test("reexecuting a refresh effect observes changed target metadata and authorization independently", async () => {
@@ -421,7 +538,7 @@ describe("scalar current metadata consumption", () => {
     const read = readSkill(rootRef, { ...options, refresh: true })
     const first = await f.run(read)
     const before = f.queries.length
-    property(f.rows[1]!.properties).description = rich("description", "New target metadata")
+    property(f.rows[1]!.properties)["Description"] = rich("description", "New target metadata")
     f.controls.credential = "another-scalar-credential"
     const second = await f.run(read)
     expect(second.scope).not.toBe(first.scope)
@@ -429,8 +546,8 @@ describe("scalar current metadata consumption", () => {
       second.native_references?.entries.find((entry) => entry.page_id === f.externalPage)
         ?.description,
     ).toBe("New target metadata")
-    expect(f.queries.length - before).toBe(1)
-    expect(rootGets(f)).toHaveLength(2)
+    expect(f.queries.length - before).toBe(2)
+    expect(rootGets(f)).toHaveLength(4)
   })
 
   test("a later same-scope refresh does not treat the previous invocation's observation as current", async () => {
@@ -438,25 +555,32 @@ describe("scalar current metadata consumption", () => {
     const read = readSkill(rootRef, { ...options, refresh: true })
     const first = await f.run(read)
     const before = f.queries.length
-    property(f.rows[1]!.properties).enabled = { id: "enabled", type: "checkbox", checkbox: false }
+    property(f.rows[1]!.properties)["Enabled"] = {
+      id: "enabled",
+      type: "checkbox",
+      checkbox: false,
+    }
     const second = await f.run(read)
     expect(second.scope).toBe(first.scope)
     expect(
       second.native_references?.entries.find((entry) => entry.page_id === f.externalPage)
         ?.availability,
     ).toBe("disabled")
-    expect(f.queries.length - before).toBe(1)
+    expect(f.queries.length - before).toBe(2)
   })
 
   test("the full current root GET owns self-link metadata after catalog Name and Description change", async () => {
     const f = fixture()
     f.controls.beforeSelectedGet = () => {
-      property(f.base.main.properties).title = {
+      property(f.base.main.properties)["Name"] = {
         id: "title",
         type: "title",
         title: [{ plain_text: "Fresh root name" }],
       }
-      property(f.base.main.properties).description = rich("description", "Fresh root description")
+      property(f.base.main.properties)["Description"] = rich(
+        "description",
+        "Fresh root description",
+      )
     }
     const result = await f.run(readSkill(rootRef, options))
     expect(result.record.name).toBe("Fresh root name")
@@ -471,33 +595,35 @@ describe("scalar current metadata consumption", () => {
     expect(
       result.native_references?.entries.some((entry) => entry.page_id === f.externalPage),
     ).toBe(true)
-    expect(rootGets(f)).toHaveLength(1)
+    expect(rootGets(f)).toHaveLength(2)
   })
 
   test("a logical Skill ID changing between catalog resolution and the full root GET is rejected before bodies", async () => {
     const f = fixture()
     f.controls.beforeSelectedGet = () => {
-      property(f.base.main.properties).skill_id = rich("skill_id", "replacement-identity")
+      property(f.base.main.properties)["Skill ID"] = rich("skill-id", "replacement-identity")
     }
     const result = await f.run(readSkill(rootRef, options).pipe(Effect.result))
     expect(result._tag).toBe("Failure")
     expect(bodies(f)).toEqual([])
-    expect(f.base.writeCount()).toBe(0)
+    expect(f.base.semanticWrites().length).toBe(0)
   })
 
   test("an exact page selector still reads that page's current logical identity", async () => {
     const f = fixture()
     f.controls.beforeSelectedGet = () => {
-      property(f.base.main.properties).skill_id = rich("skill_id", "replacement-identity")
+      property(f.base.main.properties)["Skill ID"] = rich("skill-id", "replacement-identity")
     }
     const result = await f.run(readSkill(skillPage, options))
-    expect(result.record.id).toBe("shared_skill:library-snapshot:replacement-identity")
-    expect(rootGets(f)).toHaveLength(1)
+    expect(result.record.id).toBe(
+      "skill://replacement-identity?library=00000000-0000-4000-8000-000000000002",
+    )
+    expect(rootGets(f)).toHaveLength(2)
   })
 
   test("the current root remains an identity claimant when a native inventory omits its row", async () => {
     const f = fixture()
-    property(f.rows[1]!.properties).skill_id = rich("skill_id", "stable-skill")
+    property(f.rows[1]!.properties)["Skill ID"] = rich("skill-id", "demo")
     f.controls.reply = ({ response }) => ({
       ...response,
       results: response.results.filter((row) => property(row).id !== skillPage),
@@ -544,7 +670,7 @@ describe("scalar current metadata consumption", () => {
       const result = await f.run(readSkill(rootRef, options).pipe(Effect.result))
       expect(result._tag).toBe("Failure")
       expect(bodies(f)).toEqual([])
-      expect(f.base.writeCount()).toBe(0)
+      expect(f.base.semanticWrites().length).toBe(0)
     })
 
   for (const fault of ["foreign-parent", "repeated-page", "disabled-identity-claim"] as const)
@@ -558,14 +684,16 @@ describe("scalar current metadata consumption", () => {
         else {
           const duplicate = structuredClone(f.rows[1]!)
           duplicate.id = id(8000)
-          property(duplicate.properties).enabled = {
+          property(duplicate.properties)["Enabled"] = {
             id: "enabled",
             type: "checkbox",
             checkbox: false,
           }
           f.rows.push(duplicate)
         }
-        const result = await f.run(readSkill(rootRef, options).pipe(Effect.result))
+        // Explicit catalog admission retains its complete-library contract.
+        // Exact stable reads no longer need that discovery step merely to select a root.
+        const result = await f.run(catalog({ ...options, refresh: true }).pipe(Effect.result))
         expect(result._tag).toBe("Failure")
         if (result._tag === "Failure")
           expect(["INVALID_SHARED_SKILL", "SHARED_SKILL_ID_CONFLICT"]).toContain(
@@ -573,7 +701,21 @@ describe("scalar current metadata consumption", () => {
           )
         expect(rootGets(f)).toHaveLength(0)
         expect(bodies(f)).toEqual([])
-        expect(f.base.writeCount()).toBe(0)
+        expect(f.base.semanticWrites().length).toBe(0)
+        const current = await f.run(readSkill(rootRef, options).pipe(Effect.result))
+        expect(current._tag === "Failure" && current.failure.code).toBe(
+          fault === "foreign-parent"
+            ? "INVALID_SHARED_SKILL"
+            : fault === "repeated-page"
+              ? "SHARED_REFERENCE_INCOMPLETE"
+              : "SHARED_SKILL_ID_CONFLICT",
+        )
+        // Reading the main reveals the external link; its complete reference
+        // inventory must then fail without reading the target or publishing a pin.
+        expect(rootGets(f)).toHaveLength(1)
+        expect(bodies(f)).toEqual(["/v1/pages/" + skillPage + "/markdown"])
+        expect([...f.base.json.keys()].some((key) => key.startsWith("snapshots/"))).toBe(false)
+        expect(f.base.semanticWrites()).toEqual([])
       },
     )
 })

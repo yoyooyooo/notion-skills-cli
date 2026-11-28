@@ -2,13 +2,12 @@ import { Clock, Effect, Option, Stdio, Stream } from "effect"
 import { Argument, Command } from "effect/cli"
 import { consume } from "../../core/src/consumer.ts"
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
-import { fail, SkillsError } from "../../core/src/model.ts"
-import { catalog } from "../../core/src/catalog.ts"
-import { isCurrentNameTarget, resolveCatalogReference } from "../../core/src/catalog-reference.ts"
-import { parseTarget } from "../../core/src/ref.ts"
+import { fail, property, SkillsError } from "../../core/src/model.ts"
+import { bindEntryTarget } from "../../core/src/catalog.ts"
+import { fileRef, parseTarget } from "../../core/src/ref.ts"
 import { Notion } from "../../core/src/notion.ts"
 import {
-  databaseFlag,
+  libraryFlag,
   emit,
   filesConstraints,
   readPolicy,
@@ -20,9 +19,9 @@ export const useCommand = defineCommand(
   "use",
   {
     selector: Argument.String("ref").pipe(
-      Argument.withDescription("One Skill name, ID, or canonical skill:// entrypoint ref"),
+      Argument.withDescription("One stable Skill ID, physical Notion page, or skill:// reference"),
     ),
-    database: databaseFlag,
+    library: libraryFlag,
     ...readPolicyFlags,
     json: switchFlag("json", "Return complete bodies and machine evidence as structured JSON"),
     metrics: switchFlag("metrics", "Include measured HTTP attempts and bytes; requires --json"),
@@ -40,23 +39,14 @@ export const useCommand = defineCommand(
             ? error
             : fail("INVALID_ARGUMENT", "Invalid Skill reference."),
       })
-      let selected = config.selector
-      // Canonical and fixed refs are direct. Only human names need a metadata
-      // lookup, and it must establish uniqueness before loading any body.
-      if (isCurrentNameTarget(target)) {
-        const directory = yield* catalog({
-          ...policy,
-          database: Option.getOrUndefined(config.database),
-        })
-        const selection = yield* Effect.try({
-          try: () => resolveCatalogReference(config.selector, directory),
-          catch: (error) =>
-            error instanceof SkillsError
-              ? error
-              : fail("INVALID_ARGUMENT", "Invalid Skill selection."),
-        })
-        selected = selection.ref
-      }
+      const bound = yield* bindEntryTarget(target, {
+        ...policy,
+        library: Option.getOrUndefined(config.library),
+      })
+      const selected =
+        bound.kind === "skill"
+          ? fileRef(bound.selector, bound.path ?? "", bound.snapshot)
+          : config.selector
       const freshness = policy.offline
         ? { policy: "offline" as const }
         : policy.refresh
@@ -67,16 +57,21 @@ export const useCommand = defineCommand(
       const result = yield* consume(
         { version: 1, targets: [selected], purpose: "use", freshness },
         {
-          database: Option.getOrUndefined(config.database),
+          library: Option.getOrUndefined(config.library),
           metrics: config.metrics,
         },
       )
       if (result.status === "failed")
         return yield* Effect.fail(
-          fail(result.error.code, result.error.message, result.error.details),
+          fail(result.error.code, result.error.message, {
+            ...property(result.error.details),
+            effects: result.effects,
+          }),
         )
       if (result.status === "cancelled")
-        return yield* Effect.fail(fail("CANCELLED", "Skill consumption was cancelled."))
+        return yield* Effect.fail(
+          fail("CANCELLED", "Skill consumption was cancelled.", { effects: result.effects }),
+        )
       if (config.json) {
         yield* emit(
           config.metrics
@@ -89,7 +84,13 @@ export const useCommand = defineCommand(
         )
         return
       }
+      const effectsText =
+        result.effects?.remote_writes === "none"
+          ? "Effects: no remote writes."
+          : "Effects: remote write outcome unknown; do not report zero writes."
       const text =
+        effectsText +
+        "\n\n" +
         result.preparation.nodes
           .flatMap((node) => {
             if (node.state !== "prepared") return []
@@ -136,7 +137,8 @@ export const useCommand = defineCommand(
                 : []),
             ]
           })
-          .join("\n\n") + "\n"
+          .join("\n\n") +
+        "\n"
       yield* Stream.make(text).pipe(Stream.run((yield* Stdio.Stdio).stdout()))
     }),
 ).pipe(

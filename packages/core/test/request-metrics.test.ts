@@ -4,12 +4,93 @@ import {
   classifyBodyRequest,
   classifyRequest,
   createRequestMetrics,
+  requestAttribution,
   notionRequestTarget,
   RequestBudgetError,
   SHARED_ADOPTION_REQUEST_COST,
 } from "../src/request-metrics.ts"
 
 describe("request metrics", () => {
+  test("explicit producer attribution remains attached to attempts and queue waits", () => {
+    const metrics = createRequestMetrics({ traceLimit: 10 })
+    const attribution = {
+      phase: "retention" as const,
+      skill_page_id: "11111111-2222-4333-8444-555555555555",
+      operation_id: "observe-original.operation",
+    }
+    metrics.begin({
+      path: "v1/pages",
+      method: "POST",
+      ...{ attribution },
+    })({ outcome: "failure", responseBytes: 11 })
+    expect(metrics.snapshot().trace[0]).toMatchObject({ attribution })
+    metrics.wait(10, "queue", attribution)
+    expect(metrics.snapshot().trace[1]).toMatchObject({ attribution })
+    expect(requestAttribution(undefined)).toEqual({
+      phase: null,
+      skill_page_id: null,
+      operation_id: null,
+    })
+    expect(
+      requestAttribution(
+        { phase: "consume", skill_page_id: "private name", operation_id: "observe-secret" },
+        "secret",
+      ),
+    ).toEqual({ phase: "consume", skill_page_id: null, operation_id: null })
+  })
+
+  test("Git acquisition costs remain separate from HTTP and preserve unknown wire/auth costs", () => {
+    let time = 10
+    const metrics = createRequestMetrics({ now: () => time, traceLimit: 2 })
+    expect(metrics.snapshot()).not.toHaveProperty("source_acquisitions")
+    const finish = metrics.beginSourceAcquisition({ provider: "git", configured_transport: "ssh" })
+    expect(metrics.snapshot().source_acquisitions?.in_flight).toBe(1)
+    metrics.begin({ path: "/metadata", provider: "other", method: "GET", requestBytes: 0 })({
+      responseBytes: 12,
+    })
+    time = 30
+    const result = {
+      outcome: "success" as const,
+      fetchMilliseconds: 12,
+      repositoryObjectBytes: 91,
+      catFileBytes: 120,
+      observationMilliseconds: 2,
+    }
+    finish(result)
+    finish(result)
+    time = 40
+    metrics.beginSourceAcquisition({ provider: "skills.sh", configured_transport: "https" })({
+      outcome: "failure",
+      fetchMilliseconds: 0,
+      catFileBytes: 0,
+      observationMilliseconds: 0,
+    })
+    const snapshot = metrics.snapshot()
+    expect(snapshot).toMatchObject({ total_requests: 1, response_bytes: 12, in_flight: 0 })
+    expect(snapshot.source_acquisitions).toMatchObject({
+      attempts: 2,
+      providers: { git: 1, "skills.sh": 1 },
+      outcomes: { success: 1, failure: 1, cancelled: 0 },
+      in_flight: 0,
+      duration_ms: 20,
+      fetch_ms: 12,
+      observation_ms: 2,
+      repository_object_bytes: 91,
+      unknown_repository_object_bytes: 1,
+      cat_file_bytes: 120,
+      wire_bytes: null,
+      auth_wait_ms: null,
+      trace_dropped: 1,
+    })
+    expect(snapshot.trace.length + (snapshot.source_acquisitions?.trace.length ?? 0)).toBe(2)
+    expect(snapshot.source_acquisitions?.trace[0]).toMatchObject({
+      provider: "git",
+      configured_transport: "ssh",
+      wire_bytes: null,
+      auth_wait_ms: null,
+    })
+  })
+
   test("safe targets normalize only Notion UUID routes and bounded exact Entity filters", () => {
     const id = "11111111-2222-4333-8444-555555555555"
     expect(

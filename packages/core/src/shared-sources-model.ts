@@ -40,18 +40,11 @@ export const SourceDefinitionInputSchema = Schema.Struct({
     exclude: Schema.Array(Schema.String),
     mapping: Schema.Record(Schema.String, Schema.String),
   }),
-  /** Provider-independent options, including retained explicit transformations.
-   * Unknown executable options are refused by the adapter, never ignored. */
+  /** Only implemented discovery options are admitted; no scheduling or storage policy. */
   options: Schema.Record(Schema.String, Schema.Unknown),
 })
 export type SourceDefinitionInput = typeof SourceDefinitionInputSchema.Type
 export type SourceAdapter = typeof SourceAdapterSchema.Type
-export type SourceDefinition = SourceDefinitionInput & {
-  readonly page_id: string
-  readonly fingerprint: string
-  readonly status: string
-  readonly last_revision: string
-}
 
 export const sourceDefinitionProperties = {
   Name: { title: {} },
@@ -64,18 +57,19 @@ export const sourceDefinitionProperties = {
   Ref: { rich_text: {} },
   Selection: { rich_text: {} },
   Options: { rich_text: {} },
+  Content: { rich_text: {} },
+  Contributions: { rich_text: {} },
+  Operation: { rich_text: {} },
   Enabled: { checkbox: {} },
   Policy: { select: { options: ["manual", "pinned"].map((name) => ({ name })) } },
   Status: {
     select: {
-      options: ["ready", "checking", "checked", "applied", "blocked", "failed"].map((name) => ({
+      options: ["ready", "applying", "attention"].map((name) => ({
         name,
       })),
     },
   },
-  "Last Checked": { date: {} },
   "Last Revision": { rich_text: {} },
-  "Last Result": { rich_text: {} },
 } as const
 
 export function sourceDefinitionLayout(skills: string, records: string) {

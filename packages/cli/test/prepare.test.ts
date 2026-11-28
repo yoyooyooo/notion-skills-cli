@@ -43,7 +43,7 @@ beforeAll(async () => {
   ])
   if (exit !== 0) throw new Error(`Fresh CLI build failed: ${out}\n${err}`)
   if (evidence !== undefined) await mkdir(evidence, { recursive: true })
-})
+}, 120_000)
 afterAll(async () => {
   http.close()
   if (evidence === undefined && process.platform === "darwin")
@@ -53,7 +53,7 @@ afterAll(async () => {
 async function fixture(options: { main?: string } = {}) {
   const root = await mkdtemp(join(evidence ?? tmpdir(), "ntn-prepare-consumer-"))
   temporary.push(root)
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     NOTION_API_TOKEN: token,
     NOTION_WORKSPACE_ID: "",
@@ -66,12 +66,14 @@ async function fixture(options: { main?: string } = {}) {
     XDG_CONFIG_HOME: join(root, "xdg-config"),
     XDG_CACHE_HOME: join(root, "xdg-cache"),
   }
+  // Exercise this freshly built Node artifact even when the caller uses a daily source shim.
+  delete env.NTN_SKILLS_DEV_ROOT
   const instruction = (name: string) =>
     name === "a" && options.main !== undefined
       ? options.main
       : `# ${name}\nExact prepared instruction ${name}.\n`
   const snapshots: Snapshot[] = ["a", "b", "optional", "broken"].map((name, index) => {
-    const id = `shared_skill:prepare-library:${name}`
+    const id = `skill://${name}?library=bca052c3-72f0-5d5c-a168-ba971a4b33ba`
     const body = instruction(name)
     const version = hash(body)
     return {
@@ -91,7 +93,7 @@ async function fixture(options: { main?: string } = {}) {
         ref: fileRef(id, "SKILL.md"),
         locator: {
           type: "shared_skill",
-          library_id: "prepare-library",
+          library_id: "bca052c3-72f0-5d5c-a168-ba971a4b33ba",
           skill_id: name,
           page_id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
           database_id: "00000000-0000-4000-8000-000000000010",
@@ -118,8 +120,12 @@ async function fixture(options: { main?: string } = {}) {
     ...snapshots[3]!,
     required: [
       {
-        id: "shared_skill:prepare-library:missing",
-        ref: fileRef("shared_skill:prepare-library:missing", "SKILL.md", `s_${"f".repeat(64)}`),
+        id: "skill://missing?library=bca052c3-72f0-5d5c-a168-ba971a4b33ba",
+        ref: fileRef(
+          "skill://missing?library=bca052c3-72f0-5d5c-a168-ba971a4b33ba",
+          "SKILL.md",
+          `s_${"f".repeat(64)}`,
+        ),
         metadata: { name: "missing", kind: "skill", description: "Missing controlled dependency" },
       },
     ],
@@ -186,6 +192,12 @@ test("SC25 use returns one complete root/Requires closure without loading option
   const used = await f.invoke(["use", f.ref(0), "--offline", "--json"])
   expect(used.exit).toBe(0)
   const ready = decode(ConsumeReadySchema, JSON.parse(used.stdout))
+  expect(ready.effects).toEqual({
+    version: 1,
+    remote_writes: "none",
+    author_content: "unchanged",
+  })
+  expect(ready.preparation.effects).toEqual(ready.effects)
   expect(ready.preparation.required_closure).toEqual(
     f.snapshots.slice(0, 2).map((snapshot) => snapshot.record.id),
   )
@@ -199,6 +211,7 @@ test("SC25 use returns one complete root/Requires closure without loading option
   expect(ready.activation.status).toBe("not_evaluated")
   const compact = await f.invoke(["use", f.ref(0), "--offline"])
   expect(compact.exit).toBe(0)
+  expect(compact.stdout).toStartWith("Effects: no remote writes.\n")
   expect(compact.stdout.match(/Exact prepared instruction a\./g)).toHaveLength(1)
   expect(compact.stdout.match(/Exact prepared instruction b\./g)).toHaveLength(1)
   expect(compact.stdout).not.toContain("Exact prepared instruction optional")
@@ -206,6 +219,7 @@ test("SC25 use returns one complete root/Requires closure without loading option
   const missing = await f.invoke(["use", f.ref(3), "--offline", "--json"])
   expect(missing.exit).toBe(1)
   expect(JSON.parse(missing.stdout).ok).toBe(false)
+  expect(JSON.parse(missing.stdout).error.details.effects).toEqual(ready.effects)
   for (const args of [
     ["use", f.ref(0), "--refresh", "--json"],
     ["use", f.ref(0), "--lines", "1-2", "--json"],
@@ -221,6 +235,7 @@ test("SC25 read --json preserves inspect-only behavior and rejects --raw conflic
   const f = await fixture()
   const inspected = await f.invoke(["read", f.ref(3), "--offline", "--json"])
   expect(inspected.exit).toBe(0)
+  expect(JSON.parse(inspected.stdout).effects.remote_writes).toBe("none")
   expect(JSON.parse(inspected.stdout).content).toBe(
     "# broken\nExact prepared instruction broken.\n",
   )
@@ -245,12 +260,14 @@ test("prepare help/schema are offline and expose actual parser defaults and boun
   expect(help.exit).toBe(0)
   expect(help.stdout).toContain("--session-bindings")
   expect(help.stdout).toContain("--max-context-bytes")
+  expect(help.stdout).not.toContain("--read-only")
   const schema = await f.invoke(["schema", "ctl", "prepare"])
   expect(schema.exit).toBe(0)
   const parameters: Array<{ name: string; min_occurrences: number; default?: unknown }> =
     JSON.parse(schema.stdout).schema.parameters
   expect(parameters.find((parameter) => parameter.name === "root")?.min_occurrences).toBe(1)
   expect(parameters.find((parameter) => parameter.name === "purpose")?.default).toBe("use")
+  expect(parameters.some((parameter) => parameter.name === "read-only")).toBe(false)
   for (const args of [
     ["ctl", "prepare"],
     ["ctl", "prepare", f.ref(0), "--purpose", "unknown"],
@@ -263,12 +280,39 @@ test("prepare help/schema are offline and expose actual parser defaults and boun
   }
 })
 
+test("retired consumer flags and the root prepare alias are rejected without HTTP", async () => {
+  const f = await fixture()
+  for (const args of [
+    ["use", f.ref(0), "--offline", "--read-only", "--json"],
+    ["read", f.ref(0), "--offline", "--read-only", "--json"],
+    ["ctl", "prepare", f.ref(0), "--offline", "--read-only"],
+    ["prepare", f.ref(0), "--offline"],
+    [
+      "export",
+      f.snapshots[0]!.snapshot_id,
+      "--projection",
+      "snapshot",
+      "--format",
+      "directory",
+      "--output",
+      join(f.root, "retired-projection-export"),
+    ],
+  ]) {
+    const invalid = await f.invoke(args)
+    expect(invalid.exit).toBe(2)
+    const output = JSON.parse(invalid.stdout)
+    expect(output.ok).toBe(false)
+    expect(output.error.code).toBe("INVALID_ARGUMENT")
+  }
+})
+
 test("Node packaged CLI consumes exact SQLite pins, full use closure, inspect boundary and stable session bindings", async () => {
   const f = await fixture()
   const used = await f.invoke(["ctl", "prepare", f.ref(0), "--offline"])
   expect(used.exit).toBe(0)
   const ready = decode(PrepareReadySchema, JSON.parse(used.stdout))
   expect(ready.status).toBe("ready")
+  expect(ready.effects?.remote_writes).toBe("none")
   expect(ready.required_closure).toEqual(
     f.snapshots.slice(0, 2).map((snapshot) => snapshot.record.id),
   )
@@ -277,9 +321,9 @@ test("Node packaged CLI consumes exact SQLite pins, full use closure, inspect bo
   ).toEqual(["# a\nExact prepared instruction a.\n", "# b\nExact prepared instruction b.\n"])
   expect(ready.nodes.find((node) => node.id === f.snapshots[2]!.record.id)?.state).toBe("known")
   expect(ready.usage.context_bytes).toBe(Buffer.byteLength(used.stdout.trimEnd()))
-  const historical = await f.invoke(["prepare", f.ref(0), "--offline"])
-  expect(historical.exit).toBe(0)
-  expect(decode(PrepareReadySchema, JSON.parse(historical.stdout)).graph_lock).toEqual(
+  const repeated = await f.invoke(["ctl", "prepare", f.ref(0), "--offline"])
+  expect(repeated.exit).toBe(0)
+  expect(decode(PrepareReadySchema, JSON.parse(repeated.stdout)).graph_lock).toEqual(
     ready.graph_lock,
   )
   const inspected = await f.invoke([
@@ -344,8 +388,6 @@ test("public prepare, read and snapshot export preserve the same BOM and CRLF by
   const exported = await f.invoke([
     "export",
     node.binding.snapshot_id,
-    "--projection",
-    "snapshot",
     "--format",
     "directory",
     "--output",

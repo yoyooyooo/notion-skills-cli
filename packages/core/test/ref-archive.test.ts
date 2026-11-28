@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { readArchive } from "../src/archive.ts"
 import { normalizePath, pageId, parseRef, resolveRef } from "../src/ref.ts"
-import { aliasFor, resolveRecord, type Catalog } from "../src/model.ts"
-import { mainContent, skillBundle, tarGzip } from "./fixtures.ts"
+import { aliasFor } from "../src/model.ts"
 
 const id = "12345678-1234-1234-1234-123456789abc"
 const snapshot = "s_" + "a".repeat(64)
@@ -17,15 +15,16 @@ function failureOf(operation: () => unknown): unknown {
 }
 
 describe("protocol references", () => {
-  test("round trips names and paths and keeps snapshot across nested relative links", () => {
-    const ref = `skill://Resource%20Governance/references/deep/guide.md?snapshot=${snapshot}`
-    expect(parseRef(ref)).toEqual({
-      selector: "Resource Governance",
+  test("round trips stable identities and paths and keeps snapshots across nested relative links", () => {
+    const ref = `skill://resource-governance/references/deep/guide.md?library=0602093b-7ffd-5687-9f6a-8a78fa5cd2ba&snapshot=${snapshot}`
+    expect(parseRef(ref)).toMatchObject({
+      skillId: "resource-governance",
+      scope: { kind: "library", libraryId: "0602093b-7ffd-5687-9f6a-8a78fa5cd2ba" },
       path: "references/deep/guide.md",
-      snapshot,
+      selection: { kind: "fixed", snapshotId: snapshot },
     })
     expect(resolveRef(ref, "../../assets/词表.md")).toBe(
-      `skill://Resource%20Governance/assets/%E8%AF%8D%E8%A1%A8.md?snapshot=${snapshot}`,
+      `skill://resource-governance/assets/%E8%AF%8D%E8%A1%A8.md?library=0602093b-7ffd-5687-9f6a-8a78fa5cd2ba&snapshot=${snapshot}`,
     )
     expect(pageId(`https://app.notion.com/p/title-${id.replaceAll("-", "")}?v=x`)).toBe(id)
     expect(pageId(`https://www.notion.so/${id.replaceAll("-", "")}`)).toBe(id)
@@ -75,116 +74,5 @@ describe("skill identity", () => {
         details: { name },
       })
     }
-  })
-  const skill = {
-    id: `notion_page:${id}`,
-    kind: "skill" as const,
-    entrypoint: "SKILL.md",
-    locator: { type: "notion_page" as const, page_id: id, database_id: "db", data_source_id: "ds" },
-    name: "Sample Skill",
-    alias: "sample-skill",
-    description: "Use samples",
-    default_context: false,
-    ref: `skill://${id}/SKILL.md`,
-  }
-  const directory: Catalog = {
-    scope: "scope",
-    fetched_at: 0,
-    databases: [],
-    records: [skill],
-    coverage: {
-      method: "search",
-      exhaustive: false,
-      queried_data_sources: ["ds"],
-      failed_sources: [],
-      search_index_limited: true,
-    },
-  }
-  test("resolves exact name and alias but does not silently choose on collisions", () => {
-    expect(resolveRecord("Sample Skill", directory).id).toBe(`notion_page:${id}`)
-    expect(resolveRecord("sample-skill", directory).id).toBe(`notion_page:${id}`)
-    expect(failureOf(() => resolveRecord("missing", directory))).toMatchObject({
-      code: "SKILL_NOT_FOUND",
-      details: { selector: "missing", candidates: [], coverage: directory.coverage },
-    })
-    const other = { ...skill, id: "other", name: "sample skill" }
-    expect(
-      failureOf(() => resolveRecord("sample-skill", { ...directory, records: [skill, other] })),
-    ).toMatchObject({
-      code: "SKILL_AMBIGUOUS",
-      details: { selector: "sample-skill", candidates: [skill, other] },
-    })
-  })
-  test("incomplete discovery cannot claim a unique match", () => {
-    const coverage = {
-      ...directory.coverage,
-      failed_sources: [
-        {
-          id: "failed",
-          code: "ACCESS_DENIED",
-          database_id: "db",
-          alias: "ops",
-          title: "Operations Skills",
-          data_source_id: "failed",
-        },
-      ],
-    }
-    expect(
-      failureOf(() => resolveRecord("Sample Skill", { ...directory, coverage })),
-    ).toMatchObject({ code: "CATALOG_INCOMPLETE", details: coverage })
-  })
-})
-
-describe("archive import", () => {
-  test("preserves nested files and UTF-8 BOM bytes", () => {
-    const archive = readArchive(skillBundle)
-    expect(archive.name).toBe("sample-skill")
-    expect(archive.files.map((f) => f.path)).toEqual([
-      "assets/data.bin",
-      "references/guide.md",
-      "SKILL.md",
-    ])
-    expect(
-      new TextDecoder().decode(archive.files.find((f) => f.path === "references/guide.md")!.data),
-    ).toBe("第一行\n第二行\n第三行")
-  })
-  test("preserves authored names with exact native directories or their invocation aliases", () => {
-    for (const name of ["Tty7", "n8n-workflow", "React19", "中文", "Agent Workflow"]) {
-      const content = `---\nname: ${JSON.stringify(name)}\ndescription: Use this workflow\n---\n\nContent\n`
-      for (const root of [name, aliasFor(name)]) {
-        const archive = readArchive(tarGzip([{ name: `${root}/SKILL.md`, content }]))
-        expect(archive.name).toBe(name)
-        expect(new TextDecoder().decode(archive.files[0]!.data)).toBe(content)
-      }
-      expect(() => readArchive(tarGzip([{ name: "different-name/SKILL.md", content }]))).toThrow(
-        expect.objectContaining({ code: "INVALID_SKILL" }),
-      )
-    }
-  })
-  test("rejects empty and control characters in native frontmatter names", () => {
-    for (const name of ["", "  ", "Agent\tSkill", "Agent\u200bSkill"]) {
-      expect(() =>
-        readArchive(
-          tarGzip([
-            {
-              name: "sample-skill/SKILL.md",
-              content: `---\nname: ${JSON.stringify(name)}\ndescription: Use this workflow\n---\nBody`,
-            },
-          ]),
-        ),
-      ).toThrow(expect.objectContaining({ code: "INVALID_SKILL_NAME" }))
-    }
-  })
-  test("rejects links, traversal, duplicate files and invalid entrypoint names", () => {
-    for (const extra of [
-      { name: "sample-skill/link", content: "", type: "2" },
-      { name: "sample-skill/../../secret", content: "private" },
-      { name: "sample-skill/SKILL.md", content: mainContent },
-    ]) {
-      expect(() =>
-        readArchive(tarGzip([{ name: "sample-skill/SKILL.md", content: mainContent }, extra])),
-      ).toThrow()
-    }
-    expect(() => readArchive(tarGzip([{ name: "wrong/SKILL.md", content: mainContent }]))).toThrow()
   })
 })

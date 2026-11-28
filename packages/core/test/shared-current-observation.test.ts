@@ -8,11 +8,19 @@ import {
 } from "../src/cache.ts"
 import { decode, property, SnapshotSchema, type Snapshot } from "../src/model.ts"
 import { parseTarget } from "../src/ref.ts"
+import { loadSnapshot } from "../src/fixed-snapshot-files.ts"
 import { targetSnapshot } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
-import { digest, encode, sharedSnapshotFixture, skillPage } from "./shared-snapshot-fixture.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
+import {
+  currentDigest as digest,
+  currentBytes as encode,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+  currentId,
+} from "./shared-current-fixture.ts"
 
-type Fixture = ReturnType<typeof sharedSnapshotFixture>
+type Fixture = ReturnType<typeof currentSnapshotFixture>
 const proofPrefix = "cache/shared-current-tree-validation/"
 const proofKeys = (f: Fixture) => [...f.json.keys()].filter((key) => key.startsWith(proofPrefix))
 const latestEntries = (f: Fixture) =>
@@ -23,15 +31,12 @@ const latestEntries = (f: Fixture) =>
 function trackedObservation(
   f: Fixture,
   snapshot: Snapshot,
-  access: "manifest" | "metadata" | "all" = "manifest",
+  access: "manifest" | "metadata" = "manifest",
 ) {
   const reads: string[] = []
   const effect = Effect.gen(function* () {
     const store = yield* Store
-    const observed =
-      access === "all"
-        ? cachedRemoteObservation(skillPage, snapshot.scope)
-        : cachedRemoteObservation(skillPage, snapshot.scope, { access })
+    const observed = cachedRemoteObservation(skillPage, snapshot.scope, { access })
     return yield* observed.pipe(
       Effect.provideService(Store, {
         ...store,
@@ -58,31 +63,38 @@ function withBrokenReference(f: Fixture, snapshot: Snapshot) {
   return decode(SnapshotSchema, {
     ...snapshot,
     files,
+    file_bindings: [
+      ...(snapshot.file_bindings ?? []),
+      { file_id: "unresolved-link", page_id: currentId(800), path: "mounted/README.md" },
+    ],
     version_id: version,
-    snapshot_id: `s_${digest(JSON.stringify([snapshot.scope, snapshot.record.id, version]))}`,
+    snapshot_id: `s_${digest(selectionSnapshotIdentityInput({ ...snapshot, version_id: version }))}`,
   })
 }
 
 describe("shared current complete-tree validation receipts", () => {
-  test("current preference projection reuses the stored manifest proof without unselected reads", async () => {
-    const f = sharedSnapshotFixture()
+  test("a current metadata selection reuses its own stored manifest proof without unselected reads", async () => {
+    const f = currentSnapshotFixture()
     const first = await f.open()
+    f.main.properties["Default Context"].checkbox = !first.record.default_context
+    const selected = await f.open()
+    expect(selected.snapshot_id).not.toBe(first.snapshot_id)
+    expect(selected.version_id).toBe(first.version_id)
     const unselected = first.files.find((file) => file.path !== first.entrypoint)!
     f.objects.delete(`objects/${unselected.sha256}`)
-    for (const entry of latestEntries(f)) entry.default_context = !first.record.default_context
     const observations = structuredClone(latestEntries(f))
     const proofs = proofKeys(f).map((key) => structuredClone(f.json.get(key)))
     f.clearCalls()
     const candidate = trackedObservation(f, first, "metadata")
     const observed = await candidate.run()
-    expect(observed?.stored_snapshot?.record.default_context).toBe(first.record.default_context)
+    expect(observed?.stored_snapshot?.record.default_context).toBe(selected.record.default_context)
     expect(observed?.snapshot.record.default_context).toBe(!first.record.default_context)
     expect(candidate.reads).toEqual([])
     const reads: string[] = []
     const current = await f.run(
       Effect.gen(function* () {
         const store = yield* Store
-        return yield* targetSnapshot(parseTarget(skillPage), {}, "generated", "entrypoint").pipe(
+        return yield* targetSnapshot(parseTarget(skillPage), {}, "entrypoint").pipe(
           Effect.provideService(Store, {
             ...store,
             readBytes: (key) =>
@@ -97,19 +109,25 @@ describe("shared current complete-tree validation receipts", () => {
     const main = first.files.find((file) => file.path === first.entrypoint)!
     expect(reads).toEqual([`objects/${main.sha256}`])
     expect(current.record.default_context).toBe(!first.record.default_context)
-    expect(current.snapshot_id).toBe(first.snapshot_id)
+    expect(current.snapshot_id).toBe(selected.snapshot_id)
+    expect(
+      property(property(f.json.get(`snapshots/${first.snapshot_id}.json`)).record).default_context,
+    ).toBe(first.record.default_context)
     expect(latestEntries(f)).toEqual(observations)
     expect(proofKeys(f).map((key) => f.json.get(key))).toEqual(proofs)
     expect(f.calls).toEqual([])
   })
 
   test("metadata candidate lookup leaves reference proof to the eligible-current gate", async () => {
-    const f = sharedSnapshotFixture()
+    const f = currentSnapshotFixture()
     const first = await f.open()
     for (const key of proofKeys(f)) f.json.delete(key)
     const unchecked = withBrokenReference(f, first)
     f.json.set(`snapshots/${unchecked.snapshot_id}.json`, unchecked)
-    for (const entry of latestEntries(f)) entry.snapshot_id = unchecked.snapshot_id
+    for (const entry of latestEntries(f)) {
+      entry.snapshot_id = unchecked.snapshot_id
+      entry.current_snapshot = unchecked
+    }
     const observations = structuredClone(latestEntries(f))
     f.clearCalls()
     const candidate = trackedObservation(f, unchecked, "metadata")
@@ -125,41 +143,44 @@ describe("shared current complete-tree validation receipts", () => {
     expect(proofKeys(f)).toEqual([])
   })
 
-  test("a published proof makes manifest reads independent of unselected local objects", async () => {
-    const f = sharedSnapshotFixture()
-    const first = await f.open()
-    expect(proofKeys(f)).toHaveLength(1)
-    const proofs = proofKeys(f).map((key) => structuredClone(f.json.get(key)))
-    const observations = structuredClone(latestEntries(f))
-    const unselected = first.files.filter((file) => file.path !== first.entrypoint)
-    expect(unselected.length).toBeGreaterThanOrEqual(2)
-    const missingBytes = f.objects.get(`objects/${unselected[0]!.sha256}`)!
-    f.objects.delete(`objects/${unselected[0]!.sha256}`)
-    f.objects.set(`objects/${unselected[1]!.sha256}`, encode("corrupt unselected bytes"))
-    f.clearCalls()
+  for (const fileCount of [3, 101])
+    test(`N=${fileCount}: a published proof makes manifest reads independent of unselected local objects`, async () => {
+      const f = currentSnapshotFixture({ fileCount: fileCount - 1 })
+      const first = await f.open()
+      expect(first.files).toHaveLength(fileCount)
+      expect(proofKeys(f)).toHaveLength(1)
+      const proofs = proofKeys(f).map((key) => structuredClone(f.json.get(key)))
+      const observations = structuredClone(latestEntries(f))
+      const unselected = first.files.filter((file) => file.path !== first.entrypoint)
+      expect(unselected.length).toBeGreaterThanOrEqual(2)
+      const missingBytes = f.objects.get(`objects/${unselected[0]!.sha256}`)!
+      f.objects.delete(`objects/${unselected[0]!.sha256}`)
+      f.objects.set(`objects/${unselected[1]!.sha256}`, encode("corrupt unselected bytes"))
+      f.clearCalls()
 
-    const read = trackedObservation(f, first)
-    const observed = await read.run()
-    expect(observed?.snapshot.files).toEqual(first.files)
-    expect(read.reads).toEqual([])
-    expect(observations[0]?.validated_at).toBe(observed?.validated_at)
-    expect(observations[0]?.shared_body_valid_until).toBe(observed?.shared_body_valid_until)
-    expect(latestEntries(f)).toEqual(observations)
-    expect(proofKeys(f).map((key) => f.json.get(key))).toEqual(proofs)
-    expect(f.calls).toEqual([])
+      const read = trackedObservation(f, first)
+      const observed = await read.run()
+      expect(observed?.snapshot.files).toEqual(first.files)
+      expect(read.reads).toEqual([])
+      expect(observations[0]?.validated_at).toBe(observed?.validated_at)
+      expect(observations[0]?.shared_body_valid_until).toBe(observed?.shared_body_valid_until)
+      expect(latestEntries(f)).toEqual(observations)
+      expect(proofKeys(f).map((key) => f.json.get(key))).toEqual(proofs)
+      expect(f.calls).toEqual([])
 
-    const full = trackedObservation(f, first, "all")
-    expect((await full.error()).code).toBe("SNAPSHOT_MISSING")
-    expect(full.reads).toContain(`objects/${unselected[0]!.sha256}`)
-    f.objects.set(`objects/${unselected[0]!.sha256}`, missingBytes)
-    const corrupt = trackedObservation(f, first, "all")
-    const error = await corrupt.error()
-    expect(error.code).toBe("STATE_CORRUPT")
-    expect(property(error.details).path).toBe(unselected[1]!.path)
-  })
+      // A cached directory is not a claim that every object is still present.
+      // The full-object reader must independently check the selected bytes.
+      const missing = await f.run(loadSnapshot(first.snapshot_id).pipe(Effect.flip))
+      expect(missing.code).toBe("SNAPSHOT_MISSING")
+      f.objects.set(`objects/${unselected[0]!.sha256}`, missingBytes)
+      const corrupt = await f.run(loadSnapshot(first.snapshot_id).pipe(Effect.flip))
+      expect(corrupt.code).toBe("STATE_CORRUPT")
+      expect(property(corrupt.details).path).toBe(unselected[1]!.path)
+      expect(f.calls).toEqual([])
+    })
 
-  test("a legacy manifest read verifies every object once and fills proof without renewing freshness", async () => {
-    const f = sharedSnapshotFixture()
+  test("a current manifest with an evicted validation receipt verifies objects without renewing freshness", async () => {
+    const f = currentSnapshotFixture()
     const first = await f.open()
     for (const key of proofKeys(f)) f.json.delete(key)
     const observations = structuredClone(latestEntries(f))
@@ -176,7 +197,7 @@ describe("shared current complete-tree validation receipts", () => {
   })
 
   test("malformed and differently bound receipts fall back to complete verification", async () => {
-    const f = sharedSnapshotFixture()
+    const f = currentSnapshotFixture()
     const first = await f.open()
     const key = proofKeys(f)[0]!
     expect(key).toBeDefined()
@@ -184,7 +205,7 @@ describe("shared current complete-tree validation receipts", () => {
     for (const [field, value] of Object.entries({
       version: 0,
       scope: "foreign-scope",
-      record_identity: "shared_skill:foreign:skill",
+      record_identity: "skill://skill?library=1fed9b5e-352d-53b8-811b-d62ae58344f8",
       snapshot_id: `s_${digest("foreign-snapshot")}`,
       version_id: digest("foreign-version"),
       materialization_version: "unchecked-compiler",
@@ -199,7 +220,7 @@ describe("shared current complete-tree validation receipts", () => {
   })
 
   test("proof digest binds record, files, bindings, native references, and complete relations", async () => {
-    const f = sharedSnapshotFixture()
+    const f = currentSnapshotFixture()
     const first = await f.open()
     expect(proofKeys(f)).toHaveLength(1)
     const key = `snapshots/${first.snapshot_id}.json`
@@ -208,16 +229,12 @@ describe("shared current complete-tree validation receipts", () => {
     expect(original.file_bindings?.length).toBeGreaterThan(0)
     f.objects.delete(`objects/${first.files[0]!.sha256}`)
     const relation = { id: "foreign-member", ref: "skill://foreign/SKILL.md", metadata: {} }
+    f.json.set(key, { ...original, record: { ...original.record, description: "changed record" } })
+    const changedRecord = trackedObservation(f, first)
+    expect((await changedRecord.error()).code).toBe("STATE_CORRUPT")
+    expect(changedRecord.reads).toEqual([])
     const variants: readonly Snapshot[] = [
-      { ...original, record: { ...original.record, description: "changed record" } },
       { ...original, files: [...original.files].reverse() },
-      {
-        ...original,
-        file_bindings: original.file_bindings!.map((binding) => ({
-          ...binding,
-          path: `new/${binding.path}`,
-        })),
-      },
       {
         ...original,
         native_references: {
@@ -242,10 +259,22 @@ describe("shared current complete-tree validation receipts", () => {
       expect(read.reads.length).toBeGreaterThan(0)
       expect(proofKeys(f).map((proofKey) => f.json.get(proofKey))).toEqual(proofs)
     }
+    const wrongBindings = {
+      ...original,
+      file_bindings: original.file_bindings!.map((binding) => ({
+        ...binding,
+        path: `new/${binding.path}`,
+      })),
+    }
+    f.json.set(key, decode(SnapshotSchema, wrongBindings))
+    const invalid = trackedObservation(f, first)
+    expect((await invalid.error()).code).toBe("STATE_CORRUPT")
+    expect(invalid.reads).toEqual([])
+    expect(proofKeys(f).map((proofKey) => f.json.get(proofKey))).toEqual(proofs)
   })
 
-  test("a legacy cache cannot gain proof from missing objects or broken local references", async () => {
-    const f = sharedSnapshotFixture()
+  test("an evicted current validation receipt cannot be rebuilt from missing objects or broken local references", async () => {
+    const f = currentSnapshotFixture()
     const first = await f.open()
     for (const key of proofKeys(f)) f.json.delete(key)
     const objectKey = `objects/${first.files[0]!.sha256}`
@@ -257,7 +286,10 @@ describe("shared current complete-tree validation receipts", () => {
 
     const unchecked = withBrokenReference(f, first)
     f.json.set(`snapshots/${unchecked.snapshot_id}.json`, unchecked)
-    for (const entry of latestEntries(f)) entry.snapshot_id = unchecked.snapshot_id
+    for (const entry of latestEntries(f)) {
+      entry.snapshot_id = unchecked.snapshot_id
+      entry.current_snapshot = unchecked
+    }
     const observations = structuredClone(latestEntries(f))
     f.clearCalls()
     expect((await trackedObservation(f, unchecked).error()).code).toBe("SHARED_REFERENCE_BROKEN")
@@ -266,8 +298,41 @@ describe("shared current complete-tree validation receipts", () => {
     expect(f.calls).toEqual([])
   })
 
+  test.each(["missing", "mismatched"] as const)(
+    "publication rejects a %s immutable winner without changing current or its proof",
+    async (mode) => {
+      const f = currentSnapshotFixture()
+      const current = await f.open()
+      const key = `snapshots/${current.snapshot_id}.json`
+      const stored = decode(SnapshotSchema, f.json.get(key))
+      const observations = structuredClone(latestEntries(f))
+      const proofs = proofKeys(f).map((proofKey) => structuredClone(f.json.get(proofKey)))
+      if (mode === "missing") f.json.delete(key)
+      else
+        f.json.set(key, {
+          ...stored,
+          files: stored.files.map((file, index) =>
+            index === 0 ? { ...file, bytes: file.bytes + 1 } : file,
+          ),
+        })
+      f.clearCalls()
+      const publication = await f.run(
+        publishSnapshotObservation(current, Date.now(), 2, {
+          sharedBodyValidUntil: Date.now() + 60_000,
+        }).pipe(Effect.result),
+      )
+      expect(publication._tag).toBe("Failure")
+      if (publication._tag !== "Failure")
+        throw new Error("An unbound immutable winner was published")
+      expect(publication.failure.code).toBe("STATE_CORRUPT")
+      expect(latestEntries(f)).toEqual(observations)
+      expect(proofKeys(f).map((proofKey) => f.json.get(proofKey))).toEqual(proofs)
+      expect(f.calls).toEqual([])
+    },
+  )
+
   test("publishing cannot sign or advance current on broken references or unchecked bytes", async () => {
-    const f = sharedSnapshotFixture()
+    const f = currentSnapshotFixture()
     const first = await f.open()
     const unchecked = withBrokenReference(f, first)
     const observations = structuredClone(latestEntries(f))
@@ -291,7 +356,7 @@ describe("shared current complete-tree validation receipts", () => {
   })
 
   test("proof cannot bypass invalidation, materialization version, or full-body observation requirements", async () => {
-    const f = sharedSnapshotFixture()
+    const f = currentSnapshotFixture()
     const first = await f.open()
     const latest = latestEntries(f)[0]!
     const original = structuredClone(latest)
@@ -306,7 +371,7 @@ describe("shared current complete-tree validation receipts", () => {
   })
 
   test("targeted clear leaves no current observation and clear all also retires content proofs", async () => {
-    const f = sharedSnapshotFixture()
+    const f = currentSnapshotFixture()
     const first = await f.open()
     expect(proofKeys(f)).toHaveLength(1)
     const clear = (target?: string) =>

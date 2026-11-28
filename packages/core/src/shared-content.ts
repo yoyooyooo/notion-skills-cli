@@ -5,13 +5,15 @@ import {
   entrypointFor,
   fail,
   property,
+  SkillsError,
   text,
   validateDescription,
   type ContentRecord,
   type SharedSkillRecord,
   type Source,
 } from "./model.ts"
-import { pageId } from "./ref.ts"
+import { fileRef, pageId } from "./ref.ts"
+import { formatSkillIdentity, SkillReferenceError } from "./skill-ref.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 
 function invalid(message: string, details?: unknown) {
@@ -30,13 +32,18 @@ function exactPage(value: unknown, label: string) {
 }
 
 function stableIdentity(value: string, label: string, details?: unknown) {
-  if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(value))
+  if (!/^[a-z0-9][a-z0-9._-]{0,199}$/u.test(value))
     throw invalid(`${label} must be a stable bounded identity.`, details)
   return value
 }
 
-export function sharedSkillId(libraryId: string, skillId: string): string {
-  return `shared_skill:${encodeURIComponent(stableIdentity(libraryId, "Library ID"))}:${encodeURIComponent(stableIdentity(skillId, "Skill ID"))}`
+export function skillIdentity(libraryId: string, skillId: string): string {
+  try {
+    return formatSkillIdentity({ libraryId, skillId })
+  } catch (error) {
+    if (error instanceof SkillReferenceError) throw invalid(error.message)
+    throw error
+  }
 }
 
 /** Address a Skills property by descriptor ID; display names are not identities. */
@@ -78,6 +85,10 @@ function readableText(value: Record<string, unknown>, type: "title" | "rich_text
   return text(parts)
 }
 
+export function sharedSkillTextProperty(row: unknown, library: SharedLibrary, name: string) {
+  return readableText(sharedSkillProperty(row, library, name), "rich_text", name)
+}
+
 function checkbox(value: Record<string, unknown>, name: string) {
   if (value.type !== "checkbox" || typeof value.checkbox !== "boolean")
     throw invalid(`${name} must be a checkbox.`)
@@ -114,16 +125,8 @@ function sharedPageMetadata(raw: unknown, source: Source, dataSourceId: string) 
     throw invalid("The shared Skill belongs to another source.", { page_id: page })
 
   const name = readableText(sharedSkillProperty(row, library, "Name"), "title", "Name")
-  const description = readableText(
-    sharedSkillProperty(row, library, "Description"),
-    "rich_text",
-    "Description",
-  )
-  const skillIdValue = readableText(
-    sharedSkillProperty(row, library, "Skill ID"),
-    "rich_text",
-    "Skill ID",
-  )
+  const description = sharedSkillTextProperty(row, library, "Description")
+  const skillIdValue = sharedSkillTextProperty(row, library, "Skill ID")
   const kindField = sharedSkillProperty(row, library, "Kind")
   if (kindField.type !== "select") throw invalid("Kind must be a select property.")
   const kind =
@@ -175,7 +178,7 @@ function registeredSharedRecord(
   })
   const description = validateDescription(descriptionValue)
   const kind = decode(ContentKindSchema, kindValue)
-  const id = sharedSkillId(library.library_id, skillId)
+  const id = skillIdentity(library.library_id, skillId)
   const entrypoint = entrypointFor(kind)
   return {
     id,
@@ -189,12 +192,26 @@ function registeredSharedRecord(
       skill_id: skillId,
     },
     name,
-    alias: aliasFor(name),
+    alias: sharedNameAlias(name, page),
     description,
     default_context: defaultContext,
     enabled,
     entrypoint,
-    ref: `skill://${encodeURIComponent(id)}/${entrypoint}`,
+    ref: fileRef(id, entrypoint),
+  }
+}
+
+function sharedNameAlias(name: string, page: string): string {
+  try {
+    return aliasFor(name)
+  } catch (error) {
+    if (error instanceof SkillsError)
+      throw fail(error.code, error.message, {
+        ...property(error.details),
+        page_id: page,
+        name,
+      })
+    throw error
   }
 }
 
@@ -221,7 +238,7 @@ export function sharedMetadataEntryFromPage(
       state: "unregistered",
       page_id: metadata.page,
       name: metadata.name,
-      alias: metadata.name.trim() === "" ? "" : aliasFor(metadata.name),
+      alias: metadata.name.trim() === "" ? "" : sharedNameAlias(metadata.name, metadata.page),
       kind: metadata.kind,
     }
   return { state: "registered", record: registeredSharedRecord(metadata) }
@@ -239,11 +256,11 @@ export function sharedRecordFromPage(
 /** Validate a cached shared record without loading its body or changing its page binding. */
 export function validateSharedRecordIdentity(record: ContentRecord): void {
   if (record.locator.type !== "shared_skill") return
-  const id = sharedSkillId(record.locator.library_id, record.locator.skill_id)
+  const id = skillIdentity(record.locator.library_id, record.locator.skill_id)
   if (
     record.id !== id ||
     record.entrypoint !== entrypointFor(record.kind) ||
-    record.ref !== `skill://${encodeURIComponent(id)}/${record.entrypoint}` ||
+    record.ref !== fileRef(id, record.entrypoint) ||
     typeof record.enabled !== "boolean"
   )
     throw fail("STATE_CORRUPT", "Cached shared Skill identity differs from its stable locator.", {

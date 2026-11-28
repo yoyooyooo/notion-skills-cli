@@ -1,773 +1,437 @@
-# CLI and ref contract
-
-The npm package and executable are `ntn-skills`; the source repository is `notion-skills-cli`. Normal operation outputs one JSON value on stdout. Help and version use Effect CLI's text rendering. `--raw` opts into successful plain text. Failures always return JSON, including parse errors, and nonzero status.
-
-`apply`, `create`, `replace`, `write`, `ctl builtin publish` and `ctl operation resume` accept optional `--progress`. The earlier Publication execution path emits JSONL events on stderr with `operation_id`, `stage`, `status=started|completed|failed`, total `elapsed_ms` and `stage_ms`; stdout still contains one final JSON result. Without the flag no progress events are emitted. Node.js runtime warnings remain visible on stderr with or without progress; consumers must not assume stderr is empty or contains only JSONL. Progress is independent of durable recovery; no TTY mode enables it implicitly.
-
-The distributed CLI and direct-source development entrypoint require Node.js 22.22.3+ within 22.x, or Node.js 24.20.0+. npm installs the built tarball and its runtime dependencies. Bun installs dependencies, builds and packs the repository, and hosts pure tests; real SQLite/configuration tests use the Node runtime through official Effect Vitest integration. The product uses one official `@effect/sql-sqlite-node` driver backed by `node:sqlite`. Online operations use the project's Effect HTTP engine and credential provider. See [installation](../README.md#installation) and [contributor setup](../CONTRIBUTING.md#development-setup).
-
-For installation and a first successful read, use [the README Quick start](../README.md#quick-start). [Host integration](host-integration.md) describes adapter behavior, [the bootstrap integration reference](../skills/ntn-skills/references/integration.md) covers Agent use, and [the release procedure](releasing.md) describes distribution.
-
-Consumers should accept additional JSON fields and treat unfamiliar error codes as structured failures. Existing fields and successful operations keep their documented meaning within patch releases. A 0.x minor release may make breaking changes, with migration guidance in this reference and [CHANGELOG](../CHANGELOG.md). See [the compatibility policy](../CONTRIBUTING.md#compatibility-and-deprecation).
-
-`--help` is an offline command-discovery interface. Root help includes workflow, output/exit conventions, authentication, storage and recovery guidance. Command help includes parameter meanings, online/offline behavior, incompatible flags and usage examples. Replace `SNAPSHOT_ID`, `PINNED_REF` and `DATABASE_ID` placeholders before invoking examples. An explicit `--help` takes precedence over validation of other arguments and never executes a command handler. Normal parse failures without `--help` remain one JSON error on stdout and include `next.argv` for the closest valid command's offline help. Successful bare collections, including `ctl sync upstream list`, use `{ "ok": true, "items": [...] }`; existing named result fields such as catalog `records` and operation `operations` remain named fields.
-Root discovery lists `list`, `read`, `use`, `files`, `export`, `ctl` and `schema`. Authoring commands `create`, `adopt`, `apply`, `replace`, `write` and `update` remain explicitly discoverable. `ctl` owns shared libraries, database registrations, config, cache, builtin management, status, doctor, backup, Views, preparation, resource resolution, operations and synchronization. Historical root `views/prepare/resolve/operation/sync` spellings retain exact compatibility handlers but are unlisted; the [consumer contract](consumer-contract.md#cli-command-disposition-and-compatibility) records their migration and removal gates. Root `upstream` remains unsupported.
-
-`schema [command path...]` projects official Effect CLI parameter AST annotations including types, cardinality and defaults; `schema ctl sync upstream run` describes upstream selection. `ctl sync upstream run` requires exactly one selection mode: repeatable `--target SUBSCRIPTION_ID` or `--all`. `update TARGET` changes Name, Description, Default Context, native shared Enabled, Members or Requires after guarded readback. Both ordinary Skills and Routers support these relations; Sync Mode is not writable through this command.
-
-## Shared Notion library
-
-### Graph preparation and native references
-
-`ctl prepare ROOT... --purpose use` selects exact roots and the transitive Requires closure through the same snapshot reader as `read`. It returns `status:ready` only when every selected instruction is complete, within the node/depth/instruction/context budgets, and bound to a verified immutable snapshot. Its graph lock records the observed version vector; it does not claim that Notion supplied an atomic cross-page snapshot. `--session-bindings FILE` preserves already selected versions while allowing explicit new identities. A failed required node or exhausted budget returns an incomplete result without a usable graph lock.
-
-`ctl prepare ROOT... --purpose inspect` reads the selected roots and their relationship directories without loading Requires bodies. Members and native references are candidates in both modes; discovering a candidate never authorizes its body read, preparation, export, execution or injection. Requires is reserved for unconditional prerequisites. Conditional instructions remain authored narrative with exact references. A library View limits default discovery, while an explicit accessible same-library reference can select a candidate outside that default View. A View never grants Notion access.
-
-Native page links, page mentions and Link-to-page blocks resolve through stable library, Skill and File identities. Display names and paths are labels, not an identity fallback. Main and resource refs include `file_id` where available. A moved file can resolve through that stable identity; an inaccessible or ambiguous target remains unresolved without a title search. The original complete raw body hash is retained separately from the consumption projection. For Notion's unsupported Markdown placeholder for Link-to-page, completion requires a complete bounded block inventory and an exact one-to-one typed block proof; other unknown blocks, missing subtrees, warnings and truncation still fail. Historical pins retain their original bytes and interpretation.
-
-`update TARGET --member PAGE --require PAGE` independently replaces the nominated native relation arrays. `--clear-members` and `--clear-requires` explicitly clear their respective fields. Targets must be accessible enabled Skills in the same registered library. Reads finish relation pagination. A replacement over the API's 100-target array limit fails before dispatch; sending several replacement PATCHes would not append. Existing libraries add missing relation bindings only through the explicit `ctl library relations` workflow, with the original schema upgrade operation retained for recovery.
-
-An unknown body write whose exact adopted event already exists has a separate explicit recovery choice: `ctl library file accept-current PAGE ORIGINAL_OPERATION --entry ENTRY --accept-observed-sha256 SHA --dry-run`. It requires a complete fresh body matching the frozen candidate, the exact current file/Source binding and the original event as the complete current frontier. Execution records an independent `accepted_current` decision and keeps `original_write_outcome:unknown`; it does not create an `applied` outcome, replay a body PATCH or create a missing event. An uncertain decision write retains one immutable dispatch and only reconciles that decision. Original plans and failures remain available. The established `file review` workflow for retained `needs_review` responses keeps its existing meaning.
-
-This section defines the shared-library command surface. The [shared architecture](shared-ssot-architecture.md) explains ownership and recovery decisions. The [shared verification recipe](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/shared-ssot.md) drives these commands through the public CLI; run results are recorded separately from the contract.
-
-### Layout and identity
-
-A shared library has one exact Skills database entry whose description contains a versioned descriptor. The descriptor records `library_id`, the Skills/Files/Records database and data-source IDs, and stable property IDs. The main body lives on its Skills row. Supporting bodies live directly on Files rows with a native Skill relation. Readers query Files by that forward relation and follow every cursor; the reverse `Supporting Files` property is a navigation aid, not a complete consumer inventory.
-
-New table creation explicitly sets `is_inline:false` and uses the display titles `Skills`, `Files` and `Records`. Titles, including any former library suffix, are never initialization authority. Each initial POST atomically includes `ntn-skills-table:v1 ` followed by `{version:1,operation_id,parent_page_id,role}` in the database description. Full parent enumeration validates these internal role claims for incomplete original operations; missing or duplicated roles do not authorize another POST. Registration replaces the Skills table marker with its final `ntn-skills-library:v1` descriptor. A completed operation resolves all three registered IDs even if all titles have changed. A parent with unregistered databases and no completed descriptor cannot start another unqualified initialization. These rules do not add replay or automatic schema-repair semantics.
-
-New initialization also creates a native `Members` relation to the same Skills data source before registering the final descriptor. Its property ID is recorded and validated independently of its display name. An existing descriptor may omit this optional binding: ordinary Skills remain usable, but a Router requires the registered native relation. Attach does not silently add Members or rewrite an existing descriptor. Original-operation recovery only reads back the original tables, relation and descriptor; a missing result after an unknown PATCH does not authorize another PATCH.
-
-Records stores append-only facts selected by Skill, Kind and exact identity. Current kinds are `file_event`, `object`, `source`, `snapshot`, `profile`, `operation` and `archive`; accepting a kind in the schema does not imply that every management workflow for that kind is implemented. Payloads have a versioned envelope containing the original operation ID. Canonical envelope hashes and stable record identities must agree across duplicate observations. Conflicting facts fail rather than selecting a winner by timestamp or query order. The individual envelope limit is 64 KiB; oversized observation plans fail before local dispatch or remote mutation. Historical snapshot storage chunks exact binary bytes separately.
-
-A catalog record has `id=shared_skill:<encoded library_id>:<encoded skill_id>` and locator `{type:"shared_skill",page_id,database_id,data_source_id,library_id,skill_id}`. Copy returned refs rather than reconstructing their escaping. Name, alias, logical file path and Notion page allocation do not define stable Skill/File identity. Shared properties resolve by the descriptor's property IDs, including after a rename. Duplicate identities and invalid required fields fail explicitly. `Enabled` controls eligibility; `Default Context` is separate metadata.
-
-A structurally valid row with exactly empty Skill ID and `Enabled=false` is an unregistered draft outside the consumable directory. Its unfinished Name/Description or empty Kind do not block other registered Skills. Active empty identities, nonempty malformed identities and competing registered identities still fail. Directory classification reads the same six metadata fields and does not inspect body, Files or Records; it is not proof that the draft can be adopted. Create preserves unrelated drafts and refuses a same-name/alias draft instead of making a duplicate.
-
-`list --database ENTRY` discovers shared metadata without Files, Records, body or provider traversal. Ordinary `read` dispatches a shared locator to the shared snapshot builder. Shared `create`, `apply`, `replace`, `write` and `update` use native bindings and retained original operations as described below. Unsupported inputs fail before dispatch; shared targets do not silently reuse References storage. Router member consumption follows the contract below. Profiles are library-owned immutable rules managed by `ctl library profile list/show/set/bind/unbind`; installed host acceptance remains separate.
-
-### Commands
-
-| Command | Contract |
-| --- | --- |
-| `ctl library init --parent PAGE_ID` | Create a Skills/Files/Records layout, including native Skills Members self-relation, under an exact owned parent; repeat the same parent to attach its unique registered library. It does not migrate content or change machine defaults. |
-| `ctl library init --entry DATABASE_ID` | Attach and verify the exact existing entry and descriptor. |
-| `ctl library init --parent PAGE_ID --operation OPERATION_ID` | Read back the original initialization outcome without sending create or schema/descriptor PATCH requests. Preserve its operation and discovered table/property IDs; absent or unknown results remain incomplete. |
-| `ctl library inspect ENTRY` | Read the exact descriptor and report observed write capabilities; no body or provider reads. |
-| `ctl library files TARGET --entry ENTRY` | Read the selected Skill and its complete flat Files index. `main` is separate; `count` counts supporting files only. No body reads or inferred deletion from missing access. |
-| `ctl library state TARGET --entry ENTRY` | Rebuild ownership from shared file events and report unbound file IDs. Missing events remain `uninitialized`. No body reads, ownership changes or restore-follow action. |
-| `ctl library source inspect URL --commit FULL_40_HEX --root ROOT` | Inspect the selected public GitHub commit and complete tree without downloading blobs or following a newer branch. Use `--root ''` for the repository root. |
-| `ctl library source register TARGET --entry ENTRY --url URL --commit FULL_40_HEX --root ROOT [--reconcile]` | Retain the exact candidate source manifest. It does not select the candidate, establish projection baselines or replace page bodies. |
-| `ctl library source register TARGET --entry ENTRY --manifest FILE [--reconcile]` | Register a full source-inspect JSON response or a bare fixed manifest, with zero provider requests. `--url`, `--commit` and `--root` are incompatible with this form. |
-| `ctl library snapshot save LOCAL_SNAPSHOT_ID --entry ENTRY [--reconcile] [--allow-local-archive]` | Archive an already complete local shared snapshot's exact final files, then publish its shared manifest. The local-archive flag authorizes only this selected archive's local-restricted bytes. Retain the returned `shared_pin` and verification level. |
-| `ctl library snapshot restore SHARED_PIN --entry ENTRY --target SKILL_PAGE_ID` | Validate current access and stable Skill identity, verify every archived file, then publish a complete local pinned snapshot. It does not advance latest, read current bodies or fetch provider content. |
-| `ctl library migration plan --input FILE` | Review an explicitly frozen migration evidence file without applying changes. Returns `status:reviewable` or `status:blocked` and always `apply_allowed:false`; this is not a migration apply command. |
-
-`TARGET` above is the exact selected Skill page ID. `ENTRY` is the Skills database entry, not the Files or Records database. Consult each command's `--help` for accepted selection combinations. These commands do not grant permission to modify unrelated libraries.
-
-### Shared authoring
-
-The ordinary content commands select shared authoring from the destination descriptor. Use `--database ENTRY`; `ctl library` management uses `--entry ENTRY`. An existing pinned target retains its own database and scope even when an unrelated configured source is unavailable. Returned stable record IDs and refs are opaque; do not reinterpret encoded `shared_skill` identity as a page UUID. The [shared authoring guide](shared-authoring.md) supplies complete task examples.
-
-`adopt PAGE_ID --database ENTRY [--dry-run|--reconcile]` initializes one exact disabled native Skill already created in Notion. Name/Description must be complete, Kind must be `skill`, and Skill ID/Main File ID/Source/Projection/References and managed relations must be empty, with no existing Files or Records lifecycle. These metadata conditions are checked before Files or current-body reads. Initial execution freezes and retains the complete existing body, publishes the initial adopted event, and patches only deterministic Skill/Main File identities. It preserves the original page, body, metadata and disabled state. No replacement Skills/Files page or body PATCH is sent. An original incomplete adoption blocks new authoring or consumption; repeating adopt only reconciles its retained original outcome and never replays an uncertain request. The returned `adoption_operation_id` remains the recovery identity.
-
-`read PAGE_ID --database ENTRY --authoring` verifies one exact current page and complete tree online, including a disabled registered draft. It returns a fixed author snapshot without publishing disabled current observations to the consumer cache. It rejects names, pinned targets, `--offline`, `--max-age` and `--from`. The scope is bound to the selected page and does not admit disabled linked owners or prerequisites. Existing write/update/apply/replace and file add/move/delete enter the same exact author scope automatically. Ordinary `read` and `use` still reject disabled current content; retained pins remain immutable.
-
-`create INPUT --database ENTRY` accepts an ordinary Skill folder, ZIP or Markdown file through the normal importer. An ordinary Skill needs no portable manifest; Prompt/Router retain the explicit portable v2 kind declaration. Native creation freezes the complete input, allocates stable Skill/File identities, and keeps the new Skill disabled until the complete native body set verifies. UTF-8 text is supported; binary or unsupported projection fails before page creation. Omit `--storage`; `markdown_files` is rejected for shared entries. Name collision never authorizes replacement. Repeating an interrupted original create keeps the same frozen intent and reconciles the original allocation rather than blindly repeating unknown POSTs.
-
-`apply PINNED_MAIN_REF_OR_SNAPSHOT --input CHANGES` combines requested existing bound native files with explicitly nominated Name, Description, Default Context or Router Members. Omitted files and properties remain unchanged. It validates all supplied inputs and the complete proposed tree before dispatch, retains a parent plan with the complete original child plans, then executes them sequentially. This is not a transaction: a later failure can leave earlier verified child edits applied. Unknown children stop the remainder; absence never proves an unknown child was unsent. Only exact original outcomes can settle the parent. Complete plan envelopes over 64 KiB fail before dispatch. One isolated add/delete delegates the file lifecycle protocol; mixed or multiple layout changes fail with `SHARED_APPLY_LAYOUT_BATCH_UNSUPPORTED` before writing. `replace INPUT --target EXACT` uses the same shared rules and cannot change the original kind.
-
-`write PINNED_FILE_REF --input FILE` changes one complete bound native file. A target with a path rejects another `--path`; page/main targets can select a resource with `--path`. Main frontmatter must match native Name/Description or values explicitly nominated in the same apply. Extra unsupported main fields and mismatched `notion_page_id` fail before writes. Submit the complete public main-file read, preserving its generated Members index for both Routers and ordinary Skills. Membership changes use the native relation or explicit `--member`/`--clear-members`. Write/apply restore same-owner relative Markdown destinations using only the fresh snapshot's exact native File bindings. Edits use the parsed destination span, preserving escaped/code literals, external URLs and unbound provider-only resources. Pure read/write equality still checks original-operation, metadata and native preimage guards, then returns unchanged without a new operation or body PATCH; different native URL spelling alone is not an edit request.
-
-New native authoring uses projection version 8 and freezes original input, request Markdown and exact expected readback separately. H1 headings use native heading tags only for create/file add; body writes retain ordinary heading syntax. Common inline code, bold, italic and strikethrough project to native rich-text segments; unlabelled fenced code is sent explicitly as plain text and reads back with `txt`. CRLF and terminal line feeds retain the declared input policy. Observed-body normalization remains version 1 (CRLF to LF only), and retained version 1–7 authoring plans keep their original policy and request bytes. Every full response must match its frozen candidate exactly; current equality alone cannot prove an unknown write succeeded. Policy 4 added observed inline-link label rendering, simple-list spacing and unaligned table padding. Policy 5 additionally predicts the blank separator between a paragraph and its following list. Policy 6 predicts native paragraph/simple-list text breaks, bare HTTP links and supported styles inside link labels. Policy 7 predicts literal text underscore escaping. Policy 8 additionally predicts the observed canonicalization of bare `https://www.notion.so/COMPACT_PAGE_ID` links to `https://app.notion.com/p/COMPACT_PAGE_ID`. Code literals, external links and URL forms outside that exact rule retain their meaning. This forward prediction never normalizes a returned body to conceal a mismatch. Unproved alignment or unaccounted table content is rejected before dispatch; original input and saved policies remain unchanged.
-
-`update TARGET` changes only nominated native properties by registered property ID, leaving file ownership and unrequested fields intact. `--enabled true|false` applies to shared native records after complete-tree validation and original-operation checks; ordinary edits preserve the current availability state. Enabled controls current availability, not access to the underlying page. Router Members must be exact accessible Skills from the same library. Pinned baselines are checked freshly. Native metadata remains last-writer behavior; client guards are not atomic compare-and-swap. Source selection has its own command and cannot be changed through update or frontmatter.
-
-| Shared successful mutation | Public result |
-| --- | --- |
-| Native create | `operation:"create"`, `action:"create"`, `verified:true`, `create_operation_id`, `reused`, and current record/snapshot refs |
-| Initial native adoption | `status:"adopted"`, `verified:true`, `adoption_operation_id`, original page/Skill/main-file IDs, `enabled:false` and a required fresh authoring read |
-| Apply / replace | Corresponding `operation`, `status:"applied"`, `verified:true`, `apply_operation_id`, `changes`, `previous_version_id`, and current record/snapshot refs |
-| Body write | `operation:"write"`, `action:"updated"`, `verified:true`, `body_write_operation_id`, input/candidate hashes, `previous_version_id`, and current record/snapshot refs |
-| Metadata update | `operation:"update"`, `action:"updated"`, `verified:true`, `metadata_operation_id`, and current record/snapshot refs |
-
-Identical apply input returns `status:"unchanged"`; identical write returns `action:"unchanged"` and `unchanged:true` without a new body write. Dry-run reports its plan/decision with `dry_run:true` and performs no Notion writes; native create preview may have no snapshot. A legacy `operation_id`, `content_id`, `action` or `reused` field must not be fabricated when the shared result does not define it. Unknown and partial apply results are structured failures, not successful complete edits. A recovery command with `verified:true` confirms its reported status, so `not_applied` or `partial` does not prove requested completion.
-
-Fresh current reads reconcile retained create, body, metadata and apply facts before observing new bodies; use `--authoring` for disabled drafts. A `SHARED_*_RECONCILED` error with `read_again:true` requires another read after that verified outcome. Restore-follow uses the body-write recovery path. Initial adoption uses `adopt PAGE_ID --database ENTRY --reconcile`: `verification:"original_adoption_outcome"` and `enabled_at_adoption` describe the retained history and still require a fresh read for current content. Add/delete/move have `ctl library file reconcile TARGET OPERATION_ID --entry ENTRY`. Shared IDs never use legacy `ctl operation resume`; missing original facts remain unresolved.
-
-### Shared file lifecycle
-
-`ctl library file add TARGET PATH --entry ENTRY --input FILE`, `file move TARGET PATH DESTINATION --entry ENTRY`, and `file delete TARGET PATH --entry ENTRY` each support `--dry-run`. They check the complete current tree and deterministic relative Markdown links/images. Move does not rewrite links. Add creates a File identity, move preserves its ID/page/body and original source path, and delete records a tombstone while retaining the old page/body. Main files cannot be moved or deleted. Missing access is not deletion intent.
-
-To expose a new reference from the main Notion page, take a fresh authoring read after add and write the complete main file with a descriptive link to its logical path. The fresh native binding supplies the exact clickable page URL; an explicit native URL using add's returned `page_id` is also accepted. Current reads project that same-owner link to the logical resource path in the fixed snapshot. Add alone does not modify main content; supporting pages remain related flat Files rows without physical child-page traversal. See the [complete reference workflow](shared-authoring.md#link-the-new-reference-from-the-original-skill).
-
-`ctl library file restore-follow TARGET PATH --entry ENTRY [--dry-run]` restores the exact source selected in native Notion metadata, retaining the complete custom body before changing ownership. Moved files use their retained source path. Missing source bytes remain a failure; no newer source or same-named replacement is selected. Local resource binding permits reads only: `--allow-local-archive` separately authorizes retaining the selected local body in shared Notion records. It does not authorize arbitrary snapshot archival.
-
-### Shared Profiles and resource composition
-
-`ctl library profile list/show/set/bind/unbind` manages library-owned immutable rules. `profile set ID --entry ENTRY --name NAME --enabled true|false --base REVISION [--default-view VIEW]` replaces the complete rule; use `--base new` for creation and the exact current revision for changes. Omitting default-view removes it. An unknown revision uses the same full intent with `--reconcile`. The machine binding retains only entry and Profile ID. `list --profile ID --database ENTRY` or `list --default-view` resolves the shared default; explicit `--view` takes precedence. Without a default, the first View in API order is selected. Bare list remains complete discovery; no rule grants access or activates instruction bodies.
-
-`ctl library source composition inspect PLAN_JSON --verify` and `composition register TARGET --entry ENTRY --manifest PLAN_JSON [--reconcile]` accept an existing fixed composition plan; they do not provide an interactive authoring builder. Fixed hashes/sizes, path collisions and source scope are validated. Machine-only `source resource` configuration holds explicit local workspace bindings, exact HTTP origin policy and retrieval locations. Roots, credentials and signed HTTP URLs do not enter shared records or portable manifests. Local access does not imply permission to share bytes; a new snapshot archive containing local-restricted content requires explicit `snapshot save --allow-local-archive` for that exact archive.
-
-### Active Sources database and adapters
-
-A registered library may include the independent full-page `sources` table plus stable Skills `Origin` and `Source Member` bindings and Records `Origin`. New public library initialization completes this four-table layout. Existing descriptor identities and historical plans are preserved; upgrading an older three-table entry is an explicit `ctl library sources init --entry ENTRY`, never an ordinary read side effect. Database titles and renamed visible columns are not authority. Files derives its displayed Origin through its Skill relation instead of maintaining another mutable copy.
-
-`ctl library sources` manages live definitions; singular `ctl library source` retains its immutable-source lower-level contract. `providers` is offline. `list` completely paginates lightweight native fields, `show` reads full configuration (including long property-item pagination), and `members` queries the complete forward Skills.Origin relation. No member body/provider read is needed for membership. Duplicate Source IDs, malformed property bindings and incomplete pagination fail rather than selecting the first row. Exact shape and usage are in [Sources management](sources-management.md).
-
-`put` requires the exact observed fingerprint or explicit `absent`; `bind` requires the expected existing Origin. Mutable field writes are guarded last-writer operations, not Notion compare-and-swap. Per-request original dispatch and verified response receipts remain immutable; verified historical updates allow a later deliberate change to the same value, while unknown attempts do not. Changed inputs cannot bypass a pending mutation on the same local logical source identity. These local barriers are not a cross-machine write lock.
-
-Provider discovery resolves a complete source/member tree. Generic Git acquisition uses repository/commit/tree with bounded reads, disabled hooks and no execution; it is not limited to GitHub. Linear reads the fixed official GraphQL API using machine-only `LINEAR_API_KEY`, exact issue/document mapping, complete error-free responses and bounded output. Its revision is a content/updatedAt observation hash, not a claim that the API supports historical version lookup. `check` and `fetch` do not update Notion; `fetch` validates full-tree references before directory export. Unknown provider options fail explicitly.
-
-`prepare` freezes actual provider bytes plus definition fingerprint, exact target/member, previous selected pin, current snapshot, candidate effective file hashes and preserved custom paths. The candidate is not published as current during preview. `apply` verifies the entire archive/chunks/manifest and current state, retains chunks before the immutable bundle, binds the exact existing metadata-selection operation in the digest-bound v2 approval, then selects using that shared journal. V1 plans retain their original pre-selection mapping gate; missing or unknown old outcomes are not reinterpreted. It rechecks current content after selection before reporting verified success. Native custom bodies/tombstones and prior pins survive; editable projection writeback and automatic multi-member scheduling are not part of this operation. `reconcile` reads the original selection outcome; a visible current pin without that proof does not fabricate completion. Shared contributor sets require an explicit fixed composition and cannot be overwritten through a single-origin refresh.
-
-### Fixed source selection
-
-Source registration freezes canonical public GitHub URL, full commit, tree, root and sorted file entries `{path,source_path,git_oid,bytes}`. `bytes` is the declared size, not downloaded content. The manifest determines a stable immutable `source_id`; resolve only the exact source selected in Notion. Multiple different payloads under the same identity are a conflict. There is no implicit latest selection and no source mirror that supersedes the Notion management fact.
-
-Inspection rejects incomplete/truncated trees, unsafe or ambiguous paths, and scoped symlinks/submodules. Downloading a selected source is separate: fixed blob identities and declared sizes must verify before snapshot publication. Cached Git objects are disposable local materializations. Scripts remain bytes and are never executed by inspection, registration or read.
-
-The `--manifest` registration form consumes either the complete JSON output from `source inspect` or its bare fixed-source manifest. It validates and retains those supplied immutable identities without re-resolving a commit or tree at the provider. It makes no provider request, although Notion access and shared-fact verification still occur. Choose either `--manifest` or all three `--url/--commit/--root` arguments; mixing them fails before effects. On an unknown result, preserve the original manifest and target and use `--reconcile`; do not substitute a newly inspected revision.
-
-Select a registered candidate with `ctl library source select prepare TARGET --entry ENTRY --source SOURCE_ID --output PLAN`, then `source select apply PLAN --entry ENTRY [--dry-run]`. The CLI generates the frozen plan; keep it unchanged. `--native` replaces `--source` when deliberately clearing selection. Only the native Source property changes; current file customizations remain. Reconcile an unknown selection with `source select reconcile PLAN --entry ENTRY`. Source registration can separately reconcile the original identity with `source reconcile TARGET --entry ENTRY --source ORIGINAL_SOURCE_ID`; no command automatically advances a branch.
-
-### Notion-resident complete resources and retained history
-
-A shared Source may select `bundle-SHA256`, an immutable `retained_bundle` held entirely in Records. Its manifest binds the exact library and Skill page, entrypoint, sorted complete file set, per-file SHA-256/length and ZIP SHA-256/length. The ZIP uses ordered exact-byte chunks of at most 32 KiB; every nonfinal chunk is full. Validation rejects ambiguous paths, duplicate files, missing entrypoints, another library/Skill, incomplete chunks, invalid hashes and unlisted ZIP entries. Current bounds are 64 MiB per file, 128 MiB total uncompressed content, 32 MiB per compressed archive and 10,000 files. Scripts and binary assets remain bytes, never executable migration steps.
-
-Cold consumption retrieves only the selected immutable object identities, in bounded groups of at most 80 Entity IDs per query, then follows complete pagination. It verifies every chunk, the whole archive and every file before publishing any decoded cache. Warm verified objects can avoid body transport. No missing fact is repaired by a legacy database, newer Git branch, another credential or same-named file. A stored `snapshot-SHA256` can also supply a complete fixed base through its exact historical manifest. Neither form changes which Notion file owns its current custom body.
-
-Large retained native bodies may use a version-2 `chunked_normalized_markdown` header whose checksum and length match the selected custom-content reference. The same bounded exact-byte loader validates its ordered chunks and final UTF-8 content. Native observation bounds are 64 MiB; the individual Records envelope remains bounded to 64 KiB. This does not silently widen the separate ordinary authoring-plan envelope limit.
-
-Library-wide `Kind=archive` rows have an empty Skill relation and are separate from Profile discovery and normal Skill consumption. They retain original metadata, source settings, old snapshot objects and unresolved historical outcomes without claiming those operations succeeded. Large historical ZIPs may be attached through a native Archive file property and independently downloaded to verify their checksum. An archive is preservation data, not a legacy execution or fallback channel; historical IDs do not become current shared refs merely because they have been retained.
-
-### Native page preservation and logical file links
-
-Whole-file ownership hashes remain the exact normalized native Markdown. Consumer rendering is a separate projection: transport-only creation markers and native child-page navigation are excluded from instructions, while authored text and fenced code remain intact. Links between known native pages belonging to this Skill become relative file paths. The main file retains extra fixed-source frontmatter when its editable native body is customized.
-
-The native References property may hold `{version:1,kind:"file_links",links:[{from,href,target}]}`. Each `(from,href)` pair is unique and matches an exact containing file and original link; target refs must remain in the same shared library, or name a permitted immutable full-commit GitHub file. No basename search, fuzzy rewrite, member-body preload or guessed replacement is allowed. Unknown links stay unchanged and the complete effective-tree reference check still applies.
-
-Migration can relocate an existing Notion page into the appropriate data source without rewriting its authored body. Retained before/after responses distinguish removal of child-navigation blocks from content edits. A separately reviewed acceptance of an observed native serialization difference records both hashes and preserves the original failed expectation; it does not normalize all mismatches away, replay an unknown authoring request or rewrite an old outcome.
-
-### Shared Router members
-
-A current shared Router read requires the descriptor's registered Members property to be a native relation to the same Skills data source. A missing binding returns `SHARED_ROUTER_MEMBERS_UNAVAILABLE` before observing or retaining Router bodies. A missing, disabled, foreign-library or non-Skill member is an explicit failure. Stable Skill IDs must be unambiguous, including when another valid inventory row claims a selected member's ID. Renaming the property does not change its identity.
-
-The reader uses the complete inline relation when available, follows property pagination when truncated, and batches the library's member metadata inventory. It does not GET each member page, read member bodies or traverse their Files/Records/provider content. It renders the existing `## Members` list of name, stable ref and description. Each Router snapshot freezes `router_members` and the metadata used to generate this index. A fixed Router snapshot keeps its old membership and labels when current Notion metadata changes; selecting a member later reads that member's own content snapshot.
-
-The authored Router body remains separate from the generated index, and neither is written back through this consumption path. Old shared Router snapshots without complete frozen member metadata are rejected even offline; current metadata is not spliced into an old pin to make it appear complete. Existing libraries need an explicit, separately reviewed schema upgrade before using Router support when Members is absent. An ordinary attach or read does not perform that upgrade.
-
-### Shared migration review
-
-`ctl library migration plan --input FILE` consumes version 1 migration evidence. The input names `scope`, `target_library_id` and explicitly approved `approved_legacy_ids`; it carries a verified-backup reference, catalog entries with coverage and complete file/body evidence, plus separate `sources`, `views`, `routers`, `pins` and `operations` preservation inventories. Preserve opaque legacy fields in the specified `raw` or `record` evidence fields. The approved scope cannot be inferred from a discovered row count.
-
-The planner derives stable Skill/File mappings and returns the complete frozen evidence, its input hash, a stable plan ID, blockers and stop conditions. `mode` is `read_only_plan`; `status` is `reviewable` only when the supplied evidence has no blocker, otherwise `blocked`. Both outcomes have `apply_allowed:false`, prohibit cleanup and unresolved-operation replay, and confer no production authorization. Reviewability means the evidence can be reviewed for a later migration decision; it does not prove that remote state was freshly checked or that any migration, source switch, retention or host rollout occurred.
-
-Incomplete coverage, an unfrozen scope, missing preservation/body evidence, unsupported source semantics and unsettled original operations remain blockers. Keep the original input/intent and retained bytes. This command does not clear them or turn a schema-unknown legacy operation into a completed operation.
-
-`ctl library migration review` prepares a concrete one-target copy from the complete frozen input, retained logical files, original native responses and exact selected Source bytes. It returns `status:reviewed`, `dry_run:true`, `apply_allowed:false`, the complete `review` and its `review_id`. Target-library and Router member metadata may be read; no current-body/provider fetch, create journal or Notion write occurs. [The authoring guide](shared-authoring.md#review-and-migrate-one-legacy-record) lists the exact commands and retained-file inputs.
-
-The review digest binds one execution policy. Ordinary new reviews use `copy_to_new_native_v1`, which requires the target's complete content, Source, dependencies and relevant operation evidence. A target carrying validated versioned retained-publication evidence uses `copy_to_new_native_v2`: it copies one exact retained observation to new native pages. Complete original native responses, committed publication markers, fixed member selection, exported authored bytes and the selected Source tree must independently reconstruct that observation. A policy label or receipt boolean cannot establish these facts. Known physical aliases and required Router members remain dependencies. See the [retained-publication derivation](https://github.com/yoyooyooo/notion-skills-cli/blob/main/scripts/README-migration-publication.md). Source-bundle proof v2 additionally binds archive-only files (including scripts and binary assets) to the exact ZIP, committed snapshot, Git blobs and source export. Proof v3 preserves a current Default Context checkbox independently: only the two boolean variants of that field may explain the original guard digest; the full file manifest and all ownership fields remain exact. The original target_mode string is retained as a label, not a source transformation. Patches, mapping and shared target sets remain unsupported. Existing proofs keep their saved interpretation. These are one-time migration evidence policies, not legacy runtime fallbacks.
-
-The v2 review includes `retained_operations` and `retained_catalog_coverage` in its digest. Original unknown operations, incomplete enumeration and historical inventory gaps remain visible in the full plan and unchanged in the approved input. They do not prevent this independent copy once its exact content and Source have been proved; they still prevent claims of complete migration, current legacy terminal state, source cutover or retirement. The copy never reads a later legacy body or replays an old operation. Existing unmarked and v1 reviews retain their original gates and cannot gain v2 semantics by changing a field.
-
-`ctl library migration apply --input APPROVED_JSON --review REVIEW_JSON --review-id REVIEW_ID` requires the exact reviewed proposal and explicit target approval. Only `approved_legacy_ids` and the derived readiness-basis hash may change. Its `--dry-run` returns the native plan with no create journal or writes. Execution uses the ordinary native create, enables the new Skill only after its complete files verify, and performs a read-only final snapshot check. Success returns `status:created`, `verified:true`, original operation/review/candidate IDs and the pinned snapshot. `migration reconcile --entry ENTRY --operation OPERATION_ID` reads the original outcome without replay; another machine also supplies the retained new `--target`. A reconciled outcome is historical, with `current_snapshot_verified:false` and `requires_fresh_read:true`.
-
-### Recovery of a known partial migration create
-
-`ctl library migration recovery review --entry ENTRY --operation ORIGINAL_OPERATION --target EXISTING_SKILL_PAGE` prepares a separate read-only continuation for a retained v2 create plan whose original outcome is `needs_review` / `SHARED_CREATE_BODY_MISMATCH`. The original v4 projections, manifest, failure and created-page bindings remain immutable. The target must still be disabled, its complete file inventory must equal the original main-first created prefix, its fixed Source must match, and no initial file events or unrelated operations may have been published. Unknown first creates and missing outcomes remain ineligible.
-
-This bounded recovery reprojects the same retained inputs under v5 and requires every submitted wire byte to stay identical to v4. Every existing page's complete current Markdown must exactly match the new expected body. The review binds the original manifest/outcome hashes, complete original file mapping, historical page/event bindings, new initial events and canonical current response JSON. Those observations are labeled `post_failure_current_read`; they do not replace the original mutation response. `review_id` covers the complete new decision, while `apply_allowed:false` and `dry_run:true` preserve review's no-write contract.
-
-`migration recovery apply --input APPROVED_JSON --review RECOVERY_REVIEW_JSON --review-id RECOVERY_REVIEW_ID` validates the same original approved migration input and independently reconstructs that review. `--dry-run` rechecks current preconditions without a dispatch journal or remote writes. Real apply retains one recovery dispatch, preserves existing page bodies and identities, creates only missing native pages, retains each returned page response and later body observation separately, updates changed projection metadata, and publishes the complete initial ownership events. The Skill is enabled only after its full current tree, Source, metadata and events verify. Completion is a separate shared fact; the original failed outcome stays `needs_review`. A successful read-only final consumer check returns `status:recovered`, `original_operation_id`, `recovery_operation_id`, `original_status:needs_review`, `verified:true` and the current pin.
-
-An existing local recovery dispatch or shared recovery review takes reconciliation only. `migration recovery reconcile --entry ENTRY --operation ORIGINAL_OPERATION --target EXISTING_SKILL_PAGE` verifies the original manifest/failure, exact review, separate completion and initial recovery events without POST/PATCH or current body adoption. It returns `verification:original_recovery_outcome`, `current_snapshot_verified:false` and `requires_fresh_read:true`. Missing completion remains unresolved even if all pages appear present. Interruption before completion does not authorize restarting the sequence, including a retained dispatch whose remote review is not visible. After exact completion is verified, both original and recovery local journals can be retired; all shared original evidence remains retained. Recovery follows the existing single-writer contract and provides no cross-machine atomic claim or native metadata CAS.
-
-### Continue after an unknown recovery page create
-
-`ctl library migration recovery continuation review --entry ENTRY --operation ORIGINAL_OPERATION --target EXISTING_SKILL_PAGE` reviews one separate accepted-allocation decision. The original recovery must have retained a `serial_create_stop_on_error_v1` terminal from the actual native page POST failure handler. That terminal binds the recovery review hash, confirmed page prefix, failed file, remaining unattempted suffix and exact unknown error. Failure to publish a successful POST's response record does not qualify as an unknown native POST. Terminal publication failure preserves the original error and stops further page creation.
-
-The read-only review verifies the exact successful POST responses, their complete response-record inventory, unchanged fixed Source, disabled Skill, no initial events and a complete current file inventory. It accepts exactly one visible page for the failed file through `post_failure_current_read`, retaining the original write outcome as `unknown`. An invisible page, extra allocation, body or Source drift, contradictory later receipt, missing terminal or retrospective summary cannot unlock continuation. This is a bounded single-writer path; a directory's apparent absence is not dispatch evidence.
-
-`migration recovery continuation apply --input APPROVED_JSON --review CONTINUATION_JSON --review-id CONTINUATION_ID [--dry-run]` still validates the complete original approved migration input. It rechecks all accepted allocations, skips their POSTs and creates only the proven unattempted suffix. One new immutable dispatch and shared review guard repeated calls. A new unknown immediately stops the loop and can retain its own terminal; it cannot authorize a second continuation. Existing page bodies and original failure records remain untouched.
-
-Completion version 2 binds the original recovery review, native terminal, independent continuation review, accepted allocations, complete files and initial events. Current consumers verify this shared proof without the large origin archive or current body adoption. A v1 completion cannot replace a visible terminal or continuation decision, and a continuation with its own terminal cannot be relabeled completed. `recovery reconcile` reports `verification:reviewed_continuation_outcome`, `original_write_outcome:unknown`, `current_snapshot_verified:false` and `requires_fresh_read:true`; it never replays writes. Verified v2 completion retires the original, recovery and continuation journals while preserving their shared history.
-
-### Whole-file ownership and unknown results
-
-The snapshot builder compares each fully read normalized body with that file's confirmed baseline. Normalization version 1 changes only CRLF to LF. A substantive edit freezes an observation plan, retains the full body object, then appends an adoption event. Native content can establish its first `custom` state explicitly; a source-managed file without a baseline fails instead of assuming it follows Git. Editing custom text back to an earlier value leaves it custom. Routine unchanged observations do not patch Status or write shared facts.
-
-The plan binds the original Skill/File/page IDs, parent events, exact body, fingerprint, byte length, observation time and target event identity. Local dispatch state is written before the first plan POST. Unfinished shared plans are discovered through a compact, paginated operation index; full plan bodies are read only for pending identities. Reconciliation verifies the original plan/object/event without creating a substitute or rereading today's body as the old plan. A completed recovery returns `SHARED_OBSERVATION_RECONCILED`; the caller must start a new read before publishing a current snapshot.
-
-Unknown source/archive writes retain the exact selected inputs and original identities. Repeat the original command with `--reconcile`, not a different commit, target, snapshot or newly invented operation. An absent readback does not prove that a write was never accepted. Missing original facts stay unresolved; reconciliation is not a replay switch.
-
-The first observation-plan POST can be unknown and temporarily invisible to an independent client with no local receipt. That client cannot distinguish it from a never-sent plan. This boundary remains open under N09; deterministic IDs, local SQLite, duplicate merging and empty queries do not provide a shared lock or exactly-once writes. Preserve original recovery evidence and report the limitation. Notion exposes no verified atomic conditional body replacement in this implementation; existing editable pages are not automatically overwritten through a claimed CAS protocol.
-
-### Local snapshots and shared history
-
-`s_<hash>` identifies an immutable local snapshot within its original authentication scope. Its pinned refs require already materialized local bytes and can be read offline. `snapshot-<manifest hash>` is a separate content-addressed shared archive pin. Saving freezes final entrypoint and resource bytes, retains content chunks first, and commits the manifest last. It does not archive a reference to future current content.
-
-Save returns `verification:"manifest"` when an existing exact completion manifest is reused, or `verification:"objects_and_manifest"` when this operation has verified objects and manifest. An existing manifest alone does not prove that every object remains accessible today. Restore always validates the fixed manifest, chunk hashes, file hashes and lengths. Missing, changed or inaccessible history fails; current Notion/Git content is never a fallback. Restore requires current authorization to the exact Skill and returns a new local scoped snapshot with the archived bytes; it does not validate an old pin as current content.
-
-Local resource access remains distinct from shared publication. When a new archive includes locally restricted content hashes, `snapshot save --allow-local-archive` authorizes only the selected immutable snapshot's exact bytes. The durable restrictions survive this archive and ordinary cache clearing. An original pending archive is reconciled from its frozen plan; the flag does not replay unknown writes or authorize a different snapshot. Restore-follow's same-named flag applies only to its selected body.
-
-### Request metrics and cache policy
-
-Root `list`, `read` and `files` accept `--metrics` and include `request_metrics` in JSON output. `read --raw --metrics` is invalid and still returns structured error JSON. The flag is not global: shared `files`, `state`, `source inspect/register` and `snapshot save/restore` include metrics without a flag; library `init` and descriptor `inspect` do not currently expose that field.
-
-Record Notion metadata, current-body reads, retained-body reads, writes and provider work separately, with transferred bytes, elapsed time and the reported queue/retry/concurrency counters. A Records query carrying a retained body is body traffic even though it uses a data-source query endpoint. Provider tree metadata is distinct from provider blob transfer. Never hide body-bearing plan lookups in a metadata-only total.
-
-An eligible complete TTL hit makes no remote request. Ordinary expired shared reads batch Skills/Files/file-event/operation metadata and reuse verified bodies when unchanged. A separate full-body deadline, currently 24 hours from actual body verification, prevents repeated metadata renewal from indefinitely hiding changes with unchanged reported timestamps. `--refresh` and explicit `--max-age 0` take the complete validation path. Recovering an old frozen plan does not renew its body clock. A pending local dispatch blocks a cached success until original shared facts are reconciled.
-
-Reproduce workload-specific budgets with the [shared-consumption verification recipe](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/shared-ssot.md). Preserve the selected source, complete pagination, exact file hashes and cache state with each measurement; individual sample counts are not universal request budgets.
-
-## Upstream synchronization workflow results
-
-`ctl sync upstream connect SOURCE [--database SELECTOR]` resolves common Git source inputs, reuses or registers their structural source/target selection, then performs the ordinary run. Optional `--ref`, repeated `--root`, `--include` and `--exclude` select members; name/description default from the source. Repository defaults are ref `HEAD`, root `.`, and empty include/exclude lists. A GitHub tree URL supplies its ref/root; include/exclude match member directory paths. Existing matching configuration is preserved. Successful output adds `subscription` and `reused` to the run result; an incomplete run returns the same fields inside `UPSTREAM_SYNC_INCOMPLETE` error details. Advanced `add/update` retain complete strict JSON configuration.
-
-`ctl sync upstream run` first continues pending original plans/publications under their retained guards, then executes a fresh plan/apply workflow for each selected subscription. An unresolved original effect blocks a new plan for that subscription. A readable, exactly owned tracked page in Notion Trash can be restored through the existing member publication operation; inaccessible pages, source removal and fork content never authorize restoration. The Upstream schema includes select `Sync Status` (`running`, `succeeded`, `partial`, `failed`), date `Last Sync Attempt`, date `Last Synced` and rich-text `Sync Summary`. Subscription entries in the `items` array returned by `ctl sync upstream list` expose these as `sync.status`, `sync.attempted_at`, `sync.succeeded_at` and `sync.summary`; untouched new fields are null/empty and legacy tables can omit `sync` until upgraded through `ctl database init`. Date reads normalize timezone representation to UTC while accepting Notion's native minute precision. These fields track the latest run; existing `Status` retains its published-membership meaning.
-
-Upstream tables also expose native URL `Source URL` for opening the configured source without inspecting JSON. It is derived on subscription add/update and returned as optional `source_url` (string or null); older tables can omit it until explicit initialization adds the column. It is not accepted in subscription input and does not replace `source.provider`. GitHub SSH remotes are displayed as HTTPS, HTTP Git URLs omit a terminal `.git`, registry entries link to their owner/Skill page, and non-web local sources remain null. Reads preserve the actual display value so an acknowledged update must read back its requested URL before completion. Adding/backfilling this column does not change source configuration or published member maps.
-
-A run records its attempt and `running` state before fetching the source, then saves the resulting status and summary. Only a completely verified apply advances `Last Synced`; unchanged successful runs advance it too, while partial or failed runs preserve the previous successful time. Final status-write failure is reported as a failed target with `status_error_code`, even when content application completed. A process interruption can leave `running` with the last attempt time; inspect retained operations before replaying an uncertain publication.
-
-Successful output contains `verified: true`, `status: "succeeded"`, `summary: { total, succeeded, partial, failed }` and `results`. Each result identifies `subscription_id`, `status`, `summary`, optional execution timestamps `started_at`/`finished_at`, and the returned `plan_id`/`operation` or `error_code`. Results also retain `recovered_operation_ids`, `restored` member identities and optional `members` counts for created, updated, unchanged, retained, forked, restored, conflicted and unresolved outcomes. Execution timestamps retain clock precision independently of the native Notion date fields. Duplicate targets run once. `--all` selects enabled, non-removed subscriptions; an explicitly selected disabled/removed target fails.
-
-The batch continues after individual failures. Any partial or failed result exits 1 with error code `UPSTREAM_SYNC_INCOMPLETE`; `error.details` contains the same batch fields, `verified: false`, and aggregate status `partial` or `failed`. Exit 0 means all selected targets succeeded. Runs sharing one state root lock each subscription across its complete workflow; an overlapping target returns `SYNC_LOCKED` without overwriting the active run's fields. Existing plan/apply publication locks and recovery rules still apply. [Scheduling and existing-table upgrade](usage.md#recurring-upstream-synchronization).
-
-
-## Local SQLite authority and explicit upgrade
-
-The state root contains one `state.sqlite`. Domain tables hold snapshot pointers, observation generations and retirement fences, content/catalog/identity observations, bindings, common baselines, frozen plans, sync receipts and participant edges, publication operations and ordered intents. Configuration remains private JSON under the config root; bindings are stored only in SQLite and are combined with configuration for inspection. Objects, immutable snapshot manifests and upload inputs remain files. Broker processes consume CLI JSON and never access SQL tables.
-
-Migration 0009 adds a separate `shared_local_records` table for whitelisted shared caches and dispatch receipts. It accepts `cache/shared-file-observations`, `cache/shared-page-identities`, `cache/shared-github-blobs`, `operations/shared-observation-pending` and `operations/shared-snapshot-history` with their exact scoped key shapes; arbitrary new namespaces are rejected. Frozen same-key/same-payload writes are idempotent, and different payloads fail with `STATE_CONFLICT`. Retirement preserves the original payload. Retired dispatch cannot reopen; cache clearing cannot retire pending dispatch. These local records guard process recovery and cache reuse, while completion and shared management remain facts verified in Notion.
-
-The host owns one scoped official `@effect/sql-sqlite-node` connection for each command. The official migrator applies schema changes; official transactions own commit/rollback. WAL, `synchronous=FULL`, foreign keys and a bounded two-second busy timeout are selected. Native SQLite busy waits block the Node event loop; expiry returns `STATE_BUSY`. A SQL transaction never encloses provider requests or local fan-out. Releasing a connection or local lock does not complete, discard or authorize replay of an unknown publication.
-
-Source ownership follows the publication boundary: `publication-model.ts` defines the private durable receipt contract, `publication-observation.ts` owns normalized guards and read-only reconciliation with local settlement, and `publication.ts` owns intent recording, authorized writes and explicit resume/finish. Public operation responses project safe typed summaries instead of exposing that private receipt. Direct source consumers import each capability from its owning module; the package root exports the supported APIs.
-
-Before state is opened, runtime preflight rejects Bun and Node versions outside `^22.22.3 || >=24.20.0` with `STATE_RUNTIME_UNSUPPORTED`. A scoped in-memory connection through the same official driver reads `sqlite_version()` and closes before the persistent state connection is acquired. Missing, malformed or affected SQLite versions fail with the same code; preflight never probes the user database or leaves an in-memory connection alive. No legacy or alternate driver is selected.
-
-SQLite documents the [WAL-reset corruption fix](https://sqlite.org/wal.html#the_wal_reset_bug) in 3.51.3 and later releases within major version 3, with backports in the 3.44 branch from 3.44.6 and the 3.50 branch from 3.50.7. These branch-specific fixes do not make every version numerically above 3.44.6 safe. The runtime checks the actual bundled SQLite version as well as Node policy. A bounded successful smoke run cannot prove absence of the rare multi-connection WAL race; historical Node 22.19.0 logs remain evidence of those earlier runs only.
-
-Runtime schema migrations never decode historical Skill-shaped records. Historical SQL snapshots/plans return `STATE_MIGRATION_REQUIRED`; use the independent artifact with `--input-format sqlite-v1`, stopped writers and a new external backup directory. `json-v1` remains the explicit old JSON input. Converted snapshots retain old snapshot IDs and objects. Original frozen plans/receipts remain byte-identical audit rows with their accepted hashes and guards; execution requires an explicitly reviewed new plan. Configuration and common baselines remain unchanged.
-
-Binding registration and its initial common baseline commit together. Convergence publishes the new baseline and completed receipt edge in one transaction after generation comparison. Publication intent is committed before a network mutation; unknown creation remains unresolved until its identity can be proved. Cache clearing retires only SQL observations and their reserved generations in one transaction, including requests which have not published yet. It retains immutable objects/snapshots, all bindings/baselines/plans and every operation.
-
-File publication uses an official scoped file handle, full write, file sync, rename and parent-directory sync before a database snapshot pointer becomes visible. Snapshot registration verifies referenced hashes and sizes. A crash may leave an unreferenced durable object or manifest; it cannot turn absent referenced bytes into a successful registered snapshot. Standalone backup uses the official SQLite backup API and copies immutable `objects`, `snapshots` and `uploads`; restore the complete directory with writers stopped. Configuration, including credentials, requires a separate private configuration backup. Never place a running database on a shared/network synchronization directory.
-
-Upgrade is explicit and offline: stop all old CLI processes, host prefetch and jobs, then run the separately installed `ntn-skills-migrate STATE --config-directory CONFIG --cache-directory CACHE --backup-directory EXTERNAL_BACKUP --old-writers-stopped`. The tool validates schemas, reviewed plan digests and every referenced object, preserves a private original backup, imports IDs and exact frozen plan wire shapes, and journals `validated`, `importing`, `imported`, `switched`. An interrupted migration must be rerun against the same unchanged input. A retained writer fence blocks migration. The stop-writers assertion is required because arbitrary old binaries cannot honor a new marker; it is not an OS-level revocation of those binaries. Keep old executables stopped after authority switches.
-
-The same independent artifact also contains `ntn-skills-operator` for [retained historical actions](historical-operations.md). The importer remains offline; operator commands retain their original remote-access requirements.
-
-Normal startup neither imports nor reads old JSON state and never falls back from a damaged database to an empty store or old files. A legacy environment returns `STATE_MIGRATION_REQUIRED`. Invalid headers or SQLite corruption codes return `STATE_CORRUPT`; inaccessible paths, permissions and I/O failures return `STATE_UNAVAILABLE`; locks and resource exhaustion return `STATE_BUSY`; unsupported runtime returns `STATE_RUNTIME_UNSUPPORTED`; incompatible schema or state format returns `STATE_CONFIG_ERROR`. Conflicting constraints return `STATE_CONFLICT`; otherwise an unclassified failure returns `STORAGE_ERROR` without asserting corruption. Error details contain safe native codes and operation classifications rather than raw causes or SQL parameters. Imported source files and backups remain evidence rather than active writers. Retire copies only through the system Trash. `plan_path` and `receipt_path` are database locators (`sqlite:plans/ID`, `sqlite:sync_receipts/ID`, `sqlite:publications/ID`), not filesystem paths. Use operation inspection for receipts and explicit plan `--output` for a review file.
-
-## Identity and references
-
-```text
-skill://<encoded-selector>/<encoded-relative-path>?snapshot=s_<64-hex>
+# CLI and SDK reference
+
+This reference describes the current `next` CLI and SDK 3.
+The [current library contract](current-contract.md) defines table ownership, current descriptors,
+operation states, and the remaining cutover work.
+Use [the usage guide](usage.md) for commands and [the authoring guide](shared-authoring.md) for complete imports.
+
+## Commands and output
+
+The package and executable are `ntn-skills`.
+Normal CLI results contain one JSON value on stdout.
+Success includes `ok: true`. Typed failures include `ok: false`, `error.code`, and `error.message`.
+A failure may also include `error.details`, request metrics, and a suggested `next.argv`.
+
+Help and version return text. `read --raw` returns successful UTF-8 content as text.
+`use` has its own instruction-text output; use `--json` for its structured result.
+The `skills` actions return text by default and accept `--json` for structured
+results. Their typed failures follow the same JSON error contract.
+Stderr can contain runtime warnings. It is not a second stable result channel.
+
+Exit status is 0 for success, 1 for an operation failure, 2 for invalid arguments, and 130 for interruption.
+A suggested next command does not authorize another mutation.
+
+The installed parser is the command reference:
+
+```bash
+ntn-skills schema
+ntn-skills schema skills get
+ntn-skills schema ctl library import
+ntn-skills schema ctl library members-plan
+ntn-skills schema ctl library projection
+ntn-skills schema ctl library profile set
 ```
 
-Notion Name and authored frontmatter `name` are human-readable values preserved exactly, including case and Unicode spelling. They must be nonempty and contain no control characters; Unicode, digits, spaces and hyphens are allowed. Each listed `name` holds the display title. Its separate callable `alias` is derived deterministically: normalize to NFC, lowercase, trim surrounding whitespace, replace whitespace runs with `-`, then percent-encode characters outside Unicode letters, marks, numbers, `_` and `-`. Unsafe delimiters such as `/`, `?`, `#` and `%` are encoded. References mode generates frontmatter from the exact page title; authored exports retain their original frontmatter name. Neither frontmatter nor an export directory must equal the alias. Explicit `--name` overrides the human title, never page identity or stable member keys.
+`schema` and `--help` work offline.
+Schema output includes parameter types, occurrence bounds, defaults, and constraints.
+The root schema is shallow; query an exact command path for its full definition.
 
-Target commands (`read`, `files`, `write`, `export`) accept display Name, invocation alias, page ID/URL, `skill://` ref or snapshot ID. Names and aliases are selection values, never identity. Distinct names can derive the same alias, so name or alias collisions require an exact page ID/URL or returned identity ref rather than choosing the first match. `replace` and `update` require exact page identity or a pinned snapshot and never resolve names or create missing targets. `apply` requires a pinned main ref or snapshot ID. Writes validate online access and pinned baselines.
-
-Each `--database` accepts one ID, URL or exact registered alias; repetitions fail before handlers. `ctl database list` discovers content databases; `register ALIAS --database SELECTOR` validates and saves an alias; `unregister ALIAS` removes its exact local registration offline. `ctl database init --parent PAGE_ID` creates two native tables; alternatively provide both `--content-database ID --upstream-database ID` to attach exact tables. Initialization persists ordered operation events and exact database/data-source/property IDs, validates existing field types and relation targets before adding missing fields, and publishes configuration only after readback. Repeat the same target and operation to resume; uncertain creation reconciles the parent operation marker and never repeats creation by display name. The global `upstream_database` is independent of `default_database`; init changes the ordinary default only with `--set-default`.
-
-Before any remote creation or schema write, init checks every explicitly supplied existing table for accessible database/data-source identity, native title and field types, and all Relation targets/directions that are already knowable. Relations needing a newly allocated target ID are checked again after creation; an unknown creation remains in its durable operation ledger and is reconciled before retry.
-
-Content origin uses `Source Type` select with exactly `builtin`, `upstream`, `manual` and `Builtin ID` rich text containing the exact builtin package ID, such as `notion/ntn-skills-maintain`. Origin is independent of Kind and Sync Mode; a fork retains upstream origin. No public ContentRecord fields or source CLI flags are added. Remote metadata never establishes trusted local builtin identity.
-
-Explicit `ctl database init` additively upgrades existing tables, including repeating the same already-published attach operation. Publishing never changes schemas or backfills legacy rows. Unset origin stays unset; empty Upstream never implies manual. Ordinary create assigns manual when both compatible fields exist and supports legacy tables missing them; incompatible present fields fail safely. Ordinary replace/write preserve provenance, including unset. Deliberate builtin/upstream publication requires compatible fields before any remote mutation, then assigns builtin plus its trusted exact ID, or upstream and an empty Builtin ID.
-
-`read <target> [--path <file>]` resolves the record first and defaults to its `entrypoint`: `SKILL.md`, `ROUTER.md`, or `PROMPT.md`. `files` lists the complete snapshot unless a path filters it. Pathless refs can use --path; explicit paths reject --path. Relative reads with `--from` preserve the fixed snapshot and reject unsafe paths. The `skill://` protocol covers every kind. A subscription selector is `encodeURIComponent("upstream:" + subscriptionUUID)` and must never be sent to content-page APIs or mutation/local-binding commands.
-
-The catalog publishes `records`, each with `id`, `kind`, `locator`, `name`, `alias`, `description`, `default_context`, `entrypoint`, and `ref`. A content page uses `id=notion_page:<UUID>` and locator `{type:"notion_page",page_id,database_id,data_source_id}`. A subscription Router uses `id=notion_subscription:<UUID>` and locator `{type:"notion_subscription",subscription_id,database_id,data_source_id,target_database_id}`. Names and aliases are display/selection values, never stable identity. Old Notion content with missing or empty Kind decodes as Skill; unknown Kind and malformed properties fail. Ordinary discovery excludes the configured subscription table.
-
-Full catalogs expose the configured subscription database as `role:"upstream"`; content databases use `role:"content"` (an omitted role means content). Each record's locator must belong to its declared database/data-source pair and a successful query in `coverage.queried_data_sources`. Subscription Router locators belong to upstream sources; `target_database_id` belongs to the content selection. `--database` constrains that target, while ordinary content discovery and creation continue to exclude the subscription table. Query failures retain structured `failed_sources` entries and successful records; this is a partial observation, not an atomic workspace snapshot.
-
-For a Skill in a validated subscription's published active-member map, full catalog discovery also returns optional `upstream: {repo: string}` metadata. `repo` is the subscription's callable alias derived from its Notion `Name` using the name-to-alias rules above; `Pstack` yields `pstack` and `Matt` yields `matt`. The existing subscription `name` configuration controls this display namespace; repository URLs, registry slugs, roots and member paths do not determine it. This uses the existing metadata inventory without member-body reads or additional remote requests. Consumers may show `repo/name` in completion labels; member `name`, `alias`, `id`, `locator` and `ref` retain their existing meanings. This catalog display metadata is not required in read/export snapshot records and does not enter content or snapshot identity.
-
-Read, files and export share the same `record`, `scope`, `snapshot_id`, `version_id`, `entrypoint`, and fixed `ref`. No parallel `skill` or `skill_name` wire aliases are emitted. Portable manifest version 2 adds `kind` and preserves the complete file tree with its declared `main`. Explicit version-1 portable input converts to Skill; persisted historical state requires the separate migration tool.
-
-A manual Router snapshot contains its authored instructions, its own resources and a deterministic member index sorted by stable member identity. Members contain only Skill identity/name/description/ref metadata. Missing, inaccessible or non-Skill members fail explicitly. Reading or preparing a Router does not load its members. Default Context applies independently to the Router and each Skill member. A subscription Router is available only from a verified published active-member document, never from scan candidates or the whole reverse relation.
-
-Automatic subscription Routers require at least two verified published active Skills in the exact active map. Catalog discovery omits subscriptions below this threshold without treating that omission as a coverage failure, and still tags each validated member Skill with its upstream namespace. Current exact subscription Router reads reject insufficient membership with `UPSTREAM_ROUTER_UNAVAILABLE`, including the observed count and required minimum; manual content-table Routers retain explicit author-controlled membership. Prior catalog observations and current subscription Router materializations are invalidated on this policy upgrade; offline current reads require a fresh observation, while pinned immutable snapshots preserve their original bytes.
-
-Router `create`, `replace` and `update` accept repeatable `--member EXACT_SKILL_ID_OR_REF` or mutually exclusive `--clear-members`. Accepted selectors are exact current page IDs/URLs, `notion_page:<UUID>`, and `skill://<UUID>` with no path or `/SKILL.md`; names, aliases, pinned snapshot refs and resource-path refs are rejected. Each member resolves to an accessible current Skill page in the Router's exact content database and data source; Router, Prompt and subscription identities are rejected. Resolution checks current permission and metadata without fetching member instructions. The stored complete relation is deduplicated and sorted by canonical page ID. Omitted flags preserve Members on replace/update and create no relation on create; clear explicitly supplies an empty relation. The fixed materialized snapshot retains member metadata and refs.
-
-Publication freezes each selected member's metadata, exact parent identity and server revision; subsequent member changes conflict rather than silently changing the publication baseline. Router snapshot versions include those observations, so fresh member metadata creates a new materialized version without changing authored source hashes. Only the operation's bound root, registered reference/child graph and proven page creates are mutation targets. Member pages are read-only dependencies: recovery verifies their retained metadata but neither requires nor fetches unread member bodies, and cannot PATCH them. Exact current `skill://<page>/<path>` links are materialized as supported Notion HTTPS links with reserved `#ntn-skills-path=<encoded-path>` fragments on write; readback restores each typed destination even after Members changes.
-
-Notion's official Markdown endpoint normalizes Notion destinations and can remove fragments. Publication therefore writes the body through Markdown and repairs the corresponding owned block `rich_text.text.link.url` through `PATCH /v1/blocks/{id}` in the same operation. The retained intent includes original Markdown, concrete block paths, complete expected rich-text arrays and original guards before any repair. Document-order destinations, page identities and complete visible content must correspond; ambiguous correspondence fails before a repair. Inline and fenced code remain literal. Fresh reads retrieve the selected page's real block tree through paginated `GET /v1/blocks/{id}/children`, descend owned nested blocks, and stop at child-page/database boundaries. Block URL metadata supplies each exact typed path to the same live-body materialization even when GET Markdown omits it; ordinary HTTPS links retain their meaning. Linked pages do not acquire mutation authority or broader read permissions.
-
-Fresh typed-link reads accept Notion splitting a link at rich-text annotation boundaries only when adjacent explicit links have the exact same destination and the joined document proves complete visible-text and ordered block-link correspondence. Already matching readback retains its bytes. Different destinations, separated links and changed labels still fail; authored writes do not use this readback normalization.
-
-Publication stability re-reads use that same typed-link materialization when raw Markdown differs from the observed reference view, with a freshly fetched complete block tree. Unchanged raw reads avoid another block traversal; changed instructions or destinations cannot pass through retained blocks.
-
-Live authored instructions and every resource remain publication authority. Initial source-bundle alignment and every strong refresh compare the complete live projection before restoring original authored bytes. Ordinary Skill consumption may later reuse that verified file set through the metadata checkpoint described below; an unverified ZIP alone never establishes alignment. Router member indexes are materialized output and never overwrite authored instructions.
-
-Prompt is explicit user-task content on every submission. Its prepared content may be cached, but session loaded state never skips a later invocation. Preflight and dispatch share one fixed snapshot per submission. Prompt is excluded from native Skill installation, default discovery/prefetch and automatic matching. Mixed Skill/Router/Prompt submissions retain the user's text and images; cancellation and session generation changes prevent stale preparation from dispatching.
-
-
-## Official built-in Skills
-
-The package embeds three project-maintained Skills: `notion/ntn-skills` from `skills/ntn-skills/` for discovery, consumption and routing; `notion/ntn-skills-maintain` from `skills/notion/ntn-skills-maintain/` for Notion content maintenance; and `notion/ntn-skills-sync` from `skills/notion/ntn-skills-sync/` for ongoing local synchronization and recovery. The exact catalog ID is `notion/<frontmatter-name>`; it is not a Notion `skill://` selector, page ID, database alias or ownership claim. Each entry includes its complete supporting files and can be installed independently. Installation exposes metadata in a supporting host; it does not automatically load bodies, register adapters or inject the remote catalog. An older manually copied bootstrap remains unmanaged and is not adopted implicitly. “Official” means supplied by ntn-skills, not endorsed by Notion, Inc.
-
-| Command | Contract |
+| Command | Current responsibility |
 | --- | --- |
-| `ctl builtin list [--agent-dir DIR ...]` | Offline package metadata and installation state |
-| `ctl builtin read ID [--path PATH]` | Exact bundled identity and one UTF-8 file |
-| `ctl builtin export ID --output PATH` | Complete portable directory or ZIP; identical output reuse |
-| `ctl builtin status [ID] [--agent-dir DIR ...]` | Offline installation inspection |
-| `ctl builtin install ID [--agent-dir DIR ...]` | Install and distribute links with retained receipts |
-| `ctl builtin update ID [--agent-dir DIR ...]` | Replace clean installation and retain previous bytes |
-| `ctl builtin publish ID [--database SELECTOR] [--target TARGET] [--dry-run] [--progress]` | Explicit creation or exact replacement |
-| `ctl operation resume OPERATION_ID [--progress] [--new-artifact]` | Guarded continuation of frozen publication content; explicit replacement of a proven unreferenced upload artifact |
-| `ctl config set builtin_database SELECTOR` | Validate and save canonical builtin creation database |
-| `ctl config unset builtin_database` | Remove only that preference offline |
+| `list` | Paginated discovery metadata with explicit coverage |
+| `list --search-in content` | Bounded remote Notion search with fresh REST admission and non-exhaustive coverage |
+| `auth mcp login/status/logout/set-token/clear-token` | Independent MCP token selection and OAuth connection |
+| `read` | One selected file or text range |
+| `use` | Instructions and Requires expansion |
+| `files` | Complete selected file directory and returned refs |
+| `export` | Complete selected bytes in a local ZIP or directory |
+| `skills` / `skills list` | Offline catalog of the product Skills shipped with this package |
+| `skills get NAME` | Exact bundled Markdown; `--full` includes supporting files and `--path` selects one file |
+| `skills path [NAME]` | Actual bundled catalog or Skill directory |
+| `ctl library init/inspect/files` | Current descriptor, initialization, or selected-owner directory |
+| `ctl library import` | Complete current Skill replacement, dry run, or same-operation resume |
+| `ctl library import-batch` | Explicit local root/file mapping, frozen batch import and relation application |
+| `ctl library members-plan` | Conservative relationship discovery and an optional portable copy with confirmed links |
+| `ctl library source apply/refresh` | Explicit Git contribution changes and same-parent finite recovery |
+| `ctl library projection` | Complete Notion text for one current Skill or the daily set, with read-only preview and single-Skill resume |
+| `ctl library profile` | Current shared Profile rules and machine selection |
+| `ctl config/cache/doctor` | Local configuration, cache, or scoped diagnostics |
+| `ctl views/prepare/resolve` | View discovery, graph preparation, or relative-reference resolution |
+| `ctl api` | A scoped read-only Notion API request |
 
-Catalog entries and responses' `builtin` objects contain `id`, `origin=builtin`, `publisher=ntn-skills`, `package_version`, invocation `name`, display `notion_name`, description and portable `content_id`. Origin describes installed package bytes only. Remote pages remain ordinary Notion identities even when their name/frontmatter/publisher text matches; a publish response does not certify a remote page. Ordinary list/read and `skill://` resolution remain unchanged and never select a built-in implicitly. Unknown or unqualified built-in IDs return `BUILTIN_NOT_FOUND` with exact candidates.
+The `skills` family reads the executable's package without Notion credentials,
+Library resolution, configuration, cache or state writes. Names come from
+`skills list`, and `--json` is available for each action. A single-file `get`
+emits its original Markdown by default; multiple selections and `--full`
+include file labels. `get --all` selects every bundled Skill. `--full` and
+`--path` are mutually exclusive. Package upgrades replace the bundled guides
+together with the CLI; there is no independent Skill installation or registry.
 
-Local management uses `NTN_SKILLS_DATA_HOME` > `$XDG_DATA_HOME/ntn-skills` > `~/.local/share/ntn-skills` as the complete application data directory. The canonical Skill tree is `<dataDir>/skills/<builtin.name>`. Every managed install includes `~/.agents/skills/<builtin.name>` as a symlink to that tree. Optional repeated `--agent-dir DIR` adds `DIR/skills/<builtin.name>` links for other Agents; it selects distribution roots, not storage roots. Registered targets persist across subsequent commands. List/status are read-only and do not create missing directories. All local operations work without credentials or `ntn` and do not contact Notion.
+## Identity and selected reads
 
-`installation` contains central `state`, canonical absolute `path`, `data_dir`, `available_content_id`, `reload_required` and `distributions`. Each distribution records its `agent_dir`, destination `path` and observed `state` (`linked`, `missing`, `conflict` or `interrupted`), with optional `reason`. Current runtime accepts only receipt v2. Target conflicts do not change a clean central state; unreadable distribution registries remain explicit errors.
+The [remote search contract](notion-mcp.md) defines `contentSearch`, its SDK
+capability version, credential priority, result fields and publication fences.
 
-The central `.ntn-builtin-install.json` receipt has `format: "ntn-skills-builtin-install"`, `version: 2`, `id`, `data_dir`, `path`, `package_version`, `content_id` and `files: [{path, bytes, sha256}]`. The complete exported file set excludes the receipt itself. Link ownership lives at `<dataDir>/.ntn-skills/distributions/<name>.json`, identifying the builtin, canonical data/path and each destination with its exact link/inode proof and pending/linked phase. Registration precedes publishing a link so interrupted operations can be inspected. A matching name or incidental link alone does not authorize adoption; missing registered links can be repaired only through their retained ownership. Receipts establish local baselines, not signatures or remote provenance. Install stages the complete tree and receipt and publishes them together. Locks, staging, previous trees and journals remain outside `skills`, so native scans cannot discover transaction copies.
+The complete identity is `{ libraryId, skillId }`. Its public record ID is a
+canonical current root URI, such as `skill://architect?library=44444444-4444-4444-8444-444444444444`.
+`skill://architect` is contextual: a containing document supplies its Library;
+at a tool entry, explicit `--library` or `default_library` binds it once.
+No containing context means no resolution. Names and aliases are discovery labels.
+The Library ID is the canonical UUID of its dedicated Notion root page. The
+four-table descriptor binds that root to its exact databases and data sources;
+a Skills database ID is not a Library selector.
+A physical page UUID or Notion URL remains a separate adapter input; a UUID in a
+`skill://` authority is still a stable Skill ID.
 
-Install accepts an absent central target and reuses identical registered content; a repeated install can add destinations without copying the tree. Clean older content returns `BUILTIN_UPDATE_AVAILABLE` and requires explicit update. Existing unowned or mismatched-receipt central trees return `BUILTIN_UNMANAGED`; foreign or changed distribution entries return `BUILTIN_DISTRIBUTION_CONFLICT`. Update of an absent installation returns `BUILTIN_NOT_INSTALLED`. Added, removed or changed files, including hidden files, return `BUILTIN_MODIFIED` and preserve local bytes. Before replacing central content, management checks every registered distribution destination and refuses changed or foreign entries. Clean whole-tree replacement retains previous bytes through system Trash; unavailable retention fails explicitly. All valid links then resolve to the updated central tree.
+Tools emit full owner refs with a `snapshot` parameter for fixed content.
+The selected manifest maps an exact path to its native File binding or frozen
+Source route and byte identity. Source files need not have a Notion Files row.
+There is no public `file_id` query parameter or File-ID repair for an old path.
+Preserve returned refs rather than constructing them from a title.
+`read RELATIVE --from CONTAINING_REF` resolves from the actual containing file.
+Within one Skill it retains that selection. Crossing a Skill root requires the
+containing file's selected Source route and a unique contribution mapping; otherwise
+use an explicit stable reference. Nested files use their own path and Source route.
+Cache directory adjacency and display names do not establish cross-Skill identity.
 
-Receipt-v1 profile directories are inputs for a separately preserved one-time migration artifact, never ordinary install/update/status fallback. Stop old writers and use that artifact with exact builtin ID, `--agent-dir`, `--data-dir`, `--home-dir`, `--old-writers-stopped` and optional `--recover-only`. Modified, unowned and unresolved inputs remain preserved. Runtime records containing retired v1 proofs return `BUILTIN_MIGRATION_REQUIRED`. Current v2 journals retain guarded recovery through ordinary management.
+For current owner-local paths, `ctl resolve` can perform a syntactic calculation
+after binding the Library. Fixed resolution validates the actual containing path
+in the selected manifest. A pathless fixed ref selects that manifest's entrypoint;
+current metadata never changes it. A same-owner current link from a fixed document
+retains its pin; a cross-owner link selects the target's own current or fixed tree.
+The SDK `resolveReference` requires a full fixed containing-file ref.
+The [reference contract](skill-reference-redesign.md) defines the grammar and cutover.
 
-After interruption, the next install/update performs guarded journal readback under the central installation lock: a fully published matching tree may finish retention, a missing target with a proven previous tree may roll back, or an untouched transaction may be classified `not_applied`. It still returns `BUILTIN_INTERRUPTED` with `details.recovery` and installation diagnostics; inspect status before explicitly repeating. An unproven outcome remains fenced and is never overwritten. `BUILTIN_PATH_CHANGED` reports path drift; `BUILTIN_IO_ERROR` reports local I/O failures. Lock/retention failures reuse `SYNC_LOCKED`, `RETENTION_UNAVAILABLE` and `RETENTION_FAILED`.
+A local snapshot fixes the manifest for one selection.
+Its opaque ID includes the observed record metadata. A metadata-only refresh can
+change that ID while preserving content version and file hashes. Earlier complete
+session bindings keep their own exact local manifest; current metadata does not replace them.
+A complete manifest does not imply that every file's bytes are cached.
+Missing bytes can be fetched only through that selection's unchanged current acquisition route.
+An unavailable selection returns an explicit failure and requires current reselection.
+It does not trigger remote history recovery.
 
-If a system Trash operation succeeds but its `trashed.json` completion record is lost, recovery conservatively returns `BUILTIN_INTERRUPTED` and keeps the fence rather than inferring successful retention.
+Current targets accept one of `--refresh`, `--offline`, or `--max-age`.
+Fixed refs and snapshot IDs reject refresh and max-age.
+Offline content is evidence of a local selection, not proof of current remote access.
+Ordinary reads check Enabled and reject an observed unfinished current operation.
 
-Installation locks coordinate cooperating processes and identity/hash guards detect observed drift. Node.js filesystem operations lack a portable no-replace, directory-relative compare-and-swap, so a noncooperating writer can still change a pathname between the final guard and its syscall. A central-tree update and all distribution operations are observable stages, not an atomic transaction across directories; preserve pending records and use status/readback after failure.
+## Current management commands
 
-Context Broker exposes package-provenance builtins directly through ordinary `$...@builtin`, including their supporting files, without requiring managed local installation or Notion publication. Explicitly installed local copies remain a separate source: matching version-2 receipt identity/data-root/path and an ordinary `SKILL.md` identify owned central trees. Aliases of one physical local Skill are deduplicated; distinct same-name sources retain their ambiguity rules. Modified registered content remains discoverable as local user bytes while replacement is blocked. Native hosts reload/restart after local updates. Package upgrades, local builtin updates and remote `ctl builtin publish` remain separate operations.
+`ctl library skill create INPUT --library LIBRARY_ID --skill-id ID` selects native
+Markdown and exact resources for other files. `skill update TARGET` changes only
+explicit content, metadata or relations; unmentioned files stay current.
+`skill register PAGE_ID` preserves an authored page in the exact Skills table and
+fills missing registration. `skill remove TARGET` owns supporting/resource
+retirement and incoming same-library Members/Requires cleanup. Every action uses
+exact identities, dry-run and shared request budgets. See [daily authoring](shared-authoring.md#manage-native-skills).
 
-First publish uses `--database` > `config.builtin_database` > ordinary creation selection (`default_database`, then sole fresh discovered database). Same-name pages always fail with CREATE_CONFLICT, including identical earlier copies; incomplete/ambiguous discovery still fails. No name-based update or automatic upgrade occurs. Explicit updates accept only a page ID/URL, page-ID main ref or snapshot ID; names and reference-file targets return INVALID_ARGUMENT. Target identity owns the destination, independent of both defaults; explicit database is a constraint. Pinned scope/version validation and import readback/error semantics are reused. --dry-run performs preflight but no remote mutation. Export uses the ordinary portable format and output protection; publisher text is not a cryptographic signature or remote registry.
+`ctl library import INPUT --library LIBRARY_ID --skill-id ID` admits the complete local input before Notion access.
+The accepted input is a directory, ZIP, or explicitly selected Markdown file.
+The input limit is 128 MiB expanded and 10,000 entries. The ZIP wire limit is 138 MiB.
 
-Equal content with differing requested provenance performs a journaled metadata-only update (`reused: false`), without body/reference/resource/source upload. Complete equality is mutation-free reuse; dry-run distinguishes these outcomes without writing. Recovery preserves frozen source intent and bound property IDs, including unavailable fields or historical absence in old receipts. Renamed properties retain their IDs; deleted/recreated fields cannot take over original IDs. Resume/reconcile/retry and supersede/prepared recovery preserve the exact original combined ownership/source request and never authorize arbitrary metadata changes.
+The default representation is exact Notion resource content. Generated reading projections are separate and do not block readiness.
+An existing Notion-owned supporting file omitted from the input is removed.
+Repeat `--native PATH` for editable supported Markdown with exact frontmatter and
+mode. All native writers accept normal LF/CRLF and terminal newlines, verify full
+Notion readback for structural equivalence and report formatting normalization.
+Original input fingerprints remain fixed; native read/export uses the current
+Notion body. Lost content or changed meaning cannot complete an intent.
+For Markdown paths, an automatic link added to original plain text can be
+corrected through its precisely bound rich-text block in the same operation.
+This is a management write followed by strict complete readback; reads do not
+modify content, and existing links, code, styles and other differences are not ignored.
+An exactly matched valid Skill hyperlink dropped by Markdown transport can also
+be restored. Native rich text uses a reversible `entrypoint.md/..` path pair;
+complete comparison checks the same Skill, Library scope, path and selection.
+An empty path still selects the declared entrypoint. This is confined to native
+hyperlink representation: original Markdown requests, frozen input fingerprints,
+image sources and literal text remain unchanged. See [the native contract](current-contract.md#native-skill-hyperlinks)
+for readback and recovery requirements.
+Unknown or noncanonical native paths are rejected locally; the selection is part
+of the input fingerprint and must match on resume. A target containing any Source
+main or supporting file returns `CURRENT_SOURCE_MANAGEMENT_REQUIRED` in both dry-run
+and apply, even when the exported bytes are unchanged. Source removal, takeover,
+renaming and rebinding need coordinated contribution management; use Source
+apply/refresh for its supported mapping and exclusion changes. Takeover and
+Source removal remain separate work. Reading or exporting the target remains available.
+Portable version 2 supports the canonical main path for its content kind.
+Portable relations carry same-library current root refs such as
+`skill://architect?library=44444444-4444-4444-8444-444444444444`. They have no path or snapshot. Omitted Members
+or Requires preserves an existing field, `[]` clears it, and an array replaces the full set.
+Prompt inputs reject relations. Both fields require registered single-property
+relations to the same Skills data source. Names, page URLs, foreign libraries,
+duplicate/self targets, projection metadata and unknown fields fail admission.
+Changed sets are limited to 100 targets; larger unchanged sets are retained after
+complete pagination. Changed Requires checks its reachable dependency closure for
+cycles and rechecks the observed closure before ready. Export includes both sets.
 
-If the original metadata PATCH was acknowledged but its readback failed, resume and reconcile prove the exact requested values, unchanged unrequested fields and complete retained resources before advancing the guard. They preserve the acknowledged response and do not resend that PATCH. Metadata-only editable-file recovery verifies the complete content independently of file ordering and does not append file blocks.
+For a first import only, omitted Members can be discovered from confirmed exact
+canonical Skill links in active Markdown. An explicit Members set takes precedence, including
+`[]`; existing relationships are never replaced by a new scan. Requires is never
+inferred. Inline, fenced and indented code, comments and images are excluded. A naked mention,
+template placeholder or similar filename is insufficient evidence. Actual active
+prose links remain candidates even in prose describing an example. Import and
+dry-run expose this decision through `members_discovery`.
 
-## References pages
+`ctl library members-plan INPUT --library LIBRARY_ID --skill-id ID [--bindings FILE]
+[--output DIR_OR_ZIP]` reports `member_policy`, `confirmed`, `unresolved`, `importable`
+and optional `relations` without Notion mutation. Omitted relations preserve existing
+sets; they are not returned as empty arrays. Each unresolved item has `blocks_import`.
+Bindings declare an original root plus exact repository
+paths and same-library stable refs. When the plan is importable, optional output
+creates a portable copy and rewrites only confirmed local links to canonical refs.
+Original input is unchanged. See [binding format and examples](shared-authoring.md#discover-members-before-a-local-import).
 
-For legacy storage, a database is discoverable when it is a native Skills database or its data source has rich-text `Description` and `References` properties. References mode takes precedence whenever the legacy Skill page has References; an editable-file marker in that page selects live literal-file consumption. Otherwise native Skills use the export endpoint. Page mode needs Read content access and does not require the Skills export API. `doctor` reports `skill_read.storage` as `markdown_files`, `references` or `native_skills` after reading one available Skill. Shared libraries use their explicit descriptor and flat Files contract instead of these storage heuristics.
+`ctl library import-batch MANIFEST --library LIBRARY_ID` freezes an explicitly selected
+set of local roots, their admitted files, body replacements and final relations
+before writing. It creates/updates bodies first and applies relations second;
+Members cycles are supported, Requires cycles are rejected. This is not an atomic
+multi-Skill publication: a partial batch can expose ready bodies before the final
+relation phase completes. Use its complete result as the batch completion boundary.
+`--rebind-from LIBRARY_ID` permits exact old-to-new owner mappings only for
+batch-owned current refs and relations. Fixed body refs and unrelated external
+refs retain their original owner. No automatic same-name match is permitted.
+Resume keeps the same manifest, input bytes, options and operation ID; it uses the
+persisted plan instead of rescanning or reinterpreting omitted relations.
+Unknown creation outcomes remain blocked until verified. See [batch import](shared-authoring.md#import-an-explicit-local-batch).
 
-The optional `Default Context` property must be a checkbox when present; a wrong property type or non-boolean checkbox value fails with `INVALID_RESPONSE`. Skill metadata exposes boolean `default_context`, defaulting to `false` when absent, including legacy cached catalogs and snapshots. This metadata does not enter snapshot identity or content-version digests. Listing remains complete and does not add a Notion filter or write this property.
+`--dry-run` reads current metadata without remote mutation or operation allocation.
+It reports the input hash, desired files, removals, and the body checks still required during apply.
+`--operation ID --resume` continues the same complete input and original operation.
+Apply returns success only with a ready current tree. Its current result includes
+`library.library_id`, `library.database_id`, `library.data_source_id`, operation,
+Skill/page identities, input hash, files and relation summary. Brokers use this
+binding to invalidate only the corresponding directory after mutation.
+These commands do not create content versions.
 
-`References` is the complete inclusion list of Notion page mentions or page links, with optional whitespace separators. Property items are fully paginated. An explicit `.md` path label preserves the source path, including root `mocking.md`, nested `guides/testing.md` and common `references/guide.md`. Without an explicit Markdown path label, the historical page-title fallback retains its `references/` interpretation. Chinese titles and nested paths are supported. Repeated page IDs are included once. Duplicate paths, unsafe paths, unavailable pages and incomplete Markdown fail rather than silently dropping content. Pages linked only from the body are not automatically included.
+`ctl library source apply INPUT --library LIBRARY_ID` accepts one complete bounded JSON
+`{version:1,definition,contributions}`. `source refresh SOURCE_ID --library LIBRARY_ID`
+reads that declaration from the current Source and uses the same coordinator.
+Regular Git files from GitHub or credential-free HTTP(S) Git origins support manual/pinned policy and local machine authentication. All selected discovered members are included; contributions preserve stable identity overrides. New identities are deterministic. Upstream member deletion, including an empty selection, retires pure Source Skills and Files. Provider failures do not authorize deletion. Contribution mapping/exclude uses exact member-relative file paths; Selection filtering chooses members.
 
-Reads materialize the main page as canonical `SKILL.md` and each reference page as UTF-8 Markdown. Links to included pages become relative to the containing file, including links back to SKILL.md; anchors are retained. Markdown links, reference definitions, page mentions and bare URLs are supported. Fenced and inline code, unrelated URLs and links to pages outside the inclusion list remain unchanged. Main-page child-page blocks are excluded from the local body and preserved during replacement.
+Source dry-run reads the provider and affected current directories, with zero
+semantic writes. Source success returns the same `library` triple, `state: ready`,
+Source/page identities, affected Skill IDs and child results. Retired children have `state: removed`, `status: removed` and `files: 0`; completed current children remain `state: ready`. Rebuilt physical page IDs can change while stable Skill IDs remain. These results invalidate matching Broker discovery, without adopting content from the write result. Resume uses the
+original operation, complete declaration and frozen commit; a changed visible
+Notion declaration cannot replace that original input. Parent progress is a
+finite target cursor, removed with the operation on completion. Desired paths explicitly replace native/resource authority; excluded native bodies and unrelated contributors are preserved. Generated projections do not gate completion. Both paths share the same
+HTTP budget; Git subprocess HTTP/wire bytes are unmetered, while deadline and
+file limits still apply. See [authoring](shared-authoring.md#apply-or-refresh-a-git-source).
 
-The version digest covers Name, Description, References property items, every included page's ID/path/Markdown and attachment content hashes. Editing a reference page alone invalidates a pinned write. The resulting complete snapshot is immutable and supports offline reads and exports.
+`ctl library projection PAGE_ID --library LIBRARY_ID` reads the current complete tree and
+verified originals, renders source/resource text with the existing renderer, and
+checks the actual Skills/Files bodies. Native bodies are verified without writing;
+non-text files are explicitly skipped. `--dry-run` inspects without writes. Equal
+complete bodies are a zero-write no-op. Projection keeps the real Skill ready, so
+an unfinished generated-body intent does not block ordinary consumption.
 
-References versions also include the current materialization/generator version. A generator change creates a new version and snapshot identity even when remote content is unchanged; the snapshot identity formula remains scope, record identity and content version. Latest observations carry the same materialization marker. Missing or older markers require online refresh for current selection; offline current reads return `CACHE_REFRESH_REQUIRED`. Explicit pinned snapshots retain their original identity and exact bytes, independently of the current generator. Publication proof verification remains strict for newly materialized content.
+`projection --daily --library LIBRARY_ID` selects Source 日用 current members ∪ Skill 日用
+∪ Default Context. Complete checkbox-schema and pagination checks precede target
+writes. Existing Enabled and 期望删除 are reported and preserved. The batch stops
+on the first failure and reports completed/remaining targets plus the exact
+single-Skill operation. Resume it with `projection PAGE_ID --library LIBRARY_ID
+--operation ID --resume`, then rerun daily. Daily rejects `--operation` and
+`--resume`; projection exposes no supersede. One invocation budget covers the
+whole batch. See [text generation](shared-authoring.md#generate-readable-text-in-notion).
 
-Create/replace convert every supporting Markdown document to an editable child page, preserving its original relative path, including root and nested files outside the common `references/**` directory. All page IDs are allocated before rewriting forward or cyclic links. References stores original labeled paths while the historical page-title fallback remains compatible. Write replaces one reference page or adds a new page; replace sets the complete inclusion list. Omitted pages remain in Notion and are excluded from new snapshots and portable exports, including preserved source bundles. At most 100 reference pages may be submitted per content page. Scripts and non-Markdown assets remain in Files/the source bundle.
+Profiles have one current Record and a conflict-detection fingerprint.
+`profile set` replaces the full rule set and requires `--name`, `--enabled`, and `--expect`.
+Omitted optional rules are removed.
+`--reconcile` observes an unresolved Profile intent without repeating its mutation.
+Profiles and Views do not bypass access or Enabled checks.
 
-`Files` is optional. With Files, the source bundle preserves source bytes, manifest main, extra frontmatter and non-reference assets. Without Files, only main/reference Markdown is accepted; source export normalizes frontmatter and Markdown with the record entrypoint. Router source bundles retain authored instructions and their resources separately from the generated member index. Read and `export --projection snapshot` materialize that index; default `export --projection source` preserves the authored projection. Replacement compares authored content plus every resource hash. `content_id` identifies the saved portable content. Keep Files for byte-exact source preservation.
+## SDK 3
 
-## Success
+The package exports the Node ESM module `ntn-skills/sdk` and its TypeScript declarations.
+`SDK_VERSION` is 3. Payload contract versions remain separate from the SDK version.
 
-The read-output example below preserves the authored `Tty7` spelling while exposing its separate safe alias. The same rule applies to these public metadata and frontmatter values:
-
-| Display title / authored `name` | Callable `alias` |
+| Export | Result or behavior |
 | --- | --- |
-| `Tty7` | `tty7` |
-| `n8n-workflow` | `n8n-workflow` |
-| `React19` | `react19` |
-| `中文` | `中文` |
-| `Release Review` | `release-review` |
-| `Review/2026` | `review%2F2026` |
+| `selectLibrary` | Capture the canonical root from the explicit selector or current local `default_library`; no Notion requests |
+| `readCandidateSnapshot` | Contract version 1 local discovery snapshot, known rejections and original observation time; no transport or scheduler |
+| `resolveLibrary` | Read-only resolution of one root and all four actual table bindings, including an empty Library |
+| `listCatalog`, `listSkills` | Directory metadata and bounded list pages |
+| `readSkill`, `listSkill` | Selected file read or complete file directory |
+| `resolveReference` | Version 1 relative-reference identity resolution from a fixed canonical containing File ref |
+| `consume` | Contract version 1 instruction preparation with complete manifests |
+| `readResources` | Contract version 1 acquisition of a bounded exact file set |
+| `decodeConsumeResult`, `decodeResourceReadResult` | Local validation of the corresponding result contract |
+| `compareNativeMarkdown` | Pure current-writer comparison of complete Native Markdown: `exact`, `normalized`, or `different`; preserves text, formatting, links, nesting, and code and rejects unsupported expected syntax |
 
-```json
-{
-  "ok": true,
-  "record": {"id": "notion_page:11111111-1111-4111-8111-111111111111", "kind": "skill", "locator": {"type": "notion_page", "page_id": "11111111-1111-4111-8111-111111111111", "database_id": "db-id", "data_source_id": "ds-id"}, "name": "Tty7", "alias": "tty7", "description": "When to use Tty7", "default_context": false, "entrypoint": "SKILL.md", "ref": "skill://11111111-1111-4111-8111-111111111111/SKILL.md"},
-  "scope": "authentication-scope-hash",
-  "snapshot_id": "s_<64-hex>",
-  "version_id": "opaque-notion-version",
-  "entrypoint": "SKILL.md",
-  "path": "SKILL.md",
-  "ref": "skill://11111111-1111-4111-8111-111111111111/SKILL.md?snapshot=s_<64-hex>",
-  "source": "local_snapshot",
-  "freshness": {"policy": "pinned"},
-  "content": "---\nname: Tty7\ndescription: When to use Tty7\n---\nUse Tty7 for the selected task.",
-  "range": {"start": 1, "end": 5, "total_lines": 5},
-  "has_more": false
-}
+SDK calls accept an optional environment, working directory, abort signal, and request-metrics callback.
+They use the same credential provider, Store, and request engine as the CLI.
+Consumption does not mutate Notion. Current import and Profile commands are CLI management entrypoints.
+
+`readCandidateSnapshot({ library, ...options })` returns `kind: "miss"`,
+`"blocked"`, or `"snapshot"`. It resolves the selected Library locally and uses
+the existing credential-to-scope mapping and catalog Store. It cannot verify a
+root, query a View, project a file, retrieve a body, or repair missing cache data.
+`CANDIDATE_SNAPSHOT_CONTRACT_VERSION` is 1. Hosts must check this capability in
+their selected SDK package before invoking it or requesting the notification
+below.
+
+A snapshot carries canonical Skill and physical page identities, `coverage`,
+`stale`, exact `denials`, and the original `verifiedAt`/`fetched_at`. Reading a
+snapshot does not renew its age. The existing catalog slot retains the last
+complete directory separately from a later partial observation or failed
+attempt. Partial results may add confirmed candidates and suppress known
+disabled, unavailable, or denied targets. They do not become complete. A newer
+complete result replaces the directory, including a complete empty result.
+The existing SQLite generation fence rejects late older publications. Scope
+rejection blocks the snapshot; exact physical rejection suppresses only that
+target. A local miss or blocked result never triggers a remote fallback.
+
+Combined `listCatalog({ directory, onCatalogSettled, ...options })` calls the
+optional `onCatalogSettled(): void` once after the full catalog has succeeded or
+failed and its available cache facts are published, before View/Profile work.
+It does not await the callback. A callback throw or rejected Promise cannot
+change the catalog result. Cancellation keeps the original abort behavior;
+hosts can read existing local facts after an earlier failure using their own
+operation completion handler.
+
+Hosts hydrate memory once and read another snapshot at that notification, so a
+slow Default View does not delay new candidates. Keystroke completion filters
+that memory. A displayed or selected
+candidate remains discovery metadata: `consume`/`readSkill` still check current
+authority, Requires, complete manifests, and actual bytes before host delivery.
+
+`resolveReference(relative, { from, ...options })` returns
+`{ version: 1, from, ref, effects }`. `from` is the exact fixed canonical reference
+of the file containing the link, including a supporting file when appropriate.
+Resolution uses the same Source-aware path as `readSkill(relative, { from })`, but
+does not fetch the target body. A same-owner result retains its fixed reference;
+a cross-owner result supplies the target identity so the host can preserve that
+target's own selected snapshot. It does not activate instructions or expand Requires.
+Source revision changes, ambiguous contributions and unavailable mappings fail
+explicitly; a host must not guess from the cache layout or substitute current bytes.
+
+Consumption effects contain exactly `version: 1`, `remote_writes`, and `author_content`.
+`remote_writes: "none"` requires `author_content: "unchanged"` and is backed by the
+read-only transport boundary. Hosts preserve `unknown` when a result is missing,
+invalid, or truncated; a later zero-write result cannot erase that uncertainty.
+The retired `retained` outcome and `retention` field are rejected, including an empty array.
+
+`consume` and `readResources` return discriminated `ready`, `failed`, or `cancelled` results.
+A ready result distinguishes complete manifest metadata from the files whose bytes are ready.
+Preparation does not establish host delivery or activation.
+The host remains responsible for those outcomes.
+
+```ts
+import { consume, SDK_VERSION } from "ntn-skills/sdk"
+
+const result = await consume(
+	{ version: 1, targets: ["EXACT_REF_FROM_LIST"], purpose: "use" },
+	{ library: "LIBRARY_ROOT_UUID" },
+)
 ```
 
-`source=notion` identifies online validation, `source=local_cache` an unpinned cached observation, and `source=local_snapshot` an explicitly pinned version. Read/open/files/export/list responses carry `freshness` with policy, `validated_at` (ISO timestamp), `age_ms`, `max_age_ms` and `stale`. Cached hits do not move validation time. Pinned freshness uses policy `pinned` and omits latest-validation fields; snapshot creation is not proof of remote freshness. `list` retains scope, fetched_at, databases, records, count and coverage without bodies/file manifests. Each database has database_id/title/alias/data_source_ids; record aliases remain invocation names. `--query` filters after pagination and retains the queried database map. Cache freshness never upgrades discovery coverage or suppresses failed_sources.
+The generated SDK declarations own the exact input and output types.
+Nonempty `requestedFiles` in `consume` is reserved and rejected.
+Use `readResources` for a selected supporting-file set.
 
-The catalog database map includes `role` alongside database_id/title/alias/data_source_ids. Consumers preserve both source roles, require page locators in content sources and subscription locators in upstream sources, and check exact DB/DS containment plus successful-query coverage before registration. The role does not authorize reading arbitrary external records. Discovery retains metadata only; exact activation still validates the record, selected source and authentication scope.
+## Requests and limits
 
-`files` returns fixed snapshot metadata and file paths, sizes and pinned refs without bodies. `read --output` reuses exact bytes and rejects differing output. Its result includes `bytes` and `sha256` for the selected file, plus `entrypoint_sha256` from the validated snapshot manifest; a resource read does not read the main object to obtain this owner commitment. Ordinary text reads retain their existing shape. Inclusive 1-based `--lines` and `--raw` reject output mode.
+Limits apply to different boundaries. A small output page does not imply a fixed HTTP cost.
 
-Local discovery registrations are stored in `~/.config/ntn-skills/config.json`, with directory precedence `NTN_SKILLS_CONFIG_HOME` > `$XDG_CONFIG_HOME/ntn-skills` > `~/.config/ntn-skills`. Shared library source manifests and selections remain in Notion, independently of those local aliases/preferences. `NTN_SKILLS_HOME` controls SQLite and immutable state. Old state-directory configuration is imported only by the explicit migration tool; ordinary reads never relocate it.
+| Boundary | Current limit or behavior |
+| --- | --- |
+| `list --limit` | 1–500 returned metadata records, default 50 |
+| Current file index | Complete pagination for the selected owner before claiming a complete directory |
+| Graph preparation | Defaults of 64 nodes, depth 16, 1 MiB instructions, and 256 KiB context |
+| `readResources` | Defaults of 16 files, 1 MiB, and 30 seconds; maxima of 64 files, 16 MiB, and 120 seconds |
+| Notion service | Four concurrent attempts by default; `NTN_SKILLS_NOTION_CONCURRENCY` accepts 1–64 |
+| Local request schedule | Default 350 ms admission spacing, shared by participating CLI processes on one machine |
+| Admission | One five-minute deadline across a request's retries; bounded queue of 256 |
+| HTTP attempt | `NTN_SKILLS_REQUEST_TIMEOUT_MS`, default 30 seconds, for each attempt |
+| Current import, Source management and projection | `--max-requests` default 1000 attempts; `--max-bytes` default 536870912 payload bytes; `--timeout` default 600000 ms for the complete invocation |
 
-Authentication selects non-empty `config.token` > non-empty `NOTION_API_TOKEN`; missing credentials return `AUTH_REQUIRED`. `ctl config set-token --stdin` requires piped input, trims surrounding whitespace and rejects empty or multiple values. It saves plaintext privately without remote validation; use `ctl doctor` to check direct API authentication. `ctl config clear-token` removes only the saved token and restores environment-token selection. Sanitized configuration reports `token_configured`, never the token. Help/version and explicit pinned reads/exports require no credentials.
+Graph budgets count nodes and bytes; they are not HTTP request-count limits.
+Current import includes library lookup, relation closure, retries, uploads,
+provider downloads, native body writes, pagination, cleanup and readback in one
+invocation budget. Projection similarly includes daily selection, all selected
+Skills, original acquisition, generated bodies and readback. The three flags
+require positive safe integers. Nested calls
+reuse the same budget. Success and operational errors report the budget snapshot.
 
-Authentication scope binds the validated user identity, API origin and selected credential digest. Different selected tokens separate metadata/snapshot caches, even for the same user; the same token from config/environment yields the same scope. The default empty workspace slot is retained in existing scope and local-identity tuples so unchanged default credentials do not invalidate pins or caches. Scheduler grouping separately uses authenticated connection/workspace evidence. Older snapshots retain their own scope for pinned reads.
+Known request bytes must fit before dispatch. An admitted response is accounted
+at its response boundary and can exceed the byte limit; no subsequent request
+is admitted after exhaustion. Limits exclude HTTP/TLS framing. A timeout or
+exhausted budget preserves uncertain effects and the unfinished operation. A new
+explicit resume gets a fresh invocation budget without creating content history.
+A per-attempt timeout alone does not bound an unrelated command or full census.
 
-Successful `read`, `open`, `files` and `export` responses include `scope` from the selected snapshot. Current-target activation can compare this scope with discovery's `list.scope` and reject a record if credentials changed. Explicit pinned responses retain the snapshot's originating scope; they do not validate the currently selected credential or claim current permission. The portable export manifest intentionally excludes this local provenance along with page/version/snapshot IDs.
+Eligible identical in-flight reads share one request execution.
+Completed responses use the separate cache policy.
+Mutations and file-bearing requests do not coalesce.
+Other machines and clients outside this engine do not share the local scheduler.
+Admission spacing does not guarantee exact server arrival spacing.
 
-## Read policy and cache management
+Eligible transient reads retry at most three times after the initial attempt.
+A mutation retry requires a structured rejection proving that the attempt had no effect.
+An uncertain write is left for its original operation to reconcile.
 
-`read`, `files`, `export` and `list` accept mutually exclusive `--refresh`, `--offline` and `--max-age DURATION`. Content defaults to 300,000 ms, catalogs to 60,000 ms. Omitted flags reuse an eligible complete observation; otherwise validate online. `--refresh` always validates online. `--offline` reads locally selected observations even when expired and reports their age; missing/unsafe scope fails explicitly. `--max-age 0` forces online validation. Expired online reads wait, and failure neither updates validation time nor returns stale content implicitly. Current caller code requiring fresh readback must pass `--refresh`.
+Set `NTN_SKILLS_REQUEST_TRACE_LIMIT` to retain a bounded safe HTTP trace.
+Where supported, `--metrics` adds measured request information to structured output.
+Metrics distinguish callers, coalescing, queue waits, retries, and actual network attempts.
+Missing or truncated trace data does not prove that no request occurred.
+A complete zero-request observation requires enabled tracing, zero total requests, an empty trace,
+zero dropped events, and no in-flight requests.
 
-A known `ACCESS_DENIED`, `NOT_FOUND` or `CONTENT_DISABLED` during current validation retires that target's old TTL eligibility, even when it has not expired. `AUTH_REQUIRED`, or denial while validating the authenticated identity, retires all known current and directory observations in that credential scope. The next ordinary current/list call must validate online. Explicit offline keeps the last complete content and original validation/fetch time with `stale: true`; historical bytes remain intact. Network failure and cancellation do not manufacture a permission denial or a new validation timestamp. Other credential scopes and unrelated targets after a target-only denial remain independent.
-
-Online fixed scalar and resource-batch reads reject a known `AUTH_REQUIRED` for their credential scope or `ACCESS_DENIED` for their target, before reading local objects or materializing retained bytes. The existing local observation journal supplies this check without per-file HTTP authentication. A scope denial also covers historical pins with no current observation. Explicit offline can still read old bytes; scalar pinned freshness reports `stale: true` when a denial is known, while resource proofs continue to certify bytes only. `NOT_FOUND`, `CONTENT_DISABLED`, ordinary version changes and cache clearing do not revoke historical/archive authority. Later successful scope authentication clears the scope denial; later successful current target validation clears its target denial. Catalog metadata alone does not clear target denial.
-
-Fixed reads separate complete manifest validation from selected object acquisition. Eligible current shared cache hits may also reuse a manifest-bound receipt from an actual complete object/reference validation, then verify only the requested files. Old or mismatched receipts require the full reference check. This local proof does not renew the observation or full-body deadline, grant access, or bypass pending/invalidated state. Partial reads report only the paths verified for that operation; complete export retains all-file checks. See [selected snapshot consumption](selected-snapshot-consumption.md).
-
-Native rendered Skills with a committed Publication and an aligned `ntn-skills-source.zip` can use a local source-bundle checkpoint after the first complete body/resource verification. The checkpoint binds scope, generator version, source snapshot/version, bundle SHA-256, metadata for the root and every included reference, and all paginated References property observations. Ordinary expired reads compare those metadata observations and immutable attachment identity, bracketed by root metadata reads. If unchanged, read/files/export reuse the verified local file set without Markdown/block reads or another attachment download; cross-member link projection still validates its current source map. A successful remote metadata check can renew the observation and emits `freshness.validation="metadata"`, preserved by later TTL hits and cache status. It is not a full current-body proof: edits not reflected in metadata/timestamps can be missed.
-
-`--refresh` and explicit `--max-age 0` always perform complete body/resource validation. Publication, write, sync, reconciliation and low-level `openSkill` keep that strong path. Missing checkpoints, metadata changes or incomplete version evidence use the complete reader; failed access remains an error rather than stale success. Old/missing-generator observations cannot authorize the fast path. The checkpoint is disposable local cache, not part of the ZIP or remote Publication schema; a new machine validates fully before using it. Prompt, Router, editable-file storage and external attachment URLs retain the complete path. Signed attachment URL query renewal does not itself invalidate immutable file identity. A stable edit made directly in Notion after a committed publication is readable as current content when the committed pointer and complete current bodies/resources validate. The read does not update the original publication receipt or advance a synchronization baseline. Writing or unresolved publications still require their original operation recovery; pinned snapshots remain immutable.
-
-
-Pinned snapshot IDs/refs, including relative reads from a pinned `--from`, always select one immutable local version. `--offline` is redundant but allowed; `--refresh` and `--max-age` are invalid arguments. Mutation/import/sync plan/apply/reconcile and doctor always validate online and do not accept read-policy shortcuts. `--raw` returns text only, so freshness consumers must use JSON.
-
-Read durations accept finite nonnegative integer `0`, `Ns`, `Nm`, `Nh` or `Nd`. Controlled configuration uses `ctl config show`, `set KEY VALUE` and `unset KEY`; allowed keys are `default_database`, `builtin_database`, `cache_policy.read_max_age_ms` and `cache_policy.catalog_max_age_ms`. Cache values are nonnegative safe integer milliseconds; unset restores that field's default while preserving its sibling. Credentials use dedicated `ctl config set-token --stdin` and `clear-token` only.
-
-Local credential identity and validated API origin select a previously verified account scope without network. A different token never reuses another scope, even for the same user. Name selection requires a complete compatible scoped catalog; ambiguity or failed-source discovery cannot be resolved from arbitrary latest entries. Complete pinned reads need no new network request, subject to the known-denial boundary above; explicit offline preserves historical facts.
-
-`ctl cache identity [--database SELECTOR]` performs no network request and returns `{ ok: true, identity: "<64-character SHA-256>", catalog_max_age_ms: number }` for consumer metadata indexes. Its opaque digest binds the selected credential, validated API origin/environment, canonical database selection, relevant registrations and configured upstream database. An alias, ID or URL resolving to the same database shares its identity. Working directory, command spelling, content roots, cache TTL, creation preferences and sync bindings are excluded. Credentials come only from saved config or `NOTION_API_TOKEN`; no credential/account identifier is returned. Missing credentials fail explicitly. Consumers calculate age from the original validation time; the digest does not establish current access.
-
-Exact `upstream:<UUID>` and `notion_subscription:<UUID>` selectors resolve the subscription directly, without requiring a catalog entry or refreshing cached absence first. Their complete observations follow the same read TTL and offline rules as content pages; target-database and authenticated-scope checks still apply. Subscription add/update and upstream apply retire affected scoped catalog observations, including negative results and in-flight reservations. Subscription names use the same `aliasFor` contract as content names before remote writes. Invalid historical subscription records remain visible through catalog `coverage.failed_sources` with their record ID and error code, while valid records remain available; incomplete coverage does not establish name uniqueness.
-
-`ctl sync upstream status SUBSCRIPTION_ID` is offline: it returns only the selected locally remembered authentication scope's metadata observation and scoped local evidence. No observation gives `subscription: null` and unknown Router availability; it never fetches source bodies or contacts Notion to fill gaps. `ctl sync upstream check SUBSCRIPTION_ID` observes the subscription and the target database's related member page metadata and Publication markers, saves that observation locally, and never reads member bodies or writes remotely. Its `revision` is the observed published revision or accepted source ref, otherwise null; source acquisition and candidate freezing remain `plan` responsibilities.
-
-Both commands return the same `state` domain view. `state.aggregate_status` is subscription progress, separate from `state.router.availability` (`ready`, `partial`, `unavailable`, `unknown`), `exact_ref`, `active_member_count`, `active_member_ids` and `published_member_ids`. Ready/partial require at least two published active Skills plus matching active-map ownership, committed markers and published hashes for every published pointer; partial can retain a usable Router while other unpublished members are writing or unresolved. Zero or one published member, a published writing marker or an ownership mismatch makes the observed Router unavailable. Failed metadata sources leave availability unknown; with at least two published members, missing metadata also leaves availability unknown. Inaccessible sources are never inferred missing. Counts/IDs are null when membership was not observed. These metadata checks do not attest to current member body bytes; ordinary exact Router reads retain their own read and integrity guards.
-
-`state.members` separates nullable local `candidate`, observed `publication` (`writing`, `committed`, `unknown`), `mode`, nullable `conflict` and nullable `active`, with metadata version/hash, local binding, plan IDs and operation evidence. A missing observation is unknown, never deletion. Historical operation conflicts stay in evidence and do not override current metadata. `state.observation` reports source, validation time, age, whether this is a current online observation, directory coverage and `member_bodies_read: false`. `state.failed_sources` and `state.coverage` preserve concrete fetch errors and observation gaps; authentication or selected database access failures retain their original error code with failed-source/coverage details. Hosts display these fields directly rather than deriving availability from the aggregate word `partial`.
-
-Git acquisition reads NUL-delimited tree entries and blob object IDs, so literal paths containing brackets, Unicode, spaces, `*`, `?` or `:` do not become Git pathspecs. Include/exclude selectors retain their documented glob interpretation. Relative POSIX path safety, traversal/absolute/NUL rejection, and selected symlink/submodule rejection remain independent of selection patterns.
-
-Historical one-member rebuild, restore, adoption and source-conversion actions live in the independent [operator artifact](historical-operations.md). They are absent from the daily command tree. Ordinary interrupted publications continue to use their original `ctl operation resume` identity.
-
-`ctl cache status [TARGET] [--database SELECTOR]` is offline and returns effective roots, cache policy, recorded scopes, observations and catalogs. `ctl cache clear TARGET [--database SELECTOR] [--dry-run]` or `ctl cache clear --all [--dry-run]` retires only disposable SQL observations. Exactly one target or --all is required. Target clearing conservatively retires catalogs containing the page or lacking complete coverage. Snapshots, objects, bindings, baselines, plans and receipts survive.
-
-`write` changes only the selected file; frontmatter Name/Description never implicitly changes page properties. `update` permits Name, Description, Default Context and Router Members (`--member` or `--clear-members`) with scope/version/readback checks. Member selectors and preservation follow the Router contract above. Every `ctl operation list` entry and every successful `show`, `reconcile` or `resume` returns the same typed envelope: `{ domain, operation_id, state, verified, result, next: { argv: string[], reason: string }, resume_supported }`. Domains are `publication`, `sync_local`, `sync_upstream`, `subscription_add`, `subscription_update`, `subscription_remove`, `upstream_fork`, `upstream_track`, `database_init` and `review`. Domain-specific summaries and readback outcomes belong inside `result`; subscription recovery includes exact intent and hashed authentication-origin evidence in `result.evidence`. Portable contents and credentials are never returned. Listing is exhaustive within the selected authentication/configuration scope plus local migration reviews. Duplicate identities are deduplicated within a domain; cross-domain identity collisions fail explicitly.
-
-`ctl operation reconcile` issues remote reads only and may persist local settlement. Publication observations classify saved intent targets against exact guards as `success`, `conflict` or `unknown`; unknown creation never guesses identity by name. When the business intent matches but the completion marker still needs an authorized write, `result.outcome` is `needs_safe_commit`, `verified` remains false and `next.argv` selects `ctl operation resume`. Resume rechecks every retained guard before explicitly committing the marker. Property-only receipts use this guarded finish without entering content continuation or replaying the property update. An already committed marker and matching content can settle locally as completed. Unsupported resume fails with a reason and executable next argv.
-
-An explicit publication `ctl operation reconcile` can release a retained conflict fence only when every original fresh guard, frozen source, ownership and integrity condition matches and all completed journal effects converge without unknown intents. It preserves the prior failure and stages in typed `conflict_history`; a later same-operation resume still performs its normal guards and does not replay acknowledged writes. Changed authority, content or intended effects retain the fence.
-
-An initial create may retain an integrity ledger without a page binding. Reconciliation joins it only to the unique completed original root-page POST with the complete original creation proof, exact current full marker and matching base ledger marker after removing that proven creation field. Bound replacements retain full marker equality. This read-only identity proof never rewrites integrity authority.
-
-Subscription add/update/remove save their exact method, path, native property-ID payload, database/data-source IDs, target database, source configuration hash, authentication origin and correlation before mutation. `phase=preparing` has no mutation intent and can repeat read preflight; `mutation_intended` and `response_received` preserve possible effects. Add writes its stable operation marker in the original page POST's first children. Complete paginated subscription and child reads must find one exact marker and matching full configuration before local settlement; partial visibility, duplicates and absent markers remain blocked. Reconciliation never replays a create. `ctl operation show` exposes typed `evidence` even when no page ID is known. Explicit resume of a known update/remove may retry its retained exact intent only while the original before-version still matches; external edits fence it.
-
-Pending Markdown readback uses the same parsed Markdown identity as ordinary publication verification. Server paragraph spacing and a removed final newline can converge; literal code and missing instructions remain distinct. A prior raw-comparison conflict can be reassessed only when the saved target matches under that shared identity and every fresh retained metadata, reference and inventory guard succeeds. This never authorizes an external edit or commits a remote marker.
-
-An acknowledged Markdown write with pending typed-link repair reports `needs_safe_resume`, with `verified: false`; provisional normalization of its stripped destinations is only recovery evidence. A lost block-PATCH response settles only when the fresh complete block matches the original intended update, with unchanged parent ownership, body and metadata guards. An unchanged original remains unknown, and unrelated edits conflict. Reconcile performs no repair; explicit resume rechecks all retained guards and journals each remaining block mutation before final live-content verification. Unknown allocations never trigger blind creation.
-
-Upstream fork/track parent inspection reads its saved mode intent and child ledger while its own publication is writing. Read-only reconcile reports the safe-resume requirement or conflict. Explicit resume of the original parent resumes only that child's frozen ownership and original remote baseline under all saved guards; it never selects a newer source or replaces fork content. Repeating verified resume performs reads without another mode write.
-
-Publication summaries include typed `result.upload_recovery` children with artifact identity, SHA-256/byte length, any known upload ID, state and replacement suboperation ID. Upload readback uses `GET /v1/file_uploads/{id}`, never `GET .../send`. A known completed upload is reused by its original ID. An unknown allocation has no exact lookup key; neither listing nor filename matching proves identity. An uncertain send that remains pending is not replayed. These cases return `PUBLICATION_UPLOAD_RECOVERY_REQUIRED` with `next.argv` selecting `ctl operation resume ID --new-artifact`.
-
-`--new-artifact` authorizes a distinct allocation suboperation within the same publication. Recovery first checks the original authentication/source, fixed page IDs and every retained page/body/reference/inventory guard. An allocation without a response ID can be abandoned only when the ordered journal proves no subsequent attachment mutation could reference it. A known upload requires a fresh unattached upload observation and no attachment intent; attached or potentially referenced artifacts remain protected. The original unknown status and `remote_orphan` audit remain retained; no remote delete, guessed identity or replay occurs. A lost attachment response is accepted only after downloading and hashing the attachment against frozen artifact bytes, checking other requested properties and preserving every untouched guard. Content verification and committed integrity still occur after the replacement is verified.
-
-Independent migration can retain a `domain=review`, `state=unknown` operation when frozen evidence cannot prove an executable destination or a historical plan requires fresh approval. Its original ID stays visible through `ctl operation list/show`; `result.provenance` contains the original source SHA-256 and audit reference. Review reconcile returns that same read-only envelope; resume fails with `UNRESOLVED_NO_REPLAY`. Reviews need no authentication when no scoped receipts or retained upstream operations are selected. Upstream history remains visible for the current authentication scope across configuration/database changes. The product never decodes historical import wire shapes. The external importer alone maps proved old destinations to current create/replace while preserving accepted hashes, guards, plan digests and complete original evidence.
-
+Content cache age defaults to 3,600,000 ms and catalog age to 60,000 ms.
+Explicit read age wins over a stable Skill's Profile override, then its Profile default, then the product default.
+Long age delays change visibility. Full-body and current-eligibility checks retain independent deadlines.
+A cache hit does not improve discovery coverage.
 
 ## Environment and local storage
 
-| Variable | Contract |
+The runtime requires Node.js 22.23.5+ within 22.x, 24.22.3+ within 24.x, or 26.13.1+ within 26.x.
+Bun builds the repository and runs applicable tests; it is not the product runtime.
+
+Authentication selects nonempty `config.token` before nonempty `NOTION_API_TOKEN`.
+`ctl config set-token --stdin` stores a private local plaintext value.
+`ctl config clear-token` removes that override.
+Configuration output omits the token.
+
+| Data | Explicit application directory | XDG fallback | Home fallback |
+| --- | --- | --- | --- |
+| Configuration | `NTN_SKILLS_CONFIG_HOME` | `XDG_CONFIG_HOME/ntn-skills` | `~/.config/ntn-skills` |
+| Local state | `NTN_SKILLS_HOME` | `XDG_STATE_HOME/ntn-skills` | `~/.local/state/ntn-skills` |
+| Cache | `NTN_SKILLS_CACHE_HOME` | `XDG_CACHE_HOME/ntn-skills` | `~/.cache/ntn-skills` |
+
+An explicit root names the application directory itself.
+Pending current operations belong to local state and are not cache entries.
+`ctl cache clear` retires disposable observations without resolving an operation or changing Notion.
+It preserves credential-to-scope authorization bindings and known denials, and does not
+delete fixed manifests or content objects. Its `entries` and `retired` receipts exclude
+the preserved identity bindings. Current eligibility and body freshness still retire.
+Fixed reads, directory inspection and exports require a locally known binding for the
+selected credential and API origin that matches the snapshot's scope. An unknown
+binding fails with `CACHE_SCOPE_UNAVAILABLE`; a different bound scope fails with
+`SNAPSHOT_SCOPE_MISMATCH`. The same credential can read complete fixed bytes offline
+after clearing observations, subject to known denials. This check makes no remote
+authorization request; a missing binding requires explicit current validation first.
+Uninstalling the package does not remove these directories.
+
+## Failure boundaries
+
+| Failure | Required response |
 | --- | --- |
-| `NTN_SKILLS_REQUEST_TIMEOUT_MS` | Positive integer milliseconds up to 2147483647 for each network attempt; default 30000; no whole-read deadline |
-| `NOTION_API_TOKEN` | Non-empty authentication fallback after configuration token |
-| `NTN_SKILLS_CONFIG_HOME` | Full application configuration directory |
-| `XDG_CONFIG_HOME` | Base for the `ntn-skills` configuration directory |
-| `NTN_SKILLS_HOME` | Full application state directory |
-| `XDG_STATE_HOME` | Base for the `ntn-skills` state directory |
-| `NTN_SKILLS_CACHE_HOME` | Full disposable application-cache directory |
-| `XDG_CACHE_HOME` | Base for the `ntn-skills` cache directory |
-| `NTN_SKILLS_DATA_HOME` | Full application data directory for installed builtins, distributions and installation recovery |
-| `XDG_DATA_HOME` | Base for the `ntn-skills` builtin data directory; default `~/.local/share` |
-| `NOTION_API_BASE_URL` | Trusted HTTPS API origin, default `https://api.notion.com`; loopback HTTP is allowed for controlled tests; URL credentials, paths and queries are rejected |
-| `NTN_SKILLS_SCHEDULER_ROOT` | Optional private absolute coordination root; defaults to the real OS user's `.local/state/ntn-skills/request-engine`, independently of content roots |
-| `NTN_SKILLS_NOTION_QUEUE_LIMIT` | Per-connection waiting queue limit, default 256, accepted range 1–4096 |
-| `NTN_SKILLS_NOTION_INTERVAL_MS` | Conservative request-start interval, default 350 ms, accepted range 100–60000 ms |
-| `NTN_SKILLS_REQUEST_TRACE_LIMIT` | Bounded safe attempt/wait events, default 0 (disabled), maximum 10000 |
-
-`NTN_SKILLS_NTN_BIN` and `NOTION_WORKSPACE_ID` are retired and do not select the transport or authenticated workspace. API origin validation occurs before requests. Only select a trusted endpoint because it receives the project's credential. Signed downloads use the service's returned URLs independently; the API token is not forwarded to download hosts.
-
-State defaults to `~/.local/state/ntn-skills`, selected by `NTN_SKILLS_HOME` > `$XDG_STATE_HOME/ntn-skills`. It contains SQLite domain state, immutable snapshots/objects and upload inputs. No automatic garbage collection deletes content or staging. `ctl cache clear` retires SQL observations only. Explicit `ctl cache gc` may move objects and snapshot manifests to system Trash only after proving that no observation, catalog, binding, baseline, plan, receipt, publication or integrity payload references them.
-
-`ctl cache gc --online --database SELECTOR` refreshes one catalog first. A record absent from that complete catalog can release its historical snapshots; incomplete coverage, failed sources and unauthorized scopes skip the entire scope. Dry-run reports candidates without changing SQL or files. Broker export directories remain outside this command and require `/context-broker refresh`.
-
-Cache retirement updates selected SQL generation fences and retires observations in one short transaction. Reserved but unpublished generations are included, so delayed publishers fail with `CACHE_INVALIDATED`. The latest explicit access denial and its necessary scope association survive clearing; neutral cleanup cannot grant access. A later successful validation supersedes that denial, and a subsequent clear cannot resurrect an older one. It requires no filesystem deletion or Trash capability.
-
-The CLI sends no analytics or telemetry requests. Its Effect HTTP engine handles API requests, upload allocation/send, and signed downloads. Local access covers configuration/state/cache, supplied inputs, requested outputs and explicitly bound destinations. Imported scripts are never executed. See [SECURITY](../SECURITY.md) for trust/retention boundaries and [uninstall guidance](usage.md#upgrade-and-uninstall) for cleanup.
-
-## Mutation contract
-
-Shared Skills / Files / Records targets use the [shared authoring contract](#shared-authoring). References, Files/source ZIP, Publication markers and `ctl operation resume` below describe the earlier publication storage/recovery model; they do not authorize a fallback for shared targets.
-
-The acceptance boundary is two information-preserving consumption paths: upstream repository → independent content-table Skills → Notion, and current Notion content → Markdown/resources → local immutable cache → Agent. It is not unlimited byte-identical bidirectional conversion between arbitrary Markdown and Notion. Explicit replacement and necessary formatting are allowed within the selected target's authorization; changed instructions, commands, link destinations or omitted resources are not. A one-time portable transfer need not establish an ongoing sync binding. Archived source bytes are auxiliary and never replace proof of current Notion content.
-
-`config.json` accepts optional sources, default_database, builtin_database, token and cache_policy. Bindings live in SQLite; configuration inspection may include them in its combined view. Config operations preserve other settings and never expose token values. The configured default validates online and stores a canonical ID; clearing it is offline. Create without a target chooses --database > configured default > sole freshly discovered Skills Database. Failed defaults and sources never silently select another database.
-
-Create and replace accept a ZIP, folder or `.md`/`.markdown` file. A portable v2 manifest explicitly selects kind and entrypoint; plain input selects its declared kind and supported Markdown entrypoint. `--name` explicitly overrides the human title without changing page identity or rewriting authored frontmatter to the alias; `--description` overrides Description. With Files, extra frontmatter and all source bytes, names and nested paths are retained in `ntn-skills-source.zip`; page-only mode follows [the normalization rules](#references-pages). Imported page IDs never select a destination. ZIP input allows 32 MiB compressed; expanded input allows 128 MiB and 10,000 entries. The generated source ZIP allows 20 MiB compressed, 128 MiB and 10,000 entries including its manifest. Unsafe, duplicate or reserved paths, links, special files, unsupported ZIP forms and checksum failures fail before mutation.
-
-`create` and `replace` accept `--storage markdown_files|notion_blocks`. Daily maintenance and upstream publication default to native rendered main Markdown and all supporting Markdown documents as rendered child pages included through `References`, preserving original root/nested paths (commonly `references/**`); scripts and non-Markdown resources stay in Files/the source bundle. Omission uses native publication except an existing editable-file page retains `markdown_files`. Explicit `replace INPUT --target EXACT --storage notion_blocks` returns a literal page to rendered main/reference pages using complete source/resources and retaining its page identity. `markdown_files` is an explicit choice for a particular source-file maintenance workflow, never a default bulk migration or a fallback after conversion/verification failure. It supports Skill UTF-8 text files, including scripts and nested non-Markdown resources, without a Files archive: a versioned main-path marker and path-labeled toggles contain literal Markdown code blocks. These live blocks are the editable authority. Read/files/export consume their complete current bytes and fail on incomplete, duplicate, unsafe or foreign content. Binary/NUL-bearing resources require native Files; Router and Prompt retain native publication. `write` preserves properties and other logical files; replacement retains the exact page ID and checks the current baseline. See [the usage policy](usage.md#creating-importing-exporting-and-updating-skills).
-
-Complete consumption allows only whitespace and equivalent local formatting differences. Chapters, lists, tables, code contents/languages, link destinations and resources must remain complete; whole-document source-code blocks cannot replace a normally rendered page. The absence of an arbitrary byte-identical Markdown↔Notion round-trip guarantee does not authorize those losses or a storage-mode fallback. Conversion/verification failures remain failures requiring diagnosis and guarded recovery.
-
-Notion code blocks normalize carriage returns to LF. Editable-file publication therefore rejects CR/CRLF input before mutation: deliberately normalize text to LF first, or choose native Files storage when original line-ending bytes matter. This is an observed service constraint, not permission to silently claim byte-preserving storage.
-
-Editing a literal code file in Notion changes the next current read when publication ownership is unchanged and the recorded marker revision validates. The original committed source digest is not silently advanced: tracked source plans still detect changed content against Published Hash. Ownership changes and invalid markers remain errors. This mode treats current editable text as authority rather than masking it with an old archive.
-
-Description admission uses one Effect `DescriptionSchema`: a nonblank string containing 1–2000 Unicode code points, retained unchanged. Markdown imports, native/portable archives, source discovery and explicit property updates share this boundary. The numeric bound follows [Notion `text.content` limits](https://developers.notion.com/reference/request-limits#limits-for-property-values); the product counts code points rather than UTF-16 units or grapheme clusters. Invalid updates fail before target access or mutation intent. Catalogs retain successful content rows and report invalid descriptions in failed-source coverage.
-
-Tracked source subscriptions accept `source.member_patches`, a record from exact selected source member keys to the existing version 1 patch document (`{version:1,files:[{path,replacements:[{from,to}]}]}`). File paths are relative to that member. Unknown or filtered-out member keys fail with `UPSTREAM_PATCH_CONFLICT`, including empty selections. A global `source.patch` applies first, followed by the matching member patch; both require each `from` to match exactly once. Global and member patches targeting the same file fail rather than overlap. Strict YAML admission still runs after explicit adaptation. Raw Git blobs and `upstream_hash` remain unchanged; candidate files and `content_hash` describe adapted bytes. `patch_hash` hashes the applied patch document, or `{global,member}` when both disjoint patches apply, using SHA-256 of their JSON serialization. Subscription configuration and reviewed plan identity include the complete member patch map.
-
-`create INPUT` freshly checks the selected database and rejects an existing invocation with `CREATE_CONFLICT`. Names and aliases select records but are not identity, so list and catalog already retain same-alias rows and resolve an exact page ID. `replace INPUT --target TARGET` replaces exactly one existing page and never falls back to creation or name lookup. Current targets capture an online baseline; pinned main refs enforce version, scope and database ownership. Reference-file targets are rejected. Source metadata cannot redirect the page. The portable digest covers Name, Description, main path and sorted file hashes; page-only comparisons use normalized Markdown identity. Version checks are client preflight, without server-side atomic compare-and-swap. Historical explicit member replacement is documented in the [operator reference](historical-operations.md#explicit-one-member-replacement). It never authorizes overwriting a different page by name.
-
-`apply PINNED_MAIN_REF_OR_SNAPSHOT` accepts a sparse `--input` folder/ZIP/file, repeatable `--remove PATH` and optional Name, Description, Default Context or Router Members. It loads the complete authored source from that pinned baseline, merges only the requested paths/properties and performs one existing guarded replacement. Omitted files survive; the main entrypoint cannot be removed. It requires at least one requested file or metadata change and rejects a current/unpinned target or stale baseline before publication. Sparse paths are relative to the source root and are never stripped to a common directory. The result retains `operation: "replace"`, the existing publication `operation_id` and recovery contract, with `changes: { files: string[], removed: string[] }`. A dry run performs online preflight without publication. Whole-source replacement remains available through `replace`.
-
-`write <target> [--path <file>] --input <local-file>` replaces one logical file and defaults to the selected record's entrypoint. It preserves other files and page properties. A pinned ref or snapshot is a baseline; stale remote versions return `WRITE_CONFLICT`. Entrypoint metadata checks the system-owned page identity against the selected target. Extra frontmatter, nested paths and binary bytes remain in the source ZIP. References paths write their exact pages. Reserved portability files cannot be written directly. Identical source or current entrypoint bytes return `action=unchanged` with the existing pinned ref and no upload. Private upload staging uses `uploads/<sha256>/<filename>`.
-
-Successful create, apply, replace and write return record/snapshot metadata, operation, action, `verified=true`, content_id and pinned refs. Create/replace add input_type, main_path and reused; actions are create, reuse or update. Writes add path, previous_version_id and unchanged. `--dry-run` performs preflight reads and reports its decision without upload or mutation. Reuse retains the current snapshot; historical snapshots remain immutable.
-
-New pages create properties first, then non-empty Markdown to preserve initial H1 headings; updated pages replace the old Markdown and retain their ID. Source ZIPs record normalized body/name/description and reference-page projections before attachment. Verification compares the saved portable identity with the submitted content; page-only mode compares normalized Markdown. Endpoint paragraph spacing and equivalent plain-text code labels are normalized; fenced-code blank lines remain literal. Insert/Update and Read content are required for mutation/uploads/verification. Dry runs cannot prove service acceptance. Uncertain HTTP write outcomes retain WRITE_OUTCOME_UNKNOWN and require original-operation readback.
-
-`verified=true` on a non-dry successful publication is the ordinary completion signal; consumers need not repeat read/files/export verification. Reference-mode verification independently compares live main/reference Markdown and inclusion paths with submitted content before comparing portable source identity. An intact source ZIP cannot mask altered page instructions, including on reuse. Files mode checks exact portable bytes; page-only mode applies documented normalization. This signal describes the verified stored snapshot, not future remote edits or execution of imported instructions. Completed `resume` returns its retained result rather than a new freshness claim.
-
-Managed remote publication proofs use marker version 2 exclusively. Their ownership digest covers provenance, Default Context and canonical Members identities; the manifest independently covers authored content and all resources. A nonempty version-1 marker fails with `PUBLICATION_UPGRADE_REQUIRED` before normal reads or writes and is never interpreted using a guessed digest formula. Missing or empty Publication remains an unmanaged manually maintained page. Local integrity intent envelopes remain version 1; that envelope version does not select the remote proof algorithm. Existing remote proofs require the separately built [reviewed remote-proof converter](remote-proof-converter.md), which validates complete old proof/content and explicit new-field expectations before a guarded conversion. It is distinct from the offline local-state migration artifact and is not included in the normal CLI bundle.
-
-Publication receipts and frozen objects survive independently of observations and progress output. Bound results include `operation_id` and `receipt_path=sqlite:publications/ID`. `ctl operation resume ID [--progress]` reauthenticates, validates source and recorded remote observations under an exclusive receipt fence, and continues frozen input on the fixed page identity. External edits fail with `WRITE_CONFLICT`; unknown creation without a proved response remains `PUBLICATION_UNRESOLVED` without replay. Completed operations return their retained result.
-
-For an original native `replace` that preserves source ownership, resume may retry its sole initial writing marker or a terminal whole `References` registration after proving the unchanged page guards and frozen source hashes. References recovery additionally requires the original ordered acknowledged child-creation ledger and matching inclusion paths. It does not authorize unrelated properties, new page creation or an uncertain append; the previous unknown request and separate successor remain journaled.
-
-An already recorded terminal source-upload `remote_orphan` remains `unknown`, without a response ID. Public reconciliation can release an earlier conflict fence only when the exact retained allocation body/artifact/replacement identity, staged artifact bytes and the complete current publication effects all converge. It returns `needs_safe_resume` and keeps the original intent and conflict history. A separate allocation still requires `ctl operation resume ID --new-artifact`; reconciliation does not upload, invent an ACK or abandon a known possibly attached upload.
-
-Editable-file recovery validates the full literal tree and retained metadata. An unknown terminal append is acknowledged only when the entire ordered journal matches the live tree; missing or partial content remains unknown and is never replayed. A timeout or repeated absent read never proves that an unknown write failed. Historical frozen-member publication and separately reviewed replacement are documented with the [operator artifact](historical-operations.md#frozen-editable-file-publication).
-
-An unknown terminal editable-file property write settles only when the exact requested fields are present, all unrequested metadata is unchanged, full live files match the frozen source and a final metadata bracket is stable. An absent write remains unresolved without replay. A matching committed marker and complete files can repair the local completed receipt; neither fresh listings nor missing append content authorizes a new write.
-
-`ctl operation resume ID --retry-metadata` explicitly permits resending only an original terminal editable-file ownership assignment or exact durable commit marker. It validates the bound scope/process owner, original marker, every retained observation, complete live file identity and a final metadata bracket before recording the separate journalled PATCH. The original request stays `unknown` with an `idempotent_metadata` recovery link; absence is never relabelled as known failure. Create, append, uploads, arbitrary fields and other pages are rejected. The flag cannot combine with `--new-artifact` and does not apply to native publications or sync operations. Without it, absent unknown properties remain unresolved.
-
-New content-root and reference-page creation records a versioned correlation proof in the original POST. The proof binds the operation and ordered intent, random operation token, authentication scope, database/data source, exact parent and source path/hash; upstream publication also binds subscription and member identity. A root retains it in the initial Publication marker, while a reference page retains its reserved first paragraph through later writes. Authored reads and portable exports exclude that transport paragraph without changing authored source bytes. Read-only reconciliation inventories the complete exact data source or parent child list and validates the original proof before adopting one candidate. Zero candidates, multiple candidates or incomplete pagination never authorize replay; operation inspection retains creation proof and discovery evidence for an explicit next action.
-
-Validation keeps newly read observations in memory until all version/content checks succeed. Process termination or failed final readback cannot promote external edits to a recovery baseline. Ordinary checkpoint and continuation reads must match retained observations; only proven responses and narrowly checked child-tag/revision side effects advance them. These guards do not remove the preflight-to-write race at Notion. Completed replay retains the original result fields, including a write's target-file `path`, pinned `ref` and original `previous_version_id`, plus create/import `input_type` and `main_path`.
-
-References property response envelopes omit only the top-level `request_id` from guard comparison: it identifies a request, not a content revision. Property items, rich text, links and pagination remain part of the retained observation.
-
-After a proven body write or child creation, revision reconciliation allows changes to the page's top-level `last_edited_time` and values of properties whose type is `last_edited_time`. Property IDs/types, editable values, parent identity and trash state must still match. Ordinary reads and recovery preflight retain the full revision checks.
-
-After an acknowledged reference-child create, publication guards retain the complete raw child-list pagination projected through the normal child-page observation. The complete ordered prior roster must remain unchanged apart from the exact acknowledged child identity and title; parent Markdown and metadata still require their ordinary guards. Public reconciliation can repair an older synthetic single-page inventory only after the complete current roster, acknowledged creations, References property readback and all other retained effects prove convergence. It preserves the original intents and conflict history; unknown or ambiguous creates are never replayed.
-
-Reference imports register allocated child pages before writing their bodies, reuse matching child-page IDs after interrupted registration and reject duplicate paths with `REFERENCE_PATH_CONFLICT`. Completed equivalent bodies are not rewritten. Page-only identity treats equivalent local links such as `references/guide.md` and `./references/guide.md` consistently. Within one authenticated publication, strong refresh reuses the verified database context but still fetches the current root, full References graph and attachment bytes; metadata and content remain part of the existing version calculation. Later operations revalidate database structure.
-
-Reversible source exports compare the same graph-mapped publication target and current physical block boundaries as final page verification, including quote/list child boundaries and evidenced local fragment spelling. First alignment and strong refresh require that full live-body proof. Ordinary exports may reuse an aligned file set after the source-bundle metadata check above; an intact unverified ZIP alone cannot authorize restoration.
-
-Native `read` exposes the verified rendered Markdown projection, so equivalent paragraph spacing and a final newline may differ from the source. Source ZIP and source-projection `export` retain original file bytes through complete verification or an eligible metadata checkpoint from that verification. These consumer-format differences do not authorize rewriting the snapshot files used by an existing committed Publication manifest.
-
-Markdown writes use `markdown_version: v2` for CommonMark/GFM input; readback and publication guards retain the default v1 representation. Materialization restores block boundaries around tables, fenced code and paragraphs after lists, and joins split emphasis around inline code before exposing local Markdown. Code contents, including blank lines, remain literal. Table rows whose text was changed by Notion's Markdown parser and altered code-block languages are restored through the block API within the publication receipt; an unlabeled fence maps to plain text, and equivalent language aliases compare equally. Parser warnings or unsupported content fail saved-content verification; they cannot produce `verified: true`. The normalized comparison permits paragraph spacing, equivalent emphasis splits and table representation, but preserves text, list membership, link destinations and code contents/languages. A materialization-version change creates new current snapshots; historical pinned snapshots stay immutable.
-
-Heading-to-paragraph spacing and escaped plain punctuation can be compared as equivalent only when the complete ordered physical roots retain the exact source text and annotation/link identities. This does not permit changed text, arbitrary backslash removal, missing roots or a different retained write target.
-
-Source-bound comparison can restore complete quote/paragraph sibling intervals, a terminal list-owned table, and split bold/inline-code links only when the ordered physical owners, complete text, code spans and destinations agree with the frozen source. A literal single-tilde range needs the same full-leaf evidence; deletion syntax is not disabled globally. These comparison views never replace missing content or rewrite the saved source.
-
-Future native requests escape inline placeholder tags only in their wire Markdown; source files and comparison targets stay unchanged. Code, explicit destinations, reference definitions, structural HTML and unmappable containers remain untouched. A parser warning still fails verification.
-
-Within a paragraph, verification treats Markdown soft/hard line breaks and plain HTML `<br>`, `<br/>` or `<br />` as equivalent whitespace, including v1 readback of v2 input. The comparison works on parsed inline tokens: inline, fenced and indented code retain literal `<br>` text, and other HTML or `<br>` attributes are not normalized. Materialized Markdown keeps Notion's valid HTML break representation, so this comparison change does not rewrite existing source projections or historical snapshot bytes. Included-page URL aliases still resolve through their exact page IDs and retain anchors; child-page blocks remain outside the main instructions.
-
-
-
-
-
-## Portable export contract
-
-`export <name-or-page-or-ref-or-snapshot> --output <path> [--format zip|directory] [--projection source|snapshot]` writes every selected file plus `.ntn-skills.json`. Projection defaults to `source` for portable authored instructions and resources; `snapshot` binds the output entrypoint to the fixed materialized read view, including a Router's generated Members index. .zip selects ZIP, other paths directory. Current inputs follow the read policy; fixed refs/snapshot IDs are offline. --refresh/--offline/--max-age select input freshness only, never authorize replacing different output. Export never mutates Notion.
-
-The manifest contains `format="ntn-skills"`, `version=2`, explicit kind, display name, description and main path. It omits service page/version/snapshot IDs and timestamps. `.ntn-skills.json` and `ntn-skills-source.zip` are reserved. Source ZIPs additionally retain normalized remote projections, which portable exports omit. Matching source projections retain original bytes; authored changes regenerate the entrypoint while preserving extra fields and excluding notion_page_id. A Router's source projection preserves authored instructions and supporting resources; its snapshot projection includes the deterministic generated member index in the materialized entrypoint. Source kind must agree with the selected record. Changed or removed references update the exported file set. Normal v1 input and stored source ZIPs fail `PORTABLE_UPGRADE_REQUIRED`; only the [independent portable converter](portable-converter.md) interprets v1 with retained byte/hash evidence and explicit kind audit. The product never guesses a record kind from a filename.
-
-ZIP entries sort by path and use fixed timestamps/compression. Identical content yields identical ZIP bytes across different page identities. ZIP output uses the 20 MiB direct-upload bound; portable content is limited to 128 MiB and 10,000 entries including the manifest. Preserve the manifest when reimporting to retain arbitrary main filenames and display-title casing. An identical existing ZIP/directory returns reused=true; any differing files/content return OUTPUT_CONFLICT without overwrite. A successful export returns operation=export, format, output, reused, content_id, main_path, entrypoint and projection alongside snapshot metadata. Each files entry contains path, bytes, hash and role; roles are entrypoint, resource, source_bundle or manifest. Verification hashes every cached object before output.
-
-### Portable input contract
-
-`create INPUT` accepts a folder or ZIP with a root `.ntn-skills.json`. The required v2 fields and a minimal Prompt example are:
-
-```json
-{
-  "format": "ntn-skills",
-  "version": 2,
-  "kind": "prompt",
-  "name": "Review Prompt",
-  "description": "Requirements for a review",
-  "main": "PROMPT.md"
-}
-```
-
-The same folder must contain the UTF-8 body file `PROMPT.md`, for example `Review the change and explain its risks.`. For a Router, use this complete manifest and a UTF-8 `ROUTER.md` body such as `Select the relevant member Skill for this review.`:
-
-```json
-{
-  "format": "ntn-skills",
-  "version": 2,
-  "kind": "router",
-  "name": "Review Router",
-  "description": "Select a review Skill",
-  "main": "ROUTER.md"
-}
-```
-
-`kind` accepts exactly `skill`, `router` or `prompt`. Filename and frontmatter never infer kind. Absent a manifest, input remains an ordinary Skill: folder/ZIP selection uses `SKILL.md` or a unique top-level Markdown after wrapper removal, and single Markdown input supplies its body regardless of filename. Portable v1 fails with `PORTABLE_UPGRADE_REQUIRED`.
-
-`main` must identify an existing file with a normalized relative path, with no duplicate or reserved member paths. Arbitrary source main filenames are supported; the published canonical entrypoint is `SKILL.md`, `ROUTER.md` or `PROMPT.md` according to kind. `name` must be nonblank without control characters. `description` must be nonblank and at most 2000 Unicode code points. Both manifest values are validated before any override. CLI `--name`/`--description` take precedence over manifest values, which take precedence over body frontmatter. Without a manifest, name falls back from frontmatter to filename stem and description must come from frontmatter or `--description`.
-
-Router membership is authored only with existing repeatable `--member` arguments (or `--clear-members`), not a manifest `members` field or copied member bodies. Each member must be an accessible current Skill in the exact same content database and data source, selected by exact page ID or unpinned Skill entrypoint ref. Nested Routers, Prompts, resource refs and pinned refs are rejected. Members retain their own bodies/resources; the Router exposes a generated metadata/ref index for lazy selection. `create --dry-run` performs online authentication and database/name/member preflight without uploads or mutation and does not prove service acceptance. [Complete staging files and create commands](usage.md#creating-a-prompt-or-router-from-portable-v2).
-
-
-## Synchronization
-
-`ctl sync local connect TARGET --path DIR [--as LABEL] [--database SELECTOR] [--from local|notion] [--dry-run]` registers or reuses one page/directory binding and runs it. An absent ordinary directory initializes from Notion; existing differing content requires explicit source selection. Repeated matching connection keeps its binding identity. Dry-run returns registration preflight with `verified: false` and saves/copies nothing. Normal success includes the binding and run outcome.
-
-`ctl sync local run BINDING [--from local|notion]` or `ctl sync local run --all` observes retained receipts before planning. When original effects have verifiably converged, internal reconciliation can settle their local baseline; unresolved effects and conflicts stop the affected page without replaying content writes. The public run result has `mode: "run"`, `outcome: "complete"|"partial"|"failed"`, `verified` and per-page `targets` with binding IDs, phase, completed bindings and retained plan/operation identities. Incomplete targets produce a structured error and nonzero exit. Standalone public `ctl operation reconcile` keeps the observation-only behavior below.
-
-`ctl sync local bind TARGET --path DIR [--as LABEL] [--database SELECTOR] [--dry-run]` registers an existing page and logical directory with an initial baseline in one transaction. Page/database/data-source/scope identities and logical spelling remain fixed. Multiple distributions have independent baselines. A missing ordinary leaf under a resolvable parent permits initialization; dangling/cyclic links fail. Equal checked content initializes the baseline; differences require an explicit source. Dry-run saves no binding/base.
-
-`ctl sync local status [BINDING] [--refresh]` returns local/common identities, generation, paths, remote observation age and pending receipts. Default is offline and provisional; refresh validates remote state without advancing a baseline.
-
-`ctl sync local plan BINDING [--from local|notion] [--output JSON_FILE]` or `ctl sync local plan --all` strongly reads both sides. One-sided changes select push/pull; equal new content advances the baseline without content writes; differing two-sided edits retain a non-executable conflict plan. Initialization with differences requires explicit source. No force choice exists.
-
-Plans persist in SQLite `plans`, addressed by `p_<sha256>`. The digest covers format/version, exact binding configuration, baseline generation/content, expected remote snapshot/version, local hashes, logical/resolved link proofs, source/direction, intended file set and actions. Output contains plan_id/plan_path/applicable/conflicts and per-binding preconditions. `--output` reuses identical review-copy bytes and rejects differing output. Planning changes no content/common baseline. A copied plan must match its registered exact wire shape, including historical absence of optional metadata.
-
-`ctl sync local apply --plan PLAN_ID_OR_FILE` verifies the reviewed artifact, every participant's binding/base/scope, current remote content and local target proofs before writing. One verified page update may fan out to unchanged independent copies. Each verified convergence commits its baseline and receipt edge together; later failures may leave earlier participants complete.
-
-An operation receipt is durable before effects, with page-group/per-binding stages, baseline generations and retained-byte locations. Apply returns plan_id/operation_id/verified/receipt_path/receipt and binding actions. Partial/unknown outcomes preserve unfinished bases and receipts. Unresolved receipts fence overlapping page/real-target applies. Live process holders are locked out; proven-dead same-host holders can be retired for recovery without dropping receipts. Malformed state fails explicitly, never becomes overwrite permission.
-
-`ctl operation reconcile ID` for `sync_local` calls refreshed status observations for every receipt binding without replaying writes, closing the receipt or promoting a baseline. Its `result.observations` contains safe content identities and equality status; `verified` is true only when the retained receipt is complete and every fresh observation is unchanged. Pending and diverged receipts remain unverified. A new reviewed sync plan authorizes further changes; local sync operation resume is unsupported. `ctl sync local unbind BINDING [--dry-run]` deactivates the binding and retains content, baselines, plans and receipts. Operation list/show expose a sync receipt only when every recorded binding still matches configured identity and the selected authentication scope.
-
-The local writer resolves root, parent, relative/multi-hop directory and per-file links, stages content and commits to final real files while preserving links during updates. Tracked removal retains old bytes through system Trash; unrelated root files survive. Every actual mkdir/rename/retirement boundary checks saved target proofs, including byte-identical link retargets. Node lacks a portable fd-relative path compare-and-swap: a noncooperating editor may retarget after the final guard and before its syscall. Cooperating sync processes are fenced; this is not atomic protection against every external filesystem race. Notion also uses preflight/readback rather than an atomic multi-request commit.
-
-
-## Errors
-
-```json
-{"ok":false,"error":{"code":"SKILL_AMBIGUOUS","message":"Multiple skills match; use a page ID or --database.","details":{"selector":"Display Name","candidates":[],"databases":[]}}}
-```
-
-| Code | Consumer action |
-| --- | --- |
-| `SKILL_NOT_FOUND` | Read coverage; broaden metadata search or specify a known database/page ID |
-| `SKILL_AMBIGUOUS` | Use candidate database_id and details.databases to select a database alias, or choose a returned page ID |
-| `INVALID_SKILL_NAME` | Correct the exact page named in details; use a nonempty display name without control characters and preserve its intended Unicode spelling |
-| `CATALOG_INCOMPLETE` | Resolve failed sources; do not infer uniqueness from partial results |
-| `AUTH_REQUIRED`, `ACCESS_DENIED` | Check the selected project credential: config.token > NOTION_API_TOKEN. Clear a saved override only when environment-token selection is intended |
-| `NOTION_UNAVAILABLE`, `NOTION_REQUEST_FAILED`, `RATE_LIMITED`, `NOTION_QUEUE_FULL`, `NOTION_SCHEDULER_UNAVAILABLE` | Check API connectivity, safe response details or the local scheduler; errors do not activate content |
-| `SNAPSHOT_MISSING` | Materialize current content online or explicitly restore an already archived shared pin; no arbitrary historical version or current-content substitute is inferred |
-| `SNAPSHOT_CONFLICT` | Use a ref and snapshot for the same skill/version |
-| `SHARED_ROUTER_MEMBERS_UNAVAILABLE` | Inspect the registered Members property and native self-relation; an old descriptor needs an explicit reviewed upgrade, not a guessed property name |
-| `SHARED_ROUTER_MEMBERS_INCOMPLETE`, `SHARED_ROUTER_MEMBER_UNAVAILABLE` | Resolve incomplete relation/inventory coverage or the selected member's access, Enabled and identity issue; do not publish a partial Router index |
-| `MIGRATION_INPUT_INVALID` | Supply the versioned frozen evidence contract and keep opaque historical fields inside its raw/record fields; do not discard them to make a plan pass |
-| `SHARED_LIBRARY_CONSUMER_PENDING`, `CONTENT_NOT_MUTABLE` | Use an implemented shared-library entry point; do not route a shared locator through legacy creation/publication |
-| `BASELINE_MISSING` | Preserve current bodies and establish the actual original baseline; never infer source following from current Git equality |
-| `SHARED_STATE_CONFLICT`, `SHARED_RECORD_CONFLICT`, `SHARED_SKILL_ID_CONFLICT` | Preserve all conflicting facts/identities and resolve the exact conflict; do not select a timestamp winner |
-| `SHARED_RECORD_UNRESOLVED`, `WRITE_OUTCOME_UNKNOWN` for shared operations | Preserve original plan/record IDs and use that shared command's reconciliation route; an absent query does not authorize another POST |
-| `SHARED_OBSERVATION_RECONCILED` | The original frozen observation has been verified; start a new read to observe current content before publishing a new snapshot |
-| `RETAINED_BODY_MISSING`, `RETAINED_BODY_CONFLICT` | Recover the exact retained object or report unavailable history; do not replace it with the current page |
-| `SHARED_RECORD_TOO_LARGE` | Preserve the input; the individual 64 KiB fact envelope is unsupported and must not produce a dispatched observation |
-| `STATE_CONFLICT` for shared dispatch | Retain the original frozen payload and operation; changing bytes or reopening retired dispatch is not an idempotent retry |
-| `DATABASE_NOT_FOUND`, `DATABASE_AMBIGUOUS` | Use an exact registered alias or database ID/URL; inspect candidates. With no creation selector, configure a default or select one database |
-| `IMPORT_AMBIGUOUS` | Provide SKILL.md, a portable manifest or only one top-level Markdown entrypoint |
-| `PORTABLE_UPGRADE_REQUIRED` | Preserve the original input/source ZIP and use the independent portable converter; remote conversion requires an approved exact page plan and formal replace pipeline |
-| `CREATE_CONFLICT` | Use replace with the existing exact page identity, or deliberately select a new name |
-| `OUTPUT_CONFLICT` | Select a new destination; existing export output differs |
-| `BUILTIN_NOT_FOUND` | Select an exact ID from builtin list; remote names/pages do not identify builtin content |
-| `BUILTIN_NOT_INSTALLED`, `BUILTIN_UPDATE_AVAILABLE` | Install the absent target or explicitly update clean older registered content after reviewing status |
-| `BUILTIN_MODIFIED`, `BUILTIN_UNMANAGED` | Preserve local edits/unowned bytes; do not remove receipts to bypass ownership or complete-tree checks |
-| `BUILTIN_DISTRIBUTION_CONFLICT` | Inspect the conflicting destination or distribution registry; preserve foreign/changed entries and never adopt a link by name alone |
-| `BUILTIN_INTERRUPTED` | Preserve journal/evidence; install/update reads back recovery and still fails explicitly; inspect status before repeating a proven operation |
-| `BUILTIN_PATH_CHANGED`, `BUILTIN_IO_ERROR` | Repair actual target/profile drift or local I/O and retain transaction evidence |
-| `WRITE_CONFLICT` | Read the current Skill and rebuild the edit against its new pinned ref |
-| `WRITE_PARTIAL`, `WRITE_OUTCOME_UNKNOWN` | Preserve operation_id/receipt_path; use resume for guarded readback and continuation |
-| `PUBLICATION_MISSING` | Select a retained publication operation ID from the same state root |
-| `PUBLICATION_SCOPE_MISMATCH`, `PUBLICATION_SOURCE_MISMATCH` | Restore the original authentication/source; never redirect the receipt |
-| `PUBLICATION_UNRESOLVED` | Preserve the receipt and inspect the pending request; automatic replay is forbidden |
-| `PUBLICATION_LOCKED` | Wait for the live owner to finish, or inspect an unidentifiable retained owner; never bypass its receipt fence |
-| `PUBLICATION_UPLOAD_RECOVERY_REQUIRED` | Inspect the original operation and use its explicit `--new-artifact` next argv to authorize a separate, unreferenced artifact; never replay the unknown request |
-| `PROGRESS_OUTPUT_FAILED` | Repair stderr output; preserve the receipt and inspect before resuming |
-| `MARKDOWN_INCOMPLETE` | Resolve truncated/unsupported page content before writing |
-| `INVALID_REFERENCES`, `REFERENCE_PATH_CONFLICT`, `REFERENCE_NOT_FOUND` | Fix References page links, distinct safe Markdown paths and page access |
-| `UNSUPPORTED_FILE` | Add a Files property to retain non-reference assets, or submit only main/reference Markdown |
-| `INPUT_FAILED`, `INVALID_INPUT`, `FILE_TOO_LARGE` | Correct the local file/directory or upload size |
-| `FILE_NOT_FOUND` | Inspect the snapshot's file list |
-| `BINARY_FILE` | Use `--output` and an appropriate host viewer |
-| `INVALID_REF`, `INVALID_PATH`, `INVALID_RANGE`, `INVALID_ARGUMENT` | Correct the request |
-| `INVALID_ARCHIVE`, `INVALID_SKILL`, `ARCHIVE_TOO_LARGE` | Fix the export/import input or metadata and size limits; provide missing import metadata with --name/--description |
-| `STATE_RUNTIME_UNSUPPORTED` | Use Node.js 22.22.3+ within 22.x or 24.20.0+ with a fixed bundled SQLite version; Bun cannot run the product. State remains unopened; do not replace the official driver or treat this as state corruption |
-| `STATE_CORRUPT`, `STORAGE_ERROR`, `OUTPUT_FAILED` | Inspect local storage or select a new output filename |
-| `CACHE_MISSING`, `CACHE_SCOPE_UNAVAILABLE` | Refresh an appropriate current target online or use an explicit pinned version; never guess another account |
-| `SYNC_BINDING_MISSING`, `SYNC_BINDING_AMBIGUOUS`, `SYNC_BINDING_CONFLICT` | Choose a registered ID/label or use a distinct --as |
-| `SYNC_INITIALIZATION_REQUIRED`, `SYNC_CONFLICT`, `SYNC_TARGET_CONFLICT` | Inspect the retained plan and choose a single-binding source or resolve incompatible candidates/targets |
-| `SYNC_PLAN_MISSING`, `SYNC_PLAN_STALE`, `SYNC_TARGET_DRIFT` | Observe current identities and generate a new plan without bypassing preconditions |
-| `SYNC_PENDING`, `SYNC_DIVERGED` | Inspect the retained operation with operation show/reconcile, classify the actual remote outcome, then resume or generate a new reviewed plan without replaying unknown writes |
-| `SYNC_LOCAL_MISSING`, `LOCAL_MISSING`, `LOCAL_LINK_BROKEN`, `LOCAL_LINK_CYCLE`, `LOCAL_IO_ERROR` | Repair the concrete directory/link/permissions without treating missing data as deletion intent |
-| `SYNC_LOCKED`, `RETENTION_UNAVAILABLE`, `RETENTION_FAILED`, `CACHE_RETIRE_UNAVAILABLE` | Resolve ownership or the verified system-Trash prerequisite; preserve retained bytes |
-| `INTERNAL_ERROR` | Report a reproducible implementation failure with sanitized context |
-
-Exit codes: 0 success, 1 operational failure, 2 CLI argument failure. There is no TTY-dependent choice of output protocol. No signed URLs or credentials appear in the protocol.
-
-### Notion request coordination
-
-Each Notion service merges eligible identical in-flight reads and bounds actual network attempts. The default is four permits; `NTN_SKILLS_NOTION_CONCURRENCY` accepts integers 1–64. Waiting for admission, priority or cooldown does not occupy a network permit or SQL transaction. This is a per-service concurrency bound, not a cross-machine semaphore.
-
-Read coalescing keys retain the selected credential identity, API origin, method, exact path/request data, effective queue budget and applicable prefetch class/rate share. Explicit default and omitted queue budgets normalize to one value; different budgets cannot inherit the first waiter's timeout. Eligible read/query calls share one active execution; mutations and file-bearing requests do not coalesce. Completed responses are not retained by this in-flight mechanism. Cancelling one waiter leaves the shared execution available to other waiters; cancelling the final waiter releases its work and permit. Coalesced callers and actual transport attempts are reported separately in metrics.
-
-The request engine coordinates starts across local CLI processes using a private machine-level SQLite schedule independent of content config/state/cache roots. Default starts are separated by at least 350 ms locally; this is not a promise about server arrival times. Authenticated connection, workspace and endpoint determine applicable cooldowns; unknown identities use a conservative credential/origin bootstrap budget. Untrusted environment workspace names and database IDs never establish grouping. The scheduler stores safe coordination data rather than tokens, paths or request bodies. Other machines and tools outside this engine do not share this schedule.
-
-Each logical request keeps one original five-minute admission deadline across retries. Every attempt's wait consumes its remaining budget; retries do not reset it. The bounded queue has renewable owned leases, foreground/required priority and prefetch aging. Cancellation removes only the caller's owned queue position; expired positions from crashed processes can be reclaimed. No future send slots are reserved in advance. Queue-full and scheduler-storage failures return `NOTION_QUEUE_FULL` and `NOTION_SCHEDULER_UNAVAILABLE`.
-
-The network-attempt timeout is separate (`NTN_SKILLS_REQUEST_TIMEOUT_MS`, default 30 seconds). Every admitted HTTP attempt starts a fresh timeout; pagination, backoff and cooldown can make a complete read exceed one minute. Structured rate-limit reason controls connection/workspace/endpoint cooldown; unknown reason is conservative. Read/query attempts retry eligible transient failures at most three times. Jittered retry delay respects Retry-After as a minimum; only the transport loop owns retries. Authentication, denied access, invalid input, explicit TLS failures and malformed successful responses are not automatically retried.
-
-Mutation retry is limited to an exact structured 429/529 response proving that the attempted write was rejected without an effect. Prepared method, path and bytes remain unchanged within the original operation. `public_api_request_blocked` stops immediately. A disconnected, timed-out, malformed, conflicting or otherwise uncertain write stays unknown; automatic retry cannot replay it. Input rejection or a proven not-sent attempt remains distinct from a possible remote effect.
-
-Transport failures expose safe status, request ID, retry delay and reason where observed. Raw HTTP bodies, credentials and signed URLs are excluded from diagnostics. Every write retains its original journal, request phase and readback requirements; these transport classifications do not rewrite historical unknown receipts.
-
-With explicit `NTN_SKILLS_REQUEST_TRACE_LIMIT`, CLI JSON success and typed failures include the same safe `request_metrics` snapshot after the Notion service has initialized. `trace` distinguishes actual attempts from queue/retry waits; retries produce separate attempt events, while coalesced callers are counted separately. A complete zero-request proof requires `trace_enabled:true`, `total_requests:0`, `trace:[]` and `trace_dropped:0`. Missing or truncated metrics are unknown evidence. Events contain classifications, methods, timings, byte counts and safe response metadata, never request paths or content.
-
-References attachment downloads retry transport/body-stream failures, timeouts and HTTP 429/500/502/503/504 up to three times with 1/2/4-second backoff. Each attempt owns a scoped request and a fresh `NTN_SKILLS_REQUEST_TIMEOUT_MS` budget (default 30 seconds). TLS, denied/missing resources and invalid archives are not retried; failures expose only the logical attachment path and safe status/reason, never its signed URL.
-
-## Source member resource resolution
-
-Each new upstream plan freezes `source_manifest` with the subscription UUID as `source_id`, the resolved revision, and the complete selected source member/resource inventory. Member keys and source paths retain upstream identity independently of display names. Published maps carry this same inventory, including resources whose member publication is still pending; only an exact verified active page mapping grants a cross-member read target.
-
-Subscription JSON uses rich-text spans of at most 2000 characters. The complete serialized Published Members document, including its source manifest, must fit Notion's 100-span limit. Span packing does not discard pending source members, file hashes or active page mappings.
-
-An upstream plan that must recover unmapped member identities reads its selected target database and each data source once, then fully paginates the exact publisher relation query once per data source. The resulting member-key index belongs only to that plan; duplicate claims, mismatched kinds, incomplete ownership and foreign source evidence fail rather than select an arbitrary page. Manual pages without an upstream key are not claimed. Shared target sets keep their explicit publisher authority and per-member ownership/content checks. This observation is not a remote lock: metadata may change while planning, and apply still performs its existing fresh subscription, target, expected-version and content guards before effects. No observation crosses plans or authentication scopes.
-
-Explicit member reads derive Markdown destinations from their containing source file. Own-member `references/` and assets retain relative paths. A cross-member destination becomes the existing `skill://<page-UUID>/<encoded-resource-path>` reference, using the target's canonical published entrypoint when necessary. Official Notion rich-text publication uses the existing HTTPS `#ntn-skills-path=` encoding. Fenced and inline code remain authored execution prerequisites. Repository traversal above the source root fails with `INVALID_PATH`; missing members, resources, maps or matching revisions fail explicitly and never fall back to local installation paths. A pending target becomes readable after the same-revision active map gains its exact page identity, without editing each source page.
-
-Derived snapshots retain `source_files` and `source_projection` with source identity, revision, map digest and per-file source/derived SHA-256 values. Publication integrity is checked against original bytes before deriving read content. Source export preserves original files and the source ZIP; snapshot export carries the bytes returned by reads. A pinned relative cross-member read requires the same authenticated source revision and map digest. An upstream ref change, removed member, permission failure or conflicting map cannot silently rebind that pinned read.
-
-Broker metadata discovery reads no member bodies. In the default Pi path, native explicit `read` inspects the selected main or exact resource through the shared SDK; inspection alone does not activate instructions or require a complete export. `notion_use` obtains the root and complete Requires for host selection and delivery. The OMP/full-export compatibility adapter retains complete local materialization and contained filesystem paths for that caller. Registered source scope and identity isolate equal names and duplicate page IDs; local Skills retain native discovery/read. No repository checkout or AK sibling directory is required by these paths.
-
-
-An authored Markdown href which leaves the source repository is retained byte-for-byte as an external prerequisite. It does not cause source acquisition to reject the entire Skill and is never converted to a host filesystem read or guessed HTTPS URL. The frozen source manifest and derived `source_projection.unavailable` identify `{from_path, href, reason: "outside_source_root"}`; current projections emit an empty array when there are no such links. Read, files and export metadata expose the projection evidence. Explicit file resolution, archive entry paths and selected resource manifests continue to reject paths escaping their permitted root.
-
-
-A committed Skill member remains independently readable after its own publication proof verifies, even while its subscription has no published active Router map. Its raw resource bytes stay available; unresolved cross-member hrefs remain authored and appear in `source_projection.unavailable` with `published_map_unavailable` or `target_unavailable`. Explicit cross-member resolution still fails until the exact target map is available. Router reads continue to require their verified active map. Derived snapshot identities include the observed unavailable/map state, so a fresh read after map completion can produce the complete ref projection without editing source pages. Permission, malformed metadata and ownership failures remain fatal.
-
-
-## View discovery observations
-
-`views` returns `views`, `count`, `database`, `scope`, `fetched_at`, `source` and `freshness`. Each View has stable `id`, display `name`, `type`, `database_id`, `data_source_id`, and URL. The array preserves API order. `list --view ID_OR_URL` or `list --default-view` returns the normal catalog envelope plus `view`, `view_selection` (`explicit`, `first`, `none`) and `view_query` (`id`, `expires_at`, `total_count`). No Views means `view=null`, `view_query=null` and an empty complete catalog. `--view` and `--default-view` are mutually exclusive. `--database` constrains parent identity; no implicit cross-database substitution is allowed.
-
-The native query determines membership, including quick filters. Only returned members can enter the catalog; unrelated malformed metadata does not invalidate a View. Related subscription health does not become a condition for View discovery. Selected-member failures remain in coverage and do not silently disappear. Query-level expiry, truncation, count mismatch, repeated/missing cursors and identity mismatch fail. The array retains query order.
-
-Shared View inventory projects registered Skills property IDs and follows its complete metadata pagination without Files, Records, body or provider reads. `Enabled` still controls eligibility; `Default Context=false` does not remove a native View member. Stable identities of returned members are checked against other valid rows already observed in that inventory, including disabled or unselected rows, so two Views cannot knowingly emit the same stable ref for different pages. Malformed nonmembers and conflicts solely between unrelated nonmembers do not block the selected View. A real three-member View used five metadata requests with zero body/provider requests or writes. Router metadata has its separate [member contract](#shared-router-members); View success does not establish Profile management or native host/model acceptance.
-
-Local SQLite migration 0008 adds `view_observations`, separate from global catalogs. Its scope/selection generation guards prevent delayed publication overwriting a newer observation and prevent retired in-flight results from resurrecting after cache clear. Partial catalogs are not reusable complete View observations. Directory invalidation and explicit cache cleanup include View observations without deleting immutable snapshots.
-
-Tracked Skill reads validate the selected member rather than every sibling. Router reads retain whole-map validation. When `--from` resolves an actual cross-member dependency, it validates that target's exact committed publication and the pinned source-map revision. This does not waive selected-content integrity, permissions or source ownership.
-
-Rebuilding or restoring a deleted upstream member freezes that exact page’s `Tags` alongside its own `Default Context`, independently of the subscription checkbox. Before retiring the old page, changed organization metadata rejects the frozen operation. The new page receives the retained tag names before switching its binding; an unknown tag write is reconciled by readback, never blindly replayed. A nonempty conflicting user edit on the new page fails rather than being overwritten. The metadata write invalidates View observations. Ordinary upstream content updates continue to leave organization properties outside publisher ownership.
+| `AUTH_REQUIRED`, `ACCESS_DENIED` | Check the selected credential and exact library access |
+| `CURRENT_SCHEMA_REQUIRED` | Complete the explicit current-content cutover |
+| `STATE_CUTOVER_REQUIRED` | Use a fresh `NTN_SKILLS_HOME` for the current SQLite schema; use a fresh `NTN_SKILLS_CONFIG_HOME` if the configuration still contains retired bindings. Preserve the old roots for explicit content migration. |
+| `CURRENT_OPERATION_PENDING`, `CURRENT_SKILL_NOT_READY`, `CURRENT_SOURCE_NOT_READY` | Inspect the original current operation; resume only its same input |
+| `CURRENT_IMPORT_UNSUPPORTED`, `CURRENT_IMPORT_ENTRYPOINT` | Correct the local input contract before retrying |
+| `CURRENT_SOURCE_MANAGEMENT_REQUIRED` | Preserve the existing Source File ID, logical path and Source binding. Contribution/exclusion management is required before removing, taking over, renaming or rebinding it; omitting the file or assigning a new ID cannot bypass this boundary. |
+| `INPUT_CHANGED`, `INVALID_ARCHIVE`, `ARCHIVE_TOO_LARGE` | Fix the admitted local tree, archive, or size |
+| `SHARED_ACQUISITION_CHANGED`, `SNAPSHOT_MISSING` | Reselect current content when the exact selection is unavailable |
+| `WRITE_OUTCOME_UNKNOWN` | Retain the operation and reconcile its uncertain effect |
+| `REQUEST_BUDGET_EXHAUSTED` | Inspect the reported budget; resume an unfinished operation explicitly with the same input |
+| `RATE_LIMITED`, `NOTION_QUEUE_FULL`, `NOTION_SCHEDULER_UNAVAILABLE` | Inspect the request or scheduler failure without changing content authority |
+| `STATE_RUNTIME_UNSUPPORTED` | Run the supported Node runtime before opening local state |
+
+Source takeover/restore-follow and disable/removal are current explicit commands.
+Pro-wide census, non-daily conversion and governance across related objects have
+separate delivery boundaries.
+The selected-owner index does not certify global orphan cleanup.
+Local CLI and SDK checks do not certify the live Notion tables or Pi delivery.

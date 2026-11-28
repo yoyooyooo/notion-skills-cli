@@ -115,13 +115,15 @@ export function querySharedMetadataInventory(
   library: SharedLibrary,
   kind: "skills" | "files",
   boundary: "catalog" | "reference" | "view" = "reference",
+  projection?: readonly string[],
 ) {
   return Effect.gen(function* () {
     const source = library[kind]
     const fields =
-      kind === "skills"
+      projection ??
+      (kind === "skills"
         ? ["Name", "Description", "Kind", "Skill ID", "Enabled", "Default Context"]
-        : ["File ID", "Skill", "Path", "Projection", "Status"]
+        : ["File ID", "Skill", "Path", "Content"])
     const query = new URLSearchParams()
     for (const name of fields) {
       const id = source.property_ids[name]

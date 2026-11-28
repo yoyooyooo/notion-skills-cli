@@ -7,16 +7,19 @@ import { prepareGraph } from "../src/graph-prepare.ts"
 import { aliasFor, property, type Snapshot } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
-import { sharedSkillId } from "../src/shared-content.ts"
-import { registerRetainedSnapshot } from "../src/shared-history-materialization.ts"
+import { skillIdentity } from "../src/shared-content.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
-import {
-  prepareSharedSnapshotHistory,
-  retainSharedSnapshotHistory,
-} from "../src/shared-snapshot-history.ts"
 import { listSkill, readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
-import { digest, encode, id, library, sharedSnapshotFixture } from "./shared-snapshot-fixture.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
+import {
+  currentDigest as digest,
+  currentBytes as encode,
+  currentId as id,
+  currentLibrary as library,
+  currentScope as scope,
+  currentSnapshotFixture,
+} from "./shared-current-fixture.ts"
 
 type Definition = {
   readonly name?: string
@@ -25,17 +28,14 @@ type Definition = {
   readonly requires?: readonly string[]
   readonly members?: readonly string[]
 }
-const scope = digest(
-  JSON.stringify(["fixture-user", "", "https://api.notion.com", "controlled-credential"]),
-)
 async function fixture(definitions: Readonly<Record<string, Definition>>) {
-  const f = sharedSnapshotFixture({ fileCount: 1 })
+  const f = currentSnapshotFixture({ fileCount: 0 })
   const snapshots = new Map<string, Snapshot>()
   const opened = new Map<string, number>()
   const readBytes = new Map<string, number>()
   for (const [index, [key, definition]] of Object.entries(definitions).entries()) {
     const libraryId = definition.library ?? library.library_id
-    const identity = sharedSkillId(libraryId, key)
+    const identity = skillIdentity(libraryId, key)
     const name = definition.name ?? key
     const content = definition.content ?? `# ${key}\nComplete instructions.\n`
     const bytes = encode(content)
@@ -65,12 +65,16 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
         },
       },
       entrypoint: "SKILL.md",
-      files: [{ path: "SKILL.md", sha256: digest(bytes), bytes: bytes.byteLength }],
+      files: [{ path: "SKILL.md", sha256: digest(bytes), bytes: bytes.byteLength, mode: "100644" }],
       file_bindings: [{ file_id: `main-${key}`, page_id: id(100 + index), path: "SKILL.md" }],
+      shared_acquisition: { version: 5, library: { ...library, library_id: libraryId }, files: [] },
       required: [],
       members: [],
     }
-    snapshots.set(key, snapshot)
+    snapshots.set(key, {
+      ...snapshot,
+      snapshot_id: `s_${digest(selectionSnapshotIdentityInput(snapshot))}`,
+    })
     f.objects.set(`objects/${digest(bytes)}`, bytes)
   }
   const get = (key: string) => {
@@ -80,16 +84,16 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
   }
   const ref = (key: string) => {
     const snapshot = get(key)
-    return fileRef(snapshot.record.id, snapshot.entrypoint, snapshot.snapshot_id, `main-${key}`)
+    return fileRef(snapshot.record.id, snapshot.entrypoint, snapshot.snapshot_id)
   }
   for (const [key, definition] of Object.entries(definitions)) {
     const relation = (child: string) => {
       const snapshot = snapshots.get(child)
       return snapshot === undefined
         ? {
-            id: sharedSkillId(library.library_id, child),
+            id: skillIdentity(library.library_id, child),
             ref: fileRef(
-              sharedSkillId(library.library_id, child),
+              skillIdentity(library.library_id, child),
               "SKILL.md",
               `s_${"a".repeat(64)}`,
             ),
@@ -142,35 +146,91 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
 }
 
 describe("once consume contract", () => {
-  test("fixed historical names list the manifest without reading body objects or current metadata", async () => {
-    const f = await fixture({ a: { name: "Historical Name" } })
+  test("retained legacy snapshots consume through the fixed local owner and decode without Store", async () => {
+    const f = await fixture({ a: {} })
     const snapshot = f.get("a")
-    f.objects.clear()
-    for (const name of [snapshot.record.name, snapshot.record.alias]) {
-      const listed = await f.run(
-        listSkill(fileRef(name, "", snapshot.snapshot_id), { offline: true }),
-      )
-      expect(listed.record).toEqual(snapshot.record)
-      expect(listed.scope).toBe(snapshot.scope)
-      expect(listed.snapshot_id).toBe(snapshot.snapshot_id)
-      expect(listed.files).toEqual(
-        snapshot.files.map(({ path, bytes }) => ({ path, bytes, ref: f.ref("a") })),
-      )
+    const retained = {
+      ...snapshot,
+      snapshot_id: `s_${digest(JSON.stringify([snapshot.scope, snapshot.record.id, snapshot.version_id]))}`,
     }
+    f.json.set(`snapshots/${retained.snapshot_id}.json`, retained)
+    const target = fileRef(retained.record.id, retained.entrypoint, retained.snapshot_id)
+    const crypto = await f.run(Crypto.Crypto)
+    for (const purpose of ["inspect", "use"] as const) {
+      const input = { ...f.input([target]), purpose }
+      const result = await f.run(consume(input))
+      expect(result.status).toBe("ready")
+      if (result.status !== "ready") throw new Error(JSON.stringify(result))
+      expect(result.preparation.nodes[0]).toMatchObject({
+        source: "local_snapshot",
+        freshness: { policy: "pinned" },
+        binding: { snapshot_id: retained.snapshot_id, record: retained.record },
+      })
+      expect(
+        await Effect.runPromise(
+          decodeConsumeResult(result, input).pipe(Effect.provideService(Crypto.Crypto, crypto)),
+        ),
+      ).toEqual(result)
+      for (const [source, policy] of [
+        ["local_cache", "pinned"],
+        ["notion", "refresh"],
+        ["local_snapshot", "offline"],
+      ]) {
+        const changed = {
+          ...result,
+          preparation: {
+            ...result.preparation,
+            nodes: result.preparation.nodes.map((node) =>
+              node.state === "prepared"
+                ? { ...node, source, freshness: { ...node.freshness, policy } }
+                : node,
+            ),
+          },
+        }
+        const decoded = await Effect.runPromise(
+          decodeConsumeResult(changed).pipe(
+            Effect.provideService(Crypto.Crypto, crypto),
+            Effect.result,
+          ),
+        )
+        expect(decoded._tag === "Failure" && decoded.failure.code).toBe("CONSUME_INVALID_PROOF")
+      }
+    }
+    expect(f.calls).toHaveLength(0)
+  })
+
+  test("fixed root refs list the selected manifest without body objects or live name lookup", async () => {
+    const f = await fixture({ a: { name: "Selected Name" } }),
+      snapshot = f.get("a")
+    f.objects.clear()
+    const listed = await f.run(
+      listSkill(fileRef(snapshot.record.id, "", snapshot.snapshot_id), { offline: true }),
+    )
+    expect(listed.record).toEqual(snapshot.record)
+    expect(listed.snapshot_id).toBe(snapshot.snapshot_id)
+    expect(listed.files).toEqual(snapshot.files.map((file) => ({ ...file, ref: f.ref("a") })))
+    expect(() => fileRef(snapshot.record.name, "", snapshot.snapshot_id)).toThrow()
     const wrong = await f.run(
-      listSkill(fileRef("current-replacement", "", snapshot.snapshot_id), { offline: true }).pipe(
-        Effect.result,
-      ),
+      listSkill(
+        fileRef(
+          "skill://current-replacement?library=0c64a309-510e-5d37-b23c-3ce2f966c66e",
+          "",
+          snapshot.snapshot_id,
+        ),
+        {
+          offline: true,
+        },
+      ).pipe(Effect.result),
     )
     expect(wrong._tag === "Failure" && wrong.failure.code).toBe("SNAPSHOT_CONFLICT")
     expect(f.readBytes.size).toBe(0)
     expect(f.calls).toHaveLength(0)
   })
 
-  test("a matching frozen main File ID takes precedence over an obsolete path hint", async () => {
+  test("fixed entrypoint paths are exact and cannot be repaired by a File binding", async () => {
     const f = await fixture({ a: {}, b: {} })
     const snapshot = f.get("a")
-    const ref = fileRef(snapshot.record.id, "old-main.md", snapshot.snapshot_id, "main-a")
+    const ref = fileRef(snapshot.record.id, snapshot.entrypoint, snapshot.snapshot_id)
     const input = f.input([ref])
     const result = await f.run(consume(input))
     expect(result.status).toBe("ready")
@@ -181,18 +241,9 @@ describe("once consume contract", () => {
     expect(result.entries[0]?.source_body.ref).toBe(f.ref("a"))
     expect(await f.run(decodeConsumeResult(result, input))).toEqual(result)
     for (const [target, code] of [
-      [
-        fileRef(snapshot.record.id, "old-main.md", snapshot.snapshot_id, "main-b"),
-        "SHARED_FILE_BINDING_UNAVAILABLE",
-      ],
-      [
-        fileRef(f.get("b").record.id, "old-main.md", snapshot.snapshot_id, "main-a"),
-        "SNAPSHOT_CONFLICT",
-      ],
-      [
-        fileRef(snapshot.record.id, "old-main.md", `s_${"f".repeat(64)}`, "main-a"),
-        "SNAPSHOT_MISSING",
-      ],
+      [fileRef(snapshot.record.id, "old-main.md", snapshot.snapshot_id), "PREPARE_ROOT_NOT_MAIN"],
+      [fileRef(f.get("b").record.id, "old-main.md", snapshot.snapshot_id), "SNAPSHOT_CONFLICT"],
+      [fileRef(snapshot.record.id, "old-main.md", `s_${"f".repeat(64)}`), "SNAPSHOT_MISSING"],
     ] as const) {
       const rejected = await f.run(consume(f.input([target])))
       expect(rejected.status).toBe("failed")
@@ -202,13 +253,15 @@ describe("once consume contract", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("encoded stable shared identities remain valid through fixed consume and its decoder", async () => {
-    const f = await fixture({ "guide:v1": { library: "org:team" } })
-    const input = f.input([f.ref("guide:v1")])
+  test("canonical stable identities remain valid through fixed consume and its decoder", async () => {
+    const f = await fixture({ "guide-v1": { library: "00000000-0000-4000-8000-000000000114" } })
+    const input = f.input([f.ref("guide-v1")])
     const result = await f.run(consume(input))
     expect(result.status).toBe("ready")
     if (result.status !== "ready") throw new Error(JSON.stringify(result))
-    expect(result.entries[0]?.manifest.record.id).toBe(sharedSkillId("org:team", "guide:v1"))
+    expect(result.entries[0]?.manifest.record.id).toBe(
+      skillIdentity("00000000-0000-4000-8000-000000000114", "guide-v1"),
+    )
     expect(await f.run(decodeConsumeResult(result, input))).toEqual(result)
     expect(f.calls).toHaveLength(0)
   })
@@ -254,14 +307,14 @@ describe("once consume contract", () => {
 
   test("identical names and source bytes in different libraries remain separate bindings", async () => {
     const f = await fixture({
-      a: { name: "Same name", library: "one", content: "same" },
-      b: { name: "Same name", library: "two", content: "same" },
+      a: { name: "Same name", library: "00000000-0000-4000-8000-000000000115", content: "same" },
+      b: { name: "Same name", library: "00000000-0000-4000-8000-000000000116", content: "same" },
     })
     const result = await f.run(consume(f.input([f.ref("a"), f.ref("b")])))
     if (result.status !== "ready") throw new Error(JSON.stringify(result))
     expect(result.preparation.session_bindings.map((binding) => binding.record.id)).toEqual([
-      "shared_skill:one:a",
-      "shared_skill:two:b",
+      "skill://a?library=00000000-0000-4000-8000-000000000115",
+      "skill://b?library=00000000-0000-4000-8000-000000000116",
     ])
     expect(new Set(result.entries.map((entry) => entry.manifest.snapshot_id)).size).toBe(2)
     const wrongRequest = await f.run(
@@ -290,7 +343,7 @@ describe("once consume contract", () => {
     ).toBe("Failure")
   })
 
-  test("the old fixed read agrees with the source proof for the selected snapshot bytes", async () => {
+  test("the fixed read agrees with the source proof for the selected snapshot bytes", async () => {
     const f = await fixture({ a: { content: "\uFEFF# Exact\r\n雪\r\n" } })
     const result = await f.run(consume(f.input([f.ref("a")])))
     if (result.status !== "ready") throw new Error(JSON.stringify(result))
@@ -309,31 +362,19 @@ describe("once consume contract", () => {
     expect(read.has_more).toBe(entry.source_body.has_more)
   })
 
-  test("a real retained pin with only its entry bytes local reports a complete manifest and entry readiness", async () => {
-    const f = sharedSnapshotFixture()
+  test("a current local selection with only its entry bytes reports a complete directory and entry readiness", async () => {
+    const f = currentSnapshotFixture()
     const snapshot = await f.open()
-    const plan = await f.run(prepareSharedSnapshotHistory(library, snapshot))
-    await f.run(retainSharedSnapshotHistory(library, { plan, mode: "create" }))
-    const retained = await f.run(
-      registerRetainedSnapshot(scope, library, plan.pin_id, plan.manifest),
-    )
     const main = snapshot.files.find((file) => file.path === snapshot.entrypoint)
     const bytes = main === undefined ? undefined : f.objects.get(`objects/${main.sha256}`)
-    if (main === undefined || bytes === undefined) throw new Error("Expected retained main bytes")
+    if (main === undefined || bytes === undefined) throw new Error("Expected selected main bytes")
     f.objects.clear()
     f.objects.set(`objects/${main.sha256}`, bytes)
     f.clearCalls()
     const result = await f.run(
       consume({
         version: 1,
-        targets: [
-          fileRef(
-            retained.snapshot.record.id,
-            snapshot.entrypoint,
-            retained.snapshot.snapshot_id,
-            "file-main",
-          ),
-        ],
+        targets: [fileRef(snapshot.record.id, snapshot.entrypoint, snapshot.snapshot_id)],
         purpose: "use",
         freshness: { policy: "offline" },
       }),
@@ -348,20 +389,23 @@ describe("once consume contract", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("a wrong physical main File binding fails consumption while legacy prepare keeps its shape", async () => {
+  test("a wrong physical main File binding cannot produce a ready consumption", async () => {
     const f = await fixture({ a: {} })
     const snapshot = f.get("a")
     f.json.set(`snapshots/${snapshot.snapshot_id}.json`, {
       ...snapshot,
       file_bindings: [{ file_id: "main-a", page_id: id(999), path: "SKILL.md" }],
     })
-    const old = await f.run(
-      prepareGraph({ roots: [f.ref("a")], purpose: "use", freshness: { policy: "offline" } }),
+    const prepared = await f.run(
+      prepareGraph({ roots: [f.ref("a")], purpose: "use", freshness: { policy: "offline" } }).pipe(
+        Effect.result,
+      ),
     )
-    expect(old.status).toBe("ready")
+    expect(prepared._tag === "Failure" && prepared.failure.code).toBe("STATE_CORRUPT")
     const result = await f.run(consume(f.input([f.ref("a")])))
     expect(result.status).toBe("failed")
-    if (result.status === "failed") expect(result.error.code).toBe("CONSUME_INVALID_PROOF")
+    if (result.status === "failed") expect(result.error.code).toBe("STATE_CORRUPT")
+    expect(f.readBytes.size).toBe(0)
   })
 
   test("the shared decoder rejects wrong ranges, hashes, manifest refs, graph locks and unknown schema", async () => {

@@ -18,19 +18,20 @@ import {
   type Snapshot,
 } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
-import { nativeGraphFixture as nativeFixture } from "./graph-prepare-live-fixture.ts"
+import { graphLibrary, nativeGraphFixture as nativeFixture } from "./graph-prepare-live-fixture.ts"
 import { fileRef } from "../src/ref.ts"
-import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { Store } from "../src/store.ts"
+import { selectionSnapshotIdentityInput } from "../src/snapshot-identity.ts"
 import {
-  digest,
-  encode,
-  id,
-  library,
-  rich,
-  sharedSnapshotFixture,
-  skillPage,
-} from "./shared-snapshot-fixture.ts"
+  currentDigest as digest,
+  currentBytes as encode,
+  currentId as id,
+  currentLibrary as library,
+  currentScope as scope,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+  currentRich,
+} from "./shared-current-fixture.ts"
 
 type Definition = {
   readonly requires?: readonly string[]
@@ -39,12 +40,10 @@ type Definition = {
   readonly enabled?: boolean
   readonly content?: string
 }
-const scope = digest(
-  JSON.stringify(["fixture-user", "", "https://api.notion.com", "controlled-credential"]),
-)
-const identity = (name: string) => `shared_skill:library-snapshot:${name}`
+const identity = (name: string) =>
+  `skill://${name}?library=${encodeURIComponent(library.library_id)}`
 async function fixture(definitions: Readonly<Record<string, Definition>>) {
-  const f = sharedSnapshotFixture({ fileCount: 1 })
+  const f = currentSnapshotFixture({ fileCount: 0 })
   const snapshots = new Map<string, Snapshot>()
   const opened = new Map<string, number>()
   const entries = Object.entries(definitions)
@@ -75,12 +74,14 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
     }
     const snapshot: Snapshot = {
       scope,
-      snapshot_id: `s_${digest(JSON.stringify([scope, record.id, version]))}`,
+      snapshot_id: `s_${digest(selectionSnapshotIdentityInput({ scope, record, version_id: version }))}`,
       version_id: version,
       created_at: 1000,
       record,
       entrypoint,
-      files: [{ path: entrypoint, sha256: digest(bytes), bytes: bytes.byteLength }],
+      files: [{ path: entrypoint, sha256: digest(bytes), bytes: bytes.byteLength, mode: "100644" }],
+      file_bindings: [{ file_id: `main-${name}`, page_id: id(100 + index), path: entrypoint }],
+      shared_acquisition: { version: 5, library, files: [] },
       members: [],
       required: [],
     }
@@ -259,7 +260,7 @@ describe("graph prepare", () => {
       sessionBindings: first.session_bindings,
     })
     expect(again.session_bindings).toEqual(first.session_bindings)
-    expect(f.calls.map((call) => call.path)).toEqual(["v1/users/me"])
+    expect(f.calls).toHaveLength(0)
     const forged = first.session_bindings.map((binding) => ({
       ...binding,
       body_sha256: "f".repeat(64),
@@ -291,6 +292,87 @@ describe("graph prepare", () => {
     expect((await f.incomplete([f.ref("a"), conflict])).error.code).toBe("PREPARE_VERSION_CONFLICT")
   })
 
+  test("successive metadata observations retain complete independent bindings without changing content version", async () => {
+    const f = currentSnapshotFixture({ fileCount: 0 })
+    const first = await f.open()
+    await f.run(recordScope(scope))
+    const root = fileRef(first.record.id, first.entrypoint)
+    const inspect = () => f.run(prepareGraph({ roots: [root], purpose: "inspect" }))
+    const selections = [await inspect()]
+    const edits = [
+      () => {
+        f.main.properties["Default Context"].checkbox = true
+      },
+      () => {
+        f.main.properties.Name.title[0]!.plain_text = "Second display"
+      },
+      () => {
+        f.main.properties.Description = currentRich("description", "Third directory description.")
+      },
+    ]
+    for (const [index, edit] of edits.entries()) {
+      edit()
+      f.main.last_edited_time = `2026-11-18T00:0${index + 1}:00.000Z`
+      const observed = await f.open()
+      expect(observed.version_id).toBe(first.version_id)
+      expect(observed.files).toEqual(first.files)
+      selections.push(await inspect())
+    }
+    const bindings = selections.map((selection) => selection.session_bindings[0]!)
+    expect(new Set(bindings.map((binding) => binding.snapshot_id)).size).toBe(4)
+    expect(new Set(bindings.map((binding) => binding.version_id)).size).toBe(1)
+    expect(new Set(bindings.map((binding) => binding.body_sha256)).size).toBe(1)
+    f.clearCalls()
+    for (const selection of selections) {
+      const fixed = await f.run(
+        prepareGraph({
+          roots: [root],
+          purpose: "use",
+          sessionBindings: selection.session_bindings,
+          freshness: { policy: "offline" },
+        }),
+      )
+      expect(fixed.session_bindings).toEqual(selection.session_bindings)
+    }
+    expect(f.calls).toEqual([])
+    const selected = bindings[1]!
+    for (const record of [
+      { ...selected.record, default_context: !selected.record.default_context },
+      { ...selected.record, name: "Forged", alias: aliasFor("Forged") },
+      { ...selected.record, description: "Forged description" },
+      { ...selected.record, enabled: false },
+    ]) {
+      const result = await f.run(
+        prepareGraph({
+          roots: [root],
+          purpose: "use",
+          sessionBindings: [{ ...selected, record }],
+          freshness: { policy: "offline" },
+        }).pipe(Effect.result),
+      )
+      expect(result._tag === "Failure" && result.failure.code).toBe("PREPARE_BINDING_CONFLICT")
+    }
+    f.bodies.set(skillPage, "# Changed content\n\nThe author changed the instruction.\n")
+    f.main.last_edited_time = "2026-11-18T00:05:00.000Z"
+    const changed = await f.open()
+    expect(changed.version_id).not.toBe(first.version_id)
+    expect(changed.snapshot_id).not.toBe(bindings.at(-1)!.snapshot_id)
+    for (const selection of selections)
+      expect(
+        (
+          await f.run(
+            prepareGraph({
+              roots: [root],
+              purpose: "use",
+              sessionBindings: selection.session_bindings,
+              freshness: { policy: "offline" },
+            }),
+          )
+        ).session_bindings,
+      ).toEqual(selection.session_bindings)
+    expect(f.semanticWrites()).toEqual([])
+  })
+
   test("a reused pin cannot authorize a different explicit owner", async () => {
     const f = await fixture({ a: {} })
     const wrong = fileRef(identity("z"), "SKILL.md", f.snapshots.get("a")!.snapshot_id)
@@ -298,10 +380,13 @@ describe("graph prepare", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("a pinned historical alias reuses its verified identity without accepting another owner's alias", async () => {
+  test("equivalent fixed owner references reuse one verified selection", async () => {
     const f = await fixture({ z: {} })
     const snapshot = f.snapshots.get("z")!
-    const result = await f.prepare([f.ref("z"), fileRef("z", "SKILL.md", snapshot.snapshot_id)])
+    const result = await f.prepare([
+      f.ref("z"),
+      fileRef(identity("z"), "SKILL.md", snapshot.snapshot_id),
+    ])
     expect(result.usage.prepared_nodes).toBe(1)
     expect([...f.opened.values()]).toEqual([1])
   })
@@ -451,15 +536,18 @@ describe("graph prepare", () => {
   })
 })
 
+const graphIdentity = (name: string) =>
+  `skill://${name}?library=${encodeURIComponent(graphLibrary.library_id)}`
+
 describe("prepare through current shared snapshot transport", () => {
   test("warm logical IDs with shared prefixes retain their own complete observation", async () => {
     const f = nativeFixture({ width: 12 })
     const input = { roots: [skillPage], purpose: "use" as const }
-    const cold = await f.run(prepareGraph(input, { database: library.skills.database_id }))
+    const cold = await f.run(prepareGraph(input, { library: graphLibrary.library_id }))
     f.clearCalls()
-    const warm = await f.run(prepareGraph(input, { database: library.skills.database_id }))
+    const warm = await f.run(prepareGraph(input, { library: graphLibrary.library_id }))
     expect(warm.graph_lock).toEqual(cold.graph_lock)
-    expect(f.calls.map((call) => call.path)).toEqual(["v1/users/me"])
+    expect(f.calls).toHaveLength(0)
   })
 
   test("a live multi-root diamond reads each required main once and leaves the Member body unread", async () => {
@@ -467,12 +555,12 @@ describe("prepare through current shared snapshot transport", () => {
     const result = await f.run(
       prepareGraph(
         { roots: [skillPage, id(901)], purpose: "use" },
-        { database: library.skills.database_id },
+        { library: graphLibrary.library_id },
       ),
     )
     expect(result.status).toBe("ready")
     expect(result.usage.prepared_nodes).toBe(4)
-    expect(f.calls.filter((call) => call.path === "v1/users/me")).toHaveLength(1)
+    expect(f.calls.filter((call) => call.path === "v1/users/me")).toHaveLength(0)
     for (const page of f.pageIds.slice(0, 4))
       expect(
         f.calls.filter((call) => call.path.split("?", 1)[0] === `v1/pages/${page}/markdown`),
@@ -480,14 +568,14 @@ describe("prepare through current shared snapshot transport", () => {
     expect(
       f.calls.some((call) => call.path.split("?", 1)[0] === `v1/pages/${id(903)}/markdown`),
     ).toBe(false)
-    expect(result.nodes.find((node) => node.id === identity("optional"))?.state).toBe("known")
+    expect(result.nodes.find((node) => node.id === graphIdentity("optional"))?.state).toBe("known")
   })
   test("live inspect loads only the root body even when Requires has a nontrivial closure", async () => {
     const f = nativeFixture()
     const result = await f.run(
       prepareGraph(
         { roots: [skillPage], purpose: "inspect" },
-        { database: library.skills.database_id },
+        { library: graphLibrary.library_id },
       ),
     )
     expect(result.usage.prepared_nodes).toBe(1)
@@ -507,17 +595,19 @@ describe("prepare through current shared snapshot transport", () => {
     const result = await f.run(
       prepareGraph(
         { roots: [skillPage], purpose: "inspect" },
-        { database: library.skills.database_id },
+        { library: graphLibrary.library_id },
       ),
     )
     const root = result.nodes.find((node) => node.state === "prepared")
     if (root?.state !== "prepared") throw new Error("Expected prepared root")
     expect(root.references).toHaveLength(1)
-    expect(result.nodes.find((node) => node.id === identity("optional"))?.roles).toEqual([
+    expect(result.nodes.find((node) => node.id === graphIdentity("optional"))?.roles).toEqual([
       "member",
       "reference",
     ])
-    expect(result.session_bindings.map((binding) => binding.record.id)).toEqual([identity("a")])
+    expect(result.session_bindings.map((binding) => binding.record.id)).toEqual([
+      graphIdentity("a"),
+    ])
     expect(f.readBodyCount()).toBe(1)
   })
 })

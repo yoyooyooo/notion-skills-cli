@@ -1,24 +1,34 @@
 import { Cause, Effect, Option, Schema } from "effect"
-import { prepareGraphWithSnapshots } from "./graph-prepare.ts"
-import { type PreparedNode } from "./graph-prepare-model.ts"
-import { aliasFor, entrypointFor, fail, SkillsError } from "./model.ts"
-import { fileRef, normalizePath, pageId, parseRef, parseTarget } from "./ref.ts"
-import { validateSharedRecordIdentity } from "./shared-content.ts"
-import { canonicalSharedJson } from "./shared-records.ts"
-import { sha256 } from "./store.ts"
 import {
-  CONSUMER_CONTRACT_VERSION,
-  SOURCE_IDENTITY_COMPILER,
   ConsumeInputSchema,
+  CONSUMER_CONTRACT_VERSION,
   ConsumeResultSchema,
-  type ConsumeInput,
+  SOURCE_IDENTITY_COMPILER,
   type ConsumeEntry,
+  type ConsumeInput,
   type ConsumeReady,
   type ConsumeResult,
   type VerifiedManifest,
 } from "./consumer-model.ts"
+import { withConsumptionEffects, type ConsumptionEffects } from "./consumption-effects.ts"
+import { type PreparedNode } from "./graph-prepare-model.ts"
+import { prepareGraphWithSnapshots } from "./graph-prepare.ts"
+import { aliasFor, entrypointFor, fail, property, SkillsError } from "./model.ts"
+import { fileRef, normalizePath, pageId, parseTarget } from "./ref.ts"
+import { validateSharedRecordIdentity } from "./shared-content.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
+import { sha256 } from "./store.ts"
+import {
+  retainedSnapshotIdentityInputs,
+  selectionSnapshotIdentityInput,
+} from "./snapshot-identity.ts"
 
 export * from "./consumer-model.ts"
+export {
+  CONSUMPTION_EFFECTS_VERSION,
+  ConsumptionEffectsSchema,
+  type ConsumptionEffects,
+} from "./consumption-effects.ts"
 
 const invalid = () => fail("CONSUME_INVALID_PROOF", "Consumption evidence is inconsistent.")
 const same = (left: unknown, right: unknown) =>
@@ -38,17 +48,12 @@ function validateSelection(targetText: string, node: PreparedNode) {
   const physical = pageId(target.selector)
   const selected =
     target.selector === record.id ||
-    (physical !== undefined &&
-      (locator.type === "shared_skill" || locator.type === "notion_page") &&
-      locator.page_id === physical) ||
-    (locator.type === "notion_subscription" &&
-      target.selector === `upstream:${locator.subscription_id}`) ||
-    (target.snapshot !== undefined && ["", record.name, record.alias].includes(target.selector))
+    (physical !== undefined && locator.type === "shared_skill" && locator.page_id === physical) ||
+    target.kind === "snapshot"
   if (
     !selected ||
     (target.snapshot !== undefined && target.snapshot !== node.binding.snapshot_id) ||
-    (target.file_id === undefined && target.path && target.path !== node.path) ||
-    (target.file_id !== undefined && target.file_id !== parseRef(node.ref).file_id)
+    (target.path && target.path !== node.path)
   )
     throw invalid()
 }
@@ -85,13 +90,6 @@ function validateManifest(entry: ConsumeEntry, node: PreparedNode, scope: string
       pageId(locator.data_source_id) !== locator.data_source_id)
   )
     throw invalid()
-  if (locator.type === "notion_page" && record.id !== `notion_page:${locator.page_id}`)
-    throw invalid()
-  if (
-    locator.type === "notion_subscription" &&
-    record.id !== `notion_subscription:${locator.subscription_id}`
-  )
-    throw invalid()
   const paths = new Set<string>()
   for (const file of manifest.files) {
     if (
@@ -121,23 +119,14 @@ function validateManifest(entry: ConsumeEntry, node: PreparedNode, scope: string
   const mainBinding = bindings.find((binding) => binding.path === manifest.entrypoint)
   if (
     manifest.file_bindings !== undefined &&
-    (mainBinding === undefined ||
-      locator.type !== "shared_skill" ||
-      mainBinding.page_id !== locator.page_id)
+    (locator.type !== "shared_skill" ||
+      (mainBinding !== undefined && mainBinding.page_id !== locator.page_id))
   )
     throw invalid()
-  if (
-    node.ref !== fileRef(record.id, manifest.entrypoint, manifest.snapshot_id, mainBinding?.file_id)
-  )
-    throw invalid()
+  if (node.ref !== fileRef(record.id, manifest.entrypoint, manifest.snapshot_id)) throw invalid()
   const files = manifest.files.map((file) => ({
     ...file,
-    ref: fileRef(
-      record.id,
-      file.path,
-      manifest.snapshot_id,
-      bindings.find((binding) => binding.path === file.path)?.file_id,
-    ),
+    ref: fileRef(record.id, file.path, manifest.snapshot_id),
   }))
   if (!same(files, node.files)) throw invalid()
   const main = manifest.files.find((file) => file.path === manifest.entrypoint)
@@ -268,16 +257,16 @@ export function decodeConsumeResult(value: unknown, expected?: ConsumeInput) {
         catch: invalid,
       })
       const manifest = entry.manifest
-      const identity =
-        manifest.historical_snapshot_id === undefined
-          ? node.id
-          : manifest.record.locator.type === "notion_page"
-            ? manifest.record.locator.page_id
-            : undefined
+      const identity = node.id
+      const snapshotInputs =
+        node.freshness?.policy === "pinned" && node.source === "local_snapshot"
+          ? retainedSnapshotIdentityInputs(manifest)
+          : [selectionSnapshotIdentityInput(manifest)]
       if (
         identity === undefined ||
-        manifest.snapshot_id !==
-          `s_${yield* sha256(JSON.stringify([manifest.scope, identity, manifest.version_id]))}` ||
+        !(yield* Effect.forEach(snapshotInputs, sha256)).some(
+          (hash) => manifest.snapshot_id === `s_${hash}`,
+        ) ||
         (yield* sha256(node.content)) !== node.body_sha256 ||
         (yield* sha256(canonicalSharedJson(manifest))) !== entry.manifest_sha256 ||
         (yield* sha256(canonicalSharedJson(relations(node)))) !== entry.projection.relations_sha256
@@ -361,13 +350,7 @@ function consumeReady(
         record: snapshot.record,
         entrypoint: snapshot.entrypoint,
         files: snapshot.files,
-        ...(snapshot.historical_snapshot_id === undefined
-          ? {}
-          : { historical_snapshot_id: snapshot.historical_snapshot_id }),
         ...(snapshot.file_bindings === undefined ? {} : { file_bindings: snapshot.file_bindings }),
-        ...(snapshot.source_projection === undefined
-          ? {}
-          : { source_projection: snapshot.source_projection }),
       }
       const totalLines = node.content.split("\n").length
       const materialized = snapshot.materialization
@@ -422,44 +405,61 @@ export type ConsumeOptions = NonNullable<Parameters<typeof prepareGraphWithSnaps
  * interruption keeps its native semantics. Neither case can attest model delivery.
  */
 export function consume(input: unknown, options: ConsumeOptions = {}) {
-  return Effect.suspend(() => {
-    const cancelled: ConsumeResult = {
-      version: CONSUMER_CONTRACT_VERSION,
-      status: "cancelled",
-      reason: "interrupted",
-    }
-    const signal = options.signal
-    if (signal?.aborted) return Effect.succeed(cancelled)
-    const work = consumeReady(input, options).pipe(
-      Effect.catchCause((cause) => {
-        const error = Option.getOrUndefined(Cause.findErrorOption(cause))
-        if (
-          Cause.hasDies(cause) ||
-          Cause.hasInterruptsOnly(cause) ||
-          !(error instanceof SkillsError)
-        )
-          return Effect.failCause(cause)
-        return Effect.succeed<ConsumeResult>({
-          version: CONSUMER_CONTRACT_VERSION,
-          status: "failed",
-          error: {
-            code: error.code,
-            message: error.message,
-            ...(error.details === undefined ? {} : { details: error.details }),
-          },
-        })
-      }),
-    )
-    if (signal === undefined) return work
-    const cancellation = Effect.callback<ConsumeResult>((resume) => {
-      const abort = () => resume(Effect.succeed(cancelled))
-      signal.addEventListener("abort", abort, { once: true })
-      if (signal.aborted) abort()
-      return Effect.sync(() => signal.removeEventListener("abort", abort))
-    })
-    return work.pipe(
-      Effect.raceFirst(cancellation),
-      Effect.map((result) => (signal.aborted ? cancelled : result)),
-    )
-  })
+  return withConsumptionEffects(
+    Effect.suspend(() => {
+      const cancelled: ConsumeResult = {
+        version: CONSUMER_CONTRACT_VERSION,
+        status: "cancelled",
+        reason: "interrupted",
+      }
+      const signal = options.signal
+      if (signal?.aborted) return Effect.succeed(cancelled)
+      const work = consumeReady(input, options).pipe(
+        Effect.catchCause((cause) => {
+          const error = Option.getOrUndefined(Cause.findErrorOption(cause))
+          if (
+            Cause.hasDies(cause) ||
+            Cause.hasInterruptsOnly(cause) ||
+            !(error instanceof SkillsError)
+          )
+            return Effect.failCause(cause)
+          return Effect.succeed<ConsumeResult>({
+            version: CONSUMER_CONTRACT_VERSION,
+            status: "failed",
+            error: {
+              code: error.code,
+              message: error.message,
+              ...(error.details === undefined ? {} : { details: error.details }),
+            },
+          })
+        }),
+      )
+      if (signal === undefined) return work
+      const cancellation = Effect.callback<ConsumeResult>((resume) => {
+        const abort = () => resume(Effect.succeed(cancelled))
+        signal.addEventListener("abort", abort, { once: true })
+        if (signal.aborted) abort()
+        return Effect.sync(() => signal.removeEventListener("abort", abort))
+      })
+      return work.pipe(
+        Effect.raceFirst(cancellation),
+        Effect.map((result) => (signal.aborted ? cancelled : result)),
+      )
+    }),
+    options,
+  ).pipe(
+    Effect.map((result): ConsumeResult & { readonly effects: ConsumptionEffects } =>
+      result.status === "ready"
+        ? { ...result, preparation: { ...result.preparation, effects: result.effects } }
+        : result.status === "failed"
+          ? {
+              ...result,
+              error: {
+                ...result.error,
+                details: { ...property(result.error.details), effects: result.effects },
+              },
+            }
+          : result,
+    ),
+  )
 }

@@ -1,3 +1,4 @@
+import { sourceDefinitionOptions } from "./shared-source-definition-options.ts"
 import { Cause, Config, Crypto, Effect, Exit, Schema, Stream } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from "effect/http"
 import { fail, property, SkillsError } from "./model.ts"
@@ -9,7 +10,7 @@ import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
 import { discoverSource, type DiscoverSourceInput, type SourceSnapshot } from "./upstream-source.ts"
 import { SourcePatchSchema } from "./upstream-source-model.ts"
-import { sourceChecked, sourceConfiguration } from "./shared-source-definitions.ts"
+import { sourceChecked, validateSourceDefinition } from "./shared-source-definitions.ts"
 import type { SourceDefinitionInput } from "./shared-sources-model.ts"
 import type { createRequestMetrics } from "./request-metrics.ts"
 
@@ -46,30 +47,10 @@ export const sourceAdapterCapabilities = [
 ] as const
 
 export function sourceDiscoveryInput(input: SourceDefinitionInput): DiscoverSourceInput {
-  const definition = sourceConfiguration(input)
+  const definition = validateSourceDefinition(input)
   if (definition.adapter.type === "linear")
     throw fail("SOURCE_ADAPTER_INVALID", "Linear does not use Git selection.")
-  const options = definition.options
-  const permitted = new Set([
-    "patch",
-    "member_patches",
-    "require_all_included",
-    "accepted_ref",
-    "target_mode",
-    "strip_prefix",
-    "target_prefix",
-    "shared_target_set",
-    "publisher_subscription_id",
-    "external_assets",
-    "external_markdown",
-  ])
-  for (const key of Object.keys(options))
-    if (!permitted.has(key))
-      throw fail(
-        "SOURCE_ADAPTER_OPTIONS_UNSUPPORTED",
-        "An explicit source option has no implemented adapter behavior; it cannot be silently discarded.",
-        { option: key },
-      )
+  const options = sourceDefinitionOptions(definition.options)
   if (options.external_assets !== undefined || options.external_markdown !== undefined) {
     if (
       options.external_assets !== true ||
@@ -224,11 +205,11 @@ export function discoverLinearSource(
   transport: LinearSourceTransport = linearTransport(),
 ) {
   return Effect.gen(function* () {
-    const definition = yield* sourceChecked(() => sourceConfiguration(input))
+    const definition = yield* sourceChecked(() => validateSourceDefinition(input))
     if (definition.adapter.type !== "linear")
       return yield* Effect.fail(fail("SOURCE_ADAPTER_INVALID", "Expected a Linear definition."))
     if (
-      Object.keys(definition.options).length ||
+      Object.keys(definition.options).length > 0 ||
       canonicalSharedJson(definition.selection) !==
         canonicalSharedJson({ roots: ["."], include: [], exclude: [], mapping: {} })
     )
@@ -341,21 +322,26 @@ export function discoverLinearSource(
 }
 export function discoverSourceDefinition(
   input: SourceDefinitionInput,
-  options: { readonly metrics?: ReturnType<typeof createRequestMetrics> } = {},
+  options: {
+    readonly metrics?: ReturnType<typeof createRequestMetrics>
+    /** Narrow explicit member discovery before acquiring resource bytes; no Source mutation. */
+    readonly onlyMembers?: readonly string[]
+  } = {},
 ) {
   return Effect.gen(function* () {
-    const definition = yield* sourceChecked(() => sourceConfiguration(input))
+    const definition = yield* sourceChecked(() => validateSourceDefinition(input))
     if (!definition.enabled)
       return yield* Effect.fail(
         fail(
           "SOURCE_DISABLED",
-          "This source is disabled; current fixed content remains available.",
+          "This Source is disabled; enable it before discovery or ordinary consumption.",
         ),
       )
     if (definition.adapter.type === "linear")
       return yield* discoverLinearSource(definition, linearTransport(options.metrics))
     const snapshot = yield* discoverSource(
       yield* sourceChecked(() => sourceDiscoveryInput(definition)),
+      options,
     )
     if (definition.options.external_assets === true) {
       yield* sourceChecked(() => {

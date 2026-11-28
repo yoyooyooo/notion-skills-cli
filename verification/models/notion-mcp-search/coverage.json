@@ -1,0 +1,698 @@
+{
+  "version": 1,
+  "source_base": "fe70c9f869d5bf44e1a1d128b6aaf319eabdd7b4",
+  "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+  "kind": "Bounded search admission design model with reviewed concrete guards; not a production refinement proof.",
+  "correspondence": "One request, nine remote result classes, two fixed selection pins, four independent epoch owners and a two-tick deadline. Source hashes bind reviewed working-tree bytes; source_base is their baseline, not a claim that new bytes were already committed.",
+  "review_basis": "Preserves SearchAdmission v4 transitions, complete independent expected rule inventories and expected counterexamples. Reviews REST preflight before MCP dispatch, verified same-physical-entry access, explicit connection/grant epoch checks before and after refresh, current physical page/owner/stable-claim/source admission, retained disabled observations, supporting File binding rereads, and final source/credential/deadline fences. The hosted wire decoder accepts only observed workspace_search shapes and never upgrades remote matching to exact consumption-byte proof. Broker owns disabled tool registration, host session/metadata qualification and active pins; its separate suite and installed Pi acceptance must establish those obligations. Node source-mode review: the package-version import now uses the existing default JSON import with type=json attribute and reads the same manifest.version. This corrects native Node module loading; operation, admission, deadline, credential and result semantics are unchanged. The existing real source-mode dev-launcher regression and full installed-package check must pass. Native Node type-erasure review: NotionMcpClient stores the identical options through an explicit readonly field and constructor assignment instead of a TypeScript parameter property. Transport, schema, byte/deadline budgets and result guards are unchanged; the real source-mode launcher, transport and SDK regressions verify this boundary. Reviewed the AH-1277 SDK boundary extraction at 90051b844aa15a86975054c81df83981c3c3a028 against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. runOperation now delegates to the shared runRuntimeOperation while retaining the consumption capability check before service acquisition. The complete per-call environment, pre-abort check, nodeRuntime/ConfigProvider, Notion acquisition, Effect.scoped lifetime, AbortSignal, error propagation and final metrics callback retain their reviewed behavior. The helper is independently hash-bound below so moving the implementation does not remove its protection. Resolving cwd now precedes rejection of an invalid readOnly option; this changes no legal invocation or network admission and is outside the finite model. Management chooses its own factory; consumption still uses its existing read-only boundary. No finite model, configuration, independent rule inventory or existing guard mutation target changes. This is a source-correspondence review, not a new verification result. Reviewed the Skill-reference v2 task diff against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. The shared Skill constructor now emits complete canonical root URIs and validates lowercase stable Skill IDs through the shared protocol. Current record refs use the same formatter; cached identity must still match its locator and declared kind entrypoint. Stable-claim lookup uses that constructor without changing complete pagination, disabled-claim participation, physical admission or freshness checks. SDK exports SKILL_REF_VERSION. Both search models, all 23 configurations and the eight search mutation targets are unchanged. This updates only the three reviewed source pins and does not claim a verification run. Integration checkpoint: preserve every upstream SourceSync and SourceSyncProgress model, case, implementation binding and source guard. The final merged source bytes, including SDK changes shared by both branches, still require a fresh diff review before final hash binding and execution. Final integration review against upstream next 9d986a83aaae35e3f9f6cd35341add0476f5c887 and task checkpoint ad7d09c9cd21aad6e318eca52bcb167b46e9bf78: the merged SDK differs from upstream only by re-exporting SKILL_REF_VERSION. All search source/auth/epoch guards, 23 complete case inventories, implementation bindings and the reviewed mutation inventory remain unchanged. Upstream gitless paired-build source identity and runner counterexamples are retained. Only the reviewed SDK hash is rebound; a final frozen-source receipt is required separately. Reviewed the store-only selection metrics change at 8443e74260cc5a2d88af1d1e478d7739b68bfc78 against a0f06d2fc442c3e2ee904809d45e8bf17719dde1. selectLibrary still uses LocalOperationServices and nodeRuntime.store; it cannot acquire the HTTP transport or scheduler. The local runtime now honors options.metrics and the captured NTN_SKILLS_REQUEST_TRACE_LIMIT when publishing its zero-attempt snapshot, including error and pre-cancel paths. The HTTP-capable runRuntimeOperation, request admission and producer guards, search source/grant/deadline fences, cache generations and all finite transitions are byte-for-byte unchanged. The Node local-selection regression failed all three cases before the fix and passed all three after it; the existing SDK boundary passed 15 cases, and the unchanged Broker strict daily classifier passed 45 cases, including rejection of unobserved, incomplete or nonzero local-selection metrics. Only this reviewed source hash is rebound; model files, configurations, independent expected rule/broken inventories, mutation targets and tool pins are unchanged. These concrete metrics assertions remain outside the finite models and do not claim a new TLC or installed-host result. Reviewed the lazy Source materialization SDK delta against 31f30db8f960cc4f36d1e02f8e279d641b660718. sdk.ts adds the versioned read-only discoverSourceMembers operation, with exact optional requires_of metadata and the existing ReadOperationServices/runRuntimeOperation boundary. Hosted search, credential admission, exact selected-body proof and search retry behavior are unchanged. Rebind the reviewed SDK bytes only; the existing search models, 23 complete case inventories and mutation targets are unchanged. New Source preparation is an explicitly separate management capability and is not proved by SearchAdmission. This correspondence update is not a formal or installed-Pi run result.",
+  "files": {
+    "packages/core/src/notion-mcp-search.ts": "299e3edc6a054d24ce6489b2f741cf247a9636223fb350063fb500d30126560a",
+    "packages/core/src/shared-current-index.ts": "14eaac09659833764c5406e4bc091f8be4e529a81ea9e54b4bf8dd01dda73f97",
+    "packages/core/src/shared-skill-targets.ts": "b73e7ee9c84293f44013fd17ecfc2e9dab18e7af2ffbaa26489a5818ff738dea",
+    "packages/core/src/shared-content.ts": "04c158c5b8e915b95cfcd700bc981cb6f8f4e39bc543062702993027b13c6218",
+    "packages/core/test/notion-mcp-search.test.ts": "05247c993ca3939767ecdaee8980d0f8c66be12741efdddf76d5712079f0391e",
+    "packages/core/test/shared-current-fixture.ts": "ed69b28c12a69b12dbcc5fbbe6f5dd8015982689734756db4cbcf28ee4f5ccaa",
+    "packages/cli/src/sdk.ts": "7fbe46c5d8b3103ed6984c210005a09b40f0c130e75155d47275e0ed4df41a3d",
+    "packages/cli/src/operation-runtime.ts": "a9c344a05035502216f5ccb355e63f8dac0d61f7d4ba3a035cccc1087648f538",
+    "packages/cli/src/commands-content.ts": "12aa116d3f0e7ff13d8c92dfa7b2d9465a98aa072644b0264f2c45d92e9f5b1b",
+    "packages/core/src/notion-mcp-client.ts": "e30a584dd1e0f73df0f2876170c84d055b7808100c8c0bb374ac8bf380b4ae46",
+    "packages/core/test/notion-mcp-client.test.ts": "05d4ec7de65e1b7bd815e89a1a7f89a2ddc7855e1d2a4a409d763269b48e8f1f",
+    "packages/core/test/sdk-mcp-search.node.test.ts": "f8341c3c1c577f26ec8e3383f5cfac018b539c217e5766907b5b3e0f687ad304"
+  },
+  "models": {
+    "SearchAdmission": {
+      "kind": "bounded_remote_discovery_admission",
+      "source_model": "AH-1268 design SearchAdmission/v4",
+      "symbols": [
+        "contentSearch",
+        "contentSearchSource",
+        "assertContentSearchSource",
+        "admitContentSearchMatches",
+        "querySelectedSkillMetadataWithClaims",
+        "searchNotionMcp"
+      ],
+      "bounds": "One query; native/projection/owned_file/foreign_source/disabled_skill/unmapped_file/wrong_workspace/ai_search/empty responses; four epoch owners; at most one external change; two ticks.",
+      "assumptions": "Weak fairness of local preflight, clock ticks and timeout. No network success or remote completeness assumption. A source epoch means newly accepted evidence, not instantaneous knowledge of external Notion changes.",
+      "scope": "Discovery admission and current publication across positive, empty and failure outcomes. CLI owns source/grant/deadline fences; Broker owns session and metadata qualification. These source hashes establish only the local reviewed portion of a cross-repository contract."
+    }
+  },
+  "implementation_bindings": [
+    {
+      "name": "fresh_source_and_connection",
+      "files": [
+        "packages/cli/src/sdk.ts",
+        "packages/cli/src/operation-runtime.ts",
+        "packages/core/src/notion-mcp-search.ts"
+      ],
+      "scope": "REST resolves before authorization. Source scope and descriptor are reread after authorization and at publication. The MCP user/workspace is verified and the exact selected entry fetched before query. An OAuth refresh cannot switch connection or grant epoch for the old request."
+    },
+    {
+      "name": "physical_admission",
+      "files": [
+        "packages/core/src/notion-mcp-search.ts",
+        "packages/core/src/shared-current-index.ts",
+        "packages/core/src/shared-skill-targets.ts",
+        "packages/core/test/notion-mcp-search.test.ts"
+      ],
+      "scope": "Exact Skills/Files data-source membership, one complete File owner, unique stable claims including disabled rows, retained negative claim, ready owner and enabled ready Source revision. Main-source eligibility applies even to a native supporting match. Final owner/File/Source rereads guard late accepted changes."
+    },
+    {
+      "name": "bounded_remote_semantics",
+      "files": [
+        "packages/core/src/notion-mcp-client.ts",
+        "packages/core/test/notion-mcp-client.test.ts",
+        "packages/cli/src/sdk.ts",
+        "packages/cli/src/commands-content.ts"
+      ],
+      "scope": "Only observed workspace_search results, bounded physical Notion IDs and safe URLs, strict protocol/schema and request/byte/deadline budgets. No generic MCP dispatch, body/resource acquisition, fabricated continuation cursor, exact-byte claim or exhaustive absence conclusion."
+    },
+    {
+      "name": "public_sdk_boundary_regression",
+      "files": [
+        "packages/core/test/sdk-mcp-search.node.test.ts",
+        "packages/cli/src/sdk.ts",
+        "packages/cli/src/operation-runtime.ts"
+      ],
+      "scope": "Real loopback REST and MCP services, independent private credential store, preflight dispatch ordering, no explicit-token fallback, wrong workspace/entry suppression, positive/empty responses, revoked/replaced grants during query/401 refresh, cancellation and deadline propagation. No product function is mocked."
+    },
+    {
+      "name": "sdk3_physical_library_scope",
+      "files": [
+        "packages/cli/src/sdk.ts",
+        "packages/cli/src/operation-runtime.ts",
+        "packages/cli/src/commands-content.ts",
+        "packages/core/src/notion-mcp-search.ts",
+        "packages/core/test/sdk-mcp-search.node.test.ts"
+      ],
+      "scope": "An explicit library selects the canonical root; MCP fetch uses that actual root URL. REST physical Library validation still precedes authorization, reruns after authorization and before publication, while grant/connection/current-owner checks and non-exhaustive search semantics remain. New independent HTTP fixtures serve real root/DB/DS placement; queue/latch cancellation and deadline tests wait on the intended query rather than counting root schema traffic as Skill/File body reads."
+    }
+  ],
+  "unmodeled_bindings": [
+    {
+      "kind": "host_owned_inputs",
+      "scope": "Enabled feature gate, active graph/pin preservation, session/branch transitions and whole-result publication tickets are Broker obligations. The standalone model includes them as abstract input facts; this CLI suite does not establish those host implementations."
+    },
+    {
+      "kind": "concrete_tests_and_live_acceptance",
+      "scope": "Notion indexing/tokenization, Unicode matching, real title/body/nested/supporting results, projection-versus-Git divergence, real OAuth/token use, parser bytes and network lifecycle need concrete/installed/live evidence. Arbitrary concurrency, global permission atomicity and unknown external revocations are not proved by this finite model."
+    }
+  ],
+  "maintenance": {
+    "owner_skill": ".cursor/skills/verify-notion-consumption/SKILL.md",
+    "runner": "scripts/verify-formal.mjs --suite notion-mcp-search",
+    "mutation_runner": "scripts/check-formal-mutations.py --suite notion-mcp-search",
+    "lock": "verification/models/notion-mcp-search/tool-lock.json",
+    "routing": "Changes to content-search source binding, physical admission, accepted denial retention, wire decoding or publication fences run all 23 model cases, concrete core/HTTP/SDK tests and the reviewed real guard mutations. Broker host gates and live Pi remain separate owners.",
+    "model_semantics": "Preserve all independent expected_rules/expected_broken, candidate/defect/witness distinctions, NoDeadlock and absolute-time checks. Re-review guards before changing hashes; a model pass is not evidence that remote search or an installed host ran."
+  },
+  "cases": [
+    {
+      "model": "SearchAdmission",
+      "config": "candidate.cfg",
+      "kind": "candidate",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": []
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "disabled.cfg",
+      "kind": "candidate",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": []
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "metadata.cfg",
+      "kind": "candidate",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": []
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "rest-missing.cfg",
+      "kind": "candidate",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": []
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "mcp-auth-missing.cfg",
+      "kind": "candidate",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": []
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "binding-missing.cfg",
+      "kind": "candidate",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": []
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "empty-query.cfg",
+      "kind": "candidate",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": []
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-disabled-network.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["DisabledHasNoNetwork"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-metadata-mcp.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["MetadataDoesNotStartMcp"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-ignore-rest.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["RestAdmissionExistsBeforeSearch"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-wrong-connection.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["QueryUsesBoundConnection"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-late-dispatch.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["RetiredRequestCannotDispatch"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-unmapped-snippet.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["AuthorizedBeforeDisclosure"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-ai-response.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["WorkspaceResponseRequired"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-late-publication.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["AuthorizedBeforeDisclosure", "RetiredResultCannotPublish"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-change-pins.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["SearchKeepsPins"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-exact-byte-claim.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["RemoteHitIsNotExactByteProof"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-absence-claim.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["EmptyIsNotExhaustiveAbsence"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "witness-native.cfg",
+      "kind": "reachability-witness",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock",
+        "NoNativeDisclosed"
+      ],
+      "expected_broken": ["NoNativeDisclosed"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "witness-projection.cfg",
+      "kind": "reachability-witness",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock",
+        "NoProjectionDisclosed"
+      ],
+      "expected_broken": ["NoProjectionDisclosed"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-unresolved-binding.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["BindingResolvedBeforeSearch"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-stale-status.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": ["RetiredStatusCannotPublish"]
+    },
+    {
+      "model": "SearchAdmission",
+      "config": "negative-expired-ticket.cfg",
+      "kind": "deliberate-defect",
+      "expected_rules": [
+        "TypeOK",
+        "DisabledHasNoNetwork",
+        "MetadataDoesNotStartMcp",
+        "RestAdmissionExistsBeforeSearch",
+        "BindingResolvedBeforeSearch",
+        "RetiredStatusCannotPublish",
+        "QueryUsesBoundConnection",
+        "RetiredRequestCannotDispatch",
+        "AuthorizedBeforeDisclosure",
+        "WorkspaceResponseRequired",
+        "RetiredResultCannotPublish",
+        "SearchKeepsPins",
+        "RemoteHitIsNotExactByteProof",
+        "EmptyIsNotExhaustiveAbsence",
+        "RequestTerminates",
+        "NoDeadlock"
+      ],
+      "expected_broken": [
+        "RetiredRequestCannotDispatch",
+        "RetiredResultCannotPublish",
+        "RetiredStatusCannotPublish"
+      ]
+    }
+  ],
+  "library_root_review": {
+    "reviewed_from": "5a3f36f",
+    "reviewed_through": "3361718496e3b0f4a3886764cb28ef88079703c4",
+    "scope": "Canonical root UUID selection, SDK3 library options, independently declared physical root/four-DB/four-DS fixtures, complete root readback and full frozen Library bindings. Reviewed the actual 9f9a641 restart checks, 419123f metadata classification, 53240db projection receipts, 53fe6b7 shared durable import address and the subsequent formatting-only changes.",
+    "preserved": "No existing finite model, candidate/defect/witness configuration, independent expected_rules or expected_broken inventory is weakened. Request admission, current-read final fences, MCP connection/grant epochs and cancellation remain the original owner contracts.",
+    "evidence_boundary": "Source hashes bind reviewed bytes; they are not passing run receipts, remote CAS, cross-machine exclusion, Notion indexing proof or implementation refinement. Real root children stay actual Notion body observations; metadata regressions allow only the exact root page/children and declared schema reads, while Skill/File body reads remain distinct."
+  },
+  "candidate_snapshot_review": {
+    "baseline": "6727bea",
+    "issue": "AH-1324",
+    "reviewed_files": ["packages/cli/src/sdk.ts"],
+    "scope": "Local candidate discovery reuses Store, credential identity and Library selection without constructing Notion transport or scheduler. Catalog validation moved to one shared implementation. SQLite catalog publication retains complete discovery and precise rejection facts under the existing generation and retirement fences. Current consumption, fixed byte access, request scheduler, MCP search and reference-entry guards are unchanged. Existing finite models and mutation inventories are unchanged; new candidate facts are checked by public SDK and real SQLite regressions, not asserted as finite-model coverage."
+  },
+  "smart_cache_boundary_review": {
+    "issue": "AH-1330",
+    "implementation_review_base": "a22aa1cd5506d393df6ef4d37a6aeb7c575453ba",
+    "files": ["packages/core/src/shared-current-index.ts"],
+    "scope": "Reviewed the AH-1331 complete Files-query observation added to queryCurrentFilesForSkills. It records a selected-owner collection only after every page and binding passes existing validation; request_status incomplete is explicitly rejected in addition to the shared list schema. A real evidence Store without Crypto fails closed. Original producer attempts bound coalesced responses before complete-set publication. Exact File identity, Source qualification and search admission guards remain intact. These observation obligations and actual Native regressions are owned by current-lifecycle; SearchAdmission models, cases, expected rules and production mutations are unchanged."
+  },
+  "source_materialization_boundary_review": {
+    "reviewed_base": "31f30db8f960cc4f36d1e02f8e279d641b660718",
+    "reviewed_changed_files": ["packages/cli/src/sdk.ts"],
+    "result": "correspondence_only; actual run receipts are separate"
+  },
+  "source_directory_sdk_correspondence": {
+    "base_commit": "4f1af585695c26612c15f0f3ceaf5c41afbe4d65",
+    "scope": "Only the separate discoverSourceMembers SDK operation gains an existing whole-invocation budget before its first Library read. Hosted content search, runOperation capability checks, credentials, retry, accepted physical identity and search publication remain byte-for-byte unchanged. The Source directory and multi-Git deadline are owned by current-lifecycle and request-engine concrete regressions; SearchAdmission does not prove them.",
+    "models_cases_rules_and_mutation_targets": "unchanged",
+    "result": "This reviewed source pin is not an execution result."
+  }
+}

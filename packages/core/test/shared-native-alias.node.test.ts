@@ -1,49 +1,61 @@
-import { expect, test } from "vitest"
-import { ConfigProvider, Effect } from "effect"
-import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises"
+import { afterAll, expect, test } from "vitest"
+import { ConfigProvider, Crypto, Effect } from "effect"
+import { mkdtemp, readFile, readdir } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { exportSkill } from "../src/export.ts"
+import { withNotionChangeEvidence } from "../src/current-evidence.ts"
+import { trashPath } from "../src/local-locks.ts"
 import { readImportZip } from "../src/import.ts"
-import { property, text } from "../src/model.ts"
+import { property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
-import { loadRetainedBody } from "../src/shared-file-observer.ts"
 import { readSkill } from "../src/snapshot.ts"
 import { Store, StoreLive } from "../src/store.ts"
 import {
-  digest,
-  encode,
-  id,
-  library,
-  sharedSnapshotFixture,
-  skillPage,
-} from "./shared-snapshot-fixture.ts"
+  currentDigest as digest,
+  currentBytes as encode,
+  currentId as id,
+  currentLibrary as library,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+} from "./shared-current-fixture.ts"
 
-const owner = "shared_skill:library-snapshot:stable-skill"
+const owner = "skill://demo?library=00000000-0000-4000-8000-000000000002"
+const roots: string[] = []
+afterAll(async () => {
+  if (process.platform === "darwin")
+    for (const root of roots) await Effect.runPromise(trashPath(root))
+})
 const aliasId = id(700)
 const paragraphId = id(701)
 const nativeUrl = (page: string) => "https://app.notion.com/p/" + page.replaceAll("-", "")
 const aliasHref = nativeUrl(skillPage) + "#" + aliasId.replaceAll("-", "")
 const raw = `# Native forms
 
-[Ordinary](${nativeUrl(id(11))})
+<code>😀</code>
+
+[Ordinary](${nativeUrl(id(100))})
 
 <p>
-<mention url="${nativeUrl(id(11))}" />
+<mention url="${nativeUrl(id(100))}" />
 </p>
 
 <unknown url="${aliasHref}" alt="alias" />`
 
 async function fixture() {
-  const root = await mkdtemp(join(process.env.NTN_ALIAS_EVIDENCE ?? tmpdir(), "ntn-native-alias-"))
-  const f = sharedSnapshotFixture()
+  const root = await mkdtemp(join(tmpdir(), "ntn-native-alias-"))
+  roots.push(root)
+  const f = currentSnapshotFixture()
   f.bodies.set(skillPage, raw)
-  let target = id(11)
+  let target = id(100)
   let aliasType = "link_to_page"
   const blockCalls: string[] = []
   const program = Effect.gen(function* () {
     const api = yield* Notion
+    const store = yield* Store
+    const crypto = yield* Crypto.Crypto
+    const credential = yield* api.credentialIdentity
     const native: Notion["Service"] = {
       ...api,
       request: (path, body, options) => {
@@ -83,7 +95,18 @@ async function fixture() {
           )
       },
     }
-    return native
+    // Alias rewriting still passes through production evidence capture for the real Store.
+    const observed: Notion["Service"] = {
+      ...native,
+      request: (path, body, options) =>
+        withNotionChangeEvidence(
+          credential,
+          api.apiOrigin ?? "https://api.notion.com",
+          path,
+          native.request(path, body, options),
+        ).pipe(Effect.provideService(Store, store), Effect.provideService(Crypto.Crypto, crypto)),
+    }
+    return observed
   })
   const config = ConfigProvider.layer(
     ConfigProvider.fromUnknown({
@@ -107,25 +130,27 @@ async function fixture() {
   }
 }
 
-test("public Node read/export with real SQLite completes native forms, retains raw proof and preserves historical pins", async () => {
+test("public Node read/export with real SQLite completes current native forms and retains a selected local artifact", async () => {
   const x = await fixture()
-  const result = await x.f.run(
+  await x.f.run(
     Effect.gen(function* () {
       const api = yield* x.program
       return yield* Effect.gen(function* () {
         const store = yield* Store
         const first = yield* readSkill(skillPage, {
-          database: library.skills.database_id,
+          library: library.library_id,
           refresh: true,
         })
-        expect("content" in first && first.content).toContain("[Link to page](references/1.md)")
-        expect("content" in first && first.content).toContain("[Ordinary](references/1.md)")
+        if (!("content" in first)) throw new Error("Expected the selected current main text")
+        expect(first.content).toContain("<code>😀</code>\n\n[Ordinary](references/0.md)")
+        expect(first.content).toContain("<p>\n[Notion page](references/0.md)\n</p>")
+        expect(first.content.endsWith("\n\n[Link to page](references/0.md)")).toBe(true)
         const alias = first.native_references?.entries.find((entry) => entry.block_id === aliasId)
         expect(alias).toMatchObject({
           source_form: "link_to_page",
           href: aliasHref,
-          file_id: "file-1",
-          page_id: id(11),
+          file_id: "support-0",
+          page_id: id(100),
         })
         expect(first.native_references?.parser_version).toBe(2)
         expect(
@@ -143,59 +168,39 @@ test("public Node read/export with real SQLite completes native forms, retains r
         )
         expect(x.blockCalls).toHaveLength(1)
 
-        const retained = [...x.f.records.values()].find((record) => {
-          const envelope = JSON.parse(
-            text(
-              property(record.properties).payload &&
-                property(property(record.properties).payload).rich_text,
-            ),
-          )
-          return property(envelope.payload).kind === "native_completed_markdown"
-        })
-        expect(retained).toBeDefined()
-        const retainedId = text(property(property(retained!.properties).record).rich_text)
-        const content = {
-          object_id: retainedId,
-          sha256: digest(raw),
-          bytes: encode(raw).byteLength,
-        }
-        const restoredRaw = yield* loadRetainedBody(library, skillPage, content)
-        expect(restoredRaw.markdown).toBe(raw)
-        expect(
-          restoredRaw.native_body_completion?.inventory.find((block) => block.id === aliasId)
-            ?.target_page_id,
-        ).toBe(id(11))
+        expect(x.f.records.size).toBe(0)
+        expect(x.f.semanticWrites()).toHaveLength(0)
 
         const firstPin = fileRef(owner, "SKILL.md", first.snapshot_id)
         const exported = yield* exportSkill(firstPin, {
           output: join(x.root, "first.zip"),
           format: "zip",
-          projection: "snapshot",
           offline: true,
         })
         expect(exported.native_references).toEqual(first.native_references)
         x.f.clearCalls()
         x.blockCalls.length = 0
-        const cached = yield* readSkill(skillPage, { database: library.skills.database_id })
+        const cached = yield* readSkill(skillPage, { library: library.library_id })
         expect(cached.snapshot_id).toBe(first.snapshot_id)
-        expect(x.f.readBodyCount()).toBe(0)
+        expect(x.f.bodyCalls()).toHaveLength(0)
         expect(x.blockCalls).toHaveLength(0)
 
-        x.setTarget(id(12))
+        x.setTarget(id(101))
         x.f.main.last_edited_time = new Date(Date.now() - 100).toISOString()
         const current = yield* readSkill(skillPage, {
-          database: library.skills.database_id,
+          library: library.library_id,
           refresh: true,
         })
         expect(current.snapshot_id).not.toBe(first.snapshot_id)
         expect(
           current.native_references?.entries.find((entry) => entry.block_id === aliasId)?.file_id,
-        ).toBe("file-2")
+        ).toBe("support-1")
         expect(
           current.native_references?.source_files.find((file) => file.path === "SKILL.md")
             ?.body_sha256,
         ).toBe(digest(raw))
-        expect("content" in current && current.content).toContain("[Link to page](references/2.md)")
+        expect("content" in current && current.content).toContain("[Link to page](references/1.md)")
+        expect(x.f.semanticWrites()).toHaveLength(0)
         x.f.clearCalls()
         x.blockCalls.length = 0
         const old = yield* readSkill(firstPin, { offline: true })
@@ -203,27 +208,26 @@ test("public Node read/export with real SQLite completes native forms, retains r
         expect("content" in old && old.content).toBe("content" in first && first.content)
         expect(x.f.calls).toHaveLength(0)
         expect(x.blockCalls).toHaveLength(0)
-        return { first, current, old, exported, retained_id: retainedId }
+        expect(x.f.records.size).toBe(0)
       }).pipe(Effect.provideService(Notion, api))
     }).pipe(Effect.provide(StoreLive), Effect.provide(x.config)),
   )
   const archive = new Uint8Array(await readFile(join(x.root, "first.zip")))
   const main = readImportZip(archive).find((file) => file.path.endsWith("SKILL.md"))
-  expect(main && new TextDecoder().decode(main.bytes)).toContain("[Link to page](references/1.md)")
+  expect(main && new TextDecoder().decode(main.bytes)).toContain("[Link to page](references/0.md)")
   expect((await readdir(join(x.root, "state"))).some((entry) => entry.includes(".sqlite"))).toBe(
     true,
   )
-  await writeFile(join(x.root, "public-receipts.json"), JSON.stringify(result, null, 2))
 })
 
-test("public Node/SQLite read rejects an unknown non-page alias before any observation record or snapshot write", async () => {
+test("public Node/SQLite read rejects an unknown non-page alias before publishing a local snapshot", async () => {
   const x = await fixture()
   x.setAliasType("bookmark")
   const result = await x.f.run(
     Effect.gen(function* () {
       const api = yield* x.program
       const result = yield* Effect.result(
-        readSkill(skillPage, { database: library.skills.database_id, refresh: true }).pipe(
+        readSkill(skillPage, { library: library.library_id, refresh: true }).pipe(
           Effect.provideService(Notion, api),
         ),
       )
@@ -234,6 +238,6 @@ test("public Node/SQLite read rejects an unknown non-page alias before any obser
   )
   expect(result._tag).toBe("Failure")
   if (result._tag === "Failure") expect(result.failure.code).toBe("BODY_INCOMPLETE")
-  expect(x.f.writeCount()).toBe(0)
+  expect(x.f.semanticWrites()).toHaveLength(0)
   expect(x.f.records.size).toBe(0)
 })

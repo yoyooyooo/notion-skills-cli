@@ -4,7 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Cause, Effect, Layer, Option, Stdio, Stream } from "effect"
 import { CliConfig, CliError, CliOutput, Command, GlobalFlag } from "effect/cli"
 
-import { SkillsError } from "@notion-skills-cli/core"
+import { SkillsError, property } from "@notion-skills-cli/core"
 
 import packageManifest from "../package.json" with { type: "json" }
 const { version } = packageManifest
@@ -19,6 +19,32 @@ const helpArgv = () => {
     path.push(name)
   }
   return ["ntn-skills", ...path, "--help"]
+}
+const publicNext = (details: unknown) => {
+  const next = property(property(details).next)
+  const argv = next.argv
+  if (
+    !Array.isArray(argv) ||
+    argv.length < 2 ||
+    argv.length > 128 ||
+    argv[0] !== "ntn-skills" ||
+    argv.some(
+      (value) =>
+        typeof value !== "string" || value.length > 8192 || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(value),
+    )
+  )
+    return undefined
+  const path: string[] = []
+  for (const value of argv.slice(1)) {
+    if (!selectCommand(root, [...path, value])) break
+    path.push(value)
+  }
+  if (!path.length) return undefined
+  return {
+    argv: [...argv],
+    ...(typeof next.reason === "string" ? { reason: next.reason } : {}),
+    ...(typeof next.read_only === "boolean" ? { read_only: next.read_only } : {}),
+  }
 }
 const formatter = CliOutput.defaultFormatter({ colors: false })
 const requestedHelp = args.includes("--help") || args.includes("-h") || args.length === 0
@@ -58,14 +84,12 @@ const program = Command.runWith(root, { version, renderErrors: false })(args).pi
           ok: false,
           error: { code, message, ...(details === undefined ? {} : { details }) },
           ...(metrics === undefined ? {} : { request_metrics: metrics }),
-          ...(CliError.isCliError(error)
-            ? {
-                next: {
-                  argv: helpArgv(),
-                  reason: "Inspect this command's accepted parameters before retrying.",
-                },
-              }
-            : {}),
+          next: publicNext(details) ?? {
+            argv: helpArgv(),
+            read_only: true,
+            reason:
+              "Inspect this command's accepted parameters before retrying. This recommendation does not authorize another write.",
+          },
         }) + "\n",
       ).pipe(Stream.run(stdio.stdout()))
       process.exitCode = code === "INVALID_ARGUMENT" ? 2 : 1

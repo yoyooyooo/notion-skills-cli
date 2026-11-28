@@ -1,40 +1,46 @@
 import { Clock, Crypto, Effect, FileSystem, Path, Schema } from "effect"
 import { HttpClient } from "effect/http"
-import { authScope } from "./catalog.ts"
-import { locallySelectedScope, type ObservedSnapshot, type ReadPolicyOptions } from "./cache.ts"
 import {
-  fail,
-  property,
-  SkillsError,
-  snapshotMembers,
-  type ContentRecord,
-  type Snapshot,
-} from "./model.ts"
-import { Notion } from "./notion.ts"
-import { fileRef, pageId, parseTarget, type SkillTarget } from "./ref.ts"
-import { canonicalSharedJson } from "./shared-records.ts"
-import { targetSnapshot } from "./snapshot.ts"
-import { withSharedGraphReads, withSharedGraphReadDepth } from "./shared-graph-read-context.ts"
+  assertKnownSnapshotAccess,
+  locallySelectedScope,
+  type ObservedSnapshot,
+  type ReadPolicyOptions,
+} from "./cache.ts"
+import { authScope } from "./catalog.ts"
+import {
+  currentConsumptionEffects,
+  withConsumptionEffects,
+  type ConsumptionObservationOptions,
+} from "./consumption-effects.ts"
 import { derivedGraphDirectory, relationDirectory } from "./graph-derived-directory.ts"
-import { sha256, Store } from "./store.ts"
+import {
+  PREPARE_DEFAULT_BUDGET,
+  PrepareInputSchema,
+  type PrepareBinding,
+  type PrepareDirectoryEntry,
+  type PreparedNode,
+  type PrepareIncomplete,
+  type PrepareInput,
+  type PrepareNode,
+  type PrepareReady,
+  type PrepareRole,
+} from "./graph-prepare-model.ts"
+import { fail, property, SkillsError, type ContentRecord } from "./model.ts"
+import { Notion } from "./notion.ts"
 import {
   normalizePrepareExecution,
   prepareRequestPolicy,
   withPrepareExecution,
   type PrepareExecutionOptions,
 } from "./preparation-execution.ts"
-import {
-  PREPARE_DEFAULT_BUDGET,
-  PrepareInputSchema,
-  type PrepareBinding,
-  type PrepareDirectoryEntry,
-  type PrepareIncomplete,
-  type PrepareInput,
-  type PrepareNode,
-  type PrepareReady,
-  type PrepareRole,
-  type PreparedNode,
-} from "./graph-prepare-model.ts"
+import { fileRef, pageId, parseTarget, type SkillTarget } from "./ref.ts"
+import { withSharedGraphReadDepth, withSharedGraphReads } from "./shared-graph-read-context.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
+import { observedRelationPageDenial } from "./shared-skill-targets.ts"
+import { targetSnapshot } from "./snapshot.ts"
+import { sha256, Store } from "./store.ts"
+import { assertCurrentEvidenceSet } from "./current-evidence.ts"
+import type { CurrentEvidence } from "./current-evidence-model.ts"
 
 type Services =
   | Notion
@@ -53,19 +59,10 @@ const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 const roleOrder: readonly PrepareRole[] = ["root", "required", "member", "reference"]
 const rolesWith = (roles: readonly PrepareRole[], role: PrepareRole) =>
   roleOrder.filter((candidate) => candidate === role || roles.includes(candidate))
-const selectorKey = (selector: string) => {
-  const page = pageId(selector)
-  return page === undefined
-    ? selector.replace(/^upstream:/u, "notion_subscription:")
-    : `notion_page:${page}`
-}
+const selectorKey = (selector: string) => pageId(selector) ?? selector
 const exactTarget = (input: string) => {
   const target = parseTarget(input)
-  if (
-    !target.snapshot &&
-    !pageId(target.selector) &&
-    !/^(shared_skill:[^:]+:.+|(?:notion_subscription|upstream):[a-f0-9-]+)$/u.test(target.selector)
-  )
+  if (target.kind === "skill" && target.reference.scope.kind !== "library")
     throw fail(
       "EXACT_TARGET_REQUIRED",
       "Preparation requires an exact content ID, page URL or pinned ref.",
@@ -75,14 +72,7 @@ const exactTarget = (input: string) => {
 }
 const recordSelectors = (record: ContentRecord): readonly string[] => {
   const locator = record.locator
-  return [
-    record.id,
-    ...(locator.type === "notion_page" || locator.type === "shared_skill"
-      ? [`notion_page:${locator.page_id}`]
-      : locator.type === "notion_subscription"
-        ? [`notion_subscription:${locator.subscription_id}`]
-        : []),
-  ]
+  return [record.id, ...(locator.type === "shared_skill" ? [locator.page_id] : [])]
 }
 const deferred = (error: SkillsError) =>
   error.code === "NOTION_QUEUE_FULL" || property(error.details).deferred === true
@@ -112,16 +102,19 @@ export function prepareGraph(
   inputValue: PrepareInput,
   options: Parameters<typeof prepareGraphWithSnapshots>[1] = {},
 ) {
-  return prepareGraphWithSnapshots(inputValue, options).pipe(
-    Effect.map(({ preparation }) => preparation),
+  return withConsumptionEffects(
+    prepareGraphWithSnapshots(inputValue, options).pipe(
+      Effect.map(({ preparation }) => preparation),
+    ),
+    options,
   )
 }
 
 /** Internal same-operation artifacts for the consumer. No second snapshot read is needed. */
 export function prepareGraphWithSnapshots(
   inputValue: PrepareInput,
-  options: {
-    readonly database?: string
+  options: ConsumptionObservationOptions & {
+    readonly library?: string
     readonly execution?: PrepareExecutionOptions
     readonly metrics?: boolean
   } = {},
@@ -165,8 +158,7 @@ export function prepareGraphWithSnapshots(
     }
     return yield* withPrepareExecution(
       prepareSelected(input, targets, budget, {
-        database: options.database,
-        sharedReadOnly: execution.priority === "prefetch",
+        library: options.library,
         metrics: options.metrics,
         startedAt,
       }).pipe(Effect.provideService(Notion, selectedApi)),
@@ -185,15 +177,23 @@ function prepareSelected(
   targets: readonly string[],
   budget: PrepareReady["budget"],
   options: {
-    readonly database?: string
-    readonly sharedReadOnly?: boolean
+    readonly library?: string
     readonly metrics?: boolean
     readonly startedAt: number
   },
 ): Effect.Effect<PreparedGraphArtifacts, SkillsError, Services> {
   return Effect.gen(function* () {
     const policy = readPolicy(input)
-    const scope = policy.offline ? yield* locallySelectedScope(true) : yield* authScope
+    // Scope lookup identifies the cache; each snapshot reader still owns freshness,
+    // known denials and any online validation needed for missing or expired content.
+    const localScope = policy.refresh
+      ? undefined
+      : yield* locallySelectedScope(Boolean(policy.offline)).pipe(
+          Effect.catch((error) =>
+            policy.offline ? Effect.fail(error) : Effect.succeed(undefined),
+          ),
+        )
+    const scope = localScope ?? (yield* authScope)
     if (scope === undefined)
       return yield* Effect.fail(
         fail("CACHE_SCOPE_UNAVAILABLE", "Preparation requires the selected account scope."),
@@ -228,8 +228,7 @@ function prepareSelectedInScope(
   targets: readonly string[],
   budget: PrepareReady["budget"],
   options: {
-    readonly database?: string
-    readonly sharedReadOnly?: boolean
+    readonly library?: string
     readonly metrics?: boolean
     readonly startedAt: number
   },
@@ -246,6 +245,7 @@ function prepareSelectedInScope(
     const pins = new Map<string, string>()
     const session = new Map<string, PrepareBinding>()
     const nodes = new Map<string, PrepareNode>()
+    const currentReadSets: (CurrentEvidence | undefined)[] = []
     const snapshots = new Map<string, ObservedSnapshot>()
     const errorsById = new Map<string, SkillsError>()
     const heights = new Map<string, number>()
@@ -323,10 +323,7 @@ function prepareSelectedInScope(
       if (owner === undefined) return undefined
       const record = snapshots.get(owner)?.record ?? session.get(owner)?.record
       return record !== undefined &&
-        (target.selector === "" ||
-          [record.name, record.alias, ...recordSelectors(record)].includes(
-            selectorKey(target.selector),
-          ))
+        (target.selector === "" || recordSelectors(record).includes(selectorKey(target.selector)))
         ? owner
         : undefined
     }
@@ -348,6 +345,26 @@ function prepareSelectedInScope(
           error: failure(error),
         })
       errorsById.set(id, error)
+      const denied = observedRelationPageDenial(error)
+      if (denied !== undefined) {
+        // The HTTP rejection establishes this physical identity only. Retain it
+        // for the existing Broker denial observer without guessing a stable ID.
+        const previous = nodes.get(denied.page_id)
+        nodes.set(denied.page_id, {
+          id: denied.page_id,
+          ref: `https://www.notion.so/${denied.page_id.replaceAll("-", "")}`,
+          roles: rolesWith(
+            previous?.roles ?? [],
+            denied.field === "Requires" ? "required" : "member",
+          ),
+          state: "failed",
+          error: {
+            code: "ACCESS_DENIED",
+            message: "The exact related page denied access.",
+            details: { page_id: denied.page_id, field: denied.field },
+          },
+        })
+      }
     }
     const visit = (
       targetText: string,
@@ -373,11 +390,9 @@ function prepareSelectedInScope(
         const selected: SkillTarget =
           previousBinding === undefined
             ? target
-            : {
-                ...target,
-                selector: previousBinding.record.id,
-                snapshot: previousBinding.snapshot_id,
-              }
+            : parseTarget(
+                fileRef(previousBinding.record.id, target.path ?? "", previousBinding.snapshot_id),
+              )
         const cycle = id === undefined ? -1 : stack.indexOf(id)
         if (cycle >= 0)
           return yield* Effect.fail(
@@ -429,12 +444,13 @@ function prepareSelectedInScope(
                 ...options,
                 ...(selected.snapshot === undefined ? policy : { offline: policy.offline }),
               },
-              "generated",
               "entrypoint",
             ),
             depth,
           )
           id = snapshot.record.id
+          if (selected.snapshot === undefined && snapshot.record.locator.type === "shared_skill")
+            currentReadSets.push(snapshot.current_evidence)
           yield* checked(() => register(snapshot!.record, snapshot!.snapshot_id))
           attempted.delete(key)
           attempted.add(id)
@@ -471,14 +487,8 @@ function prepareSelectedInScope(
               { id, kind: record.kind, path: [...stack, id] },
             ),
           )
-        const selectedPath =
-          target.file_id === undefined
-            ? target.path
-            : snapshot.file_bindings?.find((binding) => binding.file_id === target.file_id)?.path
-        if (
-          (target.file_id !== undefined && selectedPath === undefined) ||
-          (selectedPath && selectedPath !== snapshot.entrypoint)
-        )
+        const selectedPath = target.path
+        if (selectedPath && selectedPath !== snapshot.entrypoint)
           return yield* Effect.fail(
             fail(
               "PREPARE_ROOT_NOT_MAIN",
@@ -522,13 +532,7 @@ function prepareSelectedInScope(
               throw fail("BINARY_FILE", "A prepared main instruction must be UTF-8 text.", { id })
             }
           })
-          const ref = fileRef(
-            id,
-            snapshot.entrypoint,
-            snapshot.snapshot_id,
-            snapshot.file_bindings?.find((binding) => binding.path === snapshot!.entrypoint)
-              ?.file_id,
-          )
+          const ref = fileRef(id, snapshot.entrypoint, snapshot.snapshot_id)
           const binding: PrepareBinding = {
             record,
             scope,
@@ -640,8 +644,10 @@ function prepareSelectedInScope(
       if (result._tag === "Failure") errors.push({ target, ...failure(result.failure) })
     }
     const prepared = orderedNodes().filter((node) => node.state === "prepared")
+    const effects = yield* currentConsumptionEffects
     const base = {
       version: 1 as const,
+      ...(effects === undefined ? {} : { effects }),
       purpose: input.purpose,
       scope,
       roots,
@@ -720,6 +726,8 @@ function prepareSelectedInScope(
         }),
       )
     }
+    for (const snapshot of snapshots.values()) yield* assertKnownSnapshotAccess(snapshot)
+    yield* assertCurrentEvidenceSet(currentReadSets)
     return {
       preparation: {
         ...ready,

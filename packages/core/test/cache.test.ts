@@ -1,8 +1,15 @@
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
+import { fileRef } from "../src/ref.ts"
 import { expect, test } from "bun:test"
-import * as NodeServices from "@effect/platform-node/NodeServices"
-import { Clock, Effect, Fiber, Layer } from "effect"
-import { decode, fail, type SkillsError, type Snapshot } from "../src/model.ts"
+import { Clock, Crypto, Effect, Fiber, FileSystem, Path } from "effect"
+import { HttpClient } from "effect/http"
+import {
+  currentId,
+  currentLibrary,
+  currentRich,
+  currentSkillPage,
+  currentSnapshotFixture,
+} from "./shared-current-fixture.ts"
+import { fail, property, text } from "../src/model.ts"
 import { Store, sha256, configuration, setToken } from "../src/store.ts"
 import { catalog } from "../src/catalog.ts"
 import { Notion } from "../src/notion.ts"
@@ -22,199 +29,69 @@ import {
   recordScopeAccess,
 } from "../src/cache.ts"
 
-const page = "11111111-1111-4111-8111-111111111111"
-const database = "44444444-4444-4444-8444-444444444444"
-const guide = "22222222-2222-4222-8222-222222222222"
-const other = "33333333-3333-4333-8333-333333333333"
+const page = currentSkillPage
+const database = currentLibrary.skills.database_id
+const guide = currentId(100)
+const other = currentId(90)
+const logicalId = `skill://demo?library=${currentLibrary.library_id}`
+type FixtureServices =
+  | Store
+  | Notion
+  | Crypto.Crypto
+  | HttpClient.HttpClient
+  | FileSystem.FileSystem
+  | Path.Path
 function fixture() {
-  let now = 1_000_000
-  let credential = "credential-one"
+  const base = currentSnapshotFixture({ fileCount: 1 })
+  base.main.properties.Name = {
+    id: "title",
+    type: "title",
+    title: [{ plain_text: "Sample Skill" }],
+  }
+  base.files[0]!.properties.Path = currentRich("path", "references/guide.md")
+  base.bodies.set(page, "Main body.")
+  base.bodies.set(guide, "Original reference.")
+  let now = 1_000_000,
+    credential = "credential-one",
+    additional = false,
+    decoy = false
   let denied:
     | {
-        readonly code: "ACCESS_DENIED" | "AUTH_REQUIRED" | "NOT_FOUND" | "NOTION_UNAVAILABLE"
-        readonly path?: string
+        code: "ACCESS_DENIED" | "AUTH_REQUIRED" | "NOT_FOUND" | "NOTION_UNAVAILABLE"
+        path?: string
       }
     | undefined
-  let paused: { readonly path: string; readonly started: () => void } | undefined
-  let body = "Original reference."
-  let name = "Sample Skill"
-  let decoy = false
-  let additional = false
-  let failReference = false
-  let defaultContext = false
-  const requests: string[] = []
-  const json = new Map<string, unknown>()
-  const objects = new Map<string, Uint8Array>()
-  const generations = new Map<string, number>()
-  const retired: string[] = []
-  const properties = (recordName = name) => ({
-    Name: { id: "title", type: "title", title: [{ plain_text: recordName }] },
-    Description: { type: "rich_text", rich_text: [{ plain_text: "Use when testing cache." }] },
-    References: { id: "references", type: "rich_text", rich_text: [] },
-    "Default Context": { type: "checkbox", checkbox: defaultContext },
+  let paused: { path: string; started: () => void } | undefined
+  const requests: string[] = [],
+    retired: string[] = [],
+    generations = new Map<string, number>()
+  const otherPage = () => ({
+    ...structuredClone(base.main),
+    id: other,
+    properties: {
+      ...structuredClone(base.main.properties),
+      Name: {
+        id: "title",
+        type: "title",
+        title: [{ plain_text: decoy ? "Sample Skill" : "Other Skill" }],
+      },
+      "Skill ID": currentRich("skill-id", "other-skill"),
+      "Main File ID": currentRich("main-id", "other-main"),
+    },
   })
-  const store = Layer.succeed(Store, {
-    integrity: integrityRepositoryFixture(),
-    upstream: upstreamRepositoryFixture(),
-    registerBindingWithBase: () => Effect.die(new Error("Unexpected binding transaction")),
-    advanceBaseAndReceipt: () => Effect.die(new Error("Unexpected baseline transaction")),
-    backup: () => Effect.die(new Error("Unexpected backup")),
-    root: "/state",
-    configRoot: "/config",
-    cacheRoot: "/cache",
-    reserveCacheGeneration: (scope, id) =>
-      Effect.sync(() => {
-        const key = `${scope}/${id}`
-        const next = (generations.get(key) ?? 0) + 1
-        generations.set(key, next)
-        return next
-      }),
-    listKeys: (prefix) =>
-      Effect.sync(() => [...json.keys()].filter((key) => key.startsWith(prefix + "/"))),
-    retireKeys: (keys) =>
-      Effect.try({
-        try: () => {
-          if (keys.some((key) => !key.startsWith("cache/")))
-            throw fail("INVALID_ARGUMENT", "Only cache may be retired.")
-          for (const key of keys) {
-            json.delete(key)
-            retired.push(key)
-          }
-          return keys.map((key) => ({ key, retention_path: "fixture_trash" }))
-        },
-        catch: (error) => error as SkillsError,
-      }),
-    readJson: (key, schema) =>
-      Effect.try({
-        try: () => (json.has(key) ? decode(schema, json.get(key)) : undefined),
-        catch: () => fail("STATE_CORRUPT", "Invalid fixture state."),
-      }),
-    writeJson: (key, value) =>
-      Effect.sync(() => {
-        json.set(key, value)
-      }),
-    readBytes: (key) =>
-      objects.has(key)
-        ? Effect.succeed(objects.get(key)!)
-        : Effect.fail(fail("SNAPSHOT_MISSING", "Missing object.")),
-    writeBytes: (key, bytes) =>
-      Effect.sync(() => {
-        objects.set(key, bytes)
-      }),
-    output: (destination, bytes) =>
-      Effect.sync(() => {
-        objects.set(`output/${destination}`, bytes)
-        return { output: destination, reused: false }
-      }),
-  })
-  const api = Layer.succeed(Notion, {
-    credentialIdentity: Effect.sync(() => credential),
-    version: Effect.succeed("fixture"),
-    request: (path) =>
-      Effect.gen(function* () {
-        requests.push(path)
-        if (paused?.path === path) {
-          paused.started()
-          yield* Effect.never
-        }
-        if (denied && (denied.path === undefined || denied.path === path))
-          return yield* Effect.fail(fail(denied.code, "Denied."))
-        if (path === "v1/users/me") return { id: "user", object: "user" }
-        if (path === `v1/databases/${database}`)
-          return {
-            id: database,
-            database_type: null,
-            title: [],
-            data_sources: [{ id: "ds", name: "Skills" }],
-          }
-        if (path === "v1/data_sources/ds") return { properties: properties() }
-        if (path === "v1/search")
-          return {
-            results: [
-              {
-                id: "ds",
-                parent: { database_id: database },
-                title: [],
-                database_type: null,
-                properties: properties(),
-              },
-            ],
-            has_more: false,
-            next_cursor: null,
-          }
-        if (path === "v1/data_sources/ds/query")
-          return {
-            results: [
-              { id: page, properties: properties() },
-              ...(additional ? [{ id: other, properties: properties("Other Skill") }] : []),
-              ...(decoy
-                ? [{ id: "33333333-3333-4333-8333-333333333333", properties: properties() }]
-                : []),
-            ],
-            has_more: false,
-            next_cursor: null,
-          }
-        if (path === `v1/pages/${page}`)
-          return {
-            id: page,
-            parent: { database_id: database, data_source_id: "ds" },
-            properties: properties(),
-          }
-        if (additional && path === `v1/pages/${other}`)
-          return {
-            id: other,
-            parent: { database_id: database, data_source_id: "ds" },
-            properties: properties("Other Skill"),
-          }
-        if (path === `v1/pages/${guide}`)
-          return {
-            id: guide,
-            properties: { title: { type: "title", title: [{ plain_text: "Guide" }] } },
-          }
-        if (path.includes("/properties/references"))
-          return {
-            object: "list",
-            results: [
-              {
-                object: "property_item",
-                rich_text: {
-                  type: "mention",
-                  plain_text: "Guide",
-                  mention: { type: "page", page: { id: guide } },
-                },
-              },
-            ],
-            has_more: false,
-            next_cursor: null,
-          }
-        if (
-          path === `v1/blocks/${page}/children?page_size=100` ||
-          path === `v1/blocks/${guide}/children?page_size=100` ||
-          (additional && path === `v1/blocks/${other}/children?page_size=100`)
-        )
-          return { object: "list", results: [], has_more: false, next_cursor: null }
-        if (
-          path === `v1/pages/${page}/markdown` ||
-          (additional && path === `v1/pages/${other}/markdown`)
-        )
-          return {
-            object: "page_markdown",
-            markdown: "Main body.",
-            truncated: false,
-            unknown_block_ids: [],
-          }
-        if (path === `v1/pages/${guide}/markdown`) {
-          if (failReference) return yield* Effect.fail(fail("ACCESS_DENIED", "Reference missing."))
-          return {
-            object: "page_markdown",
-            markdown: body,
-            truncated: false,
-            unknown_block_ids: [],
-          }
-        }
-        return yield* Effect.fail(fail("UNEXPECTED", "Unexpected provider request.", { path }))
-      }),
-  })
+  const match = (row: unknown, raw: unknown): boolean => {
+    const filter = property(raw)
+    if (Array.isArray(filter.and)) return filter.and.every((part) => match(row, part))
+    if (Array.isArray(filter.or)) return filter.or.some((part) => match(row, part))
+    const field = Object.values(property(property(row).properties))
+      .map(property)
+      .find((field) => field.id === filter.property)
+    if (field === undefined) return false
+    if (filter.rich_text !== undefined)
+      return text(field.rich_text) === property(filter.rich_text).equals
+    if (filter.checkbox !== undefined) return field.checkbox === property(filter.checkbox).equals
+    return false
+  }
   const clock: Clock.Clock = {
     currentTimeMillisUnsafe: () => now,
     currentTimeMillis: Effect.sync(() => now),
@@ -224,27 +101,111 @@ function fixture() {
     monotonicTimeNanos: Effect.sync(() => BigInt(now) * 1_000_000n),
     sleep: () => Effect.void,
   }
-  const layer = Layer.mergeAll(NodeServices.layer, store, api)
+  const run = <A, E>(effect: Effect.Effect<A, E, FixtureServices>) =>
+    base.run(
+      Effect.gen(function* () {
+        const original = yield* Notion,
+          storage = yield* Store
+        const api: Notion["Service"] = {
+          ...original,
+          connectionIdentity: undefined,
+          credentialIdentity: Effect.sync(() => credential),
+          request: (path, body, options) =>
+            Effect.gen(function* () {
+              requests.push(path)
+              const route = path.split("?")[0]
+              const currentPause = paused
+              if (currentPause !== undefined && currentPause.path === route) {
+                currentPause.started()
+                yield* Effect.never
+              }
+              if (denied && (denied.path === undefined || denied.path === route))
+                return yield* Effect.fail(fail(denied.code, "Denied."))
+              if (path === "v1/users/me") return { id: "user", object: "user" }
+              if (path === "v1/search")
+                return {
+                  object: "list",
+                  results: [
+                    {
+                      id: currentLibrary.skills.data_source_id,
+                      parent: { database_id: database },
+                      title: [{ plain_text: "Current Skills" }],
+                      database_type: null,
+                      properties: base.main.properties,
+                    },
+                  ],
+                  has_more: false,
+                  next_cursor: null,
+                }
+              if (
+                path.startsWith(`v1/data_sources/${currentLibrary.skills.data_source_id}/query`)
+              ) {
+                const filter = property(body).filter
+                return {
+                  object: "list",
+                  results: [base.main, ...(additional || decoy ? [otherPage()] : [])]
+                    .filter((row) => filter === undefined || match(row, filter))
+                    .map((row) => structuredClone(row)),
+                  has_more: false,
+                  next_cursor: null,
+                }
+              }
+              if ((additional || decoy) && path === `v1/pages/${other}`) return otherPage()
+              if ((additional || decoy) && route === `v1/pages/${other}/markdown`)
+                return {
+                  id: other,
+                  markdown: "Other body.",
+                  truncated: false,
+                  unknown_block_ids: [],
+                }
+              return yield* original.request(path, body, options)
+            }),
+        }
+        const store: Store["Service"] = {
+          ...storage,
+          reserveCacheGeneration: (scope, id) =>
+            Effect.sync(() => {
+              const key = `${scope}/${id}`,
+                next = (generations.get(key) ?? 0) + 1
+              generations.set(key, next)
+              return next
+            }),
+          retireKeys: (keys) =>
+            Effect.sync(() =>
+              keys.map((key) => {
+                if (!key.startsWith("cache/"))
+                  throw fail("INVALID_ARGUMENT", "Only cache may be retired.")
+                base.json.delete(key)
+                retired.push(key)
+                return { key, retention_path: "fixture_trash" }
+              }),
+            ),
+          output: (destination, bytes) =>
+            Effect.sync(() => {
+              base.objects.set(`output/${destination}`, bytes)
+              return { output: destination, reused: false }
+            }),
+        }
+        return yield* effect.pipe(
+          Effect.provideService(Notion, api),
+          Effect.provideService(Store, store),
+          Effect.provideService(Clock.Clock, clock),
+        )
+      }),
+    )
   return {
+    ...base,
     requests,
-    json,
-    objects,
     retired,
     generations,
+    run,
     defaultContext: (value: boolean) => {
-      defaultContext = value
+      base.main.properties["Default Context"].checkbox = value
     },
     time: (value: number) => {
       now = value
     },
-    deny: (
-      code:
-        | "ACCESS_DENIED"
-        | "AUTH_REQUIRED"
-        | "NOT_FOUND"
-        | "NOTION_UNAVAILABLE" = "ACCESS_DENIED",
-      path?: string,
-    ) => {
+    deny: (code: NonNullable<typeof denied>["code"] = "ACCESS_DENIED", path?: string) => {
       denied = { code, path }
     },
     allow: () => {
@@ -258,36 +219,33 @@ function fixture() {
         paused = { path, started }
       }),
     change: (value: string) => {
-      body = value
+      base.bodies.set(guide, value)
     },
     rename: (value: string) => {
-      name = value
+      base.main.properties.Name.title = [{ plain_text: value }]
     },
     duplicate: () => {
       decoy = true
     },
     incomplete: () => {
-      failReference = true
+      base.failRequests((call) =>
+        call.path.split("?")[0] === `v1/pages/${guide}/markdown`
+          ? fail("ACCESS_DENIED", "Supporting File unavailable.")
+          : undefined,
+      )
     },
     credential: (value: string) => {
       credential = value
     },
-    run: <A, E>(effect: Effect.Effect<A, E, any>) =>
-      Effect.runPromise(
-        effect.pipe(
-          Effect.provide(layer),
-          Effect.provideService(Clock.Clock, clock),
-        ) as Effect.Effect<A, E>,
-      ),
   }
 }
 
-test("C1/C3 warm complete reads add zero requests without moving validation or persistent sync state", async () => {
+test("C1/C3 warm complete reads add zero requests without moving validation or current configuration", async () => {
   const f = fixture()
-  f.json.set("sync/baselines/b.json", { generation: 7 })
+  f.json.set("config.json", { sources: [], default_library: database })
   const first = await f.run(readSkill(page))
   const requests = f.requests.length
-  for (const time of [1_000_010, 1_030_000, 1_299_999]) {
+  for (const time of [1_000_010, 1_030_000, 1_299_999, 2_800_000, 4_599_999]) {
     f.time(time)
     const warm = await f.run(readSkill(page))
     expect(warm.snapshot_id).toBe(first.snapshot_id)
@@ -295,13 +253,17 @@ test("C1/C3 warm complete reads add zero requests without moving validation or p
     expect(warm.freshness?.validated_at).toBe(first.freshness?.validated_at)
   }
   expect(f.requests.length).toBe(requests)
-  expect(f.json.get("sync/baselines/b.json")).toEqual({ generation: 7 })
+  expect(f.json.get("config.json")).toEqual({ sources: [], default_library: database })
 })
 
 for (const [offset, online] of [
   [299_999, false],
-  [300_000, true],
-  [300_001, true],
+  [300_000, false],
+  [300_001, false],
+  [1_800_000, false],
+  [3_599_999, false],
+  [3_600_000, true],
+  [3_600_001, true],
   [-1, true],
 ] as const) {
   test(`C2/C3 exact age ${offset} validates online=${online}`, async () => {
@@ -336,96 +298,63 @@ test("C4/C5 strong refresh sees reference-only changes; same version reuses immu
   expect(f.objects.size).toBe(objects)
 })
 
-for (const marker of [undefined, "references-v3"]) {
-  test(`prior materialization ${marker ?? "missing marker"} refreshes identity while preserving pinned bytes`, async () => {
-    const f = fixture()
-    const current = await f.run(openSkill(page))
-    const oldVersion = await f.run(
-      sha256(
-        JSON.stringify([
-          "references-v3",
-          "skill",
-          "SKILL.md",
-          [],
-          "Sample Skill",
-          "Use when testing cache.",
-          [
-            {
-              type: "mention",
-              plain_text: "Guide",
-              mention: { type: "page", page: { id: guide } },
-            },
-          ],
-          [
-            { id: page, path: "SKILL.md", markdown: "Main body." },
-            { id: guide, path: "references/guide.md", markdown: "Original reference." },
-          ],
-          [],
-        ]),
-      ),
-    )
-    const oldId = `s_${await f.run(sha256(JSON.stringify([current.scope, current.record.id, oldVersion])))}`
-    const oldBytes = new TextEncoder().encode("---\nname: sample-skill\n---\nMain body.")
-    const oldHash = await f.run(sha256(oldBytes))
-    f.objects.set(`objects/${oldHash}`, oldBytes)
-    const old: Snapshot = {
-      ...current,
-      snapshot_id: oldId,
-      version_id: oldVersion,
-      files: current.files.map((file) =>
-        file.path === current.entrypoint
-          ? { path: file.path, bytes: oldBytes.length, sha256: oldHash }
-          : file,
-      ),
-    }
-    // Leave only the structurally valid prior-generation snapshot and current pointer.
-    f.json.delete(`snapshots/${current.snapshot_id}.json`)
-    f.json.set(`snapshots/${oldId}.json`, old)
-    for (const [key, value] of f.json) {
-      if (!key.startsWith("cache/latest/")) continue
-      f.json.set(key, { ...(value as object), snapshot_id: oldId, materialization_version: marker })
-    }
-    const before = f.requests.length
-    const offline = await f.run(readSkill(page, { offline: true }).pipe(Effect.result))
-    expect(offline._tag === "Failure" && offline.failure.code).toBe("CACHE_REFRESH_REQUIRED")
-    expect(f.requests.length).toBe(before)
-    const refreshed = await f.run(readSkill(page, { refresh: true }))
-    expect(refreshed.snapshot_id).not.toBe(oldId)
-    expect(refreshed.snapshot_id).toBe(current.snapshot_id)
-    expect("content" in refreshed && refreshed.content).toContain('"name": "Sample Skill"')
-    const pinned = await f.run(readSkill(oldId))
-    expect("content" in pinned && pinned.content).toBe(new TextDecoder().decode(oldBytes))
-    expect(f.json.get(`snapshots/${oldId}.json`)).toEqual(old)
-    const count = f.requests.length
-    expect((await f.run(readSkill(page))).snapshot_id).toBe(refreshed.snapshot_id)
-    expect(f.requests.length).toBe(count)
-    expect((await f.run(readSkill(page, { refresh: true }))).snapshot_id).toBe(
-      refreshed.snapshot_id,
-    )
-    // Online selection must also bypass a prior-generation pointer while it is within its TTL.
-    for (const [key, value] of f.json) {
-      if (!key.startsWith("cache/latest/")) continue
-      f.json.set(key, { ...(value as object), snapshot_id: oldId, materialization_version: marker })
-    }
-    const onlineBefore = f.requests.length
-    expect((await f.run(readSkill(page))).snapshot_id).toBe(refreshed.snapshot_id)
-    expect(f.requests.length).toBeGreaterThan(onlineBefore)
-  })
-}
+test("current eligibility and the native body deadline do not advance a fixed selection", async () => {
+  const f = fixture()
+  const path = "references/guide.md"
+  const first = await f.run(readSkill(page, { path }))
+  const bodyObservation = () => {
+    const entry = [...f.json].find(([key]) => key.startsWith("cache/current-native-bodies/"))
+    const files = property(entry?.[1]).files
+    if (!Array.isArray(files)) throw new Error("Missing native body observation")
+    return property(files.find((file) => property(file).path === path))
+  }
+  expect(bodyObservation().body_verified_at).toBe(1_000_000)
+  f.change("Changed body with unchanged metadata.")
+  for (const [age, source] of [
+    [299_999, "local_cache"],
+    [300_000, "local_cache"],
+    [3_599_999, "local_cache"],
+    [3_600_000, "notion"],
+    [24 * 60 * 60 * 1000 - 1, "notion"],
+  ] as const) {
+    f.time(1_000_000 + age)
+    f.clearCalls()
+    const current = await f.run(readSkill(page, { path }))
+    expect(current.source).toBe(source)
+    expect(current.snapshot_id).toBe(first.snapshot_id)
+    expect("content" in current && current.content).toBe("Original reference.")
+    expect(bodyObservation().body_verified_at).toBe(1_000_000)
+    expect(f.bodyCalls()).toHaveLength(0)
+  }
+  f.time(1_000_000 + 24 * 60 * 60 * 1000)
+  const expired = await f.run(readSkill(page, { path }))
+  expect(expired.snapshot_id).not.toBe(first.snapshot_id)
+  expect("content" in expired && expired.content).toBe("Changed body with unchanged metadata.")
+  const pinned = await f.run(readSkill(first.ref))
+  expect(pinned.snapshot_id).toBe(first.snapshot_id)
+  expect("content" in pinned && pinned.content).toBe("Original reference.")
+  f.change("Explicit refresh observes this edit immediately.")
+  const refreshed = await f.run(readSkill(page, { path, refresh: true }))
+  expect(refreshed.snapshot_id).not.toBe(expired.snapshot_id)
+  expect("content" in refreshed && refreshed.content).toBe(
+    "Explicit refresh observes this edit immediately.",
+  )
+  expect(f.semanticWrites()).toHaveLength(0)
+})
 
-test("C6/C7 failed expiry has no stale fallback or timestamp reset; explicit offline remains an observation", async () => {
+test("C6/C7 unknown transport failure has no online fallback; explicit offline retains the original observation", async () => {
   const f = fixture()
   const first = await f.run(readSkill(page))
-  f.time(1_300_000)
-  f.deny()
+  f.time(4_600_000)
+  f.deny("NOTION_UNAVAILABLE")
   const failure = await f.run(readSkill(page).pipe(Effect.result))
-  expect(failure._tag === "Failure" && failure.failure.code).toBe("ACCESS_DENIED")
+  expect(failure._tag === "Failure" && failure.failure.code).toBe("NOTION_UNAVAILABLE")
   const before = f.requests.length
   const offline = await f.run(readSkill(page, { offline: true }))
   expect(offline.source).toBe("local_cache")
   expect(offline.freshness).toMatchObject({
     stale: true,
-    age_ms: 300_000,
+    age_ms: 3_600_000,
     validated_at: first.freshness?.validated_at,
   })
   expect(f.requests.length).toBe(before)
@@ -453,19 +382,81 @@ test("C8 credential scopes isolate cache and a new credential requires online va
   expect(f.requests.length).toBeGreaterThan(requests)
 })
 
-for (const target of [page, "sample-skill"])
+test("T05 fixed inventories and exports require the selected credential scope after clear", async () => {
+  const f = fixture()
+  const original = await f.run(openSkill(page))
+  const originalBody = await f.run(readSkill(original.snapshot_id, { offline: true }))
+  if (!("content" in originalBody)) throw new Error("Expected the complete native main body")
+  const identities = [...f.json.keys()].filter((key) => key.startsWith("cache/identities/"))
+  expect(identities).toHaveLength(1)
+  const refused = async (code: string) => {
+    const before = f.requests.length
+    for (const offline of [false, true]) {
+      const rejected = await Promise.all([
+        f.run(readSkill(original.snapshot_id, { offline }).pipe(Effect.flip)),
+        f.run(listSkill(original.snapshot_id, { offline }).pipe(Effect.flip)),
+        f.run(
+          exportSkill(original.snapshot_id, {
+            offline,
+            output: "/controlled/t05-refused",
+          }).pipe(Effect.flip),
+        ),
+      ])
+      for (const error of rejected)
+        expect(error).toMatchObject({
+          code,
+          details: {
+            phase: "fixed_access",
+            snapshot_id: original.snapshot_id,
+            scope: original.scope,
+          },
+        })
+    }
+    expect(f.requests.length).toBe(before)
+  }
+  f.credential("credential-two")
+  await refused("CACHE_SCOPE_UNAVAILABLE")
+  const second = await f.run(readSkill(page))
+  expect(second.scope).not.toBe(original.scope)
+  await refused("SNAPSHOT_SCOPE_MISMATCH")
+  const cleared = await f.run(clearCache(undefined, { all: true }))
+  for (const key of identities) {
+    expect(cleared.entries).not.toContain(key)
+    expect(cleared.retired.some((entry) => entry.key === key)).toBe(false)
+    expect(f.json.has(key)).toBe(true)
+  }
+  await refused("SNAPSHOT_SCOPE_MISMATCH")
+  f.credential("credential-one")
+  const before = f.requests.length
+  expect(await f.run(readSkill(original.snapshot_id, { offline: true }))).toMatchObject({
+    content: originalBody.content,
+    snapshot_id: original.snapshot_id,
+    scope: original.scope,
+  })
+  expect((await f.run(listSkill(original.snapshot_id, { offline: true }))).files).toHaveLength(2)
+  expect(f.requests.length).toBe(before)
+  // Missing identity state is not reconstructed from content hashes or a pin.
+  f.json.delete(identities[0]!)
+  await refused("CACHE_SCOPE_UNAVAILABLE")
+})
+
+for (const target of [page, logicalId])
   for (const code of ["ACCESS_DENIED", "AUTH_REQUIRED", "NOT_FOUND"] as const)
     test(`SC12 ${code} during refresh fences current ${target} without changing old pins`, async () => {
       const f = fixture()
-      const first = await f.run(readSkill(target, { database }))
+      const first = await f.run(readSkill(target, { library: currentLibrary.library_id }))
       const manifest = f.json.get(`snapshots/${first.snapshot_id}.json`)
       f.time(1_000_100)
       f.deny(code, code === "AUTH_REQUIRED" ? "v1/users/me" : `v1/pages/${page}/markdown`)
       const refresh = await f.run(
-        readSkill(target, { database, refresh: true }).pipe(Effect.result),
+        readSkill(target, { library: currentLibrary.library_id, refresh: true }).pipe(
+          Effect.result,
+        ),
       )
       expect(refresh._tag === "Failure" && refresh.failure.code).toBe(code)
-      const current = await f.run(readSkill(target, { database }).pipe(Effect.result))
+      const current = await f.run(
+        readSkill(target, { library: currentLibrary.library_id }).pipe(Effect.result),
+      )
       expect(current._tag === "Failure" && current.failure.code).toBe(code)
       if (code === "ACCESS_DENIED" || code === "AUTH_REQUIRED") {
         const fixed = await f.run(readSkill(first.ref).pipe(Effect.result))
@@ -476,27 +467,43 @@ for (const target of [page, "sample-skill"])
         expect(resource._tag === "Failure" && resource.failure.code).toBe(code)
       }
       const before = f.requests.length
-      const offline = await f.run(readSkill(target, { database, offline: true }))
-      expect(offline.snapshot_id).toBe(first.snapshot_id)
-      expect(offline.freshness).toMatchObject({
-        policy: "offline",
-        stale: true,
-        age_ms: 100,
-        validated_at: first.freshness?.validated_at,
-      })
-      const pinned = await f.run(readSkill(first.ref, { offline: true }))
-      expect(pinned.snapshot_id).toBe(first.snapshot_id)
-      expect(pinned.freshness?.policy).toBe("pinned")
-      if (code !== "NOT_FOUND") expect(pinned.freshness?.stale).toBe(true)
+      if (code === "NOT_FOUND") {
+        const offline = await f.run(
+          readSkill(target, { library: currentLibrary.library_id, offline: true }),
+        )
+        expect(offline.snapshot_id).toBe(first.snapshot_id)
+        expect(offline.freshness).toMatchObject({
+          policy: "offline",
+          stale: true,
+          age_ms: 100,
+          validated_at: first.freshness?.validated_at,
+        })
+        const pinned = await f.run(readSkill(first.ref, { offline: true }))
+        expect(pinned.snapshot_id).toBe(first.snapshot_id)
+        expect(pinned.freshness?.policy).toBe("pinned")
+        expect(pinned.freshness?.stale).toBeUndefined()
+      } else {
+        for (const input of [target, first.ref])
+          await expect(
+            f.run(readSkill(input, { library: currentLibrary.library_id, offline: true })),
+          ).rejects.toMatchObject({
+            code,
+          })
+        await expect(
+          f.run(readSkill("references/guide.md", { from: first.ref, offline: true })),
+        ).rejects.toMatchObject({ code })
+      }
       expect(f.requests.length).toBe(before)
       expect(f.json.get(`snapshots/${first.snapshot_id}.json`)).toEqual(manifest)
       f.allow()
-      const recovered = await f.run(readSkill(target, { database }))
+      const recovered = await f.run(readSkill(target, { library: currentLibrary.library_id }))
       expect(recovered.source).toBe("notion")
       expect(recovered.freshness).toMatchObject({ stale: false, age_ms: 0 })
       const after = f.requests.length
       expect(after).toBeGreaterThan(before)
-      expect((await f.run(readSkill(target, { database }))).source).toBe("local_cache")
+      expect((await f.run(readSkill(target, { library: currentLibrary.library_id }))).source).toBe(
+        "local_cache",
+      )
       expect(f.requests.length).toBe(after)
     })
 
@@ -504,85 +511,103 @@ for (const entry of ["current", "catalog", "current-body"] as const)
   test(`SC12 authentication rejection from ${entry} fences another current binding and directory in the same scope`, async () => {
     const f = fixture()
     f.addOther()
-    const first = await f.run(readSkill(page, { database }))
-    const second = await f.run(readSkill(other, { database }))
-    const directory = await f.run(catalog({ database }))
+    const first = await f.run(readSkill(page, { library: currentLibrary.library_id }))
+    const second = await f.run(readSkill(other, { library: currentLibrary.library_id }))
+    const directory = await f.run(catalog({ library: currentLibrary.library_id }))
     f.credential("credential-two")
-    const otherCredential = await f.run(readSkill(other, { database }))
+    const otherCredential = await f.run(readSkill(other, { library: currentLibrary.library_id }))
     f.credential("credential-one")
     f.time(1_000_100)
     f.deny("AUTH_REQUIRED", entry === "current-body" ? `v1/pages/${page}/markdown` : "v1/users/me")
     const denied = await f.run(
       (entry === "catalog"
-        ? catalog({ database, refresh: true }).pipe(Effect.asVoid)
-        : readSkill(page, { database, refresh: true }).pipe(Effect.asVoid)
+        ? catalog({ library: currentLibrary.library_id, refresh: true }).pipe(Effect.asVoid)
+        : readSkill(page, { library: currentLibrary.library_id, refresh: true }).pipe(Effect.asVoid)
       ).pipe(Effect.result),
     )
     expect(denied._tag === "Failure" && denied.failure.code).toBe("AUTH_REQUIRED")
     if (entry === "current-body") f.deny("AUTH_REQUIRED", "v1/users/me")
-    const unrelated = await f.run(readSkill(other, { database }).pipe(Effect.result))
+    const unrelated = await f.run(
+      readSkill(other, { library: currentLibrary.library_id }).pipe(Effect.result),
+    )
     expect(unrelated._tag === "Failure" && unrelated.failure.code).toBe("AUTH_REQUIRED")
-    const listed = await f.run(catalog({ database }).pipe(Effect.result))
+    const listed = await f.run(catalog({ library: currentLibrary.library_id }).pipe(Effect.result))
     expect(listed._tag === "Failure" && listed.failure.code).toBe("AUTH_REQUIRED")
     const before = f.requests.length
-    const offline = await f.run(readSkill("other-skill", { database, offline: true }))
-    expect(offline.snapshot_id).toBe(second.snapshot_id)
-    expect(offline.freshness).toMatchObject({
-      validated_at: second.freshness?.validated_at,
-      age_ms: 100,
-      stale: true,
-    })
-    const oldDirectory = await f.run(catalog({ database, offline: true }))
+    for (const target of ["other-skill", first.ref, second.ref])
+      await expect(
+        f.run(readSkill(target, { library: currentLibrary.library_id, offline: true })),
+      ).rejects.toMatchObject({
+        code: "AUTH_REQUIRED",
+      })
+    const oldDirectory = await f.run(catalog({ library: currentLibrary.library_id, offline: true }))
     expect(oldDirectory.fetched_at).toBe(directory.fetched_at)
     expect(oldDirectory.freshness.stale).toBe(true)
-    expect((await f.run(readSkill(first.ref, { offline: true }))).snapshot_id).toBe(
-      first.snapshot_id,
-    )
     expect(f.requests.length).toBe(before)
     f.credential("credential-two")
-    expect((await f.run(readSkill(other, { database }))).snapshot_id).toBe(
+    expect(
+      (await f.run(readSkill(other, { library: currentLibrary.library_id }))).snapshot_id,
+    ).toBe(otherCredential.snapshot_id)
+    expect((await f.run(readSkill(otherCredential.ref, { offline: true }))).snapshot_id).toBe(
       otherCredential.snapshot_id,
     )
     expect(f.requests.length).toBe(before)
     f.credential("credential-one")
     f.allow()
-    expect((await f.run(readSkill(other, { database }))).source).toBe("notion")
-    expect((await f.run(readSkill(page, { database }))).source).toBe("notion")
+    expect((await f.run(readSkill(other, { library: currentLibrary.library_id }))).source).toBe(
+      "notion",
+    )
+    expect((await f.run(readSkill(page, { library: currentLibrary.library_id }))).source).toBe(
+      "notion",
+    )
   })
 
 for (const code of ["ACCESS_DENIED", "NOT_FOUND"] as const)
   test(`SC12 page ${code} does not revoke a different fresh binding`, async () => {
     const f = fixture()
     f.addOther()
-    await f.run(readSkill(page, { database }))
-    const second = await f.run(readSkill(other, { database }))
+    await f.run(readSkill(page, { library: currentLibrary.library_id }))
+    const second = await f.run(readSkill(other, { library: currentLibrary.library_id }))
     f.deny(code, `v1/pages/${page}/markdown`)
-    const denied = await f.run(readSkill(page, { database, refresh: true }).pipe(Effect.result))
+    const denied = await f.run(
+      readSkill(page, { library: currentLibrary.library_id, refresh: true }).pipe(Effect.result),
+    )
     expect(denied._tag === "Failure" && denied.failure.code).toBe(code)
     const before = f.requests.length
-    const unaffected = await f.run(readSkill(other, { database }))
+    const unaffected = await f.run(readSkill(other, { library: currentLibrary.library_id }))
     expect(unaffected.source).toBe("local_cache")
     expect(unaffected.snapshot_id).toBe(second.snapshot_id)
+    expect((await f.run(readSkill(second.ref, { offline: true }))).snapshot_id).toBe(
+      second.snapshot_id,
+    )
     expect(f.requests.length).toBe(before)
   })
 
 test("SC12 scope rejection reaches an old pin with no current observation", async () => {
   const f = fixture()
   f.addOther()
-  await f.run(readSkill(page, { database }))
-  const old = await f.run(readSkill(other, { database }))
-  for (const key of f.json.keys()) if (key.includes(`/notion_page:${other}/`)) f.json.delete(key)
+  await f.run(readSkill(page, { library: currentLibrary.library_id }))
+  const old = await f.run(readSkill(other, { library: currentLibrary.library_id }))
+  for (const key of f.json.keys())
+    if (
+      key.includes(
+        "/" + encodeURIComponent(`skill://other-skill?library=${currentLibrary.library_id}`) + "/",
+      )
+    )
+      f.json.delete(key)
   f.deny("AUTH_REQUIRED", "v1/users/me")
-  await f.run(readSkill(page, { database, refresh: true }).pipe(Effect.result))
+  await f.run(
+    readSkill(page, { library: currentLibrary.library_id, refresh: true }).pipe(Effect.result),
+  )
   const denied = await f.run(readSkill(old.ref).pipe(Effect.result))
   expect(denied._tag === "Failure" && denied.failure.code).toBe("AUTH_REQUIRED")
   const before = f.requests.length
-  const offline = await f.run(readSkill(old.ref, { offline: true }))
-  expect(offline.snapshot_id).toBe(old.snapshot_id)
-  expect(offline.freshness).toMatchObject({ policy: "pinned", stale: true })
+  await expect(f.run(readSkill(old.ref, { offline: true }))).rejects.toMatchObject({
+    code: "AUTH_REQUIRED",
+  })
   expect(f.requests.length).toBe(before)
   f.allow()
-  await f.run(readSkill(page, { database, refresh: true }))
+  await f.run(readSkill(page, { library: currentLibrary.library_id, refresh: true }))
   const validated = f.requests.length
   expect((await f.run(readSkill(old.ref))).snapshot_id).toBe(old.snapshot_id)
   expect(f.requests.length).toBe(validated)
@@ -623,20 +648,21 @@ test("SC12 cancelling an in-flight refresh neither publishes nor marks the old o
   expect(f.requests.length).toBe(requests)
 })
 
-test("C9 current name selection uses complete scoped catalogs and refresh exposes ambiguity", async () => {
+test("C9 a duplicate display name cannot redirect a selected stable owner", async () => {
   const f = fixture()
-  await f.run(readSkill("sample-skill", { database }))
+  await f.run(readSkill(logicalId, { library: currentLibrary.library_id }))
   const before = f.requests.length
-  expect((await f.run(readSkill("sample-skill", { database, offline: true }))).source).toBe(
-    "local_cache",
-  )
+  expect(
+    (await f.run(readSkill(logicalId, { library: currentLibrary.library_id, offline: true })))
+      .source,
+  ).toBe("local_cache")
   expect(f.requests.length).toBe(before)
   f.duplicate()
   const result = await f.run(
-    readSkill("sample-skill", { database, refresh: true }).pipe(Effect.result),
+    readSkill(logicalId, { library: currentLibrary.library_id, refresh: true }).pipe(Effect.result),
   )
-  expect(result._tag === "Failure" && result.failure.code).toBe("SKILL_AMBIGUOUS")
-  expect((await f.run(readSkill(page, { refresh: true }))).record.id).toBe(`notion_page:${page}`)
+  expect(result._tag === "Success" && result.success.record.id).toBe(logicalId)
+  expect((await f.run(readSkill(page, { refresh: true }))).record.id).toBe(logicalId)
 })
 
 test("C10 files lists the fixed manifest while selected reads and full exports reject corrupted objects", async () => {
@@ -652,21 +678,22 @@ test("C10 files lists the fixed manifest while selected reads and full exports r
   )
   expect(selected._tag === "Failure" && selected.failure.code).toBe("STATE_CORRUPT")
   const complete = await f.run(cachedRemoteObservation(page, snapshot.scope).pipe(Effect.result))
-  expect(complete._tag === "Failure" && complete.failure.code).toBe("STATE_CORRUPT")
+  expect(complete._tag === "Success" && complete.success?.snapshot.snapshot_id).toBe(
+    snapshot.snapshot_id,
+  )
   const exported = await f.run(snapshotPortable(snapshot).pipe(Effect.result))
   expect(exported._tag === "Failure" && exported.failure.code).toBe("STATE_CORRUPT")
   expect(f.requests.length).toBe(before)
-  const rebuilt = await f.run(readSkill(page))
-  expect(rebuilt.source).toBe("notion")
-  const portable = await f.run(snapshotPortable(await f.run(openSkill(page))))
-  expect(portable.files.map((file) => file.path)).toContain("references/guide.md")
+  const main = await f.run(readSkill(page))
+  expect(main.source).toBe("local_cache")
+  expect(main.snapshot_id).toBe(snapshot.snapshot_id)
+  expect(f.requests.length).toBe(before)
 })
 
-test("C11/C16 empty new cache never adopts old state catalogs or alters baselines/pinned versions", async () => {
+test("C11/C16 cache retirement preserves selected bytes and forces current discovery", async () => {
   const f = fixture()
   const snapshot = await f.run(openSkill(page))
-  f.json.set("catalogs/legacy.json", { fetched_at: 1_000_000 })
-  f.json.set("sync/baselines/b.json", { generation: 3 })
+  f.json.set("config.json", { sources: [], default_library: database })
   await f.run(clearCache(undefined, { all: true }))
   const pinned = await f.run(readSkill(snapshot.snapshot_id))
   expect(pinned.source).toBe("local_snapshot")
@@ -674,16 +701,47 @@ test("C11/C16 empty new cache never adopts old state catalogs or alters baseline
   const before = f.requests.length
   await f.run(readSkill(page))
   expect(f.requests.length).toBeGreaterThan(before)
-  expect(f.json.get("sync/baselines/b.json")).toEqual({ generation: 3 })
-  expect(f.json.has("catalogs/legacy.json")).toBe(true)
+  expect(f.json.get("config.json")).toEqual({ sources: [], default_library: database })
 })
 
-test("C12/C13 strong writes cannot inherit TTL and same-clock invalidation is restored only by later validation", async () => {
+test("target clear retains native body observations while all clear forces body revalidation without deleting pins", async () => {
+  const f = fixture()
+  const path = "references/guide.md"
+  const first = await f.run(readSkill(page, { path }))
+  const nativeKey = [...f.json.keys()].find((key) =>
+    key.startsWith("cache/current-native-bodies/"),
+  )!
+  const nativeObservation = structuredClone(f.json.get(nativeKey))
+  f.change("Changed after the initial fixed selection.")
+  const targetClear = await f.run(clearCache(page))
+  expect(targetClear.entries).not.toContain(nativeKey)
+  expect(f.json.get(nativeKey)).toEqual(nativeObservation)
+  f.clearCalls()
+  const afterTarget = await f.run(readSkill(page, { path }))
+  expect(afterTarget.source).toBe("notion")
+  expect(afterTarget.snapshot_id).toBe(first.snapshot_id)
+  expect(f.bodyCalls()).toHaveLength(0)
+  const allClear = await f.run(clearCache(undefined, { all: true }))
+  expect(allClear.entries).toContain(nativeKey)
+  expect(f.json.has(nativeKey)).toBe(false)
+  f.clearCalls()
+  const old = await f.run(readSkill(first.ref))
+  expect(old.snapshot_id).toBe(first.snapshot_id)
+  expect("content" in old && old.content).toBe("Original reference.")
+  expect(f.calls).toHaveLength(0)
+  const current = await f.run(readSkill(page, { path }))
+  expect(current.snapshot_id).not.toBe(first.snapshot_id)
+  expect("content" in current && current.content).toBe("Changed after the initial fixed selection.")
+  expect(f.bodyCalls().length).toBeGreaterThan(0)
+  expect(f.semanticWrites()).toHaveLength(0)
+})
+
+test("C12/C13 explicit refresh cannot inherit TTL and same-clock invalidation needs later validation", async () => {
   const f = fixture()
   const first = await f.run(openSkill(page))
   f.change("Changed independently.")
   expect((await f.run(readSkill(page))).snapshot_id).toBe(first.snapshot_id)
-  const online = await f.run(openSkill(page))
+  const online = await f.run(openSkill(page, { refresh: true }))
   expect(online.snapshot_id).not.toBe(first.snapshot_id)
   await f.run(invalidateSnapshotCache(page, online.scope))
   expect(await f.run(cachedRemoteObservation(page, online.scope))).toBeUndefined()
@@ -699,14 +757,17 @@ test("C14 causal generations prevent delayed older publication from regressing c
   const f = fixture()
   const old = await f.run(openSkill(page))
   const reserved = f.generations.get(`${old.scope}/${old.record.id}`)!
+  const observed = await f.run(cachedRemoteObservation(page, old.scope))
+  const publication = { sharedBodyValidUntil: observed?.shared_body_valid_until }
+  expect(publication.sharedBodyValidUntil).toBeGreaterThan(1_000_000)
   f.change("New version.")
-  const newer = await f.run(openSkill(page))
-  await f.run(publishSnapshotObservation(old, 1_000_000, reserved))
+  const newer = await f.run(openSkill(page, { refresh: true }))
+  await f.run(publishSnapshotObservation(old, 1_000_000, reserved, publication))
   expect((await f.run(cachedRemoteObservation(page, old.scope)))?.snapshot.snapshot_id).toBe(
     newer.snapshot_id,
   )
   await f.run(invalidateSnapshotCache(page, old.scope))
-  await f.run(publishSnapshotObservation(newer, 1_000_000, reserved + 1))
+  await f.run(publishSnapshotObservation(newer, 1_000_000, reserved + 1, publication))
   expect(await f.run(cachedRemoteObservation(page, old.scope))).toBeUndefined()
   await f.run(
     invalidateSnapshotCache(page, old.scope, {
@@ -714,7 +775,7 @@ test("C14 causal generations prevent delayed older publication from regressing c
       accessDenied: "ACCESS_DENIED",
     }),
   )
-  await f.run(publishSnapshotObservation(old, 1_000_000, reserved))
+  await f.run(publishSnapshotObservation(old, 1_000_000, reserved, publication))
   const fixed = await f.run(readSkill(old.snapshot_id).pipe(Effect.result))
   expect(fixed._tag === "Failure" && fixed.failure.code).toBe("ACCESS_DENIED")
   const before = await f.run(reserveScopeAccess(old.scope))
@@ -738,7 +799,7 @@ test("C15/P1 every read entry carries policy and pinned relative flags fail befo
   expect(exported.snapshot_id).toBe(first.snapshot_id)
   const relative = await f.run(
     readSkill("references/guide.md", {
-      from: `skill://${page}/SKILL.md?snapshot=${first.snapshot_id}`,
+      from: fileRef(first.record.id, first.entrypoint, first.snapshot_id),
       offline: true,
     }),
   )
@@ -754,24 +815,20 @@ test("C15/P1 every read entry carries policy and pinned relative flags fail befo
 
 test("C17/C18/P6 cache status and targeted retirement are offline and retain all persistent content", async () => {
   const f = fixture()
-  await f.run(readSkill("sample-skill", { database }))
+  await f.run(readSkill(logicalId, { library: currentLibrary.library_id }))
   const current = await f.run(openSkill(page))
-  f.json.set("cache/latest/other-scope/notion_page:other-page/entry.json", {
-    record_identity: "notion_page:other-page",
-    scope: "other-scope",
-    generation: 1,
-    started_at: 0,
-    validated_at: 0,
-    invalidated: true,
-  })
-  for (const key of [
-    "sync/bindings.json",
-    "sync/plans/p.json",
-    "sync/receipts/r.json",
-    "sync/baselines/b.json",
-    "config.json",
-  ])
-    f.json.set(key, key === "config.json" ? { sources: [] } : { retained: true })
+  f.json.set(
+    "cache/latest/other-scope/skill%3A%2F%2Fother-page%3Flibrary%3Dother-library/entry.json",
+    {
+      record_identity: "skill://other-page?library=other-library",
+      scope: "other-scope",
+      generation: 1,
+      started_at: 0,
+      validated_at: 0,
+      invalidated: true,
+    },
+  )
+  f.json.set("config.json", { sources: [] })
   const persistent = [...f.json.keys()].filter((key) => !key.startsWith("cache/"))
   const before = f.requests.length
   expect((await f.run(cacheStatus())).observations).toHaveLength(1)
@@ -780,7 +837,11 @@ test("C17/C18/P6 cache status and targeted retirement are offline and retain all
   expect(f.retired).toHaveLength(0)
   await f.run(clearCache(page))
   expect(await f.run(cachedRemoteObservation(page, current.scope))).toBeUndefined()
-  expect(f.json.has("cache/latest/other-scope/notion_page:other-page/entry.json")).toBe(true)
+  expect(
+    f.json.has(
+      "cache/latest/other-scope/skill%3A%2F%2Fother-page%3Flibrary%3Dother-library/entry.json",
+    ),
+  ).toBe(true)
   expect(persistent.every((key) => f.json.has(key))).toBe(true)
   expect(f.objects.size).toBeGreaterThan(0)
   expect(f.requests.length).toBe(before)
@@ -788,28 +849,18 @@ test("C17/C18/P6 cache status and targeted retirement are offline and retain all
 
 test("P7 saving and clearing policy preserves every typed configuration field and keeps secrets private", async () => {
   const f = fixture()
-  const bindings = [
+  const sources = [
     {
-      id: "binding",
-      label: "sample",
-      page_id: page,
+      alias: "current",
       database_id: database,
-      data_source_id: "ds",
-      scope: "scope",
-      logical_path: "/local",
-      active: true,
-      revision: 2,
+      title: "Current Skills",
+      data_source_ids: [currentLibrary.skills.data_source_id],
     },
   ]
-  f.json.set("config.json", {
-    token: "secret",
-    default_database: database,
-    sources: [],
-    sync_bindings: bindings,
-  })
+  f.json.set("config.json", { token: "secret", default_library: database, sources })
   const saved = await f.run(configureCachePolicy({ readMaxAge: 0, catalogMaxAge: 2_000 }))
   expect(JSON.stringify(saved)).not.toContain("secret")
-  expect((await f.run(configuration)).sync_bindings).toEqual(bindings)
+  expect((await f.run(configuration)).sources).toEqual(sources)
   await f.run(setToken("next-secret"))
   expect((await f.run(configuration)).cache_policy).toEqual({
     read_max_age_ms: 0,
@@ -818,7 +869,7 @@ test("P7 saving and clearing policy preserves every typed configuration field an
   await f.run(clearCachePolicy)
   const final = await f.run(configuration)
   expect(final.cache_policy).toBeUndefined()
-  expect(final.sync_bindings).toEqual(bindings)
+  expect(final.sources).toEqual(sources)
   expect(final.token).toBe("next-secret")
   expect(f.requests).toHaveLength(0)
 })
@@ -853,22 +904,22 @@ test("incomplete reference read never publishes a shortened successful observati
 
 test("catalog independent expiry/offline metadata preserves coverage without upgrading discovery", async () => {
   const f = fixture()
-  const first = await f.run(catalog())
+  const first = await f.run(catalog({ all: true }))
   expect(first.coverage.exhaustive).toBe(false)
   const before = f.requests.length
   f.time(1_059_999)
-  expect((await f.run(catalog())).source).toBe("local_cache")
+  expect((await f.run(catalog({ all: true }))).source).toBe("local_cache")
   expect(f.requests.length).toBe(before)
   f.time(1_060_000)
-  expect((await f.run(catalog())).source).toBe("notion")
+  expect((await f.run(catalog({ all: true }))).source).toBe("notion")
   f.time(1_120_000)
   f.deny()
-  const offline = await f.run(catalog({ offline: true }))
+  const offline = await f.run(catalog({ all: true, offline: true }))
   expect(offline.coverage).toEqual(first.coverage)
   expect(offline.freshness.stale).toBe(true)
 })
 
-test("checkbox-only refresh updates current metadata while preserving pinned snapshot bytes and identity", async () => {
+test("checkbox-only refresh selects a new record while preserving the earlier pin and content version", async () => {
   const f = fixture()
   const first = await f.run(openSkill(page))
   expect(first.record.default_context).toBe(false)
@@ -876,7 +927,7 @@ test("checkbox-only refresh updates current metadata while preserving pinned sna
   const checked = await f.run(openSkill(page, { refresh: true }))
   expect(checked.record.default_context).toBe(true)
   expect((await f.run(openSkill(page))).record.default_context).toBe(true)
-  expect(checked.snapshot_id).toBe(first.snapshot_id)
+  expect(checked.snapshot_id).not.toBe(first.snapshot_id)
   expect(checked.version_id).toBe(first.version_id)
   expect(checked.files).toEqual(first.files)
   const pinned = await f.run(targetSnapshot(parseTarget(first.snapshot_id)))

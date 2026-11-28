@@ -1,15 +1,21 @@
 import { fail } from "./model.ts"
 import { splitNativeInlineCode } from "./shared-native-inline-code.ts"
 import { normalizePath } from "./ref.ts"
+import { decodeSkillPath } from "./skill-ref.ts"
 import type { CompositionFile } from "./shared-composition.ts"
-import type { SharedNotionMarkdownVersion } from "./shared-notion-projection.ts"
 
 export type SharedFileReference = {
   readonly from: string
+  /** An empty target names the owning tree's root directory. */
   readonly target: string
   readonly href: string
   readonly line: number
   readonly kind: "link" | "image"
+}
+export type SharedMarkdownLink = Omit<SharedFileReference, "target"> & {
+  readonly destination: string
+  readonly rewritable: boolean
+  readonly destination_start?: number
 }
 const punctuation = /\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/gu
 const unescape = (value: string) =>
@@ -45,30 +51,24 @@ function escaped(text: string, index: number): boolean {
   return count % 2 === 1
 }
 
-/** Native v2 code spans can contain literal backticks and Markdown links.
+/** Native code spans can contain literal backticks and Markdown links.
  * Locate actual parsed tags first; escaped tags, fenced examples and tags
  * inside Markdown code spans must not hide surrounding real references. */
-function maskReferenceText(text: string, exactPositions: boolean): string {
-  return text.replace(/[^\n]/gu, (value) => (exactPositions ? " ".repeat(value.length) : " "))
+function maskReferenceText(text: string): string {
+  return text.replace(/[^\n]/gu, (value) => " ".repeat(value.length))
 }
-function withoutNativeCode(text: string, exactPositions: boolean): string {
+function withoutNativeCode(text: string): string {
   const parts = splitNativeInlineCode(text)
   if (parts === undefined)
     throw fail(
       "SHARED_REFERENCE_INVALID",
       "The complete native inline text could not be checked without losing source positions.",
     )
-  return parts
-    .map((part) => (part.code ? maskReferenceText(part.raw, exactPositions) : part.raw))
-    .join("")
+  return parts.map((part) => (part.code ? maskReferenceText(part.raw) : part.raw)).join("")
 }
 
-/** Preserve line positions while removing fenced code, inline code and comments. */
-export function referenceProse(
-  markdown: string,
-  policy: SharedNotionMarkdownVersion = 2,
-  exactPositions = false,
-): string {
+/** Preserve every UTF-16 source offset while masking code and comments. */
+export function referenceProse(markdown: string): string {
   let fence: { marker: string; length: number } | undefined
   const lines = markdown
     .replace(/\r/gu, " ")
@@ -95,11 +95,11 @@ export function referenceProse(
     })
   const raw = lines
     .join("\n")
-    .replace(/^---[ \t]*\n[\s\S]*?\n(?:---|\.\.\.)[ \t]*(?:\n|$)/u, (frontmatter) =>
-      maskReferenceText(frontmatter, exactPositions),
+    .replace(/^\uFEFF?---[ \t]*\n[\s\S]*?\n(?:---|\.\.\.)[ \t]*(?:\n|$)/u, (frontmatter) =>
+      maskReferenceText(frontmatter),
     )
-    .replace(/<!--[\s\S]*?(?:-->|$)/gu, (comment) => maskReferenceText(comment, exactPositions))
-  const text = policy === 1 ? raw : withoutNativeCode(raw, exactPositions)
+    .replace(/<!--[\s\S]*?(?:-->|$)/gu, (comment) => maskReferenceText(comment))
+  const text = withoutNativeCode(raw)
   const output = text.split("")
   for (let start = 0; start < text.length; start += 1) {
     if (text[start] !== "`" || escaped(text, start)) continue
@@ -123,7 +123,7 @@ export function referenceProse(
   return masked.replace(
     /<(script|style|pre)\b[^>]*>[\s\S]*?<\/\1\s*>/giu,
     (literal: string, _tag: string, offset: number) =>
-      escaped(masked, offset) ? literal : maskReferenceText(literal, exactPositions),
+      escaped(masked, offset) ? literal : maskReferenceText(literal),
   )
 }
 function closingBracket(text: string, start: number): number {
@@ -181,7 +181,7 @@ function localTarget(from: string, raw: string): string | undefined {
   if (withoutFragment === "") return from
   let decoded: string
   try {
-    decoded = decodeURIComponent(withoutFragment)
+    decoded = decodeSkillPath(withoutFragment)
   } catch {
     throw fail(
       "SHARED_REFERENCE_INVALID",
@@ -212,10 +212,10 @@ function localTarget(from: string, raw: string): string | undefined {
     } else segments.push(segment)
   }
   const target = segments.join("/")
-  if (target === "" || normalizePath(target) !== target)
+  if (normalizePath(target) !== target)
     throw fail(
       "SHARED_REFERENCE_INVALID",
-      "A local Markdown reference has no canonical file target.",
+      "A local Markdown reference has no canonical relative target.",
       { from, href: raw },
     )
   return target
@@ -225,12 +225,13 @@ function localTarget(from: string, raw: string): string | undefined {
 function scanSharedMarkdownReferences(
   path: string,
   markdown: string,
-  policy: SharedNotionMarkdownVersion = 5,
   visit?: (reference: SharedFileReference, destination: Destination) => void,
+  visitLink?: (reference: SharedMarkdownLink, destination?: Destination) => void,
+  resolveLocal = true,
 ): readonly SharedFileReference[] {
-  // Retained projection policies keep their historical masking. Destination
-  // edits need exact UTF-16 source positions even around astral code literals.
-  const text = referenceProse(markdown, policy, visit !== undefined)
+  // Every destination offset addresses the original UTF-16 string, including
+  // astral characters hidden inside native code, frontmatter or comments.
+  const text = referenceProse(markdown)
   const definitions = new Map<string, Destination>()
   const definitionRanges: Array<readonly [number, number]> = []
   const definitionPattern = /^ {0,3}\[([^\]\n]+)\]:[ \t]*/gmu
@@ -252,13 +253,27 @@ function scanSharedMarkdownReferences(
     kind: SharedFileReference["kind"],
     destination?: Destination,
   ) => {
+    const line = 1 + text.slice(0, at).split("\n").length - 1
+    visitLink?.(
+      {
+        from: path,
+        href,
+        destination: unescape(href),
+        line,
+        kind,
+        rewritable: destination !== undefined,
+        ...(destination === undefined ? {} : { destination_start: destination.start }),
+      },
+      destination,
+    )
+    if (!resolveLocal) return
     const target = localTarget(path, href)
     if (target !== undefined) {
       const reference: SharedFileReference = {
         from: path,
         target,
         href,
-        line: 1 + text.slice(0, at).split("\n").length - 1,
+        line,
         kind,
       }
       result.push(reference)
@@ -307,21 +322,58 @@ function scanSharedMarkdownReferences(
   // Notion v2 also renders native assets as explicit src/href attributes.
   for (const match of text.matchAll(
     /<(?:a|img|file|pdf|video|audio)\b[^>]*?\b(href|src)\s*=\s*(?:"([^"<>]*)"|'([^'<>]*)'|([^\s"'<>]+))[^>]*>/giu,
-  ))
+  )) {
+    if (escaped(text, match.index)) continue
     remember(
       match[2] ?? match[3] ?? match[4] ?? "",
       match.index,
       /^<img\b/iu.test(match[0]) ? "image" : "link",
     )
+  }
   return result
 }
 
 export function sharedMarkdownReferences(
   path: string,
   markdown: string,
-  policy: SharedNotionMarkdownVersion = 5,
 ): readonly SharedFileReference[] {
-  return scanSharedMarkdownReferences(path, markdown, policy)
+  return scanSharedMarkdownReferences(path, markdown)
+}
+
+/** Inspect actual links without interpreting their owning filesystem or library. */
+export function sharedMarkdownLinks(path: string, markdown: string): readonly SharedMarkdownLink[] {
+  const links: SharedMarkdownLink[] = []
+  scanSharedMarkdownReferences(path, markdown, undefined, (link) => links.push(link), false)
+  return links
+}
+
+/** Preserve authored text except for explicitly selected parsed destinations. */
+export function mapSharedMarkdownLinks(
+  path: string,
+  markdown: string,
+  change: (reference: SharedMarkdownLink) => string,
+): string {
+  const edits = new Map<number, { readonly end: number; readonly text: string }>()
+  scanSharedMarkdownReferences(
+    path,
+    markdown,
+    undefined,
+    (reference, destination) => {
+      const text = change(reference)
+      if (text === reference.href) return
+      if (destination === undefined)
+        throw fail(
+          "SHARED_REFERENCE_INVALID",
+          "This link form cannot be rewritten without changing authored text.",
+        )
+      edits.set(destination.start, { end: destination.hrefEnd, text })
+    },
+    false,
+  )
+  let result = markdown
+  for (const [start, edit] of [...edits].sort(([a], [b]) => b - a))
+    result = result.slice(0, start) + edit.text + result.slice(edit.end)
+  return result
 }
 
 /** Edit only the actual parsed destination, never another literal with the same href. */
@@ -331,7 +383,7 @@ export function mapSharedMarkdownReferences(
   change: (reference: SharedFileReference) => string,
 ): string {
   const edits = new Map<number, { readonly end: number; readonly text: string }>()
-  scanSharedMarkdownReferences(path, markdown, 5, (reference, destination) => {
+  scanSharedMarkdownReferences(path, markdown, (reference, destination) => {
     if (markdown.slice(destination.start, destination.hrefEnd) !== reference.href)
       throw fail(
         "SHARED_REFERENCE_INVALID",
@@ -346,15 +398,58 @@ export function mapSharedMarkdownReferences(
   return result
 }
 
-/** The caller must supply the complete, byte-verified proposed tree. Retained
- * authoring-v1 creation plans explicitly select policy 1 so their original
- * reference counts and hashed identities do not change during reconstruction.
- * All policies check every file; policies 2 and later understand native code spans. */
-export function assertSharedFileReferences(
-  files: readonly CompositionFile[],
-  policy: SharedNotionMarkdownVersion = 5,
+/** Validate all supplied current bytes against their complete directory. */
+export function assertSharedFileReferences(files: readonly CompositionFile[]) {
+  return assertSelectedSharedFileReferences(
+    files,
+    files.map((file) => file.path),
+  )
+}
+
+/** Source Markdown is authored relative to its original repository path, not
+ * its mounted Skill path. All admitted targets are real fixed Source paths. */
+export function assertSelectedSharedSourceReferences(
+  files: readonly {
+    readonly path: string
+    readonly source_path: string
+    readonly bytes: Uint8Array
+  }[],
+  completeSourcePaths: readonly string[],
 ) {
-  const paths = new Set(files.map((file) => file.path))
+  return assertSelectedSharedFileReferences(
+    files.map((file) => ({ path: file.source_path, bytes: file.bytes })),
+    completeSourcePaths,
+  )
+}
+
+/** Fixed Source bytes already passed their current reference admission.
+ * Native/resource bytes still use the complete current Skill directory. */
+export function currentAuthoredReferenceFiles<File extends CompositionFile>(
+  files: readonly File[],
+  routes: readonly { readonly kind: string; readonly path: string }[] | undefined,
+) {
+  const sourcePaths = new Set(
+    routes?.filter((route) => route.kind === "source").map((route) => route.path) ?? [],
+  )
+  return files.filter((file) => !sourcePaths.has(file.path))
+}
+
+/** Check only the supplied bodies against the complete current directory.
+ * Deferred bodies remain unverified until they are selected and acquired. */
+export function assertSelectedSharedFileReferences(
+  files: readonly CompositionFile[],
+  completePaths: readonly string[],
+) {
+  const paths = new Set(completePaths)
+  if (
+    paths.size !== completePaths.length ||
+    new Set(files.map((file) => file.path)).size !== files.length ||
+    files.some((file) => !paths.has(file.path))
+  )
+    throw fail(
+      "SHARED_REFERENCE_INVALID",
+      "Selected reference validation requires unique files from the complete current directory.",
+    )
   const references: SharedFileReference[] = []
   let checkedFiles = 0
   for (const file of files) {
@@ -370,13 +465,27 @@ export function assertSharedFileReferences(
       )
     }
     checkedFiles += 1
-    references.push(...sharedMarkdownReferences(file.path, markdown, policy))
+    references.push(...sharedMarkdownReferences(file.path, markdown))
   }
-  const missing = references.filter((reference) => !paths.has(reference.target))
+  // Directories are derived from real descendants in the complete tree, including
+  // files whose bytes are deferred. A link can navigate them; an image cannot.
+  const directories = new Set<string>([""])
+  for (const path of paths) {
+    const parts = path.split("/").slice(0, -1)
+    while (parts.length > 0) {
+      directories.add(parts.join("/"))
+      parts.pop()
+    }
+  }
+  const missing = references.filter(
+    (reference) =>
+      !paths.has(reference.target) &&
+      !(reference.kind === "link" && directories.has(reference.target)),
+  )
   if (missing.length !== 0)
     throw fail(
       "SHARED_REFERENCE_BROKEN",
-      "The proposed complete tree contains unresolved local Markdown links or images. Update those explicit references before changing file membership.",
+      "The selected Markdown contains local links or images absent from the complete directory.",
       { references: missing, checked_files: checkedFiles },
     )
   return { checked_files: checkedFiles, local_references: references.length }

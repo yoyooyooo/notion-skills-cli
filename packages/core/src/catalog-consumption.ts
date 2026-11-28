@@ -19,6 +19,9 @@ export type ListCatalogDirectoryOptions = Omit<
   readonly view?: never
   readonly defaultView?: never
   readonly profile?: never
+  /** Runs once after the full catalog settles, before View/Profile work. This
+   * notification is not awaited and cannot change the combined result. */
+  readonly onCatalogSettled?: () => void
 }
 const CatalogDirectorySelectionSchema = Schema.Union([
   Schema.Struct({ view: Schema.String }),
@@ -38,6 +41,7 @@ function listSingleCatalog(options: ListCatalogOptions = {}) {
   return catalogWithProfile(options).pipe(
     Effect.map((result) => ({
       scope: result.scope,
+      ...(result.library_id === undefined ? {} : { library_id: result.library_id }),
       fetched_at: result.fetched_at,
       databases: result.databases,
       records: result.records,
@@ -102,6 +106,11 @@ function listCatalogDirectory(options: ListCatalogDirectoryOptions) {
         try: () => {
           validateReadPolicy(options)
           if (
+            options.onCatalogSettled !== undefined &&
+            typeof options.onCatalogSettled !== "function"
+          )
+            throw fail("INVALID_ARGUMENT", "onCatalogSettled must be a function.")
+          if (
             options.view !== undefined ||
             options.defaultView !== undefined ||
             options.profile !== undefined
@@ -116,9 +125,9 @@ function listCatalogDirectory(options: ListCatalogDirectoryOptions) {
           if (
             "profile" in selection &&
             selection.profile !== undefined &&
-            options.database === undefined
+            options.library === undefined
           )
-            throw fail("INVALID_ARGUMENT", "A directory Profile requires an explicit database.")
+            throw fail("INVALID_ARGUMENT", "A directory Profile requires an explicit Library root.")
           return selection
         },
         catch: (error) =>
@@ -130,12 +139,19 @@ function listCatalogDirectory(options: ListCatalogDirectoryOptions) {
               ),
       })
       const policy: ListCatalogOptions = {
-        database: options.database,
+        library: options.library,
         refresh: options.refresh,
         offline: options.offline,
         maxAge: options.maxAge,
       }
       const catalog = yield* observeCatalog(listSingleCatalog(policy))
+      yield* Effect.sync(() => {
+        try {
+          void Promise.resolve(options.onCatalogSettled?.()).catch(() => {})
+        } catch {
+          // Notification failures cannot alter catalog or consumption authority.
+        }
+      })
       const directory = yield* observeCatalog(
         listSingleCatalog({
           ...policy,
@@ -225,9 +241,8 @@ export function pageCatalog(catalog: ListCatalogResult, options: ListPageOptions
           ? undefined
           : {
               library_id: catalog.profile.library_id,
-              library_entry: catalog.profile.library_entry,
               profile_id: catalog.profile.profile_id,
-              revision_id: catalog.profile.revision_id,
+              fingerprint: catalog.profile.fingerprint,
               selection: catalog.profile.selection,
             },
         query,

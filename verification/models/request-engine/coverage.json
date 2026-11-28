@@ -1,0 +1,657 @@
+{
+  "version": 1,
+  "synchronized_commit": "6f9abd76e00400bcd2754e7db6457edea5c71a7d",
+  "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+  "correspondence": "Finite safety of pending read ownership and request admission/retry. Exact hashes bind the named source owners, dependencies and relevant regressions; unmodeled bindings do not enlarge the finite proof.",
+  "review_basis": "Named guards were traced from base 0f1920b667f8a387603cd33cd51ce90e055d4ea2 to the reviewed source bytes below. Resource selection now accepts only the current logical or exact physical owner and removes retired subscription/history fields; detached producer ownership, cancellation and admission are unchanged. The shared fixture declares the complete four-table library, mandatory empty native origins, current Store capabilities, measured request outcomes and explicit attachment locators. Its HTTP service and SDK lifetime input now require an explicit Sources table/rows; hold, abort, pagination, write opt-in and creator-Scope assertions remain intact. The Notion multipart rejection test uses its own extant file after the old Store fixture was retired. Vitest removes only the retired proof-converter suite; the lock removes that workspace and the offline converter SQLite dependency while all 96 remaining package versions, integrity values and metadata stay unchanged. Current consumption also removes the unused retention-write vocabulary while retaining the actual descendant read-only boundary. Both TLA modules, all 21 case/rule inventories and every named guard are unchanged. The SDK eligibility regression now waits using its existing input budget and includes a controlled delay case; cancellation, exact byte delivery and pagination after the creator runtime closes remain unchanged. The rebuilt-owner SDK regression adds scalar and batch lazy reads through new fixed refs while retaining the old fixed owner; existing creator-cancellation, eligibility, pagination and isolation cases are unchanged. The shared fixture now honors rich-text starts_with and resolves the mutable main page ID, without changing transport hold, abort or request accounting. The current invocation regression stops at actual File creation instead of the retired block-append step, preserving exact request exhaustion, no attention or cleanup after exhaustion, and same-intent resume with a fresh allowance. These fixture and writer boundaries remain implementation regressions outside both finite models. This mapping records scope, not a verification run result. The 224e56ca source-reading change was reviewed against the last reviewed bytes at 7fb3040: resource-read permits an absent main File binding because Source presentation rows no longer own consumption identity, while exact current owner, fixed selection, present physical bindings and byte proof checks remain. Both existing HTTP fixtures now implement rich_text.contains for current Contributions eligibility. The SDK creator-cancellation regression waits for the final Contributions query instead of the earlier Files query; it still crosses creator runtime closure and verifies subsequent Records pagination, exact survivor bytes and zero remote writes. The detached producer guard, all 19 implementation mutation targets, both finite models and all 21 complete case/rule inventories are unchanged; sparse Source consumption remains outside the finite proof. The 2c2c76a3 Trash-restoration fixture change was reviewed against 14b93dc6: relation.contains now excludes an existing target marked in_trash, archived or is_archived, matching the observed Notion metadata query while leaving its live supporting rows intact. The same installed restoration case fails against the old implementation and completes with the owner-only and Source-only restoration preflight before normal projection reads the live directory. This visibility rule and Skill restoration remain outside both finite models. SDK hold, abort, pagination, authentication and request accounting are unchanged, as are the detached producer guard, all 19 mutation targets and all 21 complete case/rule inventories. AH-1190 adds two public SDK diagnostic regressions for missing fixed bytes and an actual clear/body barrier, plus the required imports. The existing two-runtime creator-cancellation test and all producer/admission guards are unchanged. The new diagnostics are implementation checks, not new RequestEngine model properties. The unified current runner selects the same two models and 21 case inventories. The current acceptance delta through bacee6644a4c67dda27fc0cf82ce91c1052711d1 was reviewed against 6c4cee6: SDK configuration and each subprocess now share one captured operation environment without process-global mutation; command-local replacement/scrub and pipeline semantics remain. Public consume with a controlled current Source reaches the actual per-operation Git shim, so the SDK-to-runtime wiring is covered separately from unit composition. Removing runSourceGit detached:false restores the frozen platform spawner POSIX group ownership. Controlled cancellation covers an ordinary descendant and a SIGTERM-ignoring descendant after leader exit, bounded by the unchanged two-second force-kill option; normal exit, raw stderr privacy and interruption remain intact. These process/environment obligations, dependency bytes and concrete regressions are explicitly unmodeled bindings below. No finite model, case, rule inventory, shared producer or admission guard is changed. Reviewed the offline known-denial change at 9ebd9c2215f97934f0746125382415b2f338f572 and its integration with incoming native management at 0070dfb: the sole assertKnownSnapshotAccess now rejects observed target ACCESS_DENIED and scope AUTH_REQUIRED before selected object reads for online and offline consumption. The offline exemption argument, successful access_denied result and pinned stale-success branch are deleted together. Ordinary current/name reads, fixed main/resources, batches and consume reuse that boundary. Unknown transport failure, ambiguous NOT_FOUND, unaffected scopes, historical metadata and complete bytes under business Enabled changes remain distinct. The public SDK regressions obtain actual controlled 401/403 before checking body refusal and real SQLite retirement; offline prepare may fail earlier with CACHE_SCOPE_UNAVAILABLE after target-only all-clear, while fixed scalar/batch retain exact denial. No extra terminal permission probe or byte-hash authorization grant is claimed. These are concrete implementation regressions, not additional finite-model properties; model variables, case/rule inventories and existing mutation guards are unchanged. AH-1198 adds three coupled public SDK/HTTP/SQLite T14 regressions: a creator cancellation plus actual 429 pagination while Source is applying, all-waiter cancellation after a partial response, and two original per-call deadlines during Retry-After followed by fresh revision selection. Each caller completes its own current eligibility before sharing exact Notion-owned resource bytes; an already admitted A acquisition may finish, whereas a later missing-byte acquisition observes applying. The resource identity remains unchanged while an unrequested Source contribution advances the complete tree. Source row transitions are explicitly controlled service facts, not executions of a live management writer. Partial or timed-out work exposes no files or cached object; the new selection preserves the old manifest. This test-only change does not alter production guards, finite models, case/rule inventories or mutation targets, and adds no model property. AH-1198 exposes the existing pure compareNativeMarkdown writer utility through the public SDK for complete Native fixture readback. Its parser, structure/text/link/code checks and all request-engine production guards remain unchanged. The SDK regression distinguishes canonical underscore escaping from changed text, heading, code or truncated content. This utility is not a new finite-model property or runtime acquisition path. Reviewed the T05 fixed-byte credential switch defect against 715e5368a6e19281ddea1d9cf30551ec48267e75. The existing fixed access guard now requires the locally recorded scope for the selected credential digest and API origin before any fixed inventory or object read. Unknown binding and mismatched scope fail structurally without remote authentication or a content-hash grant; underlying Store errors preserve their original diagnostic fields. Public cache clear retains credential-to-scope authorization facts and excludes them from retirement receipts, while current/body observations and the original denial/generation fences still retire as before. The complete-byte public SDK regression uses a real SQLite Store and controlled HTTP to cover unknown and authenticated alternate credentials, actual 401, origin changes, scalar/batch/inventory/use/inspect, clear, same-credential offline reuse, and fresh recovery. A separate real identity-table query failure checks exact Store error propagation; the existing SQLite observation-race fixture supplies the now-required local credential association without changing its race or denial assertions. Current lifecycle and RequestEngine finite variables do not model credential associations or cache-clear identity retention. These are concrete regressions; finite models, case/rule inventories and mutation targets are unchanged. Reviewed fe8e49824278f694c23dea758ee11734dbeed018 against a60e5d83e33c887a54514ab9b84361af47b70961: the public SDK comparison test adds only a native paragraph-wrapper equivalence case and a literal-code-br rejection case. It invokes the pure Markdown comparator and changes no producer, admission, network, cancellation or lifetime behavior. Native transport and paragraph semantics remain implementation regressions outside both finite models. All named production guards, both TLA modules, all 21 case/rule inventories and all 19 guard mutation targets are unchanged. The affected SDK and writer regressions passed in the isolated source run; this mapping records the reviewed correspondence and does not claim a formal verification result. Reviewed the new resolveReference SDK operation against 9200b9afcb328006ee3dcd8fd48a031a628eef3e. It uses the existing per-call runOperation runtime, AbortSignal and metrics cleanup, plus the existing descendant read-only consumption boundary and effects receipt. Pre-abort proves zero transport acquisition in sdk.test; Core identity resolution reads manifests and Source metadata without fetching the target body. Existing producer sharing, request admission, cancellation ownership and retry guards are unchanged. Exact Source mapping and host session-pin selection remain concrete implementation obligations outside both finite request models; no model, case/rule inventory or mutation target changed. Reviewed e6d67119e09fe7330d57baaf74f096d8803716e7 against 87c5bfcd2cfbcd5ab993307ac760fac802163b0d: the SDK regression adds independent Node processes for exact local metadata selections, cache clear, forged binding refusal and changed content. The test-owned bundled worker uses the public SDK with one captured options environment. Existing producer, admission, transport, cancellation and request-budget owners are unchanged, as are both finite models, all 21 configurations and all 19 mutation targets. Selection identity and native plain-span management remain current-lifecycle implementation obligations outside the request models. This precise test hash records source review, not a new model result. Reviewed the rebased integration at 6f9abd76e00400bcd2754e7db6457edea5c71a7d on current next 3f8f58d2c635e60d2a50805b6c0ed33ba17464cb. The retained-ID decoder now follows the actual fixed producer: local_snapshot with pinned freshness only; local_cache, current/Notion and non-pinned legacy claims remain rejected. The public consume and Crypto-only decoder regression preserves complete binding checks. This local compatibility repair and the release empty-array guard are outside the finite models. Existing file pins, model/case inventories and mutation targets remain unchanged; this entry records source review, not a new run result. Reviewed the cleanup-capacity test and mutation-result classifier against d179d844727d626f006b9c0894d4ecbb3e8d0ae2. The same three behavioral assertions and production guard mutation remain; the test now always releases both owned latches so an assertion defect can finish before parent-fiber cleanup. The shared result classifier requires a real assertion diagnostic and rejects runner timeouts, module/syntax failures and expect-call statistics, including mixed failures. Actual Bun reports and structured Vitest errors are checked by the existing runner contract test. This changes verification evidence admission, not product behavior, model variables, configurations, rule inventories or the 19 mutation targets. Only this reviewed test hash is rebound; the earlier timeout-only green is retained as invalid evidence. This mapping records reviewed correspondence, not a rerun result. Reviewed AH-1268 commit 084699e35e6fcea17fd3df11a37700bb37665dc3 against incoming next 34f34295265943deb884daa8ae47494f9e320603 during the merge. The SDK adds a separate Promise-based MCP credential/transport channel and content-search entry. Existing runOperation, REST producer/admission/budget/cancellation owners and their callers are unchanged; new content-search Source and eligibility observations reuse the existing REST operation boundary, while OAuth, MCP HTTP and their independent deadlines are outside both RequestEngine models. Those obligations belong to notion-mcp-auth, notion-mcp-search and their concrete SDK/HTTP regressions. The shared current fixture adds only exact GET responses for already-declared physical Files, cloning the same fixture row; existing main-page, query, resource hold, abort, pagination and request-ledger behavior is unchanged. This supports physical File qualification, not a new finite request property. Only these two reviewed file hashes are rebound. Preserve the upstream cleanup-capacity test hash and strict mutation-classifier review, all dependency pins, 19 mutation targets and 21 complete model configurations/rule inventories. This records source review, not a fresh formal or implementation test result. Node source-mode review: the package-version import now uses the existing default JSON import with type=json attribute and reads the same manifest.version. This corrects native Node module loading; operation, admission, deadline, credential and result semantics are unchanged. The existing real source-mode dev-launcher regression and full installed-package check must pass. Reviewed the AH-1277 SDK boundary extraction at 90051b844aa15a86975054c81df83981c3c3a028 against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. runOperation now delegates to the shared runRuntimeOperation while retaining the consumption capability check before service acquisition. The complete per-call environment, pre-abort check, nodeRuntime/ConfigProvider, Notion acquisition, Effect.scoped lifetime, AbortSignal, error propagation and final metrics callback retain their reviewed behavior. The helper is independently hash-bound below so moving the implementation does not remove its protection. Resolving cwd now precedes rejection of an invalid readOnly option; this changes no legal invocation or network admission and is outside the finite model. Management chooses its own factory; consumption still uses its existing read-only boundary. No finite model, configuration, independent rule inventory or existing guard mutation target changes. This is a source-correspondence review, not a new verification result. Reviewed the Skill-reference v2 task diff against ffe3b0255bea1d5a12a62c3832ec7f7175c27dd1. Resource input now requires the complete canonical Library/Skill owner and fixed snapshot; a physical page is no longer an alternative resource URI owner, and public file_id is removed while internal binding, byte budgets, proof, cancellation and batch atomic output remain. SDK exports the shared protocol version and its pure-reference fixture uses the new full URI; no runtime lifetime or request admission code changes. Both models, all 21 configurations and the 19 request-engine mutation guards are unchanged. This is a scoped source review, not a new model/guard result. The official format pass changed layout only; named mutation anchors were rechecked against the formatted source. Integration checkpoint: preserve every upstream SourceSync and SourceSyncProgress model, case, implementation binding and source guard. The final merged source bytes, including SDK changes shared by both branches, still require a fresh diff review before final hash binding and execution. Final integration review against upstream next 9d986a83aaae35e3f9f6cd35341add0476f5c887 and task checkpoint ad7d09c9cd21aad6e318eca52bcb167b46e9bf78: the merged SDK differs from upstream only by re-exporting SKILL_REF_VERSION. The immutable-read regression now expects the encoded owner segment at the retired cache fence; its original retirement and racing-read assertions remain. Request admission, retry, pending read ownership and every upstream model/case/implementation binding remain unchanged. The upstream gitless paired-build source-identity checks and their runner counterexamples are retained. Rebound only these two reviewed hashes; final runtime and model receipts must identify their actual frozen source inventory. Final formatter-only review after the ref04 source freeze: sdk-immutable-read.node.test.ts changes only the callback layout and trailing argument comma; its encoded retired-fence assertion and every model rule and production guard remain unchanged. The protected test hash is rebound to the final formatted bytes. Model evidence from ref04 retains its exact recorded source hashes; final guard receipts identify the later selected build. The provenance helper now recognizes node_modules as a path component, including workspace-local dependencies; the mutation runner still checks each coverage dependency byte hash before source provenance, and the paired build remains the installation authority. Final explicit-scope diagnostic review after ref05: fixed resource selection changes only the error code for an explicitly selected incompatible database from SKILL_NOT_FOUND to LIBRARY_SCOPE_MISMATCH. The owner/snapshot/database predicates, ordering, file selection, byte budgets and all request/coalescer/admission guards are unchanged. The public resource regression confirms the same failed result with zero Notion requests and zero semantic writes. Rebound only the reviewed resource-read source hash. Error-code consistency is a concrete public contract, not a new request-engine model property; final affected-domain guard replay uses the later selected build. Reviewed the store-only selection metrics change at 8443e74260cc5a2d88af1d1e478d7739b68bfc78 against a0f06d2fc442c3e2ee904809d45e8bf17719dde1. selectLibrary still uses LocalOperationServices and nodeRuntime.store; it cannot acquire the HTTP transport or scheduler. The local runtime now honors options.metrics and the captured NTN_SKILLS_REQUEST_TRACE_LIMIT when publishing its zero-attempt snapshot, including error and pre-cancel paths. The HTTP-capable runRuntimeOperation, request admission and producer guards, search source/grant/deadline fences, cache generations and all finite transitions are byte-for-byte unchanged. The Node local-selection regression failed all three cases before the fix and passed all three after it; the existing SDK boundary passed 15 cases, and the unchanged Broker strict daily classifier passed 45 cases, including rejection of unobserved, incomplete or nonzero local-selection metrics. Only this reviewed source hash is rebound; model files, configurations, independent expected rule/broken inventories, mutation targets and tool pins are unchanged. These concrete metrics assertions remain outside the finite models and do not claim a new TLC or installed-host result. Reviewed cross-process hot-cache preparation at a1e9b4b on 6b2d53b and the subsequent one-hour product default. Graph admission selects the existing credential/API-origin cache scope locally; the snapshot readers retain their credential, known-denial, complete-graph, byte, expiry and refresh guards. The default read/current-eligibility duration changes from 300000 to 3600000 ms, while the 60000 ms catalog policy, explicit durations, Profile rules and independent full-body deadline remain unchanged. Public SDK/HTTP/SQLite regressions cover new-process five-minute reuse without identity requests or renewed validation times, forced/expired/missing/foreign-scope reads, known 401/403 after clear, and the default thirty-minute/one-hour boundary. Cache durations and routing are concrete implementation behavior outside these finite variables. No model, case, expected-rule inventory or production guard mutation changes. The updated hashes bind reviewed source and tests; they do not claim a new formal-model or installed-artifact result. Reviewed the lazy Source materialization request boundary against 31f30db8f960cc4f36d1e02f8e279d641b660718. SDK discovery stays on read-only services. Upstream preparation now permits the explicit management-only allowMissingMembers option without changing ordinary discovery, actual Git request budgets, retry classification, process ownership or deadline guards. The controlled HTTP fixture adds declared Source metadata/management routes, exact empty view inventory, a real upload-pack-only Git HTTP backend, held original requests that may apply after disconnect, and projection-call rejection; undeclared routes remain errors. It does not mock a successful management or consumption result. Existing request-engine models, independent rule inventories and mutation targets are unchanged. Actual manager, SQLite, fixed Git commit, provider entity and new-Pi cache evidence belong to the separate controlled execution and are not asserted by this source review. Reviewed the retained b02 actual-Pi fixture failure: a 3280-character Source Content value occupied one rich-text fragment, so the unchanged production parser correctly refused it before Git or management. The independent fixture encoder now emits at most 1900 UTF-16 units per codepoint-safe fragment, with exact full text preserved and empty text represented by an empty list. A real fixture-generator regression supplies all five initial states to the production registration parser and checks complete reconstruction and Unicode boundaries. The existing held-request controller also accepts an optional bounded exact body path/value or existence predicate, only after its declared method and path match; the default control behavior, actual request ledger and late original application remain unchanged. This enables a real manager/SQLite unknown-dispatch regression. No request-engine production code, finite transition/rule inventory, retry permission or model claim changes. These fixture/test source correspondence changes do not substitute for the subsequent actual Pi and manager execution.\n\nThe shared HTTP fixture adds only staging of exact selected manager runtime executables into a task-owned directory. It checks original/copy SHA, owner, mode and non-overwrite, with separate tests of version and Git exec-path. No request scheduling, retry, budget, HTTP interpretation, model bound or expected rule changed. Reviewed the shared Source HTTP fixture adjustment from absent Content/Current State properties to registered empty rich_text/select values. This models real old rows under the registered current schema; independent missing-property rejection remains tested. HTTP transport, request controls, retry/unknown semantics, model states and mutation guards are unchanged. The Source writer adoption/no-op repair is covered by its concrete regression and the current-lifecycle correspondence; it is not a RequestEngine property. Reviewed the independent-process native repeat-selection regression against 3cb6a094f2b7eeb6898b839d1f395a887bb8f426. The existing processConsumer helper records each actual child PID and exit after its original stdout/stderr capture; it still runs the same public SDK worker. New refresh/refresh/max-age cases reuse real SQLite across three processes and distinguish the stored manifest proof from current Required metadata. Current resource sharing, detached producer lifetime, request identity, retry, cancellation, admission and budget guards are unchanged. The production cache publication change is owned by current-lifecycle; snapshot serialization and SQLite first-writer behavior are outside both request-engine models. All 21 configurations, independent rule inventories and 19 existing mutation targets remain unchanged. This review and hash update do not claim execution success.",
+  "files": {
+    "packages/core/src/shared-read-coalescing.ts": "2acc82857362bcd982c3f0b5043fa05a251e433656269c594f30e54df832bbfc",
+    "packages/core/src/notion.ts": "39838e1fda51bf7c53344e2f02b2a95adee51f849a791bef437853c9829c1fb1",
+    "packages/core/src/notion-request-scheduler.ts": "4258d1aeded6bb81f7712ea2ba582ec46732e0094ed72d452287d22f229ba03c",
+    "packages/core/src/request-budget.ts": "27585f02e88a525d166f8c132a29c97a22281bc7e3de240af4cd947ba6d35d72",
+    "packages/core/src/notion-write-policy.ts": "9a1ef3007f7a43091c647e80dbe1676c36a3284e3feb0bc33fa6e763271ef5b9",
+    "packages/core/src/request-timeout.ts": "8788c67b243b6bd6197ab06048a4511af54c672f7c73bb13dcc7e5f290d05e41",
+    "packages/core/test/shared-read-coalescing.test.ts": "bfbd951a02bb5a433e043903e31b4f8e413766288a1222d8cfed9879833c98a4",
+    "packages/core/test/notion.test.ts": "0d82988dae92940a4a42de2977b04051a3308bfeb8dc8ac052400f0fe2de3d05",
+    "packages/core/test/request-budget.test.ts": "d9b381f60bea36c7ea3c5bd3a73c5f5ee71dbf80ea9d04759fc81351d9b66e57",
+    "packages/core/test/request-engine-contract.test.ts": "0149f068fe0612eab8adb28b718e7626f08b8f4ce3bf012b8009fca4e3d6f12d",
+    "packages/core/test/notion-request-scheduler.node.test.ts": "185e8f352da47e5b3fa44bb4ffcb06fffdc052fcb685321e9eb61b9ac570f286",
+    "packages/core/test/notion-scheduler-multiprocess.node.test.ts": "c8f0a75d2969d347e4578e768ae797a5947b12672ceae7bf3b8bf28de5ddf7cd",
+    "packages/core/package.json": "ac30318d9593be57d80d803f89f9c7a2cb933b5e690823d10849828223ce59b6",
+    "bun.lock": "6bc8237b714f67b00a08fc7ccf126affc80bbfd1e02c3f647d177cd9584704dc",
+    "node_modules/effect/dist/Cache.js": "435911c3d851939b72c8cd189d78e928cdd6ac861495c5435d3c658e8c39c16c",
+    "packages/core/src/shared-immutable-read.ts": "e99cb0238e19486ad3d56c7063a38df0655183669ac56b92693810bbae924ca9",
+    "packages/core/src/resource-read.ts": "3cbef77d02517e65c100e852370bc5f35e02e2767093f48a72fc8b2645f56920",
+    "packages/cli/src/runtime.ts": "caf2f0f585967759155e88114cf584def84e10933fd5cc937b32bed7d94c3556",
+    "packages/core/test/shared-immutable-read.test.ts": "7f5d980fbfcfb381327b565c48c8928e8c62ac76184bb18f4b0f04b640113658",
+    "packages/core/test/sdk-immutable-read.node.test.ts": "2ca7a5cab9dccbef6bbd105166e574cc9bde55ffcadb632f21ffed274755ad24",
+    "scripts/sdk-source-fixture.mjs": "dcaab43a420efaeba819162affaec8aa3d7ce914bac1c28695a1210e4ec68894",
+    "vitest.config.ts": "af31568d9aee84d21f3ba5622d68ba4706ca49e901e63538fa42db137399d01d",
+    "packages/core/src/shared-current-resource.ts": "6e2ccfacd1bcdc1955c9a6d084e59f95178b4c07b0e3f3ae596ad483f255c4d8",
+    "packages/core/test/shared-current-fixture.ts": "ed69b28c12a69b12dbcc5fbbe6f5dd8015982689734756db4cbcf28ee4f5ccaa",
+    "packages/core/src/request-budget-http.ts": "dec67067ce708d24523f79880471dc96177025b5b2adb3a3876d2dc28b174797",
+    "packages/core/src/shared-current-invocation.ts": "043dc5f1e5f4be6f07c79649e5233bf56bda65b03e303be8b0f03655e9f9a91b",
+    "packages/core/test/shared-current-invocation.test.ts": "5274a5354b814fb877145ff53f82728f564ab9865622089e58d8e2d26be15df2",
+    "packages/cli/src/sdk.ts": "7fbe46c5d8b3103ed6984c210005a09b40f0c130e75155d47275e0ed4df41a3d",
+    "packages/cli/src/operation-runtime.ts": "a9c344a05035502216f5ccb355e63f8dac0d61f7d4ba3a035cccc1087648f538",
+    "packages/cli/test/sdk.test.ts": "71fe42ac3cee2aec463f32a6f32ff8532335326d18e848bcba5e6e73d7d86af3",
+    "packages/core/src/upstream-source.ts": "35a68d3a05aa5d92e92bfada7b82dfcf13f4b058e875e1d5e13690748651f387",
+    "packages/core/test/source-git-runtime.test.ts": "2687b96d0bfba82ed3f5f454454ae50d84e5aad90f4fe694c2b1a136a8f02165",
+    "packages/core/node_modules/@effect/platform-node-shared/src/NodeChildProcessSpawner.ts": "0e1b55d9e2a52d8d05b720098f485f9d427fa41100795c340bf1ffa1406e1ee3",
+    "packages/core/node_modules/@effect/platform-node-shared/src/internal/nodeChildProcessSpawner.ts": "01c3a18cbb62c17952ff1c28e1011ac6fb4bbb04b9be532ad06467032d2093f4",
+    "packages/core/src/shared-source-member-discovery.ts": "0ea680924b3f5e0496c73768c2b2cdbcb940c4aa70c3f9db0ed3e75211004f77",
+    "packages/core/test/shared-source-directory.test.ts": "4b3d600ed4d25112f63d6647a5d0323f74b07b9b5cfedce4437b3124ce385c23"
+  },
+  "models": {
+    "SharedProducer": {
+      "kind": "bounded_transport_and_immutable_ownership",
+      "symbols": [
+        "makeSharedReadCoalescer",
+        "makeSharedResultCoalescer",
+        "ReadKey",
+        "NotionTransport.request requestKey",
+        "makeBoundedImmutableReadCoalescer",
+        "NotionTransport.detachedReadContext",
+        "readCurrentSharedResourceBytes",
+        "readResources ImmutableByteReadPolicy",
+        "runtime IndependentByteReadRuntime",
+        "Cache.EntryImpl.await",
+        "Cache.removeEntry"
+      ],
+      "bounds": "Two concurrent waiters, one shared or two separate producers, one replacement; transport and immutable domains; five contexts; immutable registry limit 1 or 2 with unit-weight producers. The admission bound includes unfinished finalizers, not independent overflow reads. Equality abstracts the complete request or current-resource identity.",
+      "scope": "Transport coalescers are service local. Exact current resource bytes may share across standard Node SDK runtimes in one process only after each caller qualifies its current owner and File descriptor. The producer owns an independent read-only transport Scope and no caller Store. The key includes the real Store root, detached credential/origin/version/scheduling identity, library, current owner/content descriptor and read policy. Custom transports without a detached context and calls with RequestBudget bypass this sharing. Completed values are not retained. Dependency coverage is limited to pending Cache reference counting and current-entry cleanup."
+    },
+    "RequestAdmission": {
+      "kind": "bounded_admission_and_retry",
+      "symbols": [
+        "makeRequestScheduler.schedule",
+        "NotionTransport.request once/execute",
+        "makeRequestBudget check/admit",
+        "withinRequestBudget",
+        "isRetryableNotionWriteRejection"
+      ],
+      "bounds": "One logical request and its retry chain under a supplied operation allowance: two admitted attempts, four clock ticks, short/long queue window and one-tick attempt timer; read and mutating variants. Success is terminal, so this is not a model of a multi-request current writer invocation.",
+      "scope": "Covers cooldown/admission ordering, queue and operation deadlines, attempt count and timeout, permit/lease ownership and rejection versus unknown-write retry. SQL claims are abstract atomic decisions. No proof of SQLite driver/crash behavior, arbitrary clocks, fairness, all quota scopes, cross-machine scheduling, byte arithmetic or current writer lifecycle. The mandatory current invocation wrapper and byte/nesting behavior are implementation regressions listed separately below."
+    }
+  },
+  "cases": [
+    {
+      "model": "SharedProducer",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "cancel.cfg",
+      "expected_broken": ["SurvivingWaiterKeepsProducer"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "release.cfg",
+      "expected_broken": ["LastWaiterReleasesProducer"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "scope.cfg",
+      "expected_broken": ["ScopeIsolated"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "budget.cfg",
+      "expected_broken": ["BudgetIsolated"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "queue.cfg",
+      "expected_broken": ["QueueBudgetIsolated"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "service.cfg",
+      "expected_broken": ["ServiceIsolated"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "cache.cfg",
+      "expected_broken": ["SettledResultNotReused"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "cleanup.cfg",
+      "expected_broken": ["ReplacementSurvivesOldCleanup"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "runtime.cfg",
+      "expected_broken": ["SurvivingWaiterKeepsProducer"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "capacity.cfg",
+      "expected_broken": ["SharedAdmissionBounded"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "cleanup-capacity.cfg",
+      "expected_broken": ["SharedAdmissionBounded"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "cooldown.cfg",
+      "expected_broken": ["CooldownBeforeAdmission"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "queue.cfg",
+      "expected_broken": ["CallerDeadlineRespected"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "operation.cfg",
+      "expected_broken": ["CallerDeadlineRespected"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "attempts.cfg",
+      "expected_broken": ["AttemptBudgetRespected"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "unknown.cfg",
+      "expected_broken": ["UnknownMutationNeverRetried"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "permit.cfg",
+      "expected_broken": ["NoPermitDuringQueueOrBackoff"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "lease.cfg",
+      "expected_broken": ["CancelledQueueReleasesLease"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "timeout.cfg",
+      "expected_broken": ["AttemptDeadlineRespected"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    }
+  ],
+  "dependencies": {
+    "effect": {
+      "version": "4.0.5",
+      "guard_file": "node_modules/effect/dist/Cache.js",
+      "source_hash_field": "files",
+      "scope": "Only the pending Cache reference-counting and current-entry cleanup guards called by makeSharedResultCoalescer and the service-local wrapper; not whole-library verification."
+    },
+    "undici": {
+      "version": "8.13.1",
+      "reviewed_from": "87c5bfcd2cfbcd5ab993307ac760fac802163b0d",
+      "scope": "The sole lock change replaces Undici 8.11.2 with 8.13.1 and its registry integrity. Effect remains 4.0.5; the protected Cache reference-counting/current-entry implementation and both platform child-process files retain their exact reviewed hashes. Every named producer/admission guard, both finite models, all 21 case/rule inventories and all 19 mutation targets are unchanged.",
+      "runtime_boundary": "The standard Notion and detached read paths use NodeHttpClient.layerFetch, which re-exports the fetch-based layer and uses the selected Node runtime. The external Undici backend remains a runtime dependency through @effect/platform-node and is not classified as dev-only. Source lock, independently installed production graph and Node built-in fetch require separate security/runtime evidence.",
+      "proof_limit": "This dependency review establishes the unchanged guard correspondence, not security or transport correctness. Current HTTP/SDK/runtime regressions and the existing finite/guard CI gates must run on the updated inputs; no existing model proves all Undici behavior."
+    }
+  },
+  "implementation_bindings": [
+    {
+      "name": "current_immutable_resource_owner",
+      "files": [
+        "packages/core/src/shared-current-resource.ts",
+        "packages/core/src/resource-read.ts",
+        "packages/cli/src/runtime.ts",
+        "packages/core/test/sdk-immutable-read.node.test.ts",
+        "packages/core/test/shared-current-fixture.ts",
+        "scripts/sdk-source-fixture.mjs"
+      ],
+      "scope": "The current reader supplies exact owner/content and policy identity to the unchanged bounded pending-byte coalescer and executes the producer through detached.run. The standard runtime enables that capability. The public SDK regression uses current resource rows and an owned HTTP service to observe creator cancellation, last waiter cancellation and budget/Store/credential isolation. Its creator-cancellation case opts into a legal empty first Record page with a continuation; the next page must start after the creator runtime closes and still deliver complete bytes. Binding the producer to that closed creator must fail at both survivor-ready assertions with a structured NOTION_SCHEDULER_UNAVAILABLE, or STATE_CONFIG_ERROR whose details identify sqlite_state, SqlError, execute and ERR_INVALID_STATE. Current evidence may encounter the creator's closed SQLite connection before its closed scheduler. Generic configuration errors, missing services, module or syntax failures and timeouts are rejected. Fixture write support is opt-in and unused by these SDK cases; default pagination, hold, abort and authentication controls are unchanged. Resource schema, authoring, attachment correctness and Store publication are not modeled here. An explicitly declared Skills data-source schema also enables its exact metadata GET and empty relation defaults on created Skill pages; SDK lifetime cases do not declare that schema or enable writes."
+    },
+    {
+      "name": "request_transport_identity_and_outcomes",
+      "files": [
+        "packages/core/src/notion.ts",
+        "packages/core/src/notion-request-scheduler.ts",
+        "packages/core/src/request-budget.ts",
+        "packages/core/src/notion-write-policy.ts",
+        "packages/core/src/request-timeout.ts"
+      ],
+      "scope": "Transport identity retains effective queue budget and RequestBudget identity. Multipart partNumber also participates in request identity, but multipart protocol is outside the model. Detached current reads provide their own HTTP service and transport Scope. Scheduler guards and uncertain-write classification implement the named admission rules; first exhaustion remains terminal for this budget. Byte-trigger calculation and immutable limits are exercised by implementation tests rather than TLA state variables."
+    },
+    {
+      "name": "sdk3_root_selection_boundary",
+      "files": [
+        "packages/cli/src/sdk.ts",
+        "packages/cli/src/operation-runtime.ts",
+        "packages/core/src/resource-read.ts",
+        "packages/core/test/sdk-immutable-read.node.test.ts",
+        "scripts/sdk-source-fixture.mjs"
+      ],
+      "scope": "SDK3 rejects retired selectors and compares fixed resource owners to the selected canonical Library root. selectLibrary uses the local Store runtime without constructing HTTP transport/scheduler; remote resolveLibrary is a separate operation. SDK HTTP fixtures declare actual root/children/four DB/DS independently. Existing creator/last-waiter cancellation, isolated environment/budget/Store and original validation checks remain. These selector, physical-root and local-configuration facts are concrete obligations outside the finite producer/admission variables."
+    }
+  ],
+  "unmodeled_bindings": [
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "current_invocation_http_budget",
+      "files": [
+        "packages/core/src/request-budget.ts",
+        "packages/core/src/request-budget-http.ts",
+        "packages/core/src/shared-current-invocation.ts",
+        "packages/core/test/shared-current-invocation.test.ts"
+      ],
+      "symbols": [
+        "withCurrentInvocationBudget",
+        "requestBudgetHttpClient",
+        "makeRequestBudget check/admit/exhaust"
+      ],
+      "scope": "One outer current invocation installs defaults of 1000 HTTP requests, 512 MiB payload bytes and 600000 ms; explicit outer limits may override them. Nested work inherits the same identity, counters and permit and rejects changed limits. Notion requests, provider downloads and multipart payloads share accounting; repeated wrapping does not double charge. Limits are copied and frozen, and first exhaustion prevents later admission, including attention or cleanup. Transport-owned deadlines retain unknown-write semantics. A later resume invocation gets a fresh allowance. The real HTTP regression covers mixed transports, byte exhaustion, current ZIP wire limits, interrupted writer behavior and exact-input resume. Neither TLA module enumerates these byte, wrapper, multipart, multi-step writer, ready/applying/attention, pending-intent or recovery states."
+    },
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "operation_subprocess_environment_and_group_cleanup",
+      "files": [
+        "packages/cli/src/runtime.ts",
+        "packages/core/test/sdk-immutable-read.node.test.ts",
+        "packages/cli/src/sdk.ts",
+        "packages/cli/src/operation-runtime.ts",
+        "packages/cli/test/sdk.test.ts",
+        "packages/core/src/upstream-source.ts",
+        "packages/core/test/source-git-runtime.test.ts",
+        "packages/core/node_modules/@effect/platform-node-shared/src/NodeChildProcessSpawner.ts",
+        "packages/core/node_modules/@effect/platform-node-shared/src/internal/nodeChildProcessSpawner.ts"
+      ],
+      "symbols": [
+        "nodeRuntime operation-local ChildProcessSpawner",
+        "runOperation/runRuntimeOperation environment snapshot",
+        "runSourceGit",
+        "buildSpawnOptions",
+        "terminateProcessGroup",
+        "awaitProcessExit"
+      ],
+      "scope": "SDK options.env is a complete operation snapshot used by ConfigProvider and inherited child processes; explicit command environments retain their policy and safe Git scrub wins. Concurrent callers do not mutate process.env. Public consume wiring is exercised against owned loopback metadata and actual Git shims, with no real origin fetch. POSIX cancellation owns a process group and waits for leader and descendants; SIGTERM-resistant descendants are force-killed after the existing two-second bound. The frozen platform implementation is bound by exact bytes, not claimed as fully verified. Bun and Node process tests are distinct from external Git/auth/network performance. RequestEngine finite variables do not model environment maps, OS groups, signals, Git wire bytes, credential waits, Source cold success, or ordinary Pi deadlines. The real Git loopback HTTP regression also checks that removing the presence-tested GIT_CURL_VERBOSE variable suppresses raw response-header diagnostics even when enabled in the caller environment; ordinary HTTP/Git failures retain their original classification. This output/environment property is not a finite-model claim."
+    },
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "public_sdk_repeated_native_current_selection",
+      "files": ["packages/core/test/sdk-immutable-read.node.test.ts"],
+      "scope": "The public SDK regression uses refresh, refresh and max-age in three actual Node child processes sharing one real SQLite Store. It records child PID/exit, preserves the second real validation time and exact selected body/binding, requires zero warm HTTP and retains absent unselected resource bytes. A related-record metadata change must remain current while the immutable manifest stays fixed. The cache publication implementation and real first-writer race belong to current-lifecycle correspondence; neither SharedProducer nor RequestAdmission models manifest fields, SQLite atomic publication or cross-process cache reuse."
+    },
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "source_directory_shared_parent_deadline",
+      "files": [
+        "packages/core/src/upstream-source.ts",
+        "packages/core/src/shared-source-member-discovery.ts",
+        "packages/cli/src/sdk.ts",
+        "packages/core/test/shared-source-directory.test.ts"
+      ],
+      "symbols": [
+        "discoverSourceMembers withCurrentInvocationBudget",
+        "discoverRegisteredSourceMembers pre-publication check",
+        "discoverSourceDirectory caller-owned deadline",
+        "openSourceGitTree scoped acquisition"
+      ],
+      "scope": "The sole production SDK Source-directory entry installs the existing whole-invocation RequestBudget before the first Library read. Its default allowance remains 1000 HTTP requests, 512 MiB payload bytes and 600000 ms; an enclosing caller cancellation or shorter Pi preparation budget remains effective. Core directory fibers share this same service and do not each receive a new ten-minute allowance. The pure core export requires its caller to own the overall deadline. Provider and Notion paths retain existing admission and process-group cleanup. RequestBudget checks before candidate-cache read and publication prevent a caught provider exhaustion from becoming a completed partial cache observation. A real controlled HTTP case holds four Git fetches under one three-second parent budget, verifies the other two Sources never start, observes each original process handle termination and an empty final process-group inventory, and requires REQUEST_BUDGET_EXHAUSTED with no candidate cache or semantic write. Signal termination is recorded as the actual platform result, not fabricated as exit zero. These are concrete implementation regressions; the existing RequestAdmission and SharedProducer models do not model Git process groups, wire/object bytes, directory schemas, SQLite publication or wall-clock deadlines."
+    }
+  ],
+  "maintenance": {
+    "owner_skill": ".cursor/skills/verify-ntn-skills/features/request-engine-formal.md",
+    "runner": "scripts/verify-formal.mjs --suite request-engine",
+    "lock": "verification/models/request-engine/tool-lock.json",
+    "routing": "Protected source/model/config/coverage/runner/Skill changes select --suite request-engine. A reviewed local --model slice runs every configuration for that model; current-lifecycle is independently owned.",
+    "model_semantics": "Review every declared rule, finite bound and environment/fairness assumption; keep exact expected negatives and complete rule inventories.",
+    "implementation_semantics": "Trace named functions and actual callers before changing a protected hash. Run the corresponding behavioral regressions and guard mutations; a mutation targeting a retired caller is not evidence. Hash-only refresh cannot satisfy correspondence review.",
+    "unmodeled_changes": "Use the focused implementation regressions for bytes, wrappers and current writer behavior. A passing bounded model does not prove these unmodeled semantics.",
+    "rule_inventory": "cases.expected_rules is an independently reviewed inventory. Do not regenerate it automatically from changed cfg files.",
+    "outputs": "Use a new absolute output directory per run. Model results, raw traces and generated views belong to that run; no checked-in historical result or private evidence path is required."
+  },
+  "library_root_review": {
+    "reviewed_from": "5a3f36f",
+    "reviewed_through": "3361718496e3b0f4a3886764cb28ef88079703c4",
+    "scope": "Canonical root UUID selection, SDK3 library options, independently declared physical root/four-DB/four-DS fixtures, complete root readback and full frozen Library bindings. Reviewed the actual 9f9a641 restart checks, 419123f metadata classification, 53240db projection receipts, 53fe6b7 shared durable import address and the subsequent formatting-only changes.",
+    "preserved": "No existing finite model, candidate/defect/witness configuration, independent expected_rules or expected_broken inventory is weakened. Request admission, current-read final fences, MCP connection/grant epochs and cancellation remain the original owner contracts.",
+    "evidence_boundary": "Source hashes bind reviewed bytes; they are not passing run receipts, remote CAS, cross-machine exclusion, Notion indexing proof or implementation refinement. Real root children stay actual Notion body observations; metadata regressions allow only the exact root page/children and declared schema reads, while Skill/File body reads remain distinct."
+  },
+  "candidate_snapshot_review": {
+    "baseline": "6727bea",
+    "issue": "AH-1324",
+    "reviewed_files": ["packages/cli/src/sdk.ts"],
+    "scope": "Local candidate discovery reuses Store, credential identity and Library selection without constructing Notion transport or scheduler. Catalog validation moved to one shared implementation. SQLite catalog publication retains complete discovery and precise rejection facts under the existing generation and retirement fences. Current consumption, fixed byte access, request scheduler, MCP search and reference-entry guards are unchanged. Existing finite models and mutation inventories are unchanged; new candidate facts are checked by public SDK and real SQLite regressions, not asserted as finite-model coverage."
+  },
+  "smart_cache_boundary_review": {
+    "issue": "AH-1330",
+    "implementation_review_base": "a22aa1cd5506d393df6ef4d37a6aeb7c575453ba",
+    "files": [
+      "packages/core/src/notion.ts",
+      "packages/core/test/notion.test.ts",
+      "packages/cli/src/runtime.ts"
+    ],
+    "scope": "Reviewed the AH-1330/1331 transport and runtime delta. The Notion evidence hook now executes inside the existing coalescer producer, so joining waiters do not allocate a new observation generation or relabel an old response. The raw response retains its original attempt; complete collection readers inherit the older attempt. The actual NotionTransport regression asserts one HTTP producer, one observation, two allocated attempts including a later collection, and collection reuse of the original producer generation. Request keys, budget/deadline checks, retry policy, cancellation ownership and the existing 19 guard mutations remain unchanged. nodeRuntime captures the same cwd/environment passed to its Git spawner and adds SourceRefAccessContext; this is a routing context, not proof about opaque credential helpers. Current-evidence and Git persistence belong to current-lifecycle. No request-engine finite model, case or rule inventory changes."
+  },
+  "smart_cache_ci_boundary_review": {
+    "reviewed_from": "6dcf43162b42d000c395805b035cd902df981e9a",
+    "issue": "AH-1330",
+    "files": ["packages/core/src/notion.ts"],
+    "scope": "Actual public SDK cancellation exposed a detached immutable transport reusing its creator MemoMap and closed Store. Effect.provide(runtime, { local: true }) rebuilds the detached transport and an outer Context.omit(Store) prevents optional evidence from borrowing that caller lifetime. The detached request remains read-only and retains its credential/origin/scheduler identity, configured limits and request guards. Ordinary current HTTP producer attempt capture and shared-response ordering are unchanged. Existing two-public-runtime cancellation and complete SDK regressions exercise this lifetime boundary; the existing immutable-runtime-scope mutation remains its separately scoped production-entry counterexample, not a claim to remove each MemoMap fix independently.",
+    "fixtures": "The existing Source consumer fixture now emits real Page edit times, so the T14 controlled HTTP scenarios can supply complete current evidence. No request-engine model, independent expected rule inventory, timeout/cancellation contract or 19-case mutation inventory changes.",
+    "evidence_boundary": "The retained smart-formal-final-01 result proves 61 configurations, 29 actual mutations and 15 SQLite/graph tests for the earlier 6dcf4316 candidate only; its separate RequestEngine failure remains recorded. Reviewed repaired bytes and focused implementation regressions do not relabel that candidate or replace the required exact-new-head CI model, guard and implementation results. Models and all complete expected-rule inventories are unchanged."
+  },
+  "source_materialization_boundary_review": {
+    "reviewed_base": "31f30db8f960cc4f36d1e02f8e279d641b660718",
+    "reviewed_changed_files": [
+      "packages/cli/src/sdk.ts",
+      "packages/core/src/upstream-source.ts",
+      "scripts/sdk-source-fixture.mjs"
+    ],
+    "result": "correspondence_only; actual run receipts are separate"
+  },
+  "ci_dispatch_recovery_review": {
+    "reviewed_base": "26e84c7b877bfebea6b5dd4d77406fe9b023fb34",
+    "reviewed_files": ["scripts/sdk-source-fixture.mjs"],
+    "correspondence": "The shared HTTP fixture adds only staging of exact selected manager runtime executables into a task-owned directory. It checks original/copy SHA, owner, mode and non-overwrite, with separate tests of version and Git exec-path. No request scheduling, retry, budget, HTTP interpretation, model bound or expected rule changed.",
+    "result": "correspondence_only; source hashes identify reviewed bytes, not a model or runtime pass"
+  },
+  "ci_fixture_contract_review": {
+    "reviewed_base": "9582fcd9a4a2a4db4cd854f9cfb982b32637990e",
+    "correspondence": "Reviewed the exact CI and immutable actual-Pi counterexamples. A Members target remains enabled with absent Content/Current State, so the ordinary relation contract admits metadata without eagerly reading or materializing its body. All five initial states are checked through production Source, current-owner, Members and Requires parsers; the disabled Members variant retains its existing strict refusal. The shared 429 test gives two real eligibility passes room to join before Retry-After, asserts the original held request is still open and then completes with status 200, and measures each caller separately from its original public-call start. Both independent deadlines must expire before the 20-second retry delay, expose no files and publish no object; subsequent applying rejection and revision selection remain unchanged. No production guard, finite model, state bound, expected rule or mutation target changed. The outer test envelope is 45 seconds because it also observes the real shared 20-second cooldown and subsequent independent revision reads; the two inner 10-second caller deadlines remain independently asserted.",
+    "result": "correspondence_only; reviewed source hashes are not a model, actual-Pi or runtime pass",
+    "reviewed_files": [
+      "packages/core/test/sdk-immutable-read.node.test.ts",
+      "scripts/sdk-source-fixture.mjs"
+    ]
+  },
+  "materialization_empty_property_fixture_review": {
+    "reviewed_base": "c05e1ac93a06d3b39d1c22bafa5c02c98c6ddc35",
+    "files": ["scripts/sdk-source-fixture.mjs"],
+    "correspondence": "Reviewed the shared Source HTTP fixture adjustment from absent Content/Current State properties to registered empty rich_text/select values. This models real old rows under the registered current schema; independent missing-property rejection remains tested. HTTP transport, request controls, retry/unknown semantics, model states and mutation guards are unchanged. The Source writer adoption/no-op repair is covered by its concrete regression and the current-lifecycle correspondence; it is not a RequestEngine property.",
+    "result": "correspondence_only; source pin is not a runtime or model pass"
+  },
+  "native_snapshot_winner_review": {
+    "reviewed_base": "3cb6a094f2b7eeb6898b839d1f395a887bb8f426",
+    "reviewed_files": ["packages/core/test/sdk-immutable-read.node.test.ts"],
+    "boundary": "Reviewed the independent-process native repeat-selection regression against 3cb6a094f2b7eeb6898b839d1f395a887bb8f426. The existing processConsumer helper records each actual child PID and exit after its original stdout/stderr capture; it still runs the same public SDK worker. New refresh/refresh/max-age cases reuse real SQLite across three processes and distinguish the stored manifest proof from current Required metadata. Current resource sharing, detached producer lifetime, request identity, retry, cancellation, admission and budget guards are unchanged. The production cache publication change is owned by current-lifecycle; snapshot serialization and SQLite first-writer behavior are outside both request-engine models. All 21 configurations, independent rule inventories and 19 existing mutation targets remain unchanged. This review and hash update do not claim execution success.",
+    "result": "correspondence_only; final-head implementation, model and complete existing mutation CI gates remain independently required"
+  },
+  "source_metadata_directory_review": {
+    "base_commit": "4f1af585695c26612c15f0f3ceaf5c41afbe4d65",
+    "scope": "The sole production SDK Source-directory entry installs the existing whole-invocation RequestBudget before the first Library read. Its default allowance remains 1000 HTTP requests, 512 MiB payload bytes and 600000 ms; an enclosing caller cancellation or shorter Pi preparation budget remains effective. Core directory fibers share this same service and do not each receive a new ten-minute allowance. The pure core export requires its caller to own the overall deadline. Provider and Notion paths retain existing admission and process-group cleanup. RequestBudget checks before candidate-cache read and publication prevent a caught provider exhaustion from becoming a completed partial cache observation. A real controlled HTTP case holds four Git fetches under one three-second parent budget, verifies the other two Sources never start, observes each original process handle termination and an empty final process-group inventory, and requires REQUEST_BUDGET_EXHAUSTED with no candidate cache or semantic write. Signal termination is recorded as the actual platform result, not fabricated as exit zero. These are concrete implementation regressions; the existing RequestAdmission and SharedProducer models do not model Git process groups, wire/object bytes, directory schemas, SQLite publication or wall-clock deadlines.",
+    "models_cases_rules_and_mutation_targets": "unchanged",
+    "proof_boundary": "Source hashes record reviewed implementation inputs. Model and mutation run results are recorded separately; real remote completeness and ordinary Pi delivery require separate accepted-package execution."
+  },
+  "git_curl_diagnostics_review": {
+    "reviewed_base": "b1413cb1304beb051811f71a6e82b13399b4d5ea",
+    "reviewed_files": [
+      "packages/core/src/upstream-source.ts",
+      "packages/core/test/source-git-runtime.test.ts"
+    ],
+    "boundary": "presence-tested GIT_CURL_VERBOSE is removed; Git authority, requests, deadlines, cancellation and directory completeness are unchanged",
+    "proof_scope": "real Git plus owned HTTP regression; model definitions, case/rule inventories and mutation guards unchanged"
+  },
+  "source_member_admission_review": {
+    "base_commit": "ffa49e8e609a73ae9d70f40394ebf8199cf01086",
+    "reviewed_files": [
+      "packages/core/src/upstream-source.ts",
+      "packages/core/src/shared-source-member-discovery.ts",
+      "packages/core/test/shared-source-directory.test.ts"
+    ],
+    "scope": "Member-specific capability facts and candidate cache generations do not change request coalescing, parent budgets or process cancellation. SourceMemberAdmission belongs to current-lifecycle; this suite retains its existing models, cases, rules and mutations. Real Git metadata and shared deadline behavior are still tested at the directory boundary."
+  }
+}

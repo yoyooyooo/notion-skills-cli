@@ -1,7 +1,7 @@
+import { currentLibrary } from "./shared-current-fixture.ts"
 import { expect, test } from "@effect/vitest"
 import { Effect } from "effect"
 import { spawn } from "node:child_process"
-import { createHash } from "node:crypto"
 import { once } from "node:events"
 import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -10,43 +10,67 @@ import { trashPath } from "../src/local-locks.ts"
 
 const core = new URL("../src/", import.meta.url).pathname
 const scope = "a".repeat(64)
-const keys = {
-  observations: `cache/shared-file-observations/${"b".repeat(64)}/00000000000000000001.json`,
-  page: `cache/shared-page-identities/${scope}/00000000-0000-4000-8000-000000000001.json`,
-  github: `cache/shared-github-blobs/${"c".repeat(40)}.json`,
-  retainedManifest: `cache/shared-history-manifests/${scope}/s_${"c".repeat(64)}.json`,
-  currentTree: `cache/shared-current-tree-validation/${scope}/s_${"d".repeat(64)}.json`,
-  derivedGraph: `cache/shared-derived-graphs/${scope}/${"d".repeat(64)}/${"e".repeat(64)}.json`,
-  observationPending: `operations/shared-observation-pending/${"d".repeat(64)}/${"e".repeat(64)}.json`,
-  historyPending: `operations/shared-snapshot-history/${scope}/snapshot-${"f".repeat(64)}.json`,
-  graphPending: `operations/shared-graph-history/${scope}/graph-${"f".repeat(64)}/plan.json`,
-  graphComplete: `operations/shared-graph-history/${scope}/graph-${"f".repeat(64)}/complete.json`,
-  bodyCurrentAcceptance: `operations/shared-body-current-acceptance/${scope}/accept-current-${"f".repeat(64)}/plan.json`,
-  sourceReceipt: `operations/shared-sources/${scope}/source-receipt-${"b".repeat(64)}.json`,
-  sourceSelection: `operations/shared-sources/${scope}/source-selection-${"c".repeat(64)}.json`,
-  sourceDefinition: `operations/shared-sources/${scope}/source-op-${"a".repeat(64)}.json`,
-  sourceRegistration: `operations/shared-source-registration/${scope}/source-plan-${"7".repeat(64)}.json`,
-  nativeCreate: `operations/shared-native-create/${scope}/skill-create-${"8".repeat(64)}.json`,
-  nativeOwnership: `operations/shared-native-create-owned/${scope}/skill-create-${"8".repeat(64)}.json`,
-  relationSchema: `operations/shared-relation-schema/${scope}/relations-schema-${"8".repeat(64)}-schema.json`,
-  relationDescriptor: `operations/shared-relation-schema/${scope}/relations-schema-${"8".repeat(64)}-descriptor.json`,
-  nativeArchive: `operations/owned-page-archive/${scope}/skill-create-${"8".repeat(64)}/00000000-0000-4000-8000-000000000001/00000000000000000000.json`,
-  legacyArchive: `operations/owned-page-archive/${scope}/p_owned-archive-test/00000000-0000-4000-8000-000000000001/00000000000000000000.json`,
-  nativeRecovery: `operations/shared-native-recovery/${scope}/skill-create-${"8".repeat(64)}.json`,
-  recoveryResponse: `operations/shared-native-recovery-responses/create-recovery-${"9".repeat(64)}/${"e".repeat(64)}.json`,
-  nativeContinuation: `operations/shared-native-continuation/${scope}/skill-create-${"8".repeat(64)}.json`,
-  continuationResponse: `operations/shared-native-recovery-responses/create-continuation-${"9".repeat(64)}/${"e".repeat(64)}.json`,
-  profilePending: `operations/shared-profile-pending/${scope}/${"b".repeat(64)}/profile-${"c".repeat(64)}.json`,
-}
+const pendingKey = `operations/current-write-pending/${scope}/pending.json`
 const pendingPayload = {
-  version: 1,
+  completion: "ready",
+  owner_page_id: null,
+  version: 2,
+  library: currentLibrary,
   scope,
-  operation_id: "original-operation",
-  plan: { body: "original bytes\r\n", downloaded_at: 1234 },
+  library_id: currentLibrary.library_id,
+  record_id: "operation-current-" + "c".repeat(64),
+  intent: {
+    operation_id: "current-write",
+    owner: { kind: "skill", id: "sqlite-current" },
+    input_sha256: "d".repeat(64),
+  },
+  lifecycle: { phase: "active", record_page_id: "00000000-0000-4000-8000-000000000001" },
+  not_dispatched: { key: "append:0", request_sha256: "e".repeat(64), replay: "never" },
 }
 const restrictedHash = "9".repeat(64)
 const restrictionKey = `content-restrictions/local/${restrictedHash}.json`
 const restriction = { version: 1, sha256: restrictedHash, reason: "local_resource" }
+
+const syncKey = `operations/current-source-sync/${scope}/pending.json`
+const syncInput = {
+  version: 2,
+  library: currentLibrary,
+  kind: "current_source_sync",
+  scope,
+  manager_id: "mini",
+  execution_id: "package-a",
+  phase: "content",
+  input: {
+    operation_id: "sync-a",
+    declaration: {
+      version: 1,
+      definition: {
+        version: 1,
+        source_id: "sqlite-sync",
+        name: "SQLite sync",
+        description: "Frozen source synchronization",
+        enabled: true,
+        policy: "manual",
+        adapter: { type: "git", url: "https://github.com/example/skills", ref: "refs/heads/main" },
+        selection: { roots: ["skills"], include: [], exclude: [], mapping: {} },
+        options: {},
+      },
+      contributions: [
+        { member_key: "skills/one", skill_id: "one", mount_path: "", mapping: {}, exclude: [] },
+        { member_key: "skills/two", skill_id: "two", mount_path: "", mapping: {}, exclude: [] },
+      ],
+    },
+    configuration_sha256: "b".repeat(64),
+    resolved_commit: "c".repeat(40),
+    revision: "d".repeat(64),
+    source_page_id: "00000000-0000-4000-8000-000000000001",
+    baseline_revision: "e".repeat(64),
+    baseline_configuration_sha256: "f".repeat(64),
+    affected_skill_ids: ["one", "two"],
+    retirements: [],
+    projection: "markdown",
+  },
+}
 
 function processProgram(root: string, body: string) {
   return `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
@@ -78,68 +102,6 @@ async function runProgram(program: string) {
 
 const child = (root: string, body: string) => runProgram(processProgram(root, body))
 
-function publicArchiveProgram(root: string, initiallyArchived: boolean, loseResponse = false) {
-  return `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
-import {ConfigProvider,Effect,Layer} from ${JSON.stringify(import.meta.resolve("effect"))};
-import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
-import {Notion} from ${JSON.stringify(core + "notion.ts")};
-import {authScope} from ${JSON.stringify(core + "catalog.ts")};
-import {archiveOwnedPage} from ${JSON.stringify(core + "owned-page-archive.ts")};
-import {fail} from ${JSON.stringify(core + "model.ts")};
-process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};
-process.env.NTN_SKILLS_CONFIG_HOME=${JSON.stringify(root + "-config")};
-process.env.NTN_SKILLS_CACHE_HOME=${JSON.stringify(root + "-cache")};
-const page='00000000-0000-4000-8000-000000000001',operation='skill-create-'+'8'.repeat(64);
-let archived=${initiallyArchived},patches=0;
-const api=Layer.succeed(Notion,{version:Effect.succeed('2026-03-11'),credentialIdentity:Effect.succeed('controlled-sqlite-archive'),request:(path,body,options)=>Effect.gen(function*(){
-  if(path==='v1/users/me')return {object:'user',id:'controlled-sqlite-user'};
-  if(path!=='v1/pages/'+page)return yield* Effect.fail(fail('NOT_FOUND','Unexpected controlled path'));
-  if(options?.method==='PATCH'){patches++;if(JSON.stringify(body)!=='{"in_trash":true}')throw new Error('Unexpected archive body');if(${loseResponse})return yield* Effect.fail(fail('WRITE_OUTCOME_UNKNOWN','Controlled lost response',{phase:'outcome_unknown'}));archived=true;}
-  return {id:page,in_trash:archived};
-})});
-Effect.runPromise(Effect.gen(function*(){
-  const store=yield* Store,scope=yield* authScope;
-  yield* store.writeJson('operations/shared-native-create-owned/'+scope+'/'+operation+'.json',{version:1,scope,operation_id:operation,library_id:'library-owned',skill_id:'skill-owned',skill_page_id:page,coverage:'created_native_content_pages',created_page_ids:[page],created_pages:[{page_id:page,kind:'skill',database_id:page,data_source_id:page,file_id:'file-main'}]});
-  const result=yield* archiveOwnedPage(page,operation).pipe(Effect.result);
-  console.log(JSON.stringify({patches,result:result._tag==='Success'?result.success:{code:result.failure.code},events:(yield* store.listKeys('operations/owned-page-archive')).length}));
-}).pipe(Effect.provide(Layer.mergeAll(api,StoreLive.pipe(Layer.provideMerge(NodeServices.layer)))),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
-}
-
-test("public owned archive persists each immutable transition and reopens without another PATCH", async () => {
-  await isolated(async (root) => {
-    const first = await runProgram(publicArchiveProgram(root, false))
-    expect(first.exit, first.stderr).toBe(0)
-    expect(JSON.parse(first.stdout)).toMatchObject({
-      patches: 1,
-      result: { archived: true, verified: true, reused: false },
-      events: 3,
-    })
-    const reopened = await runProgram(publicArchiveProgram(root, true))
-    expect(reopened.exit, reopened.stderr).toBe(0)
-    expect(JSON.parse(reopened.stdout)).toMatchObject({
-      patches: 0,
-      result: { archived: true, verified: true, reused: true },
-      events: 3,
-    })
-  })
-}, 30_000)
-
-test("a lost archive response stays fenced across real SQLite restarts until readback confirms it", async () => {
-  await isolated(async (root) => {
-    for (const [index, confirmed] of [false, false, true].entries()) {
-      const result = await runProgram(publicArchiveProgram(root, confirmed, true))
-      expect(result.exit, result.stderr).toBe(0)
-      expect(JSON.parse(result.stdout)).toMatchObject({
-        patches: index === 0 ? 1 : 0,
-        result: confirmed
-          ? { archived: true, verified: true, reused: true }
-          : { code: "ARCHIVE_OUTCOME_UNKNOWN" },
-        events: confirmed ? 3 : 2,
-      })
-    }
-  })
-}, 30_000)
-
 async function isolated(action: (root: string) => Promise<void>) {
   const directory = await mkdtemp(join(tmpdir(), "ntn-shared-sqlite-"))
   try {
@@ -149,175 +111,309 @@ async function isolated(action: (root: string) => Promise<void>) {
   }
 }
 
-function currentTreeProgram(root: string, publish: boolean) {
-  const files = [
-    { path: "SKILL.md", text: "# Receipt\n[Guide](references/guide.md)\n" },
-    { path: "references/guide.md", text: "Guide\n" },
-  ]
+test("the current native slot fences rejected cold reads and pre-clear completions while accepting later recovery", async () => {
+  const domain = "current-native-bodies"
+  await isolated(async (root) => {
+    const key = `cache/${domain}/${"7".repeat(64)}/latest.json`
+    const identity = "skill://slot-skill?library=c1349788-03f1-5a64-975e-9d26e4078f36"
+    const payload = {
+      version: 1,
+      scope,
+      library_id: "c1349788-03f1-5a64-975e-9d26e4078f36",
+      skill_id: "slot-skill",
+      skill_page_id: "00000000-0000-4000-8000-000000000001",
+      files: Array.from({ length: 80 }, (_, index) => ({
+        file_id: `file-${index}`,
+        page_id: `00000000-0000-4000-8000-${(index + 1).toString(16).padStart(12, "0")}`,
+        path: index === 0 ? "SKILL.md" : `references/${index}.md`,
+        descriptor: JSON.stringify({ kind: "native", mode: "100644", frontmatter: "" }),
+        last_edited_time: "2026-11-18T00:00:00.000Z",
+        body_sha256: "a".repeat(64),
+        body_verified_at: 1000,
+      })),
+    }
+    const write = (generation: number) =>
+      `yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation:${generation}})`
+    const initialize = await child(
+      root,
+      `for(let i=0;i<3;i++)yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation:2,files:[]})`,
+    )
+    expect(initialize.exit, initialize.stderr).toBe(0)
+    // The first completed request was denied before any body cache existed. An
+    // earlier successful request may finish later, but cannot restore its bytes
+    // as a current native observation. A new successful generation can recover.
+    const delayed = await child(root, write(1))
+    expect(delayed.exit, delayed.stderr).toBe(0)
+    const denied = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})))`,
+    )
+    expect(denied.exit, denied.stderr).toBe(0)
+    expect(JSON.parse(denied.stdout)).toEqual({ ...payload, generation: 2, files: [] })
+    const contenders = await Promise.all([3, 1].map((generation) => child(root, write(generation))))
+    for (const result of contenders) expect(result.exit, result.stderr).toBe(0)
+    const newest = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})))`,
+    )
+    expect(newest.exit, newest.stderr).toBe(0)
+    expect(JSON.parse(newest.stdout)).toEqual({ ...payload, generation: 3 })
+    const conflict = await child(
+      root,
+      `yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation:3,files:${JSON.stringify(payload.files.map((file, index) => (index === 0 ? { ...file, body_sha256: "b".repeat(64) } : file)))}})`,
+    )
+    expect(conflict.exit).not.toBe(0)
+    expect(conflict.stderr).toContain("different content")
+    const cleared = await child(
+      root,
+      `yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});yield* state.retire([${JSON.stringify(key)}]);console.log(JSON.stringify({active:yield* state.list(${JSON.stringify(`cache/${domain}`)})}))`,
+    )
+    expect(cleared.exit, cleared.stderr).toBe(0)
+    expect(JSON.parse(cleared.stdout).active).toEqual([])
+    const late = await child(root, write(4))
+    expect(late.exit).not.toBe(0)
+    expect(late.stderr).toContain("retired before publication")
+    const batch = (count: number) =>
+      child(
+        root,
+        `for(let i=0;i<${count};i++){const generation=yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation})}yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify({rows:yield* sql\`SELECT count(*) AS count,sum(length(payload)) AS bytes FROM shared_local_records\`,pages:yield* sql\`PRAGMA page_count\`}))}))`,
+      )
+    const first = await batch(20),
+      repeated = await batch(60)
+    expect(first.exit, first.stderr).toBe(0)
+    expect(repeated.exit, repeated.stderr).toBe(0)
+    const initial = JSON.parse(first.stdout),
+      final = JSON.parse(repeated.stdout)
+    expect(initial.rows[0].count).toBe(1)
+    expect(final).toEqual(initial)
+  })
+}, 30_000)
+
+test("a newer native observation can follow a rebuilt page without changing logical owner or accepting late old-page publication", async () => {
+  await isolated(async (root) => {
+    const key = `cache/current-native-bodies/${"8".repeat(64)}/latest.json`
+    const identity = "skill://rebuilt-skill?library=0f655052-64a6-5cce-8087-a8a8e3f83a95"
+    const old = {
+      version: 1,
+      scope,
+      library_id: "0f655052-64a6-5cce-8087-a8a8e3f83a95",
+      skill_id: "rebuilt-skill",
+      skill_page_id: "00000000-0000-4000-8000-000000000001",
+      files: [],
+    }
+    const rebuilt = { ...old, skill_page_id: "00000000-0000-4000-8000-000000000002" }
+    const write = (value: typeof old, generation: number) =>
+      `yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(value)},generation:${generation}})`
+    const seeded = await child(
+      root,
+      `for(let i=0;i<3;i++)yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});${write(old, 1)};${write(rebuilt, 3)}`,
+    )
+    expect(seeded.exit, seeded.stderr).toBe(0)
+    const contenders = await Promise.all([
+      child(root, write(old, 2)),
+      child(root, write(rebuilt, 3)),
+    ])
+    for (const result of contenders) expect(result.exit, result.stderr).toBe(0)
+    const sameGeneration = await child(root, write(old, 3))
+    expect(sameGeneration.exit).not.toBe(0)
+    expect(sameGeneration.stderr).toContain("different content")
+    for (const field of ["scope", "library_id", "skill_id"] as const) {
+      const value =
+        field === "library_id" ? "77e861a8-6432-51ac-a09e-90a2ab20a36c" : "foreign-owner"
+      const foreign = await child(root, write({ ...rebuilt, [field]: value }, 4))
+      expect(foreign.exit).not.toBe(0)
+      expect(foreign.stderr).toContain("cannot change its owner")
+    }
+    const current = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})))`,
+    )
+    expect(current.exit, current.stderr).toBe(0)
+    expect(JSON.parse(current.stdout)).toEqual({ ...rebuilt, generation: 3 })
+  })
+}, 30_000)
+
+function currentPublicationProgram(root: string) {
   return `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
-import {ConfigProvider,Effect,Layer,Schema} from ${JSON.stringify(import.meta.resolve("effect"))};
-import {Store,StoreLive,sha256} from ${JSON.stringify(core + "store.ts")};
+import {ConfigProvider,Effect,FileSystem,Layer,Schema} from ${JSON.stringify(import.meta.resolve("effect"))};
+import {HttpClient} from ${JSON.stringify(import.meta.resolve("effect/http"))};
+import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
 import {Notion} from ${JSON.stringify(core + "notion.ts")};
-import {SnapshotSchema} from ${JSON.stringify(core + "model.ts")};
-import {cachedRemoteObservation,clearCache,publishSnapshotObservation,validateCachedSharedCurrentTree} from ${JSON.stringify(core + "cache.ts")};
+import {SnapshotSchema,decode} from ${JSON.stringify(core + "model.ts")};
+import {openSharedSnapshot} from ${JSON.stringify(core + "shared-snapshot.ts")};
+import {readSkill,targetSnapshot} from ${JSON.stringify(core + "snapshot.ts")};
+import {fileRef,parseTarget} from ${JSON.stringify(core + "ref.ts")};
+import {clearCache,recordScope} from ${JSON.stringify(core + "cache.ts")};
+import {withNotionChangeEvidence} from ${JSON.stringify(core + "current-evidence.ts")};
+import {currentSnapshotFixture,currentLibrary,currentScope,currentSkillPage} from ${JSON.stringify(new URL("./shared-current-fixture.ts", import.meta.url).pathname)};
 process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};
 process.env.NTN_SKILLS_CONFIG_HOME=${JSON.stringify(root + "-config")};
 process.env.NTN_SKILLS_CACHE_HOME=${JSON.stringify(root + "-cache")};
-const api=Layer.succeed(Notion,{version:Effect.succeed('controlled'),credentialIdentity:Effect.succeed('receipt-test'),request:()=>Effect.die(new Error('Unexpected network'))});
+const fixture=currentSnapshotFixture({fileCount:1});
+fixture.bodies.set(currentSkillPage,'# Current main\\n[Child](https://app.notion.com/p/'+fixture.files[0].id.replaceAll('-','')+')\\n');
+const seed=decode(SnapshotSchema,await fixture.open());
+fixture.main.properties.Name.title[0].plain_text='Concurrent display';
+fixture.main.properties.Description.rich_text[0].plain_text='New current directory label.';
+fixture.main.properties.Description.rich_text[0].text.content='New current directory label.';
+fixture.main.properties['Default Context'].checkbox=true;
+const renamed=decode(SnapshotSchema,await fixture.open());
+const rawApi=await fixture.run(Notion),http=await fixture.run(HttpClient.HttpClient);
+const api={...rawApi,request:(path,body,options)=>Effect.flatMap(rawApi.credentialIdentity,credential=>withNotionChangeEvidence(credential,rawApi.apiOrigin??'https://api.notion.com',path,rawApi.request(path,body,options)))};
+const services=Layer.mergeAll(NodeServices.layer,Layer.succeed(Notion,api),Layer.succeed(HttpClient.HttpClient,http),StoreLive.pipe(Layer.provideMerge(NodeServices.layer)));
 Effect.runPromise(Effect.gen(function*(){
-  const store=yield* Store,scope=${JSON.stringify(scope)},record={id:'shared_skill:receipt-library:receipt-skill',kind:'skill',locator:{type:'shared_skill',page_id:'00000000-0000-4000-8000-000000000001',database_id:'00000000-0000-4000-8000-000000000002',data_source_id:'00000000-0000-4000-8000-000000000003',library_id:'receipt-library',skill_id:'receipt-skill'},name:'Receipt Skill',alias:'receipt-skill',description:'Controlled complete tree',default_context:false,enabled:true,entrypoint:'SKILL.md',ref:'skill://shared_skill%3Areceipt-library%3Areceipt-skill/SKILL.md'};
-  const version=yield* sha256('current-tree-receipt-sqlite'),id='s_'+(yield* sha256(JSON.stringify([scope,record.id,version]))),key='cache/shared-current-tree-validation/'+scope+'/'+id+'.json';
-  let reads=[];
-  const tracked={...store,readBytes:key=>Effect.suspend(()=>{reads.push(key);return store.readBytes(key);})};
-  if(${publish}) {
-    const files=[];for(const file of ${JSON.stringify(files)}){const bytes=new TextEncoder().encode(file.text),hash=yield* sha256(bytes);yield* store.writeBytes('objects/'+hash,bytes);files.push({path:file.path,sha256:hash,bytes:bytes.length});}
-    const snapshot={snapshot_id:id,scope,record,entrypoint:'SKILL.md',version_id:version,created_at:123,files};
-    yield* store.writeJson('snapshots/'+id+'.json',snapshot);
-    const generation=yield* store.reserveCacheGeneration(scope,record.id);
-    yield* publishSnapshotObservation(snapshot,123,generation,{sharedBodyValidUntil:Date.now()+3_600_000}).pipe(Effect.provideService(Store,tracked));
-    console.log(JSON.stringify({receipt:yield* store.readJson(key,Schema.Unknown),reads:reads.length}));
-    return;
-  }
-  const receipt=yield* store.readJson(key,Schema.Unknown),snapshot=yield* store.readJson('snapshots/'+id+'.json',SnapshotSchema),latest=yield* store.listKeys('cache/latest/'+scope+'/'+record.id),before=yield* Effect.forEach(latest,key=>store.readJson(key,Schema.Unknown));
-  const read=()=>cachedRemoteObservation(record.id,scope,{access:'manifest'}).pipe(Effect.provideService(Store,tracked));
-  yield* read();const warmReads=reads.length;reads=[];
-  yield* store.writeJson(key,{...receipt,materialization_version:'old-reference-checker'});
-  yield* read();const mismatchReads=reads.length;reads=[];
-  const repaired=yield* store.readJson(key,Schema.Unknown);
-  yield* store.retireKeys([key]);const retired=(yield* store.readJson(key,Schema.Unknown))??null;
-  yield* read();const retiredReads=reads.length;reads=[];
-  const after=yield* Effect.forEach(latest,key=>store.readJson(key,Schema.Unknown)),rebuilt=yield* store.readJson(key,Schema.Unknown);
-  const cleared=yield* clearCache(undefined,{all:true});
-  yield* validateCachedSharedCurrentTree(snapshot);
-  const fenced=yield* publishSnapshotObservation(snapshot,123,before[0].generation,{sharedBodyValidUntil:before[0].shared_body_valid_until}).pipe(Effect.result);
-  console.log(JSON.stringify({warmReads,mismatchReads,retiredReads,retired,repaired,rebuilt,before,after,clearIncluded:cleared.entries.includes(key),fenced:fenced._tag==='Failure'?fenced.failure.code:null,currentAfterClear:(yield* read())??null}));
-}).pipe(Effect.provide(Layer.mergeAll(api,StoreLive.pipe(Layer.provideMerge(NodeServices.layer)))),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
+ const store=yield* Store,fs=yield* FileSystem.FileSystem,key='snapshots/'+seed.snapshot_id+'.json';
+ yield* recordScope(currentScope);
+ for(const file of seed.files)yield* store.writeBytes('objects/'+file.sha256,fixture.objects.get('objects/'+file.sha256));
+ const alternate={...renamed,shared_acquisition:{...renamed.shared_acquisition,library:{...currentLibrary,files:{...currentLibrary.files,property_ids:{...currentLibrary.files.property_ids,'Reading status':'extra-display-property'}}}}};
+ const contenders=yield* Effect.all([seed,alternate].map(value=>store.writeJson('snapshots/'+value.snapshot_id+'.json',value).pipe(Effect.result)),{concurrency:2});
+ const first=yield* store.readJson(key,SnapshotSchema),physical=decode(SnapshotSchema,JSON.parse(yield* fs.readFileString(store.root+'/'+key)));
+ const changed=[
+  {...seed,files:seed.files.map((file,index)=>index===0?{...file,mode:'100755'}:file)},
+  {...seed,file_bindings:seed.file_bindings.map((file,index)=>index===0?{...file,file_id:'different-current-file'}:file)},
+  {...seed,record:{...seed.record,locator:{...seed.record.locator,page_id:'00000000-0000-4000-8000-000000000099'}}},
+  {...seed,native_references:{...seed.native_references,entries:seed.native_references.entries.map((entry,index)=>index===0?{...entry,ref:entry.ref+'/different'}:entry)}},
+ ];
+ const conflicts=yield* Effect.forEach(changed,value=>store.writeJson(key,value).pipe(Effect.result));
+ const open=()=>openSharedSnapshot({library:currentLibrary,target:currentSkillPage,scope:currentScope,startedAt:Date.now()});
+ fixture.clearCalls();yield* open();const coldBodies=fixture.bodyCalls().length;
+ fixture.clearCalls();yield* open();const warmBodies=fixture.bodyCalls().length;
+ fixture.clearCalls();
+ const fixed=yield* Effect.forEach([seed,alternate],value=>targetSnapshot(parseTarget(fileRef(value.record.id,'',value.snapshot_id)),{offline:true}));
+ const fixedBodies=yield* Effect.forEach(fixed,value=>Effect.forEach(value.files,file=>readSkill(fileRef(value.record.id,file.path,value.snapshot_id),{offline:true})));
+ const fixedRecords=fixed.map((value,index)=>JSON.stringify(value.record)===JSON.stringify([seed,alternate][index].record));
+ const completeReads=fixedBodies.every((files,index)=>files.every((file,n)=>file.has_more===false&&file.range.start===1&&file.range.end===file.range.total_lines&&file.content===new TextDecoder().decode(fixture.objects.get('objects/'+fixed[index].files[n].sha256))));
+ const fixedRequests=fixture.calls.length;
+ const nativeKeys=yield* store.listKeys('cache/current-native-bodies'),observation=yield* store.readJson(nativeKeys[0],Schema.Unknown);
+ const final=yield* store.readJson(key,SnapshotSchema);
+ const objectMode=(yield* fs.stat(store.root+'/objects/'+seed.files[0].sha256)).mode&0o777;
+ const pending=(yield* fs.readDirectory(store.root+'/snapshots')).filter(name=>name.endsWith('.pending'));
+ yield* clearCache(undefined,{all:true});
+ const stale=yield* store.writeJson(nativeKeys[0],observation).pipe(Effect.result);
+ console.log(JSON.stringify({
+  contenders:contenders.map(result=>result._tag==='Success'?'ok':result.failure.code),
+  sameContent:seed.version_id===renamed.version_id&&JSON.stringify(seed.files)===JSON.stringify(renamed.files),differentSelection:seed.snapshot_id!==renamed.snapshot_id,
+  fixedRecords,completeReads,fixedRequests,nativeMetadataChanged:seed.native_references.index_sha256!==renamed.native_references.index_sha256,
+  immutable:JSON.stringify(first)===JSON.stringify(final),physical:JSON.stringify(first)===JSON.stringify(physical),
+  storedName:first.record.name,conflicts:conflicts.map(result=>result._tag==='Failure'?result.failure.code:'accepted'),
+  coldBodies,warmBodies,nativeKeys,generation:observation.generation,objectMode,pending,
+  afterClear:(yield* store.readJson(nativeKeys[0],Schema.Unknown))??null,
+  stale:stale._tag==='Failure'?stale.failure.code:'accepted'
+ }));
+}).pipe(Effect.provide(services),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
 }
 
-test("real Store publishes, repairs and retires current-tree proofs without renewing observations", async () => {
+test("real Store publication tolerates concurrent display observations and preserves content, authority and cache fences", async () => {
   await isolated(async (root) => {
-    const published = await runProgram(currentTreeProgram(root, true))
-    expect(published.exit, published.stderr).toBe(0)
-    const initial = JSON.parse(published.stdout)
-    expect(initial.reads).toBe(2)
-    expect(initial.receipt).toMatchObject({ version: 1, scope })
-    const reopened = await runProgram(currentTreeProgram(root, false))
+    const result = await runProgram(currentPublicationProgram(root))
+    expect(result.exit, result.stderr).toBe(0)
+    const value = JSON.parse(result.stdout)
+    expect(value).toMatchObject({
+      contenders: ["ok", "ok"],
+      immutable: true,
+      physical: true,
+      sameContent: true,
+      differentSelection: true,
+      fixedRecords: [true, true],
+      completeReads: true,
+      fixedRequests: 0,
+      nativeMetadataChanged: true,
+      conflicts: ["STATE_CORRUPT", "STATE_CORRUPT", "STATE_CORRUPT", "STATE_CORRUPT"],
+      coldBodies: 2,
+      warmBodies: 0,
+      objectMode: 0o600,
+      pending: [],
+      afterClear: null,
+      stale: "CACHE_INVALIDATED",
+    })
+    expect(value.storedName).toBe("Current demo")
+    expect(value.nativeKeys).toHaveLength(1)
+    expect(value.nativeKeys[0]).toMatch(
+      /^cache\/current-native-bodies\/[a-f0-9]{64}\/latest\.json$/u,
+    )
+    expect(value.generation).toBe(2)
+  })
+}, 30_000)
+
+function partialSharedProgram(root: string, action: "directory" | "selected" | "all") {
+  return `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
+import {ConfigProvider,Effect,FileSystem,Layer} from ${JSON.stringify(import.meta.resolve("effect"))};
+import {SqlClient} from ${JSON.stringify(import.meta.resolve("effect/sql"))};
+import {HttpClient,HttpClientResponse} from ${JSON.stringify(import.meta.resolve("effect/http"))};
+import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
+import {Notion} from ${JSON.stringify(core + "notion.ts")};
+import {targetSnapshot} from ${JSON.stringify(core + "snapshot.ts")};
+import {sqliteState} from ${JSON.stringify(core + "sqlite-state.ts")};
+import {withNotionChangeEvidence} from ${JSON.stringify(core + "current-evidence.ts")};
+import {currentSnapshotFixture,currentDigest as digest,currentLibrary as library,currentSkillPage as skillPage} from ${JSON.stringify(new URL("./shared-current-fixture.ts", import.meta.url).pathname)};
+process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};process.env.NTN_SKILLS_CONFIG_HOME=${JSON.stringify(root + "-config")};process.env.NTN_SKILLS_CACHE_HOME=${JSON.stringify(root + "-cache")};
+const raw=Uint8Array.from({length:262147},(_,i)=>(i*73)%251),hash=digest(raw),requests=[];
+const location='https://secure.notion-static.com/current/large.bin';
+const client=HttpClient.make((request,url)=>Effect.sync(()=>{requests.push(url.toString());return HttpClientResponse.fromWeb(request,new Response(raw.slice(),{headers:{'content-length':String(raw.length)}}))}));
+const fixture=currentSnapshotFixture({fileCount:3,httpClient:client});
+await fixture.resource(2,'assets/large.bin',raw,'100755',{name:'large.bin',type:'file',file:{url:location,expiry_time:'2099-01-01T00:00:00.000Z'}});
+const rawApi=await fixture.run(Notion);
+const remote={...rawApi,request:(path,body,options)=>Effect.flatMap(rawApi.credentialIdentity,credential=>withNotionChangeEvidence(credential,rawApi.apiOrigin??'https://api.notion.com',path,rawApi.request(path,body,options)))};
+const services=Layer.mergeAll(NodeServices.layer,Layer.succeed(Notion,remote),Layer.succeed(HttpClient.HttpClient,client),StoreLive.pipe(Layer.provideMerge(NodeServices.layer)));
+Effect.runPromise(Effect.gen(function*(){
+ const store=yield* Store;
+ const access=${JSON.stringify(action === "directory" ? "manifest" : action === "selected" ? "target" : "all")};
+ const snapshot=yield* targetSnapshot({kind:'page',selector:skillPage,...(access==='target'?{path:'assets/large.bin'}:{})},{database:library.skills.database_id,refresh:access==='manifest'},access);
+ const object=yield* store.readBytes('objects/'+hash).pipe(Effect.result);
+ const stats=yield* Effect.scoped(Effect.gen(function*(){const state=yield* sqliteState(store.root,yield* FileSystem.FileSystem);return yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;return {native_bodies:yield* sql\`SELECT count(*) AS count FROM shared_local_records WHERE key LIKE 'cache/current-native-bodies/%'\`,snapshots:yield* sql\`SELECT count(*) AS count FROM snapshots\`}}))}));
+ console.log(JSON.stringify({snapshot_id:snapshot.snapshot_id,files:snapshot.files,materialization:snapshot.materialization,requests,raw_present:object._tag==='Success',raw_exact:object._tag==='Success'&&digest(object.success)===hash,writes:fixture.semanticWrites().length,stats}));
+}).pipe(Effect.provide(services),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
+}
+
+test("real Store publishes a complete raw directory before bytes and a fresh Node process acquires only its selected fixed object", async () => {
+  await isolated(async (root) => {
+    const directory = await runProgram(partialSharedProgram(root, "directory"))
+    expect(directory.exit, directory.stderr).toBe(0)
+    const first = JSON.parse(directory.stdout)
+    expect(first.files).toHaveLength(4)
+    expect(first.raw_present).toBe(false)
+    expect(first.requests).toEqual([])
+    expect(first.materialization).toMatchObject({
+      manifest_complete: true,
+      local_files_ready: false,
+      loaded: false,
+    })
+    expect(first.stats).toEqual({ native_bodies: [{ count: 1 }], snapshots: [{ count: 1 }] })
+    expect(first.writes).toBe(0)
+    const selected = await runProgram(partialSharedProgram(root, "selected"))
+    expect(selected.exit, selected.stderr).toBe(0)
+    const second = JSON.parse(selected.stdout)
+    expect(second.snapshot_id).toBe(first.snapshot_id)
+    expect(second.raw_exact).toBe(true)
+    expect(second.requests).toEqual(["https://secure.notion-static.com/current/large.bin"])
+    expect(
+      second.files.find((file: { path: string }) => file.path === "assets/large.bin").mode,
+    ).toBe("100755")
+    expect(second.writes).toBe(0)
+    const reopened = await runProgram(partialSharedProgram(root, "all"))
     expect(reopened.exit, reopened.stderr).toBe(0)
-    const result = JSON.parse(reopened.stdout)
-    expect(result).toMatchObject({
-      warmReads: 0,
-      mismatchReads: 2,
-      retiredReads: 2,
-      retired: null,
-      repaired: initial.receipt,
-      rebuilt: initial.receipt,
-      clearIncluded: true,
-      fenced: "CACHE_INVALIDATED",
-      currentAfterClear: null,
+    const full = JSON.parse(reopened.stdout)
+    expect(full.snapshot_id).toBe(first.snapshot_id)
+    expect(full.files).toEqual(first.files)
+    expect(full.raw_exact).toBe(true)
+    expect(full.requests).toEqual([])
+    expect(full.stats).toEqual(first.stats)
+    expect(full.writes).toBe(0)
+    expect(full.materialization).toMatchObject({
+      manifest_complete: true,
+      local_files_ready: true,
+      loaded: false,
     })
-    expect(result.after).toEqual(result.before)
   })
 }, 30_000)
 
-test("shared cache and typed dispatch addresses persist across real Node restarts", async () => {
-  await isolated(async (root) => {
-    const entries = Object.values(keys).map((key, index) => ({
-      key,
-      payload: { version: 1, sequence: index, frozen: "original" },
-    }))
-    const writer = await child(
-      root,
-      `const before=[];for(const entry of ${JSON.stringify(entries)}) before.push((yield* state.read(entry.key))??null);const empty=yield* state.list('operations');for(const entry of ${JSON.stringify(entries)}) yield* state.write(entry.key,entry.payload);yield* state.write('database-init/legacy/0.json',{legacy:true});console.log(JSON.stringify({before,empty}))`,
-    )
-    expect(writer.exit, writer.stderr).toBe(0)
-    expect(JSON.parse(writer.stdout)).toEqual({ before: entries.map(() => null), empty: [] })
-    const reader = await child(
-      root,
-      `const values=[];for(const entry of ${JSON.stringify(entries)}) values.push(yield* state.read(entry.key));console.log(JSON.stringify({values,cache:yield* state.list('cache'),dispatch:yield* state.list('operations'),legacy:yield* state.read('database-init/legacy/0.json')}));`,
-    )
-    expect(reader.exit, reader.stderr).toBe(0)
-    expect(JSON.parse(reader.stdout)).toEqual({
-      values: entries.map((entry) => entry.payload),
-      cache: [
-        keys.observations,
-        keys.page,
-        keys.github,
-        keys.retainedManifest,
-        keys.currentTree,
-        keys.derivedGraph,
-      ].sort(),
-      dispatch: [
-        keys.observationPending,
-        keys.historyPending,
-        keys.graphPending,
-        keys.graphComplete,
-        keys.bodyCurrentAcceptance,
-        keys.profilePending,
-        keys.sourceDefinition,
-        keys.sourceReceipt,
-        keys.sourceSelection,
-        keys.sourceRegistration,
-        keys.nativeCreate,
-        keys.nativeOwnership,
-        keys.relationSchema,
-        keys.relationDescriptor,
-        keys.nativeArchive,
-        keys.legacyArchive,
-        keys.nativeRecovery,
-        keys.recoveryResponse,
-        keys.nativeContinuation,
-        keys.continuationResponse,
-      ].sort(),
-      legacy: { legacy: true },
-    })
-    const schema = await child(
-      root,
-      `yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify(yield* sql\`SELECT category,retired,count(*) AS count FROM shared_local_records GROUP BY category,retired ORDER BY category\`))}))`,
-    )
-    expect(schema.exit, schema.stderr).toBe(0)
-    expect(JSON.parse(schema.stdout)).toEqual([
-      { category: "cache", retired: 0, count: 6 },
-      { category: "dispatch", retired: 0, count: Object.keys(keys).length - 6 },
-    ])
-  })
-}, 30_000)
-
-test("a frozen key is idempotent across processes and rejects different content without overwriting", async () => {
-  await isolated(async (root) => {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const result = await child(
-        root,
-        `yield* state.write(${JSON.stringify(keys.observationPending)},${JSON.stringify(pendingPayload)})`,
-      )
-      expect(result.exit, result.stderr).toBe(0)
-    }
-    const conflicting = await child(
-      root,
-      `yield* state.write(${JSON.stringify(keys.observationPending)},${JSON.stringify({ ...pendingPayload, operation_id: "replacement-operation" })})`,
-    )
-    expect(conflicting.exit).not.toBe(0)
-    expect(conflicting.stderr).toContain("cannot be overwritten")
-    const retained = await child(
-      root,
-      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(keys.observationPending)})));yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify(yield* sql\`SELECT count(*) AS count FROM shared_local_records\`))}))`,
-    )
-    expect(retained.exit, retained.stderr).toBe(0)
-    const output = retained.stdout
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line))
-    expect(output).toEqual([pendingPayload, [{ count: 1 }]])
-  })
-}, 30_000)
-
-test("competing real processes cannot replace one dispatch key with two different plans", async () => {
+test("competing real processes cannot give one current pending slot to different intents", async () => {
   await isolated(async (root) => {
     expect((await child(root, "console.log('initialized')")).exit).toBe(0)
     const contenders = await Promise.all(
       ["first", "second"].map((candidate) =>
         child(
           root,
-          `yield* state.write(${JSON.stringify(keys.historyPending)},${JSON.stringify({ ...pendingPayload, candidate })});console.log(${JSON.stringify(candidate)})`,
+          `yield* state.write(${JSON.stringify(pendingKey)},${JSON.stringify({ ...pendingPayload, intent: { ...pendingPayload.intent, operation_id: candidate } })});console.log(${JSON.stringify(candidate)})`,
         ),
       ),
     )
@@ -326,19 +422,22 @@ test("competing real processes cannot replace one dispatch key with two differen
     const winner = contenders.find((result) => result.exit === 0)?.stdout.trim()
     const saved = await child(
       root,
-      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(keys.historyPending)})))`,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(pendingKey)})))`,
     )
     expect(saved.exit, saved.stderr).toBe(0)
-    expect(JSON.parse(saved.stdout)).toEqual({ ...pendingPayload, candidate: winner })
+    expect(JSON.parse(saved.stdout)).toEqual({
+      ...pendingPayload,
+      intent: { ...pendingPayload.intent, operation_id: winner },
+    })
   })
 }, 30_000)
 
-test("a committed pending receipt survives abrupt process death and is readable without its creator", async () => {
+test("one current pending request survives abrupt process death and is readable without its creator", async () => {
   await isolated(async (root) => {
     const worker = start(
       processProgram(
         root,
-        `yield* state.write(${JSON.stringify(keys.observationPending)},${JSON.stringify(pendingPayload)});console.log('dispatch-durable');yield* Effect.never`,
+        `yield* state.write(${JSON.stringify(pendingKey)},${JSON.stringify(pendingPayload)});console.log('current-pending-durable');yield* Effect.never`,
       ),
     )
     const closed = once(worker, "close")
@@ -353,247 +452,84 @@ test("a committed pending receipt survives abrupt process death and is readable 
           throw new Error(`Dispatch process exited before its receipt committed: ${stderr}`)
         }),
       ])
-      expect(ready).toContain("dispatch-durable")
+      expect(ready).toContain("current-pending-durable")
     } finally {
       worker.kill("SIGKILL")
       await closed
     }
     const reopened = await child(
       root,
-      `console.log(JSON.stringify({pending:yield* state.read(${JSON.stringify(keys.observationPending)}),keys:yield* state.list('operations/shared-observation-pending')}))`,
+      `console.log(JSON.stringify({pending:yield* state.read(${JSON.stringify(pendingKey)}),keys:yield* state.list('operations/current-write-pending')}))`,
     )
     expect(reopened.exit, reopened.stderr).toBe(0)
     expect(JSON.parse(reopened.stdout)).toEqual({
       pending: pendingPayload,
-      keys: [keys.observationPending],
+      keys: [pendingKey],
     })
   })
 }, 30_000)
 
-test("dispatch retirement hides active work but retains its exact payload and never silently reactivates it", async () => {
+test("a current Profile intent keeps its pending input until completion, then clears its slot for reuse", async () => {
   await isolated(async (root) => {
-    const dispatched = [
-      keys.observationPending,
-      keys.historyPending,
-      keys.profilePending,
-      keys.sourceRegistration,
-      keys.nativeCreate,
-      keys.nativeRecovery,
-      keys.recoveryResponse,
-      keys.nativeContinuation,
-      keys.continuationResponse,
-    ]
-    const retired = await child(
+    const key = `operations/shared-profile-pending/${scope}/${"b".repeat(64)}/pending.json`
+    const first = { version: 2, rules: { name: "First pending rules" } }
+    const next = { version: 2, rules: { name: "Next current intent" } }
+    const started = await child(
       root,
-      `for(const key of ${JSON.stringify(dispatched)}) yield* state.write(key,${JSON.stringify(pendingPayload)});yield* state.retire(${JSON.stringify(dispatched)});yield* state.retire(${JSON.stringify(dispatched)});console.log(JSON.stringify({active:yield* state.list('operations'),read:yield* state.read(${JSON.stringify(keys.observationPending)})}));yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify(yield* sql\`SELECT key,payload,retired FROM shared_local_records ORDER BY key\`))}))`,
+      `
+      yield* state.write(${JSON.stringify(key)},${JSON.stringify(first)});
+      const conflict = yield* state.write(${JSON.stringify(key)},${JSON.stringify(next)}).pipe(Effect.result);
+      console.log(JSON.stringify({conflict:conflict._tag,current:yield* state.read(${JSON.stringify(key)})}));
+    `,
     )
-    expect(retired.exit, retired.stderr).toBe(0)
-    const [active, rows] = retired.stdout
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line))
-    expect(active).toEqual({ active: [] })
-    expect(rows).toEqual(
-      dispatched
-        .sort()
-        .map((key) => ({ key, payload: JSON.stringify(pendingPayload), retired: 1 })),
-    )
-    const reopened = await child(
+    expect(started.exit, started.stderr).toBe(0)
+    expect(JSON.parse(started.stdout)).toEqual({ conflict: "Failure", current: first })
+    const finished = await child(
       root,
-      `yield* state.write(${JSON.stringify(keys.observationPending)},${JSON.stringify(pendingPayload)})`,
+      `
+      yield* state.retire([${JSON.stringify(key)}]);
+      yield* state.retire([${JSON.stringify(key)}]);
+      yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;
+        console.log(JSON.stringify(yield* sql\`SELECT key,payload,retired FROM shared_local_records\`));
+      }));
+    `,
     )
-    expect(reopened.exit).not.toBe(0)
-    expect(reopened.stderr).toContain("retired shared dispatch receipt")
-    const conflict = await child(
+    expect(finished.exit, finished.stderr).toBe(0)
+    expect(JSON.parse(finished.stdout)).toEqual([])
+    const restarted = await child(
       root,
-      `yield* state.write(${JSON.stringify(keys.observationPending)},{version:2})`,
+      `
+      yield* state.write(${JSON.stringify(key)},${JSON.stringify(next)});
+      console.log(JSON.stringify({current:yield* state.read(${JSON.stringify(key)}),active:yield* state.list('operations/shared-profile-pending')}));
+    `,
     )
-    expect(conflict.exit).not.toBe(0)
-    expect(conflict.stderr).toContain("cannot be overwritten")
+    expect(restarted.exit, restarted.stderr).toBe(0)
+    expect(JSON.parse(restarted.stdout)).toEqual({ current: next, active: [key] })
   })
 }, 30_000)
 
-test("completed recovery retires both journals across restarts and retains the captured response", async () => {
-  await isolated(async (root) => {
-    const journals = [keys.nativeCreate, keys.nativeRecovery]
-    const response = { version: 1, kind: "original_mutation_response", response: { id: "page" } }
-    const written = await child(
-      root,
-      `for(const key of ${JSON.stringify(journals)}) yield* state.write(key,${JSON.stringify(pendingPayload)});yield* state.write(${JSON.stringify(keys.recoveryResponse)},${JSON.stringify(response)})`,
-    )
-    expect(written.exit, written.stderr).toBe(0)
-    const retired = await child(
-      root,
-      `yield* state.retire(${JSON.stringify(journals)});yield* state.retire(${JSON.stringify(journals)})`,
-    )
-    expect(retired.exit, retired.stderr).toBe(0)
-    const reopened = await child(
-      root,
-      `const reads=[];for(const key of ${JSON.stringify(journals)}) reads.push((yield* state.read(key))??null);const replay=yield* state.write(${JSON.stringify(keys.nativeRecovery)},${JSON.stringify(pendingPayload)}).pipe(Effect.result);const replaced=yield* state.write(${JSON.stringify(keys.recoveryResponse)},{replacement:true}).pipe(Effect.result);console.log(JSON.stringify({reads,active:yield* state.list('operations'),response:yield* state.read(${JSON.stringify(keys.recoveryResponse)}),replay:replay._tag,replaced:replaced._tag}));yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify(yield* sql\`SELECT key,payload,retired FROM shared_local_records ORDER BY key\`))}))`,
-    )
-    expect(reopened.exit, reopened.stderr).toBe(0)
-    const [active, rows] = reopened.stdout
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line))
-    expect(active).toEqual({
-      reads: [null, null],
-      active: [keys.recoveryResponse],
-      response,
-      replay: "Failure",
-      replaced: "Failure",
-    })
-    expect(rows).toEqual(
-      [
-        ...journals.map((key) => ({ key, payload: JSON.stringify(pendingPayload), retired: 1 })),
-        { key: keys.recoveryResponse, payload: JSON.stringify(response), retired: 0 },
-      ].sort((left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0)),
-    )
-  })
-}, 30_000)
-
-test("public cache clear removes shared derived lookups and preserves unfinished dispatch domains", async () => {
-  await isolated(async (root) => {
-    const all = Object.values(keys)
-    const program = `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
-import {ConfigProvider,Effect,Layer,Schema} from ${JSON.stringify(import.meta.resolve("effect"))};
-import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
-import {clearCache} from ${JSON.stringify(core + "cache.ts")};
-process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};
-process.env.NTN_SKILLS_CONFIG_HOME=${JSON.stringify(root + "-config")};
-process.env.NTN_SKILLS_CACHE_HOME=${JSON.stringify(root + "-cache")};
-Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key of ${JSON.stringify(all)}) yield* store.writeJson(key,${JSON.stringify(pendingPayload)});const result=yield* clearCache(undefined,{all:true});console.log(JSON.stringify({entries:result.entries,cache:yield* store.listKeys('cache'),dispatch:yield* store.listKeys('operations'),receipt:yield* store.readJson(${JSON.stringify(keys.observationPending)},Schema.Unknown)}))}).pipe(Effect.provide(StoreLive.pipe(Layer.provideMerge(NodeServices.layer))),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
-    const cleared = await runProgram(program)
-    expect(cleared.exit, cleared.stderr).toBe(0)
-    const result = JSON.parse(cleared.stdout)
-    expect(result.entries.sort()).toEqual(
-      [
-        keys.observations,
-        keys.page,
-        keys.github,
-        keys.retainedManifest,
-        keys.currentTree,
-        keys.derivedGraph,
-      ].sort(),
-    )
-    expect(result.cache).toEqual([])
-    expect(result.dispatch).toEqual(
-      [
-        keys.observationPending,
-        keys.historyPending,
-        keys.graphPending,
-        keys.graphComplete,
-        keys.bodyCurrentAcceptance,
-        keys.profilePending,
-        keys.sourceDefinition,
-        keys.sourceReceipt,
-        keys.sourceSelection,
-        keys.sourceRegistration,
-        keys.nativeCreate,
-        keys.nativeOwnership,
-        keys.relationSchema,
-        keys.relationDescriptor,
-        keys.nativeArchive,
-        keys.legacyArchive,
-        keys.nativeRecovery,
-        keys.recoveryResponse,
-        keys.nativeContinuation,
-        keys.continuationResponse,
-      ].sort(),
-    )
-    expect(result.receipt).toEqual(pendingPayload)
-    const rebuilt = await child(
-      root,
-      `yield* state.write(${JSON.stringify(keys.github)},${JSON.stringify(pendingPayload)});console.log(JSON.stringify(yield* state.read(${JSON.stringify(keys.github)})))`,
-    )
-    expect(rebuilt.exit, rebuilt.stderr).toBe(0)
-    expect(JSON.parse(rebuilt.stdout)).toEqual(pendingPayload)
-    const changed = await child(
-      root,
-      `yield* state.write(${JSON.stringify(keys.page)},{replacement:true})`,
-    )
-    expect(changed.exit).not.toBe(0)
-    expect(changed.stderr).toContain("cannot be overwritten")
-  })
-}, 30_000)
-
-test("real SQLite acceptance dispatch preserves nested original before/candidate objects across restart and GC", async () => {
-  await isolated(async (root) => {
-    const files = ["before evidence", "candidate evidence", "unreferenced bytes"].map((value) => ({
-      sha256: createHash("sha256").update(value).digest("hex"),
-      bytes: [...new TextEncoder().encode(value)],
-    }))
-    const payload = {
-      version: 1,
-      scope,
-      original: {
-        before: { body_sha256: files[0]?.sha256 },
-        candidate: { body_sha256: files[1]?.sha256 },
-      },
-      decision: {
-        kind: "body_write_current_acceptance",
-        original_write_outcome: "unknown",
-        decision: "accepted_current",
-      },
-    }
-    const program = (
-      write: boolean,
-    ) => `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
-import {ConfigProvider,Effect,Layer,Schema} from ${JSON.stringify(import.meta.resolve("effect"))};
-import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
-import {garbageCollectCache} from ${JSON.stringify(core + "cache.ts")};
-process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};
-process.env.NTN_SKILLS_CONFIG_HOME=${JSON.stringify(root + "-config")};
-process.env.NTN_SKILLS_CACHE_HOME=${JSON.stringify(root + "-cache")};
-Effect.runPromise(Effect.gen(function*(){const store=yield* Store;
-${write ? `for(const file of ${JSON.stringify(files)})yield* store.writeBytes('objects/'+file.sha256,new Uint8Array(file.bytes));yield* store.writeJson(${JSON.stringify(keys.bodyCurrentAcceptance)},${JSON.stringify(payload)});` : ""}
-console.log(JSON.stringify({dispatch:yield* store.readJson(${JSON.stringify(keys.bodyCurrentAcceptance)},Schema.Unknown),gc:yield* garbageCollectCache({dryRun:true})}));
-}).pipe(Effect.provide(StoreLive.pipe(Layer.provideMerge(NodeServices.layer))),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
-    // Every invocation opens its own SQLite connection with the same durable evidence.
-    for (const write of [true, false]) {
-      const result = await runProgram(program(write))
-      expect(result.exit, result.stderr).toBe(0)
-      expect(JSON.parse(result.stdout)).toMatchObject({
-        dispatch: payload,
-        gc: { unreachable_snapshots: [], unreachable_objects: [files[2]?.sha256] },
-      })
-    }
-  })
-}, 30_000)
-
-test("unregistered shared namespaces, traversal and malformed known keys cannot become generic SQLite records", async () => {
+test("retired namespaces, traversal and malformed current keys cannot become generic SQLite records", async () => {
   await isolated(async (root) => {
     const invalid = [
       `cache/shared-anything/${scope}.json`,
-      `operations/shared-anything/${scope}.json`,
-      `operations/shared-observation-pending/${scope}/../other.json`,
-      `operations/shared-snapshot-history/${scope}/latest.json`,
-      `cache/shared-history-manifests/${scope}/latest.json`,
-      `cache/shared-current-tree-validation/${scope}/latest.json`,
-      `cache/shared-current-tree-validation/${scope}/../s_${"d".repeat(64)}.json`,
-      `cache/shared-current-tree-validation/foreign/s_${"d".repeat(64)}.json`,
+      `operations/current-anything/${scope}.json`,
+      `operations/current-write-pending/${scope}/../other.json`,
+      `operations/current-write-pending/${scope}/other.json`,
+      `operations/current-write-pending/${"A".repeat(64)}/pending.json`,
+      `cache/current-native-bodies/${scope}/../latest.json`,
+      `cache/current-native-bodies/foreign/latest.json`,
       `cache/shared-derived-graphs/${scope}/${"d".repeat(64)}/latest.json`,
-      `operations/shared-graph-history/${scope}/graph-${"f".repeat(64)}/replacement.json`,
-      `operations/shared-body-current-acceptance/${scope}/accept-current-${"f".repeat(64)}/complete.json`,
       `cache/shared-page-identities/${scope}/page.json`,
       `cache/shared-github-blobs/${"c".repeat(40)}`,
-      `cache/shared-file-observations/${scope}/1.json`,
-      `operations/shared-profile-pending/${scope}/profile-${"c".repeat(64)}.json`,
-      `operations/shared-source-registration/${scope}/source-other.json`,
-      `operations/shared-source-registration/${scope}/../source-${"7".repeat(64)}.json`,
-      `operations/shared-native-create/${scope}/skill-create-invalid.json`,
-      `operations/shared-native-create/${scope}/../skill-create-${"8".repeat(64)}.json`,
-      `operations/shared-native-create-owned/${scope}/skill-create-invalid.json`,
-      `operations/shared-relation-schema/${scope}/relations-schema-${"8".repeat(64)}-other.json`,
-      `operations/owned-page-archive/${scope}/p_owned-archive-test/00000000-0000-4000-8000-000000000001/../00000000000000000000.json`,
-      `operations/owned-page-archive/${scope}/p_owned-archive-test/00000000-0000-4000-8000-000000000001.json`,
-      `operations/shared-native-recovery/${scope}/skill-create-invalid.json`,
-      `operations/shared-native-recovery/${scope}/../skill-create-${"8".repeat(64)}.json`,
-      `operations/shared-native-recovery-responses/create-recovery-invalid/${"e".repeat(64)}.json`,
-      `operations/shared-native-recovery-responses/create-recovery-${"9".repeat(64)}/../${"e".repeat(64)}.json`,
-      `operations/shared-native-recovery-responses/create-recovery-${"9".repeat(64)}/response.json`,
       `content-restrictions/other/${scope}.json`,
       `content-restrictions/local/${scope}.json/extra`,
+      // Previously valid historical addresses must not reopen retired protocols.
+      `cache/shared-file-observations/${scope}/00000000000000000001.json`,
+      `cache/shared-history-manifests/${scope}/s_${"c".repeat(64)}.json`,
+      `operations/shared-observation-pending/${scope}/${"e".repeat(64)}.json`,
+      `operations/shared-snapshot-history/${scope}/snapshot-${"f".repeat(64)}.json`,
+      `operations/shared-native-create/${scope}/skill-create-${"8".repeat(64)}.json`,
+      `operations/owned-page-archive/${scope}/skill-create-${"8".repeat(64)}/00000000-0000-4000-8000-000000000001/00000000000000000000.json`,
     ]
     const result = await child(
       root,
@@ -612,7 +548,7 @@ test("local-content restrictions survive restarts and cache retirement, and cann
   await isolated(async (root) => {
     const written = await child(
       root,
-      `yield* state.write(${JSON.stringify(restrictionKey)},${JSON.stringify(restriction)});yield* state.write(${JSON.stringify(keys.github)},{version:1});yield* state.retire(yield* state.list('cache'));console.log('retained')`,
+      `yield* state.write(${JSON.stringify(restrictionKey)},${JSON.stringify(restriction)});yield* state.write(${JSON.stringify(`cache/shared-github-blobs/${"c".repeat(40)}.json`)},{version:1});yield* state.retire(yield* state.list('cache'));console.log('retained')`,
     )
     expect(written.exit, written.stderr).toBe(0)
     const reopened = await child(
@@ -630,7 +566,268 @@ test("local-content restrictions survive restarts and cache retirement, and cann
   })
 }, 30_000)
 
-test("local-content restriction schema and persisted corruption fail closed without replacing evidence", async () => {
+test("Source sync restart preserves its input and advances the frozen projection cursor one target at a time", async () => {
+  await isolated(async (root) => {
+    const write = (value: unknown) =>
+      child(root, `yield* state.write(${JSON.stringify(syncKey)},${JSON.stringify(value)});`)
+    expect((await write(syncInput)).exit).toBe(0)
+    const read = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(syncKey)})));`,
+    )
+    expect(read.exit, read.stderr).toBe(0)
+    expect(JSON.parse(read.stdout)).toEqual(syncInput)
+    for (const changed of [
+      { ...syncInput, manager_id: "other" },
+      { ...syncInput, execution_id: "package-b" },
+      {
+        ...syncInput,
+        library: {
+          ...currentLibrary,
+          files: { ...currentLibrary.files, database_id: "77e861a8-6432-51ac-a09e-90a2ab20a36c" },
+        },
+      },
+      { ...syncInput, input: { ...syncInput.input, resolved_commit: "a".repeat(40) } },
+      { ...syncInput, input: { ...syncInput.input, affected_skill_ids: ["one", "three"] } },
+      {
+        ...syncInput,
+        input: {
+          ...syncInput.input,
+          declaration: { ...syncInput.input.declaration, contributions: [] },
+        },
+      },
+    ]) {
+      const rejected = await write(changed)
+      expect(rejected.exit).not.toBe(0)
+      expect(rejected.stderr).toContain("preserve its owner")
+    }
+    const projection = {
+      ...syncInput,
+      phase: "projection",
+      next_index: 0,
+      targets: [
+        { skill_id: "one", page_id: "00000000-0000-4000-8000-000000000002" },
+        { skill_id: "two", page_id: "00000000-0000-4000-8000-000000000003" },
+      ],
+    }
+    expect((await write({ ...projection, next_index: 1 })).exit).not.toBe(0)
+    expect((await write(projection)).exit).toBe(0)
+    expect((await write(projection)).exit).toBe(0)
+    expect((await write({ ...projection, next_index: 2 })).exit).not.toBe(0)
+    expect((await write({ ...projection, next_index: 1 })).exit).toBe(0)
+    expect((await write(projection)).exit).not.toBe(0)
+    expect(
+      (await write({ ...projection, next_index: 1, targets: [...projection.targets].reverse() }))
+        .exit,
+    ).not.toBe(0)
+    expect(
+      (
+        await write({
+          ...projection,
+          next_index: 1,
+          targets: projection.targets.map((target) => ({
+            ...target,
+            page_id: "00000000-0000-4000-8000-000000000004",
+          })),
+        })
+      ).exit,
+    ).not.toBe(0)
+    expect(
+      (
+        await write({
+          ...projection,
+          next_index: 1,
+          full_batch: { scope, batch_id: "00000000-0000-4000-8000-000000000005" },
+        })
+      ).exit,
+    ).not.toBe(0)
+    expect((await write({ ...projection, next_index: 2 })).exit).toBe(0)
+    const completed = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(syncKey)})));`,
+    )
+    expect(completed.exit, completed.stderr).toBe(0)
+    expect(JSON.parse(completed.stdout)).toEqual({ ...projection, next_index: 2 })
+    expect((await write(syncInput)).exit).not.toBe(0)
+    expect((await write({ ...projection, targets: [] })).exit).not.toBe(0)
+    const retired = await child(
+      root,
+      `yield* state.retire([${JSON.stringify(syncKey)}]);console.log(JSON.stringify(yield* state.list('operations/current-source-sync')));`,
+    )
+    expect(retired.exit, retired.stderr).toBe(0)
+    expect(JSON.parse(retired.stdout)).toEqual([])
+    expect((await write(projection)).exit).not.toBe(0)
+    expect(
+      (await write({ ...syncInput, input: { ...syncInput.input, operation_id: "sync-b" } })).exit,
+    ).toBe(0)
+  })
+}, 30_000)
+
+test("two Source sync processes cannot replace each other's first frozen input", async () => {
+  await isolated(async (root) => {
+    expect((await child(root, "console.log('ready')")).exit).toBe(0)
+    const contenders = await Promise.all(
+      ["mini-a", "mini-b"].map((manager_id) =>
+        child(
+          root,
+          `yield* state.write(${JSON.stringify(syncKey)},${JSON.stringify({ ...syncInput, manager_id })});`,
+        ),
+      ),
+    )
+    expect(contenders.filter((result) => result.exit === 0)).toHaveLength(1)
+    expect(contenders.filter((result) => result.exit !== 0)[0]!.stderr).toContain(
+      "preserve its owner",
+    )
+    const read = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(syncKey)})));`,
+    )
+    expect(["mini-a", "mini-b"]).toContain(JSON.parse(read.stdout).manager_id)
+  })
+}, 30_000)
+
+test("full Source batches preserve an exact terminal prefix across real processes and reject skipped work or changed generations", async () => {
+  await isolated(async (root) => {
+    const key = `operations/current-source-sync-batch/${scope}/pending.json`
+    const batch = {
+      version: 2,
+      kind: "current_source_sync_batch",
+      library: currentLibrary,
+      scope,
+      batch_id: "00000000-0000-4000-8000-000000000006",
+      library_id: currentLibrary.library_id,
+      sources_data_source_id: currentLibrary.sources.data_source_id,
+      manager_id: "mini",
+      execution_id: "package-a",
+      source_ids: ["alpha", "beta", "gamma"],
+      projection: "markdown",
+      started_at: 1,
+      results: [],
+    }
+    const failed = {
+      source_id: "alpha",
+      operation_id: null,
+      content: { status: "not_started" },
+      projection: { status: "not_started" },
+      status: "blocked",
+      retryable: false,
+      error: { code: "CURRENT_SOURCE_TARGET_PENDING", message: "Original owner must finish." },
+    }
+    const skipped = (source_id: string) => ({
+      source_id,
+      operation_id: null,
+      content: { status: "not_started" },
+      projection: { status: "not_started" },
+      status: "skipped",
+      reason: "disabled",
+      retryable: false,
+      error: null,
+    })
+    const write = (value: unknown) =>
+      child(root, `yield* state.write(${JSON.stringify(key)},${JSON.stringify(value)});`)
+    expect((await write({ ...batch, results: [failed] })).exit).not.toBe(0)
+    expect((await write(batch)).exit).toBe(0)
+    for (const changed of [
+      { ...batch, scope: "b".repeat(64) },
+      { ...batch, batch_id: "00000000-0000-4000-8000-000000000007" },
+      { ...batch, execution_id: "package-b" },
+      {
+        ...batch,
+        library: {
+          ...currentLibrary,
+          files: { ...currentLibrary.files, database_id: "77e861a8-6432-51ac-a09e-90a2ab20a36c" },
+        },
+      },
+      { ...batch, source_ids: ["alpha", "gamma"] },
+      { ...batch, projection: "none" },
+      { ...batch, results: [failed, skipped("beta")] },
+      { ...batch, results: [skipped("beta")] },
+      { ...batch, results: [{ ...failed, status: "pending", retryable: true }] },
+    ])
+      expect((await write(changed)).exit).not.toBe(0)
+    const prefix = { ...batch, results: [failed] }
+    expect((await write(prefix)).exit).toBe(0)
+    expect((await write(prefix)).exit).toBe(0)
+    expect((await write({ ...batch, results: [skipped("alpha")] })).exit).not.toBe(0)
+    expect((await write(batch)).exit).not.toBe(0)
+    const next = { ...batch, results: [failed, skipped("beta")] }
+    expect((await write(next)).exit).toBe(0)
+    const reopened = await child(
+      root,
+      `yield* state.retire(yield* state.list('cache'));console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})));`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(JSON.parse(reopened.stdout)).toEqual(next)
+    expect((await write({ ...batch, results: [...next.results, skipped("gamma")] })).exit).toBe(0)
+    const retired = await child(
+      root,
+      `yield* state.retire([${JSON.stringify(key)}]);console.log(JSON.stringify(yield* state.list('operations/current-source-sync-batch')));`,
+    )
+    expect(retired.exit, retired.stderr).toBe(0)
+    expect(JSON.parse(retired.stdout)).toEqual([])
+    expect((await write({ ...batch, batch_id: "00000000-0000-4000-8000-000000000008" })).exit).toBe(
+      0,
+    )
+  })
+}, 30_000)
+
+test("competing full Source batches cannot replace the first persisted identity", async () => {
+  await isolated(async (root) => {
+    expect((await child(root, "console.log('ready')")).exit).toBe(0)
+    const key = `operations/current-source-sync-batch/${scope}/pending.json`
+    const batch = {
+      version: 2,
+      kind: "current_source_sync_batch",
+      library: currentLibrary,
+      scope,
+      library_id: currentLibrary.library_id,
+      sources_data_source_id: currentLibrary.sources.data_source_id,
+      manager_id: "mini",
+      execution_id: "package-a",
+      source_ids: ["alpha"],
+      projection: "none",
+      started_at: 1,
+      results: [],
+    }
+    const ids = ["00000000-0000-4000-8000-000000000009", "00000000-0000-4000-8000-000000000010"]
+    const contenders = await Promise.all(
+      ids.map((batch_id) =>
+        child(
+          root,
+          `yield* state.write(${JSON.stringify(key)},${JSON.stringify({ ...batch, batch_id })});`,
+        ),
+      ),
+    )
+    expect(contenders.filter((result) => result.exit === 0)).toHaveLength(1)
+    expect(contenders.find((result) => result.exit !== 0)!.stderr).toContain(
+      "preserve its frozen scope",
+    )
+    const reopened = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})));`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(ids).toContain(JSON.parse(reopened.stdout).batch_id)
+  })
+}, 30_000)
+
+test("Source synchronization keeps one bounded disposable observation and no completed tick journals", async () => {
+  await isolated(async (root) => {
+    const key = `cache/current-source-sync/${scope}/latest.json`
+    const repeated = await child(
+      root,
+      `for(let i=0;i<100;i++){yield* state.write(${JSON.stringify(syncKey)},{...${JSON.stringify(syncInput)},input:{...${JSON.stringify(syncInput.input)},operation_id:'sync-'+i}});yield* state.write(${JSON.stringify(key)},{version:1,scope:${JSON.stringify(scope)},completed_at:i});yield* state.retire([${JSON.stringify(syncKey)}]);}console.log(JSON.stringify({pending:yield* state.list('operations/current-source-sync'),cache:yield* state.rebuildableCacheRecords()}));`,
+    )
+    expect(repeated.exit, repeated.stderr).toBe(0)
+    const result = JSON.parse(repeated.stdout)
+    expect(result.pending).toEqual([])
+    expect(result.cache).toHaveLength(1)
+    expect(JSON.parse(result.cache[0].payload).completed_at).toBe(99)
+    expect(result.cache[0].admitted_at).toBeGreaterThan(0)
+  })
+}, 30_000)
+
+test("local-content restriction schema and persisted corruption fail closed without replacing the restriction", async () => {
   await isolated(async (root) => {
     const invalid = [
       null,
@@ -653,5 +850,96 @@ test("local-content restriction schema and persisted corruption fail closed with
     )
     expect(corrupt.exit, corrupt.stderr).toBe(0)
     expect(JSON.parse(corrupt.stdout)).toEqual({ read: "Failure", write: "Failure" })
+  })
+}, 30_000)
+
+test("Source candidate metadata survives another process, updates, and cannot cross credential scopes", async () => {
+  await isolated(async (root) => {
+    const key = `cache/source-members/${scope}/${currentLibrary.library_id}.json`
+    const candidate = {
+      type: "source_member",
+      library_id: currentLibrary.library_id,
+      scope,
+      source_id: "registered-source",
+      member_key: "skills/member",
+      expected_skill_id: "future-member",
+      registration_digest: "b".repeat(64),
+      name: "Future member",
+      alias: "future-member",
+      description: "Registered original",
+      enabled: true,
+      readiness: "materializable",
+    }
+    const first = {
+      version: 1,
+      library_id: currentLibrary.library_id,
+      scope,
+      candidates: [candidate],
+    }
+    const created = await child(
+      root,
+      `yield* state.write(${JSON.stringify(key)},${JSON.stringify(first)})`,
+    )
+    expect(created.exit, created.stderr).toBe(0)
+    const reopened = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})))`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(JSON.parse(reopened.stdout)).toEqual(first)
+    const next = { ...first, candidates: [{ ...candidate, name: "Updated name" }] }
+    const updated = await child(
+      root,
+      `yield* state.write(${JSON.stringify(key)},${JSON.stringify(next)}); console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})))`,
+    )
+    expect(updated.exit, updated.stderr).toBe(0)
+    expect(JSON.parse(updated.stdout)).toEqual(next)
+    const crossed = await child(
+      root,
+      `yield* state.write(${JSON.stringify(key)},${JSON.stringify({ ...first, scope: "c".repeat(64) })})`,
+    )
+    expect(crossed.exit).not.toBe(0)
+    expect(crossed.stderr).toContain("scoped Library cache address")
+    const cleared = await child(
+      root,
+      `yield* state.retire([${JSON.stringify(key)}]); console.log(JSON.stringify((yield* state.read(${JSON.stringify(key)}))??null))`,
+    )
+    expect(cleared.exit, cleared.stderr).toBe(0)
+    expect(JSON.parse(cleared.stdout)).toBeNull()
+  })
+}, 30_000)
+
+test("unfinished materialization input survives restart and cache retirement until explicit completion", async () => {
+  await isolated(async (root) => {
+    const pending = `operations/current-source-materialization/${currentLibrary.library_id}/${"d".repeat(64)}.json`
+    const cached = `cache/source-members/${scope}/${currentLibrary.library_id}.json`
+    const frozen = {
+      version: 1,
+      request: { request_id: "same-explicit-input", library: currentLibrary.library_id },
+      commit: "a".repeat(40),
+    }
+    const initialized = await child(
+      root,
+      `yield* state.write(${JSON.stringify(pending)},${JSON.stringify(frozen)});yield* state.write(${JSON.stringify(cached)},${JSON.stringify({ version: 1, library_id: currentLibrary.library_id, scope, candidates: [] })})`,
+    )
+    expect(initialized.exit, initialized.stderr).toBe(0)
+    const restarted = await child(
+      root,
+      `yield* state.retire([${JSON.stringify(cached)}]);console.log(JSON.stringify(yield* state.read(${JSON.stringify(pending)})))`,
+    )
+    expect(restarted.exit, restarted.stderr).toBe(0)
+    expect(JSON.parse(restarted.stdout)).toEqual(frozen)
+    const changed = await child(
+      root,
+      `yield* state.write(${JSON.stringify(pending)},${JSON.stringify({ ...frozen, commit: "b".repeat(40) })})`,
+    )
+    expect(changed.exit).not.toBe(0)
+    expect(changed.stderr).toContain("frozen shared local record")
+    const completed = await child(
+      root,
+      `yield* state.retire([${JSON.stringify(pending)}]);console.log(JSON.stringify({pending:(yield* state.read(${JSON.stringify(pending)}))??null,keys:yield* state.list('operations/current-source-materialization')}))`,
+    )
+    expect(completed.exit, completed.stderr).toBe(0)
+    expect(JSON.parse(completed.stdout)).toEqual({ pending: null, keys: [] })
   })
 }, 30_000)

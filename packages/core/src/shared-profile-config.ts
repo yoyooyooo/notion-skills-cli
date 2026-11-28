@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { catalog, databaseId } from "./catalog.ts"
+import { catalog, libraryId, selectedLibraryId } from "./catalog.ts"
 import type { ReadPolicyOptions } from "./cache.ts"
 import {
   ConfigSchema,
@@ -36,18 +36,15 @@ function rawConfiguration() {
 }
 
 /** Validate shared metadata, then persist only the selected library and Profile IDs. */
-export function bindSharedProfile(input: {
-  readonly libraryEntry: string
-  readonly profileId: string
-}) {
+export function bindSharedProfile(input: { readonly library: string; readonly profileId: string }) {
   return Effect.gen(function* () {
-    const entry = yield* databaseId(input.libraryEntry)
+    const entry = yield* libraryId(input.library)
     const selected = yield* loadSharedProfileEntryCached(entry, input.profileId, { refresh: true })
     yield* checked(() => selectProfileView(selected.profile))
     const binding = yield* checked(() =>
       Schema.decodeUnknownSync(SharedProfileBindingSchema)(
         {
-          library_entry: selected.library.skills.database_id,
+          library_id: selected.library.library_id,
           profile_id: selected.profile.profile_id,
         },
         { onExcessProperty: "error" },
@@ -57,7 +54,7 @@ export function bindSharedProfile(input: {
     yield* (yield* Store).writeJson("config.json", { ...current, shared_profile: binding })
     return {
       shared_profile: binding,
-      profile_revision_id: selected.profile.revision_id,
+      profile_fingerprint: selected.profile.fingerprint,
       metadata_only: true as const,
     }
   })
@@ -74,10 +71,11 @@ export function unbindSharedProfile() {
 }
 
 export interface ProfileCatalogOptions extends ReadPolicyOptions {
-  readonly database?: string
+  readonly library?: string
   readonly view?: string
   readonly defaultView?: boolean
   readonly profile?: string
+  readonly all?: boolean
 }
 
 /**
@@ -86,13 +84,18 @@ export interface ProfileCatalogOptions extends ReadPolicyOptions {
  */
 export function catalogWithProfile(options: ProfileCatalogOptions = {}) {
   return Effect.gen(function* () {
+    if (
+      options.all &&
+      (options.view !== undefined || options.defaultView || options.profile !== undefined)
+    )
+      return yield* Effect.fail(fail("INVALID_ARGUMENT", "--all cannot select a View or Profile."))
     if (options.view !== undefined && options.defaultView)
       return yield* Effect.fail(
         fail("INVALID_ARGUMENT", "--view and --default-view are mutually exclusive."),
       )
-    if (options.profile !== undefined && options.database === undefined)
+    if (options.profile !== undefined && options.library === undefined)
       return yield* Effect.fail(
-        fail("INVALID_ARGUMENT", "--profile requires an explicit --database shared library entry."),
+        fail("INVALID_ARGUMENT", "--profile requires an explicit --library root."),
       )
     const policy: ReadPolicyOptions = {
       ...(options.refresh === undefined ? {} : { refresh: options.refresh }),
@@ -100,32 +103,28 @@ export function catalogWithProfile(options: ProfileCatalogOptions = {}) {
       ...(options.maxAge === undefined ? {} : { maxAge: options.maxAge }),
     }
     if (options.view !== undefined)
-      return yield* viewCatalog({ ...policy, database: options.database, view: options.view })
+      return yield* viewCatalog({ ...policy, library: options.library, view: options.view })
     if (!options.defaultView && options.profile === undefined)
-      return yield* catalog({ ...policy, database: options.database })
+      return yield* catalog({ ...policy, library: options.library, all: options.all })
 
     let binding: SharedProfileBinding | undefined
     if (options.profile !== undefined) {
-      // The explicit database requirement was checked before any I/O above.
-      const entry = yield* databaseId(options.database!)
-      binding = { library_entry: entry, profile_id: options.profile }
+      // The explicit Library requirement was checked before any I/O above.
+      const entry = yield* libraryId(options.library!)
+      binding = { library_id: entry, profile_id: options.profile }
     } else {
+      const selected = yield* selectedLibraryId(options.library)
       const configured = (yield* configuration).shared_profile
-      if (
-        configured !== undefined &&
-        (options.database === undefined ||
-          (yield* databaseId(options.database)) === configured.library_entry)
-      )
-        binding = configured
+      if (configured !== undefined && selected === configured.library_id) binding = configured
     }
     const observed =
       binding === undefined
         ? undefined
-        : yield* loadSharedProfileEntryCached(binding.library_entry, binding.profile_id, policy)
+        : yield* loadSharedProfileEntryCached(binding.library_id, binding.profile_id, policy)
     const selection = yield* checked(() => selectProfileView(observed?.profile))
     const result = yield* viewCatalog({
       ...policy,
-      database: observed?.library.skills.database_id ?? options.database,
+      library: observed?.library.library_id ?? options.library,
       view: "view" in selection ? selection.view : undefined,
     })
     if (observed !== undefined && result.scope !== observed.scope)
@@ -146,9 +145,8 @@ export function catalogWithProfile(options: ProfileCatalogOptions = {}) {
         : {
             profile: {
               library_id: observed.library.library_id,
-              library_entry: observed.library.skills.database_id,
               profile_id: observed.profile.profile_id,
-              revision_id: observed.profile.revision_id,
+              fingerprint: observed.profile.fingerprint,
               selection: selection.selection,
               source: observed.source,
               freshness: observed.freshness,

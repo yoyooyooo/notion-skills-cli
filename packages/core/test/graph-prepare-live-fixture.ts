@@ -1,15 +1,39 @@
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
-import { property } from "../src/model.ts"
+import { fail, property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { Store } from "../src/store.ts"
-import { id, library, rich, sharedSnapshotFixture, skillPage } from "./shared-snapshot-fixture.ts"
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
+import {
+  currentId as id,
+  currentLibrary,
+  currentRich as rich,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+} from "./shared-current-fixture.ts"
+
+export const graphLibrary = {
+  ...currentLibrary,
+  skills: {
+    ...currentLibrary.skills,
+    property_ids: {
+      ...currentLibrary.skills.property_ids,
+      "Skill ID": "skill_id",
+      "Main File ID": "main_file_id",
+    },
+  },
+  files: {
+    ...currentLibrary.files,
+    property_ids: { ...currentLibrary.files.property_ids, "File ID": "file_id" },
+  },
+}
+const library = graphLibrary
 
 export function nativeGraphFixture(
   options: { readonly width?: number; readonly filesPerSkill?: number } = {},
 ) {
-  const f = sharedSnapshotFixture({ fileCount: 1 })
+  const f = currentSnapshotFixture({ fileCount: 0 })
   const names =
     options.width === undefined
       ? ["a", "b", "c", "d", "optional"]
@@ -30,43 +54,76 @@ export function nativeGraphFixture(
     },
   }
   const pages = names.map((name, index) => {
-    const page = structuredClone(f.main)
-    page.id = pageIds[index]!
-    const fields = property(page.properties)
-    fields.title = {
-      id: "title",
-      type: "title",
-      title: [{ plain_text: name, type: "text", text: { content: name } }],
+    const fields = {
+      title: {
+        id: "title",
+        type: "title",
+        title: [{ plain_text: name, type: "text", text: { content: name } }],
+      },
+      description: rich("description", `Current instruction ${name}.`),
+      kind: { id: "kind", type: "select", select: { name: "skill" } },
+      tags: { id: "tags", type: "multi_select", multi_select: [] },
+      enabled: { id: "enabled", type: "checkbox", checkbox: true },
+      default: { id: "default", type: "checkbox", checkbox: false },
+      skill_id: rich("skill_id", name),
+      main_file_id: rich("main_file_id", `main-${name}`),
+      content: rich("content", JSON.stringify({ kind: "native", mode: "100644", frontmatter: "" })),
+      state: { id: "state", type: "select", select: { name: "ready" } },
+      operation: rich("operation", ""),
+      origin: { id: "origin", type: "relation", relation: [], has_more: false },
+      requires: {
+        id: "requires",
+        type: "relation",
+        relation: dependencies[index]!.slice(0, 25).map((child) => ({ id: pageIds[child]! })),
+        has_more: dependencies[index]!.length > 25,
+      },
+      members: {
+        id: "members",
+        type: "relation",
+        relation: options.width === undefined && index === 0 ? [{ id: pageIds[4] }] : [],
+        has_more: false,
+      },
     }
-    fields.skill_id = rich("skill_id", name)
-    fields.main_file_id = rich("main_file_id", `main-${name}`)
-    fields.requires = {
-      id: "requires",
-      type: "relation",
-      relation: dependencies[index]!.slice(0, 25).map((child) => ({ id: pageIds[child]! })),
-      has_more: dependencies[index]!.length > 25,
-    }
-    fields.members = {
-      id: "members",
-      type: "relation",
-      relation: options.width === undefined && index === 0 ? [{ id: pageIds[4] }] : [],
-      has_more: false,
-    }
+    const page = { ...structuredClone(f.main), id: pageIds[index]!, properties: fields }
     f.bodies.set(pageIds[index]!, `# ${name} instruction\n`)
     return page
   })
-  const templateFile = sharedSnapshotFixture({ fileCount: 2 }).files[0]!
-  for (let owner = 0; owner < names.length; owner++) {
-    for (let index = 0; index < (options.filesPerSkill ?? 0); index++) {
-      const file = structuredClone(templateFile)
-      file.id = id(2000 + owner * (options.filesPerSkill ?? 0) + index)
-      file.properties.file_id = rich("file_id", `resource-${names[owner]}-${index}`)
-      file.properties.path = rich("path", `references/${index}.md`)
-      file.properties.skill.relation = [{ id: pageIds[owner]! }]
-      f.files.push(file)
-      f.bodies.set(file.id, `Resource ${names[owner]} ${index}\n`)
-    }
-  }
+  const files = names.flatMap((name, owner) =>
+    Array.from({ length: options.filesPerSkill ?? 0 }, (_, index) => {
+      const file = {
+        object: "page",
+        id: id(2000 + owner * (options.filesPerSkill ?? 0) + index),
+        last_edited_time: f.main.last_edited_time,
+        parent: {
+          type: "data_source_id",
+          data_source_id: library.files.data_source_id,
+          database_id: library.files.database_id,
+        },
+        properties: {
+          title: { id: "title", type: "title", title: [{ plain_text: `${name} ${index}` }] },
+          file_id: rich("file_id", `resource-${name}-${index}`),
+          path: rich("path", `references/${index}.md`),
+          content: rich(
+            "content",
+            JSON.stringify({ kind: "native", mode: "100644", frontmatter: "" }),
+          ),
+          skill: {
+            id: "skill",
+            type: "relation",
+            has_more: false,
+            relation: [{ id: pageIds[owner]! }],
+          },
+          origin: {
+            id: "origin",
+            type: "rollup",
+            rollup: { type: "array", array: [], function: "show_unique" },
+          },
+        },
+      }
+      f.bodies.set(file.id, `Resource ${name} ${index}\n`)
+      return file
+    }),
+  )
   const run = <A, E>(
     effect: Effect.Effect<
       A,
@@ -82,6 +139,11 @@ export function nativeGraphFixture(
             ...api,
             request: (path, body, requestOptions) => {
               const endpoint = path.split("?", 1)[0]
+              const schema = librarySchemaResponse(path, descriptor)
+              if (schema !== undefined) {
+                f.calls.push({ path, body, method: requestOptions?.method ?? "GET" })
+                return Effect.succeed(schema)
+              }
               if (endpoint === `v1/data_sources/${library.files.data_source_id}/query`) {
                 f.calls.push({ path, body, method: requestOptions?.method ?? "POST" })
                 const filter = property(property(body).filter)
@@ -89,7 +151,7 @@ export function nativeGraphFixture(
                 const owners = new Set(
                   parts.map((part) => property(property(part).relation).contains),
                 )
-                const values = f.files.filter((file) =>
+                const values = files.filter((file) =>
                   owners.has(file.properties.skill.relation[0]!.id),
                 )
                 const cursor = property(body).start_cursor
@@ -172,8 +234,43 @@ export function nativeGraphFixture(
                 const offset =
                   typeof cursor === "string" ? Number(cursor.replace("offset-", "")) : 0
                 const size = Math.min(100, Number(property(body).page_size ?? 100))
-                const end = Math.min(pages.length, offset + size)
-                const results = pages.slice(offset, end).map((row) => ({
+                const filter = property(body).filter
+                const parts = Array.isArray(property(filter).or)
+                  ? (property(filter).or as unknown[])
+                  : [filter]
+                const identities =
+                  filter === undefined
+                    ? undefined
+                    : new Set(
+                        parts.map((raw) => {
+                          const part = property(raw)
+                          const identity = property(part.rich_text).equals
+                          if (
+                            part.property !== descriptor.skills.property_ids["Skill ID"] ||
+                            typeof identity !== "string"
+                          )
+                            throw fail(
+                              "UNEXPECTED_REQUEST",
+                              "The fixture requires exact registered Skill ID filters.",
+                            )
+                          return identity
+                        }),
+                      )
+                const values =
+                  identities === undefined
+                    ? pages
+                    : pages.filter((page) =>
+                        identities.has(
+                          String(
+                            property(
+                              (property(page.properties).skill_id as { rich_text: unknown[] })
+                                .rich_text[0],
+                            ).plain_text,
+                          ),
+                        ),
+                      )
+                const end = Math.min(values.length, offset + size)
+                const results = values.slice(offset, end).map((row) => ({
                   ...structuredClone(row),
                   properties: Object.fromEntries(
                     Object.entries(property(row.properties)).filter(
@@ -184,8 +281,8 @@ export function nativeGraphFixture(
                 return Effect.succeed({
                   object: "list",
                   results,
-                  has_more: end < pages.length,
-                  next_cursor: end < pages.length ? `offset-${end}` : null,
+                  has_more: end < values.length,
+                  next_cursor: end < values.length ? `offset-${end}` : null,
                 })
               }
               return api.request(path, body, requestOptions)
@@ -194,5 +291,14 @@ export function nativeGraphFixture(
         )
       }),
     )
-  return { ...f, run, pages, pageIds, descriptor }
+  return {
+    ...f,
+    files,
+    run,
+    pages,
+    pageIds,
+    descriptor,
+    readBodyCount: () => f.bodyCalls().length,
+    writeCount: () => f.semanticWrites().length,
+  }
 }

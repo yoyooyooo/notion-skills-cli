@@ -220,8 +220,9 @@ async function until(check: () => boolean, timeout = 8_000) {
   }
 }
 
-test("three real Node processes with distinct content roots share the machine send budget", async () => {
+test("three real Node processes with distinct content roots share the machine admission budget", async () => {
   const run = await fixture()
+  let observations: DatabaseSync | undefined
   try {
     const workers = Array.from({ length: 3 }, (_, index) =>
       run.child({
@@ -230,9 +231,35 @@ test("three real Node processes with distinct content roots share the machine se
         connection: "connection-a",
         workspace: "workspace-a",
         count: 2,
+        waitForRelease: true,
       }),
     )
+    await Promise.all(workers.map((worker) => worker.ready()))
+    observations = new DatabaseSync(join(run.directory, "notion-requests.sqlite"))
+    // Audit the committed budget in this fixture only. A callback runs after
+    // transaction commit and OS scheduling, so it cannot timestamp admission.
+    observations.exec(`
+      CREATE TABLE admission_observations (credential TEXT NOT NULL, next_start_ms REAL NOT NULL);
+      CREATE TRIGGER record_admission AFTER UPDATE OF next_start_ms ON request_schedule
+      BEGIN
+        INSERT INTO admission_observations VALUES (NEW.credential, NEW.next_start_ms);
+      END;
+    `)
+    await Promise.all(workers.map((worker) => worker.release()))
     const receipts = await Promise.all(workers.map((worker) => worker.receipt()))
+    const admissions = observations
+      .prepare("SELECT next_start_ms FROM admission_observations WHERE credential=? ORDER BY rowid")
+      .all(JSON.stringify(["credential", run.origin, "credential-a"]))
+      .map((row) => {
+        if (typeof row.next_start_ms !== "number") throw new Error("Invalid admission budget")
+        return { admitted: row.next_start_ms - 350, next_start_ms: row.next_start_ms }
+      })
+    const admitted = admissions.map((entry) => entry.admitted)
+    const admissionGaps = admitted.flatMap((time, index) => {
+      const next = admitted[index + 1]
+      return next === undefined ? [] : [next - time]
+    })
+    const admissionSpan = Math.max(...admitted) - Math.min(...admitted)
     expect(receipts.every((receipt) => receipt.result.ok)).toBe(true)
     expect(new Set(receipts.map((receipt) => receipt.pid)).size).toBe(3)
     expect(new Set(receipts.map((receipt) => receipt.cache)).size).toBe(3)
@@ -267,10 +294,13 @@ test("three real Node processes with distinct content roots share the machine se
       case: "cross-process-spacing",
       processes: receipts.length,
       requests: times.length,
+      minimum_admission_gap_ms: Math.min(...admissionGaps),
+      admission_span_ms: admissionSpan,
       minimum_dispatch_gap_ms: Math.min(...dispatchGaps),
       dispatch_span_ms: dispatched.at(-1)! - dispatched[0]!,
       minimum_arrival_gap_ms: Math.min(...gaps),
       arrival_span_ms: times.at(-1)! - times[0]!,
+      admissions,
       receipts,
       arrivals: run.arrivals,
     }
@@ -281,10 +311,11 @@ test("three real Node processes with distinct content roots share the machine se
         JSON.stringify(timeline, null, 2) + "\n",
         { flag: "wx", mode: 0o600 },
       )
-    expect(Math.min(...dispatchGaps)).toBeGreaterThanOrEqual(325)
-    // Socket arrival is independently observed. Cold fetch initialization and
-    // OS delivery may compress arrival gaps after correctly spaced dispatches.
-    expect(dispatched.at(-1)! - dispatched[0]!).toBeGreaterThanOrEqual(1_650)
+    expect(admissions).toHaveLength(6)
+    expect(Math.min(...admissionGaps)).toBeGreaterThanOrEqual(350)
+    expect(admissionSpan).toBeGreaterThanOrEqual(1_750)
+    // Dispatch and socket arrival remain independent diagnostics: post-admission
+    // delays can compress their gaps without shortening the shared budget.
     for (const entry of sent) {
       const arrival = run.arrivals.filter((item) => item.path === entry.path)
       expect(arrival).toHaveLength(1)
@@ -294,6 +325,7 @@ test("three real Node processes with distinct content roots share the machine se
     expect((await stat(run.directory)).mode & 0o777).toBe(0o700)
     expect((await stat(join(run.directory, "notion-requests.sqlite"))).mode & 0o777).toBe(0o600)
   } finally {
+    observations?.close()
     await run.close()
   }
 }, 20_000)

@@ -4,7 +4,7 @@ import { fail, property, type SkillsError, type Source } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
-import { sharedSkillId } from "../src/shared-content.ts"
+import { skillIdentity } from "../src/shared-content.ts"
 import { readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
 import { listCatalog } from "../src/catalog-consumption.ts"
@@ -14,7 +14,13 @@ import {
   withSharedDirectoryMetadata,
 } from "../src/shared-metadata-inventory.ts"
 import { listViews, viewCatalog } from "../src/views.ts"
-import { sharedSnapshotFixture, library, skillPage, id, encode } from "./shared-snapshot-fixture.ts"
+import {
+  currentSnapshotFixture,
+  currentLibrary as library,
+  currentSkillPage as skillPage,
+  currentId as id,
+  currentBytes as encode,
+} from "./shared-current-fixture.ts"
 
 const db = library.skills.database_id
 const ds = library.skills.data_source_id
@@ -55,7 +61,7 @@ function row(page: string, stableId: string, name: string, enabled = true, defau
       "Renamed title": { id: "title", type: "title", title: [{ plain_text: name }] },
       "Renamed description": rich("description", `${name} description`),
       "Renamed kind": { id: "kind", type: "select", select: { name: "skill" } },
-      "Renamed stable identity": rich("skill_id", stableId),
+      "Renamed stable identity": rich("skill-id", stableId),
       "Renamed enabled": { id: "enabled", type: "checkbox", checkbox: enabled },
       "Renamed context": { id: "default", type: "checkbox", checkbox: defaultContext },
       // Display-name decoys must not be interpreted as registered Shared properties.
@@ -75,10 +81,10 @@ function fixture(
     ) => Effect.Effect<unknown, SkillsError>
   } = {},
 ) {
-  const base = sharedSnapshotFixture()
+  const base = currentSnapshotFixture()
   const config = {
     sources: options.unconfigured ? [] : [configuredSource],
-    default_database: id(999),
+    ...(options.unconfigured ? {} : { default_library: library.library_id }),
   }
   base.json.set("config.json", structuredClone(config))
   const requests: { readonly path: string; readonly body: unknown }[] = []
@@ -99,6 +105,17 @@ function fixture(
         const api = yield* Notion
         const controlled: Notion["Service"] = {
           ...api,
+          connectionIdentity: Effect.gen(function* () {
+            const current = Effect.succeed({ object: "user", id: "current-principal" })
+            const identity = yield* options.wrap?.("v1/users/me", current) ?? current
+            return {
+              principal: String(property(identity).id),
+              credential: "current-fixture",
+              connection: "current-fixture",
+              workspace: null,
+              api_origin: "https://api.notion.com",
+            }
+          }),
           request: (path, body, requestOptions) => {
             const read = Effect.suspend(() => {
               requests.push({ path, body })
@@ -217,19 +234,26 @@ function fixture(
 
 function assertMetadataOnly(f: ReturnType<typeof fixture>) {
   expect(f.base.requestMetrics().requests).toMatchObject({
-    notion_body: 0,
+    notion_body: f.requests.filter((request) =>
+      request.path.startsWith(`v1/blocks/${library.library_id}/children`),
+    ).length,
     notion_write: 0,
     provider: 0,
   })
   expect(f.base.requestMetrics().total_requests).toBe(f.requests.length)
   expect(
-    f.requests.some((request) => /\/pages\/|\/markdown|\/blocks|\/export/.test(request.path)),
+    f.requests.some(
+      (request) =>
+        /\/pages\/|\/markdown|\/blocks|\/export/.test(request.path) &&
+        request.path !== `v1/pages/${library.library_id}` &&
+        !request.path.startsWith(`v1/blocks/${library.library_id}/children`),
+    ),
   ).toBe(false)
   expect(
     f.requests.some(
       (request) =>
-        request.path.includes(library.files.data_source_id) ||
-        request.path.includes(library.records.data_source_id),
+        request.path.startsWith(`v1/data_sources/${library.files.data_source_id}/query`) ||
+        request.path.startsWith(`v1/data_sources/${library.records.data_source_id}/query`),
     ),
   ).toBe(false)
   expect(f.base.json.get("config.json")).toEqual(f.config)
@@ -239,7 +263,7 @@ describe("shared library Views metadata", () => {
   test("SC11 paired catalog and default directory reuse one complete metadata inventory", async () => {
     const f = fixture()
     f.inventory([[f.rows[0]], [f.rows[1], f.rows[2]]])
-    const result = await f.run(listCatalog({ database: db, directory: {} }))
+    const result = await f.run(listCatalog({ library: library.library_id, directory: {} }))
     expect(result.version).toBe(1)
     if (!result.catalog.ok || !result.directory.ok)
       throw new Error("Both projections must succeed.")
@@ -254,11 +278,68 @@ describe("shared library Views metadata", () => {
   test("SC11 separate catalog calls retain their own fresh observations", async () => {
     const f = fixture()
     f.inventory([[f.rows[0]], [f.rows[1], f.rows[2]]])
-    await f.run(listCatalog({ database: db }))
-    await f.run(listCatalog({ database: db, defaultView: true }))
+    await f.run(listCatalog({ library: library.library_id }))
+    await f.run(listCatalog({ library: library.library_id, defaultView: true }))
     expect(
       f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
     ).toHaveLength(4)
+    assertMetadataOnly(f)
+  })
+
+  test.each(["return", "throw", "reject", "pending"])(
+    "full catalog publication notifies before View work without awaiting observer %s",
+    async (behavior) => {
+      const f = fixture()
+      const notifications: Array<{ stored: boolean; viewStarted: boolean }> = []
+      const result = await f.run(
+        listCatalog({
+          library: library.library_id,
+          directory: {},
+          onCatalogSettled: () => {
+            notifications.push({
+              stored: [...f.base.json].some(
+                ([key, value]) =>
+                  key.startsWith("cache/catalogs/") && property(value).fetched_at !== undefined,
+              ),
+              viewStarted: f.requests.some((request) => request.path.startsWith("v1/views")),
+            })
+            if (behavior === "throw") throw new Error("Observer failed")
+            if (behavior === "reject") return Promise.reject(new Error("Observer rejected"))
+            if (behavior === "pending") return new Promise<void>(() => {})
+          },
+        }),
+      )
+      expect(notifications).toEqual([{ stored: true, viewStarted: false }])
+      expect(result).toMatchObject({ catalog: { ok: true }, directory: { ok: true } })
+      assertMetadataOnly(f)
+    },
+  )
+
+  test("failed full catalog notifies its persisted failure before a valid View proceeds", async () => {
+    const f = fixture()
+    f.members([[skillPage]])
+    f.rows[1] = row(beta, "unrelated", "Unrelated one")
+    f.rows[2] = row(gamma, "unrelated", "Unrelated two")
+    const notifications: unknown[] = []
+    const result = await f.run(
+      listCatalog({
+        library: library.library_id,
+        directory: { view: viewA },
+        onCatalogSettled: () => {
+          notifications.push({
+            failure: [...f.base.json]
+              .filter(([key]) => key.startsWith("cache/catalogs/"))
+              .map(([, value]) => property(property(value).last_failure).code),
+            viewStarted: f.requests.some((request) => request.path.startsWith("v1/views")),
+          })
+        },
+      }),
+    )
+    expect(notifications).toEqual([{ failure: ["SHARED_SKILL_ID_CONFLICT"], viewStarted: false }])
+    expect(result).toMatchObject({
+      catalog: { ok: false, error: { code: "SHARED_SKILL_ID_CONFLICT" } },
+      directory: { ok: true },
+    })
     assertMetadataOnly(f)
   })
 
@@ -268,10 +349,13 @@ describe("shared library Views metadata", () => {
       const f = fixture()
       f.inventory([[f.rows[0]], [f.rows[1], f.rows[2]]])
       await f.run(
-        listCatalog({ database: db, ...(warm === "directory" ? { defaultView: true } : {}) }),
+        listCatalog({
+          library: library.library_id,
+          ...(warm === "directory" ? { defaultView: true } : {}),
+        }),
       )
       f.clear()
-      const result = await f.run(listCatalog({ database: db, directory: {} }))
+      const result = await f.run(listCatalog({ library: library.library_id, directory: {} }))
       if (!result.catalog.ok || !result.directory.ok)
         throw new Error("Expected complete projections")
       expect((warm === "catalog" ? result.catalog.value : result.directory.value).source).toBe(
@@ -281,8 +365,10 @@ describe("shared library Views metadata", () => {
         f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
       ).toHaveLength(2)
       f.clear()
-      const cached = await f.run(listCatalog({ database: db, directory: {} }))
-      const offline = await f.run(listCatalog({ database: db, directory: {}, offline: true }))
+      const cached = await f.run(listCatalog({ library: library.library_id, directory: {} }))
+      const offline = await f.run(
+        listCatalog({ library: library.library_id, directory: {}, offline: true }),
+      )
       expect(cached).toMatchObject({
         catalog: { ok: true, value: { source: "local_cache" } },
         directory: { ok: true, value: { source: "local_cache" } },
@@ -297,7 +383,9 @@ describe("shared library Views metadata", () => {
     f.members([[skillPage]])
     f.rows[1] = row(beta, "unrelated", "Unrelated one")
     f.rows[2] = row(gamma, "unrelated", "Unrelated two")
-    const result = await f.run(listCatalog({ database: db, directory: { view: viewA } }))
+    const result = await f.run(
+      listCatalog({ library: library.library_id, directory: { view: viewA } }),
+    )
     expect(result.catalog).toMatchObject({ ok: false, error: { code: "SHARED_SKILL_ID_CONFLICT" } })
     if (!result.directory.ok) throw new Error("The unrelated conflict must not block the View")
     expect(result.directory.value.records.map((record) => record.name)).toEqual(["Alpha"])
@@ -312,7 +400,9 @@ describe("shared library Views metadata", () => {
     const f = fixture()
     f.members([[skillPage]])
     f.rows[1] = row(beta, "", "Private malformed row", true)
-    const result = await f.run(listCatalog({ database: db, directory: { view: viewA } }))
+    const result = await f.run(
+      listCatalog({ library: library.library_id, directory: { view: viewA } }),
+    )
     expect(result.catalog).toEqual({
       ok: false,
       error: {
@@ -335,7 +425,12 @@ describe("shared library Views metadata", () => {
     expect(
       f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
     ).toHaveLength(1)
-    expect(f.requests.some((request) => request.path.startsWith("v1/pages/"))).toBe(false)
+    expect(
+      f.requests.some(
+        (request) =>
+          request.path.startsWith("v1/pages/") && request.path !== `v1/pages/${library.library_id}`,
+      ),
+    ).toBe(false)
     assertMetadataOnly(f)
   })
 
@@ -343,7 +438,9 @@ describe("shared library Views metadata", () => {
     const f = fixture()
     f.members([[skillPage]])
     f.rows[1] = row(beta, "alpha", "Disabled duplicate", false)
-    const conflict = await f.run(listCatalog({ database: db, directory: { view: viewA } }))
+    const conflict = await f.run(
+      listCatalog({ library: library.library_id, directory: { view: viewA } }),
+    )
     expect(conflict).toMatchObject({
       catalog: { ok: false, error: { code: "SHARED_SKILL_ID_CONFLICT" } },
       directory: { ok: false, error: { code: "SHARED_SKILL_ID_CONFLICT" } },
@@ -353,7 +450,9 @@ describe("shared library Views metadata", () => {
     ).toHaveLength(1)
     const missing = fixture()
     missing.members([[id(9999)]])
-    const result = await missing.run(listCatalog({ database: db, directory: { view: viewA } }))
+    const result = await missing.run(
+      listCatalog({ library: library.library_id, directory: { view: viewA } }),
+    )
     expect(result).toMatchObject({
       catalog: { ok: true },
       directory: {
@@ -368,7 +467,7 @@ describe("shared library Views metadata", () => {
       },
     })
     const offline = await missing.run(
-      listCatalog({ database: db, directory: { view: viewA }, offline: true }),
+      listCatalog({ library: library.library_id, directory: { view: viewA }, offline: true }),
     )
     expect(offline.directory).toMatchObject({ ok: false, error: { code: "CACHE_MISSING" } })
   })
@@ -376,7 +475,9 @@ describe("shared library Views metadata", () => {
   test("SC11 unregistered disabled pages stay outside both directory projections", async () => {
     const f = fixture()
     f.rows[1] = row(beta, "", "Unregistered draft", false)
-    const result = await f.run(listCatalog({ database: db, directory: { view: viewA } }))
+    const result = await f.run(
+      listCatalog({ library: library.library_id, directory: { view: viewA } }),
+    )
     if (!result.catalog.ok || !result.directory.ok)
       throw new Error("Drafts must not block discovery")
     expect(result.catalog.value.records.map((record) => record.name)).toEqual(["Alpha", "Gamma"])
@@ -392,7 +493,9 @@ describe("shared library Views metadata", () => {
   test("SC11 incomplete inventory is never shared into a successful View", async () => {
     const f = fixture()
     f.status({ type: "incomplete", incomplete_reason: "query_result_limit_reached" })
-    const result = await f.run(listCatalog({ database: db, directory: { view: viewA } }))
+    const result = await f.run(
+      listCatalog({ library: library.library_id, directory: { view: viewA } }),
+    )
     expect(result.catalog).toMatchObject({ ok: true, value: { coverage: { exhaustive: false } } })
     expect(result.directory).toMatchObject({ ok: false, error: { code: "VIEW_INCOMPLETE" } })
     expect(
@@ -432,11 +535,25 @@ describe("shared library Views metadata", () => {
             }),
           ),
       })
-      const error = await f.run(Effect.flip(listCatalog({ database: db, directory: {} })))
-      expect(error.code).toBe(change === "scope" ? "ACCESS_DENIED" : "SHARED_LIBRARY_ID_CONFLICT")
-      expect(
-        f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
-      ).toHaveLength(2)
+      if (change === "scope") {
+        const error = await f.run(
+          Effect.flip(listCatalog({ library: library.library_id, directory: {} })),
+        )
+        expect(error.code).toBe("ACCESS_DENIED")
+        expect(
+          f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+        ).toHaveLength(2)
+      } else {
+        const result = await f.run(listCatalog({ library: library.library_id, directory: {} }))
+        expect(result.catalog).toMatchObject({ ok: true })
+        expect(result.directory).toMatchObject({
+          ok: false,
+          error: { code: "LIBRARY_SCHEMA_CONFLICT" },
+        })
+        expect(
+          f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+        ).toHaveLength(1)
+      }
     },
   )
 
@@ -482,7 +599,7 @@ describe("shared library Views metadata", () => {
     const result = await f.run(
       Effect.gen(function* () {
         const clock = yield* Clock.Clock
-        return yield* listCatalog({ database: db, directory: {} }).pipe(
+        return yield* listCatalog({ library: library.library_id, directory: {} }).pipe(
           Effect.provideService(Clock.Clock, {
             ...clock,
             currentTimeMillis: Effect.sync(() => now),
@@ -503,12 +620,14 @@ describe("shared library Views metadata", () => {
     const f = fixture({
       wrap: (path, read) => (path.endsWith("/queries") ? Effect.interrupt : read),
     })
-    await expect(f.run(listCatalog({ database: db, directory: {} }))).rejects.toThrow(/interrupt/i)
+    await expect(
+      f.run(listCatalog({ library: library.library_id, directory: {} })),
+    ).rejects.toThrow(/interrupt/i)
     expect(
       f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
     ).toHaveLength(1)
     const retry = await f.run(
-      listCatalog({ database: db, directory: { view: viewB }, offline: true }),
+      listCatalog({ library: library.library_id, directory: { view: viewB }, offline: true }),
     )
     expect(retry.directory).toMatchObject({ ok: false, error: { code: "CACHE_MISSING" } })
   })
@@ -520,7 +639,9 @@ describe("shared library Views metadata", () => {
           ? Effect.fail(fail("CANCELLED", "Controlled cancellation"))
           : read,
     })
-    const error = await f.run(Effect.flip(listCatalog({ database: db, directory: {} })))
+    const error = await f.run(
+      Effect.flip(listCatalog({ library: library.library_id, directory: {} })),
+    )
     expect(error.code).toBe("CANCELLED")
   })
 
@@ -533,7 +654,7 @@ describe("shared library Views metadata", () => {
 
   test("lists native View order from a registered shared library without changing the user's default", async () => {
     const f = fixture()
-    const result = await f.run(listViews({ database: "shared-library" }))
+    const result = await f.run(listViews({ library: "shared-library" }))
     expect(result.database.shared_library?.library_id).toBe(library.library_id)
     expect(result.views.map((view) => view.id)).toEqual([viewA, viewB])
     expect(
@@ -547,11 +668,11 @@ describe("shared library Views metadata", () => {
   test("decodes stable property IDs, filters Enabled, and preserves View members with Default Context false", async () => {
     const f = fixture()
     f.rows.push({ id: id(909), properties: { malformed: true } })
-    const result = await f.run(viewCatalog({ database: db, view: viewA }))
+    const result = await f.run(viewCatalog({ library: library.library_id, view: viewA }))
     expect(result.records.map((record) => record.name)).toEqual(["Gamma", "Alpha"])
     expect(result.records.map((record) => record.id)).toEqual([
-      sharedSkillId(library.library_id, "gamma"),
-      sharedSkillId(library.library_id, "alpha"),
+      skillIdentity(library.library_id, "gamma"),
+      skillIdentity(library.library_id, "alpha"),
     ])
     expect(
       result.records.every(
@@ -571,7 +692,7 @@ describe("shared library Views metadata", () => {
     if (inventory === undefined) throw new Error("Missing batched metadata query.")
     expect(
       new URL(inventory.path, "https://api.notion.com/").searchParams.getAll("filter_properties"),
-    ).toEqual(["title", "description", "kind", "skill_id", "enabled", "default"])
+    ).toEqual(["title", "description", "kind", "skill-id", "enabled", "default"])
     expect(inventory.body).toEqual({ page_size: 100 })
     expect(
       f.requests.filter((request) => request.path.includes(`/data_sources/${ds}/query`)),
@@ -580,20 +701,16 @@ describe("shared library Views metadata", () => {
     assertMetadataOnly(f)
   })
 
-  test("globally discovers a shared Skills entry and chooses its first native View", async () => {
+  test("an unconfigured View does not infer a Library through global discovery", async () => {
     const f = fixture({ unconfigured: true })
-    const result = await f.run(viewCatalog())
-    expect(result.view?.id).toBe(viewA)
-    expect(result.view_selection).toBe("first")
-    expect(result.records.map((record) => record.name)).toEqual(["Gamma", "Alpha"])
-    expect(f.requests.some((request) => request.path === "v1/search")).toBe(true)
-    assertMetadataOnly(f)
+    await expect(f.run(viewCatalog())).rejects.toMatchObject({ code: "LIBRARY_CONTEXT_REQUIRED" })
+    expect(f.requests).toEqual([])
   })
 
   test("zero Views remains an empty directory rather than a whole-library query", async () => {
     const f = fixture()
     f.listed([])
-    const result = await f.run(viewCatalog({ database: db }))
+    const result = await f.run(viewCatalog({ library: library.library_id }))
     expect(result.view_selection).toBe("none")
     expect(result.records).toEqual([])
     expect(f.requests.some((request) => request.path.includes(`/data_sources/${ds}/query`))).toBe(
@@ -718,7 +835,7 @@ describe("shared library Views metadata", () => {
     const objects = structuredClone(f.base.objects)
     f.rows[0] = f.base.main
     const tags = (names: string[]) => {
-      property(f.base.main.properties).tags = {
+      property(f.base.main.properties)["Tags"] = {
         id: library.skills.property_ids.Tags,
         type: "multi_select",
         multi_select: names.map((name) => ({ id: name, name, color: "default" })),
@@ -728,22 +845,24 @@ describe("shared library Views metadata", () => {
     // These are controlled API observations, not a reimplementation of Notion's filter engine.
     f.members([[skillPage]])
     f.clear()
-    const first = await f.run(viewCatalog({ database: db, view: viewA }))
+    const first = await f.run(viewCatalog({ library: library.library_id, view: viewA }))
     expect(first.records.map((record) => record.id)).toEqual([snapshot.record.id])
     assertMetadataOnly(f)
 
     tags(["hidden"])
     f.members([[gamma]])
     f.clear()
-    const warm = await f.run(viewCatalog({ database: db, view: viewA }))
+    const warm = await f.run(viewCatalog({ library: library.library_id, view: viewA }))
     expect(warm.records).toEqual(first.records)
     expect(warm.fetched_at).toBe(first.fetched_at)
     expect(warm.source).toBe("local_cache")
     expect(f.requests).toHaveLength(0)
 
-    const refreshed = await f.run(viewCatalog({ database: db, view: viewA, refresh: true }))
+    const refreshed = await f.run(
+      viewCatalog({ library: library.library_id, view: viewA, refresh: true }),
+    )
     expect(refreshed.records.map((record) => record.id)).toEqual([
-      sharedSkillId(library.library_id, "gamma"),
+      skillIdentity(library.library_id, "gamma"),
     ])
     expect(refreshed.coverage.exhaustive).toBe(true)
     expect(f.requests.some((call) => call.path.endsWith(`/views/${viewA}/queries`))).toBe(true)
@@ -752,10 +871,12 @@ describe("shared library Views metadata", () => {
     // A changed server View selection is observed again when the directory expires.
     f.members([[skillPage, gamma]])
     f.clear()
-    const expired = await f.run(viewCatalog({ database: db, view: viewA, maxAge: 0 }))
+    const expired = await f.run(
+      viewCatalog({ library: library.library_id, view: viewA, maxAge: 0 }),
+    )
     expect(expired.records.map((record) => record.id)).toEqual([
       snapshot.record.id,
-      sharedSkillId(library.library_id, "gamma"),
+      skillIdentity(library.library_id, "gamma"),
     ])
     expect(expired.source).toBe("notion")
     expect(expired.coverage.exhaustive).toBe(true)
@@ -764,12 +885,14 @@ describe("shared library Views metadata", () => {
     f.status({ type: "incomplete", incomplete_reason: "query_result_limit_reached" })
     f.clear()
     const failed = await f.run(
-      Effect.flip(viewCatalog({ database: db, view: viewA, refresh: true })),
+      Effect.flip(viewCatalog({ library: library.library_id, view: viewA, refresh: true })),
     )
     expect(failed.code).toBe("VIEW_INCOMPLETE")
     assertMetadataOnly(f)
     f.clear()
-    const retained = await f.run(viewCatalog({ database: db, view: viewA, offline: true }))
+    const retained = await f.run(
+      viewCatalog({ library: library.library_id, view: viewA, offline: true }),
+    )
     expect(retained.records).toEqual(expired.records)
     expect(retained.fetched_at).toBe(expired.fetched_at)
     const historical = await f.base.run(readSkill(ref, { offline: true }))

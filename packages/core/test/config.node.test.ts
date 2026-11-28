@@ -4,7 +4,7 @@ import { ConfigProvider, Effect, Layer, Schema } from "effect"
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { ConfigSchema, type SkillsError } from "../src/model.ts"
+import { CatalogSchema, ConfigSchema, type Catalog, type SkillsError } from "../src/model.ts"
 import { trashPath } from "../src/local-locks.ts"
 import { Store, StoreLive, configuredToken, configuration, setToken } from "../src/store.ts"
 
@@ -103,8 +103,8 @@ test("normal runtime blocks legacy state and corrupt SQLite rather than manufact
 test("retirement fences reservations across restart and older catalogs cannot overwrite newer observations", async () => {
   await isolated(async (_directory, run) => {
     const scope = "a".repeat(64)
-    const page = "11111111-1111-4111-8111-111111111111"
-    const key = `cache/latest/${scope}/${page}/first.json`
+    const page = "skill://architect?library=library-test"
+    const key = `cache/latest/${scope}/${encodeURIComponent(page)}/first.json`
     const generation = await run(
       Effect.gen(function* () {
         return yield* (yield* Store).reserveCacheGeneration(scope, page)
@@ -112,7 +112,9 @@ test("retirement fences reservations across restart and older catalogs cannot ov
     )
     await run(
       Effect.gen(function* () {
-        yield* (yield* Store).retireKeys([`cache/latest/${scope}/${page}/.fence`])
+        yield* (yield* Store).retireKeys([
+          `cache/latest/${scope}/${encodeURIComponent(page)}/.fence`,
+        ])
       }),
     )
     const late = await run(
@@ -138,14 +140,28 @@ test("retirement fences reservations across restart and older catalogs cannot ov
         const older = yield* store.reserveCacheGeneration(scope, `catalog-${selection}`)
         const newer = yield* store.reserveCacheGeneration(scope, `catalog-${selection}`)
         const catalog = `cache/catalogs/${scope}/${selection}.json`
-        yield* store.writeJson(catalog, { generation: newer, sources: [] })
+        const current: Catalog = {
+          scope,
+          fetched_at: 20,
+          databases: [],
+          records: [],
+          coverage: {
+            method: "explicit_library",
+            exhaustive: true,
+            queried_data_sources: [],
+            failed_sources: [],
+            search_index_limited: false,
+          },
+        }
+        yield* store.writeJson(catalog, { ...current, generation: newer })
         yield* store.writeJson(catalog, {
+          ...current,
           generation: older,
-          sources: [{ alias: "old", database_id: "db", title: "old", data_source_ids: [] }],
+          fetched_at: 10,
         })
-        expect((yield* store.readJson(catalog, ConfigSchema))?.sources).toEqual([])
+        expect((yield* store.readJson(catalog, CatalogSchema))?.fetched_at).toBe(20)
         yield* store.retireKeys([catalog, key])
-        expect(yield* store.readJson(catalog, ConfigSchema)).toBeUndefined()
+        expect(yield* store.readJson(catalog, CatalogSchema)).toBeUndefined()
       }),
     )
   })

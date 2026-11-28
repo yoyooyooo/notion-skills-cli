@@ -1,59 +1,46 @@
 import { Effect, Option } from "effect"
 import { Command } from "effect/cli"
 
-import { Notion, catalog, openSkill } from "@notion-skills-cli/core"
+import { Notion, catalog } from "@notion-skills-cli/core"
 
 import { defineCommand } from "../../core/src/command-schema.ts"
 import { inspectSharedRelationSchema } from "../../core/src/shared-library-relations.ts"
 
-import { databaseFlag, emit } from "./command-options.ts"
-export const doctorCommand = defineCommand("doctor", { database: databaseFlag }, (options) =>
+import { libraryFlag, emit } from "./command-options.ts"
+export const doctorCommand = defineCommand("doctor", { library: libraryFlag }, (options) =>
   Effect.gen(function* () {
     const api = yield* Notion
     const version = yield* api.version
     yield* api.connectionIdentity ?? api.request("v1/users/me")
-    const database = Option.getOrUndefined(options.database)
+    const database = Option.getOrUndefined(options.library)
     if (database === undefined) {
       yield* emit({
         transport: "direct_http",
         notion_api_version: version,
         authentication: "available",
-        discovery: { checked: false, reason: "Select --database to inspect one catalog." },
+        discovery: { checked: false, reason: "Select --library to inspect one catalog." },
         skill_read: { checked: false, reason: "No database selected." },
       })
       return
     }
-    const result = yield* catalog({ database, refresh: true })
+    const result = yield* catalog({ library: database, refresh: true })
     const nativeRelations = yield* Effect.forEach(
       result.databases.flatMap((source) =>
         source.shared_library === undefined ? [] : [source.shared_library],
       ),
       inspectSharedRelationSchema,
     )
-    let readStatus: unknown = {
-      checked: false,
-      reason: "No skill is present in the discovered list.",
-    }
-    if (result.records[0]) {
-      const snapshot = yield* openSkill(result.records[0].id, { database, refresh: true })
-      readStatus = {
-        checked: true,
-        available: true,
-        storage: snapshot.markdown_files
-          ? "markdown_files"
-          : snapshot.references
-            ? "references"
-            : "native_skills",
-      }
-    }
     yield* emit({
       transport: "direct_http",
       notion_api_version: version,
       authentication: "available",
       discovery: { checked: true },
-      skills_databases: result.databases.filter((database) => database.role !== "upstream").length,
+      skills_databases: result.databases.length,
       skill_count: result.records.length,
-      skill_read: readStatus,
+      skill_read: {
+        checked: false,
+        reason: "Doctor checks metadata only. Use read with an explicit target to verify content.",
+      },
       coverage: result.coverage,
       native_relations: nativeRelations,
     })
@@ -63,11 +50,11 @@ export const doctorCommand = defineCommand("doctor", { database: databaseFlag },
     "Check direct Notion API authentication and an optional selected catalog",
   ),
   Command.withDescription(
-    "Validate the project's direct Notion API connection. Authentication priority is config.token > NOTION_API_TOKEN; use ctl config set-token --stdin to configure a token. Without --database this checks authentication only. With --database, inspect the selected catalog and read one current Skill, caching its files. Inspect coverage.failed_sources and skill_read; checked=false means no Skill was available to probe. Does not modify Notion content.",
+    "Validate the project's direct Notion API connection. Authentication priority is config.token > NOTION_API_TOKEN; use ctl config set-token --stdin to configure a token. Without --library this checks authentication only. With --library, inspect the selected catalog metadata and registered schema. Inspect coverage.failed_sources and native_relations for incomplete discovery or schema health. Skill content is not read; use read with an explicit target to verify it. Does not modify Notion content.",
   ),
   Command.withExamples([
     {
-      command: "ntn-skills ctl doctor --database DATABASE_ID",
+      command: "ntn-skills ctl doctor --library DATABASE_ID",
       description: "Diagnose the existing connection before online operations",
     },
   ]),

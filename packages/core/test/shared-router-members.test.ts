@@ -2,42 +2,27 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { fail, property, SkillsError, type Source } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
-import { sharedRecordFromPage, sharedSkillId } from "../src/shared-content.ts"
+import { sharedRecordFromPage, skillIdentity } from "../src/shared-content.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
-import {
-  querySharedRouterMembers,
-  querySharedSkillRelation,
-  renderSharedRouterMembers,
-} from "../src/shared-router-members.ts"
+import { querySharedRouterMembers, querySharedSkillRelation } from "../src/shared-router-members.ts"
+import { currentLibrary } from "./shared-current-fixture.ts"
 
 const id = (value: number) => `00000000-0000-4000-8000-${value.toString(16).padStart(12, "0")}`
 const routerPage = id(1)
 const membersProperty = "mem%3Aroles"
 const library: SharedLibrary = {
-  version: 1,
-  library_id: "library-router",
+  ...currentLibrary,
+  library_id: "88c64f8d-88ee-5ebf-a45c-f9a4a0144e42",
   operation_id: "library-router",
-  parent_page_id: id(2),
   skills: {
-    database_id: id(3),
-    data_source_id: id(4),
+    ...currentLibrary.skills,
     property_ids: {
-      Name: "title",
-      Description: "description",
-      Kind: "kind",
+      ...currentLibrary.skills.property_ids,
       "Skill ID": "skill_id",
-      Enabled: "enabled",
-      "Default Context": "default",
       Members: membersProperty,
-      Tags: "tags",
-      References: "references",
       "Main File ID": "main_file_id",
-      Projection: "projection",
-      Source: "source",
     },
   },
-  files: { database_id: id(5), data_source_id: id(6), property_ids: { Name: "title" } },
-  records: { database_id: id(7), data_source_id: id(8), property_ids: { Name: "title" } },
 }
 const source: Source = {
   alias: library.library_id,
@@ -77,6 +62,14 @@ function row(
       "Renamed kind": { id: "kind", type: "select", select: { name: kind } },
       "Renamed enabled": { id: "enabled", type: "checkbox", checkbox: enabled },
       "Renamed context": { id: "default", type: "checkbox", checkbox: false },
+      "Main File ID": rich("main_file_id", `main-${stableId}`),
+      Content: rich("content", JSON.stringify({ kind: "native", mode: "100644", frontmatter: "" })),
+      "Current State": { id: "state", type: "select", select: { name: "ready" } },
+      Operation: rich("operation", ""),
+      "Renamed Members": { id: membersProperty, type: "relation", relation: [], has_more: false },
+      Requires: { id: "requires", type: "relation", relation: [], has_more: false },
+      Origin: { id: "origin", type: "relation", relation: [], has_more: false },
+      Tags: { id: "tags", type: "multi_select", multi_select: [] },
       Name: { id: "unregistered-title", type: "title", title: [{ plain_text: "Wrong name" }] },
       Description: rich("unregistered-description", "Wrong description"),
       Members: {
@@ -160,14 +153,52 @@ function fixture(count = 2) {
             ? Effect.fail(fail("UNEXPECTED_REQUEST", "Unexpected relation page."))
             : Effect.succeed(structuredClone(result))
         }
+        if (/^\/v1\/pages\/[^/]+$/.test(url.pathname)) {
+          const selected = inventoryRows.find(
+            (raw) => url.pathname === `/v1/pages/${property(raw).id}`,
+          )
+          return selected === undefined
+            ? Effect.fail(
+                fail("NOT_FOUND", "The exact requested child is unavailable.", {
+                  path,
+                  notion_code: "object_not_found",
+                }),
+              )
+            : Effect.succeed(structuredClone(selected))
+        }
         if (url.pathname === `/v1/data_sources/${library.skills.data_source_id}/query`) {
+          const filter = property(property(body).filter)
+          const parts = Array.isArray(filter.or) ? filter.or : [filter]
+          const identities = new Set(
+            parts.map((raw) => {
+              const part = property(raw)
+              if (
+                part.property !== "skill_id" ||
+                typeof property(part.rich_text).equals !== "string"
+              )
+                throw fail(
+                  "UNEXPECTED_REQUEST",
+                  "Relation metadata requires exact stable identity filters.",
+                )
+              return property(part.rich_text).equals
+            }),
+          )
+          const values = inventoryRows.filter((raw) => {
+            const field = Object.values(property(property(raw).properties))
+              .map(property)
+              .find((value) => value.id === "skill_id")
+            const text = Array.isArray(field?.rich_text)
+              ? field.rich_text.map((part) => property(part).plain_text).join("")
+              : undefined
+            return identities.has(text)
+          })
           const pages =
             inventoryPages ??
-            Array.from({ length: Math.ceil(inventoryRows.length / 100) }, (_, page) =>
+            Array.from({ length: Math.max(1, Math.ceil(values.length / 100)) }, (_, page) =>
               list(
-                inventoryRows.slice(page * 100, page * 100 + 100),
+                values.slice(page * 100, page * 100 + 100),
                 page,
-                Math.ceil(inventoryRows.length / 100),
+                Math.max(1, Math.ceil(values.length / 100)),
               ),
             )
           const result = pages[index]
@@ -178,7 +209,7 @@ function fixture(count = 2) {
         return Effect.fail(
           fail(
             "UNEXPECTED_REQUEST",
-            "Member bodies, per-page metadata and writes are forbidden in this fixture.",
+            "Member bodies, unrelated metadata and writes are forbidden in this fixture.",
             { path },
           ),
         )
@@ -213,7 +244,8 @@ function assertMetadataOnly(f: ReturnType<typeof fixture>) {
         (call.method === "POST" &&
           call.path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query?`)) ||
         (call.method === "GET" &&
-          call.path.startsWith(`v1/pages/${routerPage}/properties/${membersProperty}?`)),
+          (call.path.startsWith(`v1/pages/${routerPage}/properties/${membersProperty}?`) ||
+            f.members.some((member) => call.path === `v1/pages/${member.id}`))),
     ),
   ).toBe(true)
   expect(f.calls.some((call) => /\/markdown|\/blocks|\/export/.test(call.path))).toBe(false)
@@ -281,8 +313,8 @@ describe("shared Router members", () => {
     assertMetadataOnly(f)
   })
 
-  test("Requires rejects disabled, Prompt, nested Router and duplicate stable identities in the complete inventory", async () => {
-    for (const issue of ["disabled", "prompt", "router", "duplicate"] as const) {
+  test("Requires rejects missing, disabled, Prompt, nested Router and duplicate stable identities in the complete inventory", async () => {
+    for (const issue of ["missing", "disabled", "prompt", "router", "duplicate"] as const) {
       const f = fixture(2)
       const registered = {
         ...library,
@@ -298,7 +330,8 @@ describe("shared Router members", () => {
       const first = f.members[0]
       const second = f.members[1]
       if (!first || !second) throw new Error("Fixture needs two targets")
-      if (issue === "disabled")
+      if (issue === "missing") f.inventory([f.rawRouter, second])
+      else if (issue === "disabled")
         property(property(first.properties)["Renamed enabled"]).checkbox = false
       else if (issue === "duplicate")
         property(second.properties)["Renamed identity"] = rich("skill_id", "member-000")
@@ -316,21 +349,38 @@ describe("shared Router members", () => {
         }).pipe(Effect.result),
       )
       expect(result._tag).toBe("Failure")
+      if (result._tag === "Failure") {
+        expect(property(result.failure.details).field).toBe("Requires")
+        expect(result.failure.message).toContain("Requires")
+        expect(result.failure.message).not.toContain("Router member")
+        if (issue === "missing" || issue === "disabled") {
+          expect(result.failure.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
+          expect(property(result.failure.details).page_id).toBe(id(100))
+          expect(property(result.failure.details).reason).toBe(
+            issue === "disabled" ? "disabled" : undefined,
+          )
+        } else if (issue === "duplicate") {
+          expect(result.failure.code).toBe("SHARED_SKILL_ID_CONFLICT")
+        } else expect(result.failure.code).toBe("INVALID_MEMBERS")
+      }
       assertMetadataOnly(f)
     }
   })
-  test("uses registered property IDs and one metadata batch, preserving false Default Context members", async () => {
+  test("uses registered IDs and one exact claim batch, preserving false Default Context members", async () => {
     const f = fixture()
     f.inventory([f.members[1], f.rawRouter, f.members[0]])
     const result = await f.run(f.query())
     expect(result.map((member) => member.id)).toEqual([
-      sharedSkillId(library.library_id, "member-000"),
-      sharedSkillId(library.library_id, "member-001"),
+      skillIdentity(library.library_id, "member-000"),
+      skillIdentity(library.library_id, "member-001"),
     ])
     expect(result.map((member) => member.name)).toEqual(["Member 0", "Member 1"])
     expect(
       result.every(
-        (member) => member.ref.startsWith("skill://shared_skill%3A") && member.kind === "skill",
+        (member) =>
+          member.ref.startsWith("skill://") &&
+          member.ref.includes("?library=") &&
+          member.kind === "skill",
       ),
     ).toBe(true)
     expect(result[0]?.metadata).toEqual({
@@ -345,11 +395,37 @@ describe("shared Router members", () => {
       name: "Member 0",
       description: "Member 0 instructions",
     })
-    expect(f.calls).toHaveLength(1)
+    expect(f.calls).toHaveLength(3)
+    expect(f.calls.filter((call) => call.method === "GET").map((call) => call.path)).toEqual(
+      f.members.map((member) => `v1/pages/${member.id}`),
+    )
+    const query = f.calls.find((call) => call.method === "POST")!
     expect(
-      new URL(f.calls[0]!.path, "https://api.notion.com/").searchParams.getAll("filter_properties"),
-    ).toEqual(["title", "description", "kind", "skill_id", "enabled", "default"])
-    expect(f.calls[0]?.body).toEqual({ page_size: 100 })
+      new URL(query.path, "https://api.notion.com/").searchParams.getAll("filter_properties"),
+    ).toEqual([
+      "title",
+      "description",
+      "kind",
+      "skill_id",
+      "enabled",
+      "default",
+      "main_file_id",
+      "content",
+      "state",
+      "operation",
+      "origin",
+      membersProperty,
+      "requires",
+    ])
+    expect(query.body).toEqual({
+      page_size: 100,
+      filter: {
+        or: [
+          { property: "skill_id", rich_text: { equals: "member-000" } },
+          { property: "skill_id", rich_text: { equals: "member-001" } },
+        ],
+      },
+    })
     assertMetadataOnly(f)
   })
 
@@ -359,7 +435,7 @@ describe("shared Router members", () => {
     expect(empty.calls).toEqual([])
     const single = fixture(1)
     expect(await single.run(single.query())).toHaveLength(1)
-    expect(single.calls).toHaveLength(1)
+    expect(single.calls).toHaveLength(2)
   })
 
   test("fails a missing registered Members property before any request instead of using its display name", async () => {
@@ -407,14 +483,28 @@ describe("shared Router members", () => {
     }
   })
 
-  test("paginates 101 relation members and complete Skills metadata without N+1 or double-encoding property ID", async () => {
+  test("paginates 101 relation members and exact claim batches without scanning unselected Skills or double-encoding property IDs", async () => {
     const f = fixture(101)
     const result = await f.run(f.query())
     expect(result).toHaveLength(101)
     expect(new Set(result.map((member) => member.id)).size).toBe(101)
-    expect(f.calls.filter((call) => call.method === "GET")).toHaveLength(2)
+    expect(f.calls.filter((call) => call.method === "GET")).toHaveLength(103)
+    expect(
+      f.calls.filter((call) => call.method === "GET" && !call.path.includes("/properties/")),
+    ).toHaveLength(101)
     expect(f.calls.filter((call) => call.method === "POST")).toHaveLength(2)
-    expect(f.calls.some((call) => call.path.includes("%253A"))).toBe(false)
+    // The native property path retains its encoded segment. Query parameters
+    // encode that literal property ID as data and decode back to the same ID.
+    expect(f.calls.some((call) => call.path.split("?", 1)[0]!.includes("%253A"))).toBe(false)
+    expect(
+      f.calls
+        .filter((call) => call.method === "POST")
+        .every((call) =>
+          new URL(call.path, "https://fixture.invalid/").searchParams
+            .getAll("filter_properties")
+            .includes(membersProperty),
+        ),
+    ).toBe(true)
     expect(f.calls[1]?.path).toContain("start_cursor=page-1")
     assertMetadataOnly(f)
   })
@@ -467,6 +557,9 @@ describe("shared Router members", () => {
     const error = await f.run(Effect.flip(f.query()))
     expect(error.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
     expect(property(error.details).page_id).toBe(id(101))
+    expect(property(error.details).field).toBe("Members")
+    expect(property(error.details).reason).toBeUndefined()
+    expect(error.message).toContain("Members")
   })
 
   test("rejects a selected member from a foreign source", async () => {
@@ -482,6 +575,8 @@ describe("shared Router members", () => {
     const error = await f.run(Effect.flip(f.query()))
     expect(error.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
     expect(property(error.details).reason).toBe("disabled")
+    expect(property(error.details).field).toBe("Members")
+    expect(error.message).toBe("A selected Members target is disabled.")
   })
 
   test("nested Routers and Prompts cannot be selected members", async () => {
@@ -499,7 +594,10 @@ describe("shared Router members", () => {
   test("detects selected-to-selected stable ID conflicts", async () => {
     const f = fixture()
     property(f.members[1]!.properties)["Renamed identity"] = rich("skill_id", "member-000")
-    expect((await f.run(Effect.flip(f.query()))).code).toBe("SHARED_SKILL_ID_CONFLICT")
+    const error = await f.run(Effect.flip(f.query()))
+    expect(error.code).toBe("SHARED_SKILL_ID_CONFLICT")
+    expect(property(error.details).field).toBe("Members")
+    expect(error.message).toContain("Members")
   })
 
   test("detects valid nonmember claims even when disabled without blocking unrelated corrupt rows", async () => {
@@ -527,22 +625,26 @@ describe("shared Router members", () => {
   test("incomplete metadata status, repeated selected rows and bad final cursors fail", async () => {
     for (const issue of ["status", "duplicate", "cursor"]) {
       const f = fixture()
-      const page = list([f.rawRouter, ...f.members], 0, 1)
+      const page = list([...f.members], 0, 1)
       if (issue === "status")
         page.request_status = {
           type: "incomplete",
           incomplete_reason: "query_result_limit_reached",
         }
-      if (issue === "duplicate") page.results = [f.rawRouter, ...f.members, f.members[0]]
+      if (issue === "duplicate") page.results = [...f.members, f.members[0]]
       if (issue === "cursor") page.next_cursor = "unexpected"
       f.inventoryPages([page])
       const error = await f.run(Effect.flip(f.query()))
-      expect(["INVALID_RESPONSE", "SHARED_ROUTER_MEMBERS_INCOMPLETE"]).toContain(error.code)
-      expect(f.calls).toHaveLength(1)
+      expect(error.code).toBe(
+        issue === "duplicate"
+          ? "SHARED_GRAPH_METADATA_INVALID"
+          : "SHARED_GRAPH_METADATA_INCOMPLETE",
+      )
+      expect(f.calls).toHaveLength(3)
     }
   })
 
-  test("freezes render metadata, ignoring body-only edit timestamps", async () => {
+  test("freezes relation metadata, ignoring body-only edit timestamps", async () => {
     const f = fixture()
     const before = await f.run(f.query())
     f.members[0]!.last_edited_time = "2026-10-31T00:00:00.000Z"
@@ -554,12 +656,18 @@ describe("shared Router members", () => {
     expect(before[0]?.metadata.description).toBe("Member 0 instructions")
   })
 
-  test("matches the existing Router Members renderer including empty output", async () => {
+  test("a supplied complete inventory ignores unrelated malformed rows but rejects a malformed selected target", async () => {
     const f = fixture()
-    const members = await f.run(f.query())
-    expect(renderSharedRouterMembers(members)).toBe(
-      `\n\n## Members\n\n- [Member 0](${members[0]!.ref}) — Member 0 instructions\n- [Member 1](${members[1]!.ref}) — Member 1 instructions\n`,
-    )
-    expect(renderSharedRouterMembers([])).toBe("\n\n## Members\n\n\n")
+    const pages = [f.rawRouter, ...f.members, { id: id(999), properties: {} }, { malformed: true }]
+    const read = () =>
+      querySharedRouterMembers(library, {
+        router: f.router,
+        rawPage: f.rawRouter,
+        inventory: { data_source_id: library.skills.data_source_id, complete: true, pages },
+      })
+    expect(await f.run(read())).toHaveLength(2)
+    expect(f.calls).toEqual([])
+    delete property(f.members[0]!.properties)["Renamed description"]
+    expect((await f.run(Effect.flip(read()))).code).toBe("INVALID_SHARED_SKILL")
   })
 })

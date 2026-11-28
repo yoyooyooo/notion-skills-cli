@@ -1,4 +1,8 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { trashPath } from "../src/local-locks.ts"
 import { createHash } from "node:crypto"
 import { Crypto, Effect, Layer, Schema } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
@@ -6,6 +10,7 @@ import { fail, property, SkillsError, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
+import { librarySchemaResponse } from "./library-schema-fixture.ts"
 import {
   bindSharedProfile,
   catalogWithProfile,
@@ -21,14 +26,9 @@ import {
   selectProfileView,
   type SharedProfilePlan,
 } from "../src/shared-profile.ts"
-import {
-  appendSharedRecord,
-  canonicalSharedJson,
-  querySharedProfileRecords,
-  querySharedRecords,
-} from "../src/shared-records.ts"
+import { canonicalSharedJson, querySharedProfileRecords } from "../src/shared-records.ts"
 import { Store } from "../src/store.ts"
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
+import { sourceDefinitionLayout } from "../src/shared-sources-model.ts"
 
 const id = (value: number) => `00000000-0000-4000-8000-${value.toString(16).padStart(12, "0")}`
 const fields = {
@@ -39,12 +39,13 @@ const fields = {
   Hash: "hash",
   Payload: "payload",
   Skill: "skill",
+  Resource: "resource",
+  Origin: "origin",
 }
 const library: SharedLibrary = {
-  version: 1,
-  library_id: "library-profile",
+  version: 2,
+  library_id: "3edee24e-6f66-5e9a-b5d6-06be63dcbd4d",
   operation_id: "library-profile-init",
-  parent_page_id: id(1),
   skills: {
     database_id: id(2),
     data_source_id: id(3),
@@ -55,11 +56,14 @@ const library: SharedLibrary = {
       Tags: "tags",
       Enabled: "enabled",
       "Default Context": "default",
-      References: "references",
       "Skill ID": "skill_id",
       "Main File ID": "main_file_id",
-      Projection: "projection",
-      Source: "source",
+      Content: "content",
+      "Current State": "state",
+      Operation: "operation",
+      Members: "members",
+      Requires: "requires",
+      Origin: "origin",
     },
   },
   files: {
@@ -69,22 +73,34 @@ const library: SharedLibrary = {
       Name: "title",
       "File ID": "file_id",
       Path: "path",
-      Projection: "projection",
-      Status: "status",
+      Content: "content",
       Skill: "skill",
+      Origin: "origin",
     },
   },
   records: { database_id: id(6), data_source_id: id(7), property_ids: fields },
+  sources: {
+    database_id: id(30),
+    data_source_id: id(31),
+    property_ids: Object.fromEntries(
+      Object.keys(sourceDefinitionLayout(id(3), id(7))).map((name, index) => [
+        name,
+        name === "Name" ? "title" : `source-${index}`,
+      ]),
+    ),
+  },
 }
 const defaultView = id(8)
 const sessionView = id(9)
 const otherView = id(14)
 const otherLibrary: SharedLibrary = {
   ...library,
-  library_id: "library-other",
+  library_id: "45c64249-e1dd-59ab-ad9f-604ff752ddb4",
   operation_id: "library-other-init",
-  parent_page_id: id(10),
   skills: { ...library.skills, database_id: id(12), data_source_id: id(13) },
+  files: { ...library.files, database_id: id(110), data_source_id: id(111) },
+  records: { ...library.records, database_id: id(112), data_source_id: id(113) },
+  sources: { ...library.sources, database_id: id(114), data_source_id: id(115) },
 }
 const source = {
   alias: "library",
@@ -102,6 +118,11 @@ const initial = {
   default_view_id: defaultView,
 }
 const pendingPrefix = "operations/shared-profile-pending/"
+let fixtureParent: string | undefined
+afterAll(async () => {
+  if (process.platform === "darwin" && fixtureParent !== undefined)
+    await Effect.runPromise(trashPath(fixtureParent))
+})
 
 function fieldValue(key: string, value: unknown) {
   const raw = property(value)
@@ -114,6 +135,7 @@ function fieldValue(key: string, value: unknown) {
 function matches(row: Record<string, unknown>, value: unknown): boolean {
   const filter = property(value)
   if (Array.isArray(filter.and)) return filter.and.every((part) => matches(row, part))
+  if (Array.isArray(filter.or)) return filter.or.some((part) => matches(row, part))
   const field = property(property(row.properties)[String(filter.property)])
   if (filter.relation !== undefined) {
     if (!Array.isArray(field.relation)) return false
@@ -127,6 +149,8 @@ function matches(row: Record<string, unknown>, value: unknown): boolean {
   return false
 }
 function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
+  fixtureParent ??= mkdtempSync(join(tmpdir(), "ntn-profile-suite-"))
+  const root = mkdtempSync(join(fixtureParent, "case-"))
   const records: Record<string, unknown>[] = []
   const json = new Map<string, unknown>()
   const retired = new Map<string, unknown>()
@@ -136,10 +160,11 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
   let credential = "profile-credential"
   let nextPage = 100
   let lost: "visible" | "absent" | undefined
+  let rejected: SkillsError | undefined
   let queryFailure = false
   let incomplete = false
   let forcedRows: Record<string, unknown>[] | undefined
-  let onCreate: (() => void) | undefined
+  let onWrite: (() => void) | undefined
   const view = (selected: string, name: string, descriptor = library) => ({
     id: selected,
     name,
@@ -191,6 +216,9 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
       },
       enabled: { id: "enabled", type: "checkbox", checkbox: true },
       default: { id: "default", type: "checkbox", checkbox: false },
+      members: { id: "members", type: "relation", has_more: false, relation: [] },
+      requires: { id: "requires", type: "relation", has_more: false, relation: [] },
+      origin: { id: "origin", type: "relation", has_more: false, relation: [] },
     },
   })
   const create = (body: unknown) => {
@@ -218,12 +246,13 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
       parent: { type: "data_source_id", data_source_id: library.records.data_source_id },
       properties: {
         [fields.Name]: { title: [{ type: "text", text: { content: plan.payload.name } }] },
-        [fields["Record ID"]]: rich(plan.revision_id),
+        [fields["Record ID"]]: rich(plan.record_id),
         [fields["Entity ID"]]: rich(plan.payload.profile_id),
         [fields.Kind]: { select: { name: "profile" } },
         [fields.Hash]: rich(digest(payload)),
         [fields.Payload]: rich(payload),
         [fields.Skill]: { relation: [] },
+        [fields.Origin]: { relation: [] },
       },
     })
     records.push(row)
@@ -241,6 +270,15 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
           ...(options?.content === undefined ? {} : { content: options.content }),
         })
         const url = new URL(path, "https://api.notion.com/")
+        if (
+          rejected !== undefined &&
+          ((url.pathname === "/v1/pages" && options?.method === "POST") ||
+            (url.pathname.startsWith("/v1/pages/") && options?.method === "PATCH"))
+        ) {
+          const error = rejected
+          rejected = undefined
+          return Effect.fail(error)
+        }
         if (url.pathname === "/v1/users/me") return Effect.succeed({ id: id(900), object: "user" })
         if (url.pathname === "/v1/search")
           return Effect.succeed(
@@ -258,6 +296,8 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
             ]),
           )
         for (const descriptor of [library, otherLibrary]) {
+          const schema = librarySchemaResponse(path, descriptor)
+          if (schema !== undefined) return Effect.succeed(schema)
           if (url.pathname === `/v1/databases/${descriptor.skills.database_id}`)
             return Effect.succeed({
               object: "database",
@@ -316,10 +356,30 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
           const outcome = lost
           lost = undefined
           if (outcome !== "absent") records.push(row)
-          onCreate?.()
+          onWrite?.()
           if (outcome !== undefined)
             return Effect.fail(
               fail("WRITE_OUTCOME_UNKNOWN", "Fixture lost the original Profile response"),
+            )
+          return Effect.succeed(row)
+        }
+        if (url.pathname.startsWith("/v1/pages/") && options?.method === "PATCH") {
+          const row = records.find((row) => row.id === url.pathname.slice("/v1/pages/".length))
+          if (row === undefined)
+            return Effect.fail(fail("ACCESS_DENIED", "Fixture Profile is unavailable"))
+          const outcome = lost
+          lost = undefined
+          const properties = Object.fromEntries(
+            Object.entries(property(property(body).properties)).map(([key, value]) => [
+              key,
+              fieldValue(key, value),
+            ]),
+          )
+          if (outcome !== "absent") row.properties = { ...property(row.properties), ...properties }
+          onWrite?.()
+          if (outcome !== undefined)
+            return Effect.fail(
+              fail("WRITE_OUTCOME_UNKNOWN", "Fixture lost the current Profile response"),
             )
           return Effect.succeed(row)
         }
@@ -329,13 +389,9 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
       }),
   }
   const store: Store["Service"] = {
-    root: "/unused",
-    configRoot: "/unused",
-    cacheRoot: "/unused",
-    integrity: integrityRepositoryFixture(),
-    upstream: upstreamRepositoryFixture(),
-    registerBindingWithBase: () => Effect.die("Unexpected binding"),
-    advanceBaseAndReceipt: () => Effect.die("Unexpected baseline"),
+    root,
+    configRoot: root,
+    cacheRoot: root,
     backup: () => Effect.die("Unexpected backup"),
     reserveCacheGeneration: (scope, identity) =>
       Effect.sync(() => {
@@ -358,7 +414,6 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
       Effect.try({
         try: () => {
           if (key.startsWith(pendingPrefix)) {
-            if (retired.has(key)) throw fail("STATE_CONFLICT", "Retired dispatch cannot reopen")
             if (json.has(key) && canonicalSharedJson(json.get(key)) !== canonicalSharedJson(value))
               throw fail("STATE_CONFLICT", "Frozen dispatch cannot change")
           } else if (key.startsWith("cache/views/")) {
@@ -388,8 +443,7 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
     retireKeys: (keys) =>
       Effect.sync(() =>
         keys.map((key) => {
-          if (key.startsWith(pendingPrefix) && json.has(key)) retired.set(key, json.get(key))
-          else if (key.startsWith("cache/views/")) {
+          if (key.startsWith("cache/views/")) {
             const parts = key.split("/")
             const fence = `${parts[2]}/views-${parts[3]?.replace(/\.json$/u, "")}`
             fences.set(fence, generations.get(fence) ?? 0)
@@ -414,6 +468,17 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
     views,
     calls,
     seed,
+    overwrite: (plan: SharedProfilePlan) => {
+      const current = records.find(
+        (row) =>
+          text(property(property(row.properties)[fields["Entity ID"]]).rich_text) ===
+          plan.payload.profile_id,
+      )
+      if (current === undefined) throw new Error("Missing current Profile")
+      const replacement = seed(plan)
+      records.pop()
+      current.properties = replacement.properties
+    },
     run: <A, E>(effect: Effect.Effect<A, E, Notion | Crypto.Crypto | Store>) =>
       Effect.runPromise(effect.pipe(Effect.provide(layer))),
     clear: () => {
@@ -421,6 +486,9 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
     },
     unknown: (outcome: "visible" | "absent") => {
       lost = outcome
+    },
+    reject: (error: SkillsError) => {
+      rejected = error
     },
     deny: (value: boolean) => {
       queryFailure = value
@@ -431,15 +499,23 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
     force: (rows?: Record<string, unknown>[]) => {
       forcedRows = rows
     },
-    onCreate: (action?: () => void) => {
-      onCreate = action
+    onWrite: (action?: () => void) => {
+      onWrite = action
     },
     credential: (value: string) => {
       credential = value
     },
     pending: () => [...json.entries()].filter(([key]) => key.startsWith(pendingPrefix)),
     cached: () => [...json.entries()].filter(([key]) => key.startsWith("cache/views/")),
-    writes: () => calls.filter((call) => call.path === "v1/pages" && call.method === "POST").length,
+    writes: () =>
+      calls.filter(
+        (call) =>
+          (call.path === "v1/pages" && call.method === "POST") ||
+          (call.path.startsWith("v1/pages/") && call.method === "PATCH"),
+      ).length,
+    posts: () => calls.filter((call) => call.path === "v1/pages" && call.method === "POST").length,
+    patches: () =>
+      calls.filter((call) => call.path.startsWith("v1/pages/") && call.method === "PATCH").length,
     queries: () =>
       calls.filter((call) =>
         call.path.startsWith(`v1/data_sources/${library.records.data_source_id}/query`),
@@ -448,32 +524,80 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
 }
 
 describe("library-owned Profile management", () => {
-  test("saves one immutable empty-Skill Profile only after its original plan is durable", async () => {
+  test("current freshness survives a fresh client and is replaced in place without predecessors", async () => {
     const f = fixture()
-    f.onCreate(() => {
+    const policy = {
+      default: { read_max_age_ms: 60_000 },
+      skills: [
+        { skill_id: "alpha", read_max_age_ms: 86_400_000 },
+        { skill_id: "beta", read_max_age_ms: 0 },
+      ],
+    }
+    const plan = await f.run(
+      prepareSharedProfileChange(library, {
+        profile: { ...initial, freshness: policy },
+        expectedFingerprint: null,
+      }),
+    )
+    await f.run(
+      saveSharedProfile(library, {
+        profile: { ...initial, freshness: policy },
+        expectedFingerprint: null,
+      }),
+    )
+    const cold = fixture()
+    cold.records.push(...structuredClone(f.records))
+    expect((await cold.run(loadSharedProfile(library, initial.profile_id))).freshness).toEqual(
+      policy,
+    )
+    expect(cold.json.size).toBe(0)
+    const cleared = await f.run(
+      saveSharedProfile(library, {
+        profile: { ...initial, name: "Renamed" },
+        expectedFingerprint: plan.fingerprint,
+      }),
+    )
+    expect((await f.run(loadSharedProfile(library, initial.profile_id))).freshness).toBeUndefined()
+    expect(cleared.status).toBe("applied")
+    expect(f.records).toHaveLength(1)
+    expect(f.posts()).toBe(1)
+    expect(f.patches()).toBe(1)
+    const restarted = fixture()
+    restarted.records.push(...structuredClone(f.records))
+    const current = await restarted.run(loadSharedProfile(library, initial.profile_id))
+    expect(current.name).toBe("Renamed")
+    expect(current.freshness).toBeUndefined()
+    expect(current.record_page_id).toBe(cleared.profile.record_page_id)
+    expect(current.fingerprint).toBe(cleared.fingerprint)
+    expect(plan.payload.freshness).toEqual(policy)
+  })
+  test("writes one empty-Skill current record only after its finite intent is durable", async () => {
+    const f = fixture()
+    f.onWrite(() => {
       expect(f.pending()).toHaveLength(1)
     })
     const saved = await f.run(
-      saveSharedProfile(library, { profile: initial, expectedRevision: null }),
+      saveSharedProfile(library, { profile: initial, expectedFingerprint: null }),
     )
-    expect(saved.verified).toBe(true)
+    expect(saved.status).toBe("applied")
     expect(saved.current).toBe(true)
     expect(saved.profile).toMatchObject({
       ...initial,
       library_id: library.library_id,
-      parent_revision_id: null,
+      record_id: expect.stringMatching(/^profile-current-[a-f0-9]{64}$/u),
+      fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u),
     })
     expect(f.writes()).toBe(1)
     expect(f.pending()).toHaveLength(0)
-    expect(f.retired.size).toBe(1)
+    expect(f.retired.size).toBe(0)
     expect(property(property(f.records[0]?.properties)[fields.Skill]).relation).toEqual([])
     expect(f.calls.every((call) => call.content === undefined)).toBe(true)
     f.clear()
     const repeated = await f.run(
-      saveSharedProfile(library, { profile: initial, expectedRevision: null }),
+      saveSharedProfile(library, { profile: initial, expectedFingerprint: null }),
     )
-    expect(repeated.revision_id).toBe(saved.revision_id)
-    expect(repeated.mode).toBe("reconcile")
+    expect(repeated.fingerprint).toBe(saved.fingerprint)
+    expect(repeated.status).toBe("unchanged")
     expect(f.writes()).toBe(0)
   })
 
@@ -484,7 +608,7 @@ describe("library-owned Profile management", () => {
         await f.run(
           prepareSharedProfileChange(library, {
             profile: { profile_id: `p-${index}`, name: `Profile ${index}`, enabled: true },
-            expectedRevision: null,
+            expectedFingerprint: null,
           }),
         ),
       )
@@ -495,43 +619,79 @@ describe("library-owned Profile management", () => {
     expect(f.calls.every((call) => call.content === undefined)).toBe(true)
     expect(f.json.size).toBe(0)
     expect(property(f.calls[0]?.body).filter).toEqual({
-      and: [
-        { property: fields.Skill, relation: { is_empty: true } },
-        { property: fields.Kind, select: { equals: "profile" } },
-      ],
+      property: fields.Kind,
+      select: { equals: "profile" },
     })
   })
 
-  test("ordinary shared records still require the exact Skill relation", async () => {
-    const f = fixture()
-    const saved = await f.run(
-      appendSharedRecord(library, {
-        mode: "create",
-        kind: "file_event",
-        skillPageId: id(20),
-        recordId: "old-event",
-        operationId: "old-operation",
-        entityId: "file-a",
-        payload: { old: true },
-      }),
-    )
-    expect(saved.skill_page_id).toBe(id(20))
-    const read = await f.run(querySharedRecords(library, { skillPageId: id(20) }))
-    expect(read).toHaveLength(1)
-    const row = f.records[0]
-    if (row === undefined) throw new Error("Missing fixture record")
-    property(property(row.properties)[fields.Skill]).relation = []
-    f.force([row])
-    const error = await f.run(Effect.flip(querySharedRecords(library, { skillPageId: id(20) })))
-    expect(error.code).toBe("INVALID_SHARED_RECORD")
-    const wrongKind = await f.run(Effect.flip(querySharedProfileRecords(library)))
-    expect(wrongKind.code).toBe("INVALID_SHARED_RECORD")
-  })
-
-  test("the Profile decoder rejects a fake Skill binding and a payload revision mismatch", async () => {
+  test("an exact current Profile lookup cannot hide a conflicting Record kind or owner", async () => {
     const f = fixture()
     const plan = await f.run(
-      prepareSharedProfileChange(library, { profile: initial, expectedRevision: null }),
+      prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
+    )
+    const row = f.seed(plan)
+    property(property(row.properties)[fields.Kind]).select = { name: "file_event" }
+    expect((await f.run(Effect.flip(loadSharedProfile(library, "daily")))).code).toBe(
+      "INVALID_SHARED_RECORD",
+    )
+    property(property(row.properties)[fields.Kind]).select = { name: "profile" }
+    property(property(row.properties)[fields.Skill]).relation = [{ id: id(20) }]
+    expect((await f.run(Effect.flip(loadSharedProfile(library, "daily")))).code).toBe(
+      "INVALID_SHARED_RECORD",
+    )
+    expect(f.writes()).toBe(0)
+  })
+
+  test("canonical JSON retains array order and exact author text, and rejects non-JSON values", () => {
+    expect(canonicalSharedJson({ z: [3, 1], a: { beta: "line\r\n", alpha: "  code  " } })).toBe(
+      '{"a":{"alpha":"  code  ","beta":"line\\r\\n"},"z":[3,1]}',
+    )
+    for (const value of [
+      NaN,
+      undefined,
+      [undefined],
+      Array(1),
+      new Date(),
+      {
+        get value() {
+          throw Error("must not invoke accessor")
+        },
+      },
+    ])
+      expect(() => canonicalSharedJson(value)).toThrow()
+    const cyclic: unknown[] = []
+    cyclic.push(cyclic)
+    expect(() => canonicalSharedJson(cyclic)).toThrow()
+  })
+
+  test("a current Profile has no Source owner when Records registers Origin", async () => {
+    const f = fixture()
+    const withOrigin = {
+      ...library,
+      records: {
+        ...library.records,
+        property_ids: { ...library.records.property_ids, Origin: "origin" },
+      },
+    }
+    await f.run(saveSharedProfile(withOrigin, { profile: initial, expectedFingerprint: null }))
+    const row = f.records[0]!
+    expect(property(property(row.properties).origin).relation).toEqual([])
+    expect(await f.run(querySharedProfileRecords(withOrigin))).toHaveLength(1)
+    property(property(row.properties).origin).relation = [{ id: id(80) }]
+    await expect(f.run(querySharedProfileRecords(withOrigin))).rejects.toMatchObject({
+      code: "INVALID_SHARED_RECORD",
+    })
+    property(property(row.properties).origin).relation = []
+    property(property(row.properties).origin).has_more = true
+    await expect(f.run(querySharedProfileRecords(withOrigin))).rejects.toMatchObject({
+      code: "INVALID_SHARED_RECORD",
+    })
+  })
+
+  test("the Profile decoder rejects a fake Skill binding and old payloads without interpreting history", async () => {
+    const f = fixture()
+    const plan = await f.run(
+      prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
     )
     const row = f.seed(plan)
     property(property(row.properties)[fields.Skill]).relation = [{ id: id(20) }]
@@ -540,27 +700,28 @@ describe("library-owned Profile management", () => {
       "INVALID_SHARED_RECORD",
     )
     property(property(row.properties)[fields.Skill]).relation = []
-    const changed = canonicalSharedJson({
+    const old = canonicalSharedJson({
       version: 1,
       operation_id: plan.operation_id,
-      payload: { ...plan.payload, name: "Changed outside its revision" },
+      payload: { ...plan.payload, version: 1, parent_revision_id: null },
     })
     property(row.properties)[fields.Payload] = fieldValue(fields.Payload, {
-      rich_text: [{ plain_text: changed }],
+      rich_text: [{ plain_text: old }],
     })
     property(row.properties)[fields.Hash] = fieldValue(fields.Hash, {
-      rich_text: [{ plain_text: digest(changed) }],
+      rich_text: [{ plain_text: digest(old) }],
     })
     expect((await f.run(Effect.flip(loadSharedProfile(library, "daily")))).code).toBe(
       "SHARED_PROFILE_INVALID",
     )
+    expect(f.writes()).toBe(0)
   })
 
   test("lost invisible writes retain their exact plan and cannot be blindly resent or replaced", async () => {
     const f = fixture()
     f.unknown("absent")
     const first = await f.run(
-      Effect.flip(saveSharedProfile(library, { profile: initial, expectedRevision: null })),
+      Effect.flip(saveSharedProfile(library, { profile: initial, expectedFingerprint: null })),
     )
     expect(first.code).toBe("WRITE_OUTCOME_UNKNOWN")
     expect(f.writes()).toBe(1)
@@ -569,10 +730,10 @@ describe("library-owned Profile management", () => {
     expect(
       (
         await f.run(
-          Effect.flip(saveSharedProfile(library, { profile: initial, expectedRevision: null })),
+          Effect.flip(saveSharedProfile(library, { profile: initial, expectedFingerprint: null })),
         )
       ).code,
-    ).toBe("SHARED_RECORD_UNRESOLVED")
+    ).toBe("SHARED_PROFILE_UNRESOLVED")
     expect(f.writes()).toBe(0)
     expect(f.pending()).toEqual(frozen)
     expect(
@@ -581,7 +742,7 @@ describe("library-owned Profile management", () => {
           Effect.flip(
             saveSharedProfile(library, {
               profile: { ...initial, name: "Replacement" },
-              expectedRevision: null,
+              expectedFingerprint: null,
             }),
           ),
         )
@@ -591,32 +752,57 @@ describe("library-owned Profile management", () => {
     expect(f.pending()).toEqual(frozen)
   })
 
-  test("a lost visible write reconciles the original revision without revalidating a changed current View", async () => {
+  test("a definitive rejection clears only the unfinished intent and permits a freshly reviewed retry", async () => {
+    const f = fixture()
+    const first = await f.run(
+      prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
+    )
+    f.seed(first)
+    const input = {
+      profile: { ...initial, name: "Allowed retry" },
+      expectedFingerprint: first.fingerprint,
+    }
+    f.reject(fail("ACCESS_DENIED", "Fixture rejected the write", { phase: "definitive_rejection" }))
+    expect((await f.run(Effect.flip(saveSharedProfile(library, input)))).code).toBe("ACCESS_DENIED")
+    expect(f.pending()).toHaveLength(0)
+    expect((await f.run(loadSharedProfile(library, "daily"))).fingerprint).toBe(first.fingerprint)
+    f.clear()
+    expect((await f.run(saveSharedProfile(library, input))).status).toBe("applied")
+    expect(f.posts()).toBe(0)
+    expect(f.patches()).toBe(1)
+    expect(f.records).toHaveLength(1)
+  })
+
+  test("a lost visible write reconciles current rules without revalidating a changed View", async () => {
     const f = fixture()
     f.unknown("visible")
     await f.run(
-      Effect.flip(saveSharedProfile(library, { profile: initial, expectedRevision: null })),
+      Effect.flip(saveSharedProfile(library, { profile: initial, expectedFingerprint: null })),
     )
     f.views.clear()
     f.clear()
     const reconciled = await f.run(
-      saveSharedProfile(library, { profile: initial, expectedRevision: null }),
+      saveSharedProfile(library, { profile: initial, expectedFingerprint: null }),
     )
-    expect(reconciled.mode).toBe("reconcile")
-    expect(reconciled.verified).toBe(true)
+    expect(reconciled.status).toBe("current_matches")
+    expect(reconciled.current).toBe(true)
     expect(f.pending()).toHaveLength(0)
     expect(f.writes()).toBe(0)
     expect(f.calls.some((call) => call.path.startsWith("v1/views/"))).toBe(false)
   })
 
-  test("explicit reconcile without a prior visible revision never creates a dispatch", async () => {
+  test("explicit reconcile without visible current rules never creates a dispatch", async () => {
     const f = fixture()
     const error = await f.run(
       Effect.flip(
-        saveSharedProfile(library, { profile: initial, expectedRevision: null, mode: "reconcile" }),
+        saveSharedProfile(library, {
+          profile: initial,
+          expectedFingerprint: null,
+          mode: "reconcile",
+        }),
       ),
     )
-    expect(error.code).toBe("SHARED_RECORD_UNRESOLVED")
+    expect(error.code).toBe("SHARED_PROFILE_UNRESOLVED")
     expect(f.writes()).toBe(0)
     expect(f.pending()).toHaveLength(0)
   })
@@ -624,7 +810,7 @@ describe("library-owned Profile management", () => {
   test("stale updates and a default View from another library stop before dispatch", async () => {
     const f = fixture()
     const saved = await f.run(
-      saveSharedProfile(library, { profile: initial, expectedRevision: null }),
+      saveSharedProfile(library, { profile: initial, expectedFingerprint: null }),
     )
     f.clear()
     expect(
@@ -633,7 +819,7 @@ describe("library-owned Profile management", () => {
           Effect.flip(
             saveSharedProfile(library, {
               profile: { ...initial, name: "New" },
-              expectedRevision: null,
+              expectedFingerprint: null,
             }),
           ),
         )
@@ -649,7 +835,7 @@ describe("library-owned Profile management", () => {
           Effect.flip(
             saveSharedProfile(library, {
               profile: { ...initial, name: "New" },
-              expectedRevision: saved.revision_id,
+              expectedFingerprint: saved.fingerprint,
             }),
           ),
         )
@@ -659,63 +845,152 @@ describe("library-owned Profile management", () => {
     expect(f.pending()).toHaveLength(0)
   })
 
-  test("missing parent history and concurrent heads fail without ordering by time or page", async () => {
+  test("duplicate current physical pages fail even when their rules are identical", async () => {
     const f = fixture()
-    const root = await f.run(
-      prepareSharedProfileChange(library, { profile: initial, expectedRevision: null }),
+    const initialPlan = await f.run(
+      prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
     )
-    const left = await f.run(
-      prepareSharedProfileChange(library, {
-        profile: { ...initial, name: "Left" },
-        expectedRevision: root.revision_id,
-      }),
-    )
-    const right = await f.run(
-      prepareSharedProfileChange(library, {
-        profile: { ...initial, name: "Right" },
-        expectedRevision: root.revision_id,
-      }),
-    )
-    f.seed(left)
+    f.seed(initialPlan)
+    f.seed(initialPlan)
     expect((await f.run(Effect.flip(loadSharedProfile(library, "daily")))).code).toBe(
-      "SHARED_PROFILE_BASELINE_MISSING",
+      "SHARED_PROFILE_DUPLICATE",
     )
-    f.seed(root)
-    f.seed(right)
-    expect((await f.run(Effect.flip(loadSharedProfile(library, "daily")))).code).toBe(
-      "SHARED_PROFILE_CONFLICT",
+    expect((await f.run(Effect.flip(listSharedProfiles(library)))).code).toBe(
+      "SHARED_PROFILE_DUPLICATE",
     )
     const error = await f.run(
       Effect.flip(
         saveSharedProfile(library, {
           profile: { ...initial, name: "Arbitrary winner" },
-          expectedRevision: left.revision_id,
+          expectedFingerprint: initialPlan.fingerprint,
         }),
       ),
     )
-    expect(error.code).toBe("SHARED_PROFILE_CONFLICT")
+    expect(error.code).toBe("SHARED_PROFILE_DUPLICATE")
     expect(f.writes()).toBe(0)
+    expect(f.pending()).toHaveLength(0)
   })
 
-  test("a retired original dispatch cannot authorize replay when its record is temporarily absent", async () => {
+  test("completion leaves no past rules and the same Profile can change again or return to former content", async () => {
     const f = fixture()
-    await f.run(saveSharedProfile(library, { profile: initial, expectedRevision: null }))
-    f.records.length = 0
+    const first = await f.run(
+      saveSharedProfile(library, { profile: initial, expectedFingerprint: null }),
+    )
+    const changed = await f.run(
+      saveSharedProfile(library, {
+        profile: { ...initial, name: "Second rules" },
+        expectedFingerprint: first.fingerprint,
+      }),
+    )
+    const returned = await f.run(
+      saveSharedProfile(library, { profile: initial, expectedFingerprint: changed.fingerprint }),
+    )
+    expect(returned.fingerprint).toBe(first.fingerprint)
+    expect(returned.profile.record_page_id).toBe(first.profile.record_page_id)
+    expect(f.records).toHaveLength(1)
+    expect(f.posts()).toBe(1)
+    expect(f.patches()).toBe(2)
+    expect(f.pending()).toHaveLength(0)
+    expect(f.retired.size).toBe(0)
+    expect(JSON.stringify(f.records)).not.toContain("Second rules")
+    expect(JSON.stringify([...f.json.values()])).not.toContain("Second rules")
+  })
+
+  test("unknown replacements reconcile visible current rules and never replay an absent PATCH", async () => {
+    for (const outcome of ["visible", "absent"] as const) {
+      const f = fixture()
+      const first = await f.run(
+        saveSharedProfile(library, { profile: initial, expectedFingerprint: null }),
+      )
+      f.clear()
+      f.unknown(outcome)
+      const input = {
+        profile: { ...initial, name: "Changed" },
+        expectedFingerprint: first.fingerprint,
+      }
+      expect((await f.run(Effect.flip(saveSharedProfile(library, input)))).code).toBe(
+        "WRITE_OUTCOME_UNKNOWN",
+      )
+      expect(f.posts()).toBe(0)
+      expect(f.patches()).toBe(1)
+      expect(f.pending()).toHaveLength(1)
+      expect(property(f.pending()[0]?.[1]).target_page_id).toBe(first.profile.record_page_id)
+      f.clear()
+      if (outcome === "visible") {
+        const result = await f.run(saveSharedProfile(library, { ...input, mode: "reconcile" }))
+        expect(result.status).toBe("current_matches")
+        expect(f.pending()).toHaveLength(0)
+      } else {
+        expect(
+          (await f.run(Effect.flip(saveSharedProfile(library, { ...input, mode: "reconcile" }))))
+            .code,
+        ).toBe("SHARED_PROFILE_UNRESOLVED")
+        expect(f.pending()).toHaveLength(1)
+      }
+      expect(f.writes()).toBe(0)
+      expect(f.records).toHaveLength(1)
+    }
+  }, 15_000)
+
+  test("reconciliation reports third-party current rules and does not overwrite them", async () => {
+    const f = fixture()
+    const first = await f.run(
+      saveSharedProfile(library, { profile: initial, expectedFingerprint: null }),
+    )
+    const input = {
+      profile: { ...initial, name: "Intended" },
+      expectedFingerprint: first.fingerprint,
+    }
+    f.unknown("absent")
+    await f.run(Effect.flip(saveSharedProfile(library, input)))
+    f.overwrite(
+      await f.run(
+        prepareSharedProfileChange(library, {
+          profile: { ...initial, name: "Other writer" },
+          expectedFingerprint: first.fingerprint,
+        }),
+      ),
+    )
     f.clear()
     expect(
-      (
-        await f.run(
-          Effect.flip(saveSharedProfile(library, { profile: initial, expectedRevision: null })),
-        )
-      ).code,
-    ).toBe("STATE_CONFLICT")
+      (await f.run(Effect.flip(saveSharedProfile(library, { ...input, mode: "reconcile" })))).code,
+    ).toBe("SHARED_PROFILE_CONFLICT")
+    expect(f.writes()).toBe(0)
+    expect(f.pending()).toHaveLength(1)
+    expect((await f.run(loadSharedProfile(library, "daily"))).name).toBe("Other writer")
+  })
+
+  test("matching current content resolves an intent without claiming an original execution proof", async () => {
+    const f = fixture()
+    const first = await f.run(
+      saveSharedProfile(library, { profile: initial, expectedFingerprint: null }),
+    )
+    const input = {
+      profile: { ...initial, name: "Desired" },
+      expectedFingerprint: first.fingerprint,
+    }
+    f.unknown("absent")
+    await f.run(Effect.flip(saveSharedProfile(library, input)))
+    f.overwrite(
+      await f.run(
+        prepareSharedProfileChange(library, {
+          profile: input.profile,
+          expectedFingerprint: null,
+        }),
+      ),
+    )
+    f.clear()
+    const result = await f.run(saveSharedProfile(library, { ...input, mode: "reconcile" }))
+    expect(result.status).toBe("current_matches")
+    expect(result).not.toHaveProperty("verified")
+    expect(f.pending()).toHaveLength(0)
     expect(f.writes()).toBe(0)
   })
 
   test("explicit session View precedes a Profile default and the first-View fallback remains available", async () => {
     const f = fixture()
     const saved = await f.run(
-      saveSharedProfile(library, { profile: initial, expectedRevision: null }),
+      saveSharedProfile(library, { profile: initial, expectedFingerprint: null }),
     )
     expect(selectProfileView(saved.profile)).toMatchObject({
       selection: "profile",
@@ -739,7 +1014,7 @@ describe("library-owned Profile management", () => {
     const f = fixture()
     f.seed(
       await f.run(
-        prepareSharedProfileChange(library, { profile: initial, expectedRevision: null }),
+        prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
       ),
     )
     const cold = await f.run(loadSharedProfileCached(library, "daily"))
@@ -752,7 +1027,7 @@ describe("library-owned Profile management", () => {
     ).toBe("offline")
     expect(f.calls).toHaveLength(0)
     expect(f.cached()).toHaveLength(1)
-    expect(property(f.cached()[0]?.[1]).domain).toBe("shared_profile_v1")
+    expect(property(f.cached()[0]?.[1]).domain).toBe("shared_profile_v2")
     f.credential("another-credential")
     expect(
       (await f.run(Effect.flip(loadSharedProfileCached(library, "daily", { offline: true })))).code,
@@ -764,7 +1039,7 @@ describe("library-owned Profile management", () => {
     const f = fixture()
     f.seed(
       await f.run(
-        prepareSharedProfileChange(library, { profile: initial, expectedRevision: null }),
+        prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
       ),
     )
     await f.run(loadSharedProfileCached(library, "daily"))
@@ -784,20 +1059,20 @@ describe("library-owned Profile management", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("a newly observed conflict invalidates cached rules instead of serving an old default", async () => {
+  test("newly observed duplicate current rows invalidate cached rules instead of serving an old default", async () => {
     const f = fixture()
     const root = await f.run(
-      prepareSharedProfileChange(library, { profile: initial, expectedRevision: null }),
+      prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
     )
     f.seed(root)
     await f.run(loadSharedProfileCached(library, "daily"))
-    await f.run(loadSharedProfileEntryCached(library.skills.database_id, "daily"))
+    await f.run(loadSharedProfileEntryCached(library.library_id, "daily"))
     expect(f.cached()).toHaveLength(2)
     f.seed(
       await f.run(
         prepareSharedProfileChange(library, {
           profile: { ...initial, name: "Left" },
-          expectedRevision: root.revision_id,
+          expectedFingerprint: root.fingerprint,
         }),
       ),
     )
@@ -805,20 +1080,20 @@ describe("library-owned Profile management", () => {
       await f.run(
         prepareSharedProfileChange(library, {
           profile: { ...initial, name: "Right" },
-          expectedRevision: root.revision_id,
+          expectedFingerprint: root.fingerprint,
         }),
       ),
     )
     expect(
       (await f.run(Effect.flip(loadSharedProfileCached(library, "daily", { refresh: true })))).code,
-    ).toBe("SHARED_PROFILE_CONFLICT")
+    ).toBe("SHARED_PROFILE_DUPLICATE")
     expect(f.cached()).toHaveLength(0)
   })
 
   test("known pending changes block the current TTL fast path while explicit offline retains the prior observation", async () => {
     const f = fixture()
     const saved = await f.run(
-      saveSharedProfile(library, { profile: initial, expectedRevision: null }),
+      saveSharedProfile(library, { profile: initial, expectedFingerprint: null }),
     )
     await f.run(loadSharedProfileCached(library, "daily"))
     f.unknown("absent")
@@ -826,7 +1101,7 @@ describe("library-owned Profile management", () => {
       Effect.flip(
         saveSharedProfile(library, {
           profile: { ...initial, name: "Pending edit" },
-          expectedRevision: saved.revision_id,
+          expectedFingerprint: saved.fingerprint,
         }),
       ),
     )
@@ -847,10 +1122,10 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture()
     f.seed(
       await f.run(
-        prepareSharedProfileChange(library, { profile: initial, expectedRevision: null }),
+        prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
       ),
     )
-    const cold = await f.run(loadSharedProfileEntryCached(library.skills.database_id, "daily"))
+    const cold = await f.run(loadSharedProfileEntryCached(library.library_id, "daily"))
     expect(cold.library).toEqual(library)
     expect(f.queries()).toBe(1)
     expect(
@@ -858,24 +1133,19 @@ describe("Profile machine binding and default discovery", () => {
     ).toHaveLength(1)
     f.clear()
     f.deny(true)
+    expect((await f.run(loadSharedProfileEntryCached(library.library_id, "daily"))).source).toBe(
+      "local_cache",
+    )
     expect(
-      (await f.run(loadSharedProfileEntryCached(library.skills.database_id, "daily"))).source,
-    ).toBe("local_cache")
-    expect(
-      (
-        await f.run(
-          loadSharedProfileEntryCached(library.skills.database_id, "daily", { offline: true }),
-        )
-      ).freshness.policy,
+      (await f.run(loadSharedProfileEntryCached(library.library_id, "daily", { offline: true })))
+        .freshness.policy,
     ).toBe("offline")
     expect(f.calls).toHaveLength(0)
     f.credential("different-profile-credential")
     expect(
       (
         await f.run(
-          Effect.flip(
-            loadSharedProfileEntryCached(library.skills.database_id, "daily", { offline: true }),
-          ),
+          Effect.flip(loadSharedProfileEntryCached(library.library_id, "daily", { offline: true })),
         )
       ).code,
     ).toBe("CACHE_SCOPE_UNAVAILABLE")
@@ -885,22 +1155,22 @@ describe("Profile machine binding and default discovery", () => {
   test("confirmed rule changes invalidate both descriptor and entry observations", async () => {
     const f = fixture()
     const root = await f.run(
-      prepareSharedProfileChange(library, { profile: initial, expectedRevision: null }),
+      prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
     )
     f.seed(root)
     await f.run(loadSharedProfileCached(library, "daily"))
-    await f.run(loadSharedProfileEntryCached(library.skills.database_id, "daily"))
+    await f.run(loadSharedProfileEntryCached(library.library_id, "daily"))
     expect(f.cached()).toHaveLength(2)
     await f.run(
       saveSharedProfile(library, {
         profile: { ...initial, name: "Updated rules" },
-        expectedRevision: root.revision_id,
+        expectedFingerprint: root.fingerprint,
       }),
     )
     expect(f.cached()).toHaveLength(0)
     f.clear()
     expect(
-      (await f.run(loadSharedProfileEntryCached(library.skills.database_id, "daily"))).profile.name,
+      (await f.run(loadSharedProfileEntryCached(library.library_id, "daily"))).profile.name,
     ).toBe("Updated rules")
     expect(f.queries()).toBe(1)
     expect(
@@ -914,16 +1184,16 @@ describe("Profile machine binding and default discovery", () => {
       sources: [source],
       token: "fixture-secret-never-emitted",
       future_preferences: { keep: [1, 2, 3] },
-      default_database: id(90),
+      default_library: id(90),
     }
     f.json.set("config.json", structuredClone(original))
     f.seed(
       await f.run(
-        prepareSharedProfileChange(library, { profile: initial, expectedRevision: null }),
+        prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
       ),
     )
-    const result = await f.run(bindSharedProfile({ libraryEntry: "library", profileId: "daily" }))
-    const binding = { library_entry: library.skills.database_id, profile_id: "daily" }
+    const result = await f.run(bindSharedProfile({ library: "library", profileId: "daily" }))
+    const binding = { library_id: library.library_id, profile_id: "daily" }
     expect(result.shared_profile).toEqual(binding)
     expect(f.json.get("config.json")).toEqual({ ...original, shared_profile: binding })
     expect(JSON.stringify(result)).not.toContain(original.token)
@@ -939,13 +1209,14 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
-      shared_profile: { library_entry: library.skills.database_id, profile_id: "daily" },
+      default_library: library.library_id,
+      shared_profile: { library_id: library.library_id, profile_id: "daily" },
     })
     f.seed(
       await f.run(
         prepareSharedProfileChange(library, {
           profile: { ...initial, enabled: false },
-          expectedRevision: null,
+          expectedFingerprint: null,
         }),
       ),
     )
@@ -954,20 +1225,26 @@ describe("Profile machine binding and default discovery", () => {
     expect("profile" in result).toBe(false)
     expect(f.queries()).toBe(0)
     expect(f.calls.some((call) => call.path.startsWith("v1/views"))).toBe(false)
-    expect(f.calls.some((call) => /\/markdown|\/blocks|\/export|\/pages\//u.test(call.path))).toBe(
-      false,
-    )
+    expect(
+      f.calls.some(
+        (call) =>
+          /\/markdown|\/blocks|\/export|\/pages\//u.test(call.path) &&
+          call.path !== `v1/pages/${library.library_id}` &&
+          !call.path.startsWith(`v1/blocks/${library.library_id}/children`),
+      ),
+    ).toBe(false)
   })
 
   test("bound default selects shared rules, excludes Prompts, and a second startup has no descriptor GET", async () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
-      shared_profile: { library_entry: library.skills.database_id, profile_id: "daily" },
+      default_library: library.library_id,
+      shared_profile: { library_id: library.library_id, profile_id: "daily" },
     })
     f.seed(
       await f.run(
-        prepareSharedProfileChange(library, { profile: initial, expectedRevision: null }),
+        prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
       ),
     )
     const first = await f.run(catalogWithProfile({ defaultView: true }))
@@ -985,9 +1262,14 @@ describe("Profile machine binding and default discovery", () => {
         call.path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`),
       ),
     ).toHaveLength(1)
-    expect(f.calls.some((call) => /\/pages\/|\/markdown|\/blocks|\/export/u.test(call.path))).toBe(
-      false,
-    )
+    expect(
+      f.calls.some(
+        (call) =>
+          /\/pages\/|\/markdown|\/blocks|\/export/u.test(call.path) &&
+          call.path !== `v1/pages/${library.library_id}` &&
+          !call.path.startsWith(`v1/blocks/${library.library_id}/children`),
+      ),
+    ).toBe(false)
     expect(f.calls.every((call) => call.content === undefined)).toBe(true)
     expect(f.writes()).toBe(0)
     f.clear()
@@ -1006,19 +1288,20 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
-      shared_profile: { library_entry: library.skills.database_id, profile_id: "daily" },
+      default_library: library.library_id,
+      shared_profile: { library_id: library.library_id, profile_id: "daily" },
     })
     f.seed(
       await f.run(
         prepareSharedProfileChange(library, {
           profile: { ...initial, enabled: false },
-          expectedRevision: null,
+          expectedFingerprint: null,
         }),
       ),
     )
     const result = await f.run(
       catalogWithProfile({
-        database: library.skills.database_id,
+        library: library.library_id,
         profile: "daily",
         view: sessionView,
       }),
@@ -1037,16 +1320,16 @@ describe("Profile machine binding and default discovery", () => {
       await f.run(
         prepareSharedProfileChange(library, {
           profile: { profile_id: "daily", name: "Daily", enabled: true },
-          expectedRevision: null,
+          expectedFingerprint: null,
         }),
       ),
     )
-    const selected = await f.run(catalogWithProfile({ database: "library", profile: "daily" }))
+    const selected = await f.run(catalogWithProfile({ library: "library", profile: "daily" }))
     expect("view" in selected && selected.view?.id).toBe(sessionView)
     expect("profile" in selected && selected.profile).toMatchObject({ selection: "first" })
     expect(selected.records.map((record) => record.kind)).toEqual(["skill"])
     f.clear()
-    const unbound = await f.run(catalogWithProfile({ database: "library", defaultView: true }))
+    const unbound = await f.run(catalogWithProfile({ library: "library", defaultView: true }))
     expect("view" in unbound && unbound.view?.id).toBe(sessionView)
     expect(f.queries()).toBe(0)
   })
@@ -1055,10 +1338,11 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
-      shared_profile: { library_entry: library.skills.database_id, profile_id: "daily" },
+      default_library: library.library_id,
+      shared_profile: { library_id: library.library_id, profile_id: "daily" },
     })
     const result = await f.run(
-      catalogWithProfile({ database: otherLibrary.skills.database_id, defaultView: true }),
+      catalogWithProfile({ library: otherLibrary.library_id, defaultView: true }),
     )
     expect("view" in result && result.view?.id).toBe(otherView)
     expect("profile" in result).toBe(false)
@@ -1084,10 +1368,11 @@ describe("Profile machine binding and default discovery", () => {
     const f = fixture({ allowConfiguration: true })
     f.json.set("config.json", {
       sources: [source],
-      shared_profile: { library_entry: library.skills.database_id, profile_id: "daily" },
+      default_library: library.library_id,
+      shared_profile: { library_id: library.library_id, profile_id: "daily" },
     })
     const saved = await f.run(
-      saveSharedProfile(library, { profile: initial, expectedRevision: null }),
+      saveSharedProfile(library, { profile: initial, expectedFingerprint: null }),
     )
     await f.run(catalogWithProfile({ defaultView: true }))
     f.unknown("absent")
@@ -1095,7 +1380,7 @@ describe("Profile machine binding and default discovery", () => {
       Effect.flip(
         saveSharedProfile(library, {
           profile: { ...initial, default_view_id: sessionView },
-          expectedRevision: saved.revision_id,
+          expectedFingerprint: saved.fingerprint,
         }),
       ),
     )

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict"
+import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { once } from "node:events"
 import fs from "node:fs"
 import { createServer } from "node:http"
-import { isAbsolute, join } from "node:path"
+import { basename, dirname, isAbsolute, join } from "node:path"
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
 const monotonic = () => process.hrtime.bigint().toString()
@@ -15,11 +16,531 @@ const deferred = () => {
   return { promise, resolve }
 }
 
-// This is the original installed scalar-inventory service. It serves only its
-// declared fixture facts; controls change HTTP delivery, never SDK results.
-export async function startSdkSourceFixture(sample, ledgerPath) {
-  assert.ok(sample?.notion?.library?.skills)
+const canonicalJson = (value) =>
+  JSON.stringify(value, (_key, item) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(
+          Object.keys(item)
+            .sort()
+            .map((key) => [key, item[key]]),
+        )
+      : item,
+  )
+
+/** The fixed manager requires tools owned by its user. CI's system Git and
+ * setup-node installation may belong to root; copy their exact bytes into this
+ * fixture's private directory instead of relaxing the production owner check. */
+export async function stageSdkManagerTools(directory, selected) {
+  assert.ok(isAbsolute(directory))
+  await fs.promises.mkdir(directory, { mode: 0o700 })
+  const root = await fs.promises.realpath(directory)
+  assert.equal(root, directory)
+  const digestFile = async (path) => {
+    const digest = createHash("sha256")
+    for await (const chunk of fs.createReadStream(path)) digest.update(chunk)
+    return digest.digest("hex")
+  }
+  const result = { version: 1, root }
+  for (const role of ["node", "git"]) {
+    const source = await fs.promises.realpath(selected[role])
+    const original = await fs.promises.lstat(source)
+    assert.ok(original.isFile() && (original.mode & 0o111) !== 0)
+    const sourceHash = await digestFile(source)
+    const path = join(root, role)
+    await fs.promises.copyFile(
+      source,
+      path,
+      fs.constants.COPYFILE_EXCL | fs.constants.COPYFILE_FICLONE,
+    )
+    await fs.promises.chmod(path, 0o500)
+    const copied = await fs.promises.lstat(path)
+    assert.equal(copied.uid, process.getuid())
+    assert.ok(copied.isFile())
+    assert.equal(await digestFile(source), sourceHash, "The selected tool changed while copying")
+    assert.equal(
+      await digestFile(path),
+      sourceHash,
+      "The private tool differs from the selected executable",
+    )
+    result[role] = {
+      source,
+      source_uid: original.uid,
+      source_sha256: sourceHash,
+      path,
+      sha256: sourceHash,
+      uid: copied.uid,
+      bytes: copied.size,
+      mode: copied.mode & 0o777,
+    }
+  }
+  return result
+}
+
+/** Declare remote facts independently of the writer. The Git URL belongs to the
+ * running owned HTTP backend; every consumer still starts with its own Store. */
+export function materializationServiceFacts(sample, gitUrl, initial) {
+  assert.ok(
+    ["legacy-members", "source-only", "legacy-source", "manifest-growth", "native-root"].includes(
+      initial,
+    ),
+  )
+  const original = sample.source_materialization
+  assert.equal(original?.version, 1, "Generate the fixture with --materialization")
+  assert.match(original.commit, /^[a-f0-9]{40}$/u)
+  assert.match(original.tree, /^[a-f0-9]{40}$/u)
+  assert.match(gitUrl, /^http:\/\/127\.0\.0\.1:[0-9]+\/[A-Za-z0-9_.-]+$/u)
+  const result = structuredClone(sample),
+    notion = result.notion,
+    library = notion.library
+  const members = structuredClone(original.members)
+  // This Library has no saved default-context view; discovery still calls the
+  // real views endpoint and must receive a complete empty inventory.
+  result.empty_view_inventory = true
+  delete result.view_dynamics
+  assert.equal(members.length, 3)
+  const [root, required, sibling] = members
+  const rich = (value) => {
+    const chunks = []
+    let chunk = ""
+    for (const char of value) {
+      if (chunk.length + char.length > 1_900) {
+        chunks.push({ type: "text", plain_text: chunk, text: { content: chunk } })
+        chunk = ""
+      }
+      chunk += char
+    }
+    if (chunk) chunks.push({ type: "text", plain_text: chunk, text: { content: chunk } })
+    return chunks
+  }
+  const field = (binding, name, type, value) => {
+    const id = binding.property_ids[name]
+    assert.equal(typeof id, "string", "Declare the actual registered property: " + name)
+    return {
+      id,
+      type,
+      [type]: value,
+      ...(["rich_text", "relation"].includes(type) ? { has_more: false } : {}),
+    }
+  }
+  const set = (row, binding, name, type, value) => {
+    const next = field(binding, name, type, value)
+    for (const [key, current] of Object.entries(row.properties))
+      if (current.id === next.id) delete row.properties[key]
+    row.properties[name] = next
+  }
+  const contribution = (member) => ({
+    member_key: member.member_key,
+    skill_id: member.legacy_skill_id,
+    mount_path: "",
+    mapping: {},
+    exclude: [],
+  })
+  const planMembers = initial === "manifest-growth" ? [root] : members
+  const plan = {
+    version: 1,
+    kind: "composition",
+    base: {
+      kind: "git",
+      source: {
+        url: gitUrl,
+        commit: original.commit,
+        root: "",
+        tree: original.tree,
+        files: planMembers
+          .flatMap((member) =>
+            member.files.map((file) => ({
+              path: file.source_path,
+              source_path: file.source_path,
+              git_oid: file.git_oid,
+              bytes: file.bytes,
+              mode: file.mode,
+              sha256: file.sha256,
+            })),
+          )
+          .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
+      },
+    },
+    mounts: [],
+  }
+  const revision = hash(canonicalJson(plan))
+  const contributions =
+    initial === "source-only" || initial === "legacy-source"
+      ? []
+      : (initial === "manifest-growth" ? [root] : members)
+          .map(contribution)
+          .sort(
+            (a, b) =>
+              a.skill_id.localeCompare(b.skill_id) || a.member_key.localeCompare(b.member_key),
+          )
+  const source = {
+    object: "page",
+    id: original.source_page_id,
+    parent: {
+      type: "data_source_id",
+      data_source_id: library.sources.data_source_id,
+      database_id: library.sources.database_id,
+    },
+    in_trash: false,
+    archived: false,
+    last_edited_time: "2026-11-27T00:00:00.000Z",
+    properties: {},
+  }
+  const texts = {
+    "Source ID": original.source_id,
+    Description: "Registered controlled lazy source",
+    Location: gitUrl,
+    Ref: "main",
+    Selection: canonicalJson({ roots: ["skills"], include: [], exclude: [], mapping: {} }),
+    Options: "{}",
+    Contributions: initial === "legacy-source" ? "" : canonicalJson(contributions),
+    Content: initial === "legacy-source" ? "" : canonicalJson({ version: 1, plan }),
+    "Last Revision": initial === "legacy-source" ? original.commit : revision,
+    Operation: "",
+  }
+  for (const [name, value] of Object.entries(texts))
+    set(source, library.sources, name, "rich_text", rich(value))
+  set(source, library.sources, "Name", "title", rich("Controlled lazy source"))
+  for (const [name, value] of [
+    ["Provider", "git"],
+    ["Policy", "manual"],
+    ["Status", initial === "legacy-source" ? "applied" : "ready"],
+  ])
+    set(source, library.sources, name, "select", { name: value })
+  set(source, library.sources, "Enabled", "checkbox", true)
+  notion.sources.push(source)
+  const existing =
+    initial === "source-only" ? [] : initial === "manifest-growth" ? [root, sibling] : members
+  set(
+    source,
+    library.sources,
+    "Skills",
+    "relation",
+    existing.map((member) => ({ id: member.legacy_page_id })),
+  )
+  set(source, library.sources, "Records", "relation", [])
+  for (const member of existing) {
+    const row = structuredClone(notion.main)
+    row.id = member.legacy_page_id
+    row.last_edited_time = "2026-11-27T00:00:00.000Z"
+    set(row, library.skills, "Content", "rich_text", [])
+    set(row, library.skills, "Current State", "select", null)
+    set(row, library.skills, "Name", "title", rich(member.name))
+    set(row, library.skills, "Description", "rich_text", rich(member.description))
+    set(row, library.skills, "Skill ID", "rich_text", rich(member.legacy_skill_id))
+    set(row, library.skills, "Main File ID", "rich_text", rich(member.legacy_main_file_id))
+    set(row, library.skills, "Origin", "relation", [{ id: source.id }])
+    set(
+      row,
+      library.skills,
+      "Requires",
+      "relation",
+      member === root && initial !== "manifest-growth" ? [{ id: required.legacy_page_id }] : [],
+    )
+    set(
+      row,
+      library.skills,
+      "Members",
+      "relation",
+      member === root ? [{ id: sibling.legacy_page_id }] : [],
+    )
+    // Members are metadata candidates and may remain uninitialized. A disabled
+    // target is an invalid relation in the ordinary consumption contract.
+    set(row, library.skills, "Enabled", "checkbox", true)
+    set(row, library.skills, "Default Context", "checkbox", false)
+    row.properties["Source Member"] = {
+      id: "source-member",
+      type: "rich_text",
+      has_more: false,
+      rich_text: rich(member.member_key),
+    }
+    if (initial === "manifest-growth" && member === root) {
+      const main = member.files.find((file) => file.path === "SKILL.md")
+      set(
+        row,
+        library.skills,
+        "Content",
+        "rich_text",
+        rich(
+          canonicalJson({
+            kind: "source",
+            source_id: original.source_id,
+            revision,
+            source_path: member.member_key + "/SKILL.md",
+            sha256: main.sha256,
+            bytes: main.bytes,
+            mode: main.mode,
+          }),
+        ),
+      )
+      set(row, library.skills, "Current State", "select", { name: "ready" })
+    }
+    notion.skills.push(row)
+    notion.bodies[row.id] =
+      "# Old generated reading projection\n\nThis is not the original Skill.\n"
+  }
+  let nativeRoot
+  if (initial === "native-root") {
+    const native = notion.skills.find((row) => row.id === notion.main.id)
+    assert.ok(native)
+    const fieldText = (name) => {
+      const value = Object.values(native.properties).find(
+        (field) => field.id === library.skills.property_ids[name],
+      )
+      return (value?.rich_text ?? [])
+        .map((part) => part.plain_text ?? part.text?.content ?? "")
+        .join("")
+    }
+    const content = JSON.parse(fieldText("Content"))
+    assert.equal(
+      content.kind,
+      "native",
+      "The explicit root must have native authority before management",
+    )
+    set(native, library.skills, "Name", "title", rich("Lazy native root"))
+    set(native, library.skills, "Default Context", "checkbox", false)
+    set(native, library.skills, "Requires", "relation", [{ id: root.legacy_page_id }])
+    set(native, library.skills, "Members", "relation", [{ id: sibling.legacy_page_id }])
+    notion.main = native
+    nativeRoot = {
+      page_id: native.id,
+      skill_id: fieldText("Skill ID"),
+      alias: "lazy-native-root",
+      content: content.frontmatter + notion.bodies[native.id],
+    }
+  }
+  return {
+    sample: result,
+    source_id: original.source_id,
+    source_page_id: source.id,
+    initial,
+    plan,
+    revision,
+    contributions,
+    members,
+    ...(nativeRoot === undefined ? {} : { native_root: nativeRoot }),
+    root: {
+      member_key: root.member_key,
+      legacy_skill_id: root.legacy_skill_id,
+      legacy_page_id: root.legacy_page_id,
+    },
+    expected: {
+      root: root.files.find((file) => file.path === "SKILL.md").content,
+      required: required.files.find((file) => file.path === "SKILL.md").content,
+      sibling: sibling.files.find((file) => file.path === "SKILL.md").content,
+      untouched_sibling: structuredClone(
+        notion.skills.find((row) => row.id === sibling.legacy_page_id) ?? null,
+      ),
+    },
+  }
+}
+
+/** Serve one owned real Git repository through Git's production smart-HTTP
+ * backend. The manager and independent consumers fetch through their own Git
+ * transports; no object directory or consumer cache is copied between them. */
+export async function startSdkGitFixture(repository, ledgerPath) {
+  assert.ok(isAbsolute(repository) && isAbsolute(ledgerPath))
+  assert.equal(fs.realpathSync(repository), repository, "Use an exact owned Git repository")
+  assert.ok(fs.statSync(repository).isDirectory())
+  const name = basename(repository)
+  assert.match(name, /^[A-Za-z0-9][A-Za-z0-9_.-]*$/u)
+  fs.writeFileSync(ledgerPath, "", { flag: "wx", mode: 0o600 })
+  const requests = [],
+    unexpected = [],
+    active = new Set()
+  let phase = "setup",
+    closing
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1")
+    const call = {
+      phase,
+      method: request.method,
+      path: url.pathname,
+      query: url.searchParams.toString(),
+      started_monotonic_ns: monotonic(),
+      request_bytes: 0,
+      response_bytes: 0,
+      response_complete: false,
+      status: null,
+      pid: null,
+      exit_code: null,
+      stderr: "",
+    }
+    requests.push(call)
+    const allowed =
+      (request.method === "GET" &&
+        url.pathname === `/${name}/info/refs` &&
+        url.searchParams.get("service") === "git-upload-pack") ||
+      (request.method === "POST" && url.pathname === `/${name}/git-upload-pack`)
+    if (!allowed) {
+      call.status = 400
+      unexpected.push({ ...call, error: "Only the declared read-only Git transport is allowed" })
+      response.writeHead(400).end()
+      fs.appendFileSync(ledgerPath, JSON.stringify(call) + "\n")
+      return
+    }
+    const child = spawn("git", ["http-backend"], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        PATH: process.env.PATH,
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_PROJECT_ROOT: dirname(repository),
+        GIT_HTTP_EXPORT_ALL: "1",
+        PATH_INFO: url.pathname,
+        QUERY_STRING: url.searchParams.toString(),
+        REQUEST_METHOD: request.method,
+        REMOTE_ADDR: "127.0.0.1",
+        SERVER_PROTOCOL: "HTTP/1.1",
+        CONTENT_TYPE: request.headers["content-type"] ?? "",
+        CONTENT_LENGTH: request.headers["content-length"] ?? "",
+        HTTP_GIT_PROTOCOL: request.headers["git-protocol"] ?? "",
+      },
+    })
+    call.pid = child.pid ?? null
+    const stopped = deferred(),
+      record = { child, stopped }
+    active.add(record)
+    let prefix = Buffer.alloc(0),
+      headersRead = false,
+      childDone = false,
+      responseClosed = false,
+      finished = false
+    const bodyDigest = createHash("sha256")
+    const finish = () => {
+      if (finished || !childDone || !responseClosed) return
+      finished = true
+      call.response_sha256 = bodyDigest.digest("hex")
+      call.ended_monotonic_ns = monotonic()
+      fs.appendFileSync(ledgerPath, JSON.stringify(call) + "\n")
+      active.delete(record)
+      stopped.resolve()
+    }
+    response.once("finish", () => {
+      call.response_complete = true
+    })
+    response.once("close", () => {
+      responseClosed = true
+      finish()
+    })
+    child.once("error", (error) => {
+      call.stderr = String(error)
+      unexpected.push({ ...call, error: String(error) })
+      response.destroy(error)
+    })
+    child.stdin.on("error", (error) => {
+      if (error.code !== "EPIPE") unexpected.push({ ...call, error: String(error) })
+    })
+    child.stderr.on("data", (bytes) => {
+      call.stderr += bytes.toString("utf8")
+    })
+    child.stdout.on("data", (bytes) => {
+      try {
+        let body = bytes
+        if (!headersRead) {
+          prefix = Buffer.concat([prefix, bytes])
+          const boundary = prefix.indexOf("\r\n\r\n")
+          if (boundary < 0) {
+            assert.ok(prefix.length < 65536, "Git CGI headers must be bounded")
+            return
+          }
+          const fields = {},
+            lines = prefix.subarray(0, boundary).toString("utf8").split("\r\n")
+          call.status = 200
+          for (const line of lines) {
+            const separator = line.indexOf(":")
+            assert.ok(separator > 0, "Git CGI returned an invalid header")
+            const key = line.slice(0, separator).toLowerCase(),
+              value = line.slice(separator + 1).trim()
+            if (key === "status") call.status = Number(value.split(" ")[0])
+            else fields[key] = value
+          }
+          response.writeHead(call.status, fields)
+          headersRead = true
+          body = prefix.subarray(boundary + 4)
+          prefix = Buffer.alloc(0)
+        }
+        call.response_bytes += body.length
+        bodyDigest.update(body)
+        if (!response.destroyed) response.write(body)
+      } catch (error) {
+        unexpected.push({ ...call, error: String(error) })
+        response.destroy(error)
+        child.kill("SIGTERM")
+      }
+    })
+    child.once("close", (code) => {
+      call.exit_code = code
+      childDone = true
+      if (code !== 0) unexpected.push({ ...call, error: "Git HTTP backend failed" })
+      if (!response.destroyed) response.end()
+      finish()
+    })
+    request.on("data", (bytes) => {
+      call.request_bytes += bytes.length
+    })
+    request.on("error", () => {
+      child.stdin.destroy()
+    })
+    request.pipe(child.stdin)
+  })
+  server.listen(0, "127.0.0.1")
+  await once(server, "listening")
+  const origin = "http://127.0.0.1:" + server.address().port
+  return {
+    origin,
+    url: origin + "/" + name,
+    ledgerPath,
+    requests,
+    unexpected,
+    setPhase(label) {
+      assert.ok(!closing && active.size === 0, "Set a Git phase only after every backend exits")
+      assert.ok(typeof label === "string" && label.length > 0)
+      phase = label
+    },
+    close() {
+      if (closing) return closing
+      closing = (async () => {
+        const stopped = [...active].map((record) => record.stopped.promise)
+        const closed = new Promise((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        )
+        server.closeAllConnections()
+        for (const record of active) record.child.kill("SIGTERM")
+        await closed
+        await Promise.all(stopped)
+        assert.equal(active.size, 0)
+      })()
+      return closing
+    },
+  }
+}
+
+// The installed service serves declared Notion facts. Writes are enabled only
+// for declared CLI management gates; SDK consumption keeps the default read-only mode.
+export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
+  assert.ok(
+    sample?.notion?.library?.skills && sample.notion.library.sources,
+    "The controlled current service requires the complete four-table library",
+  )
+  assert.ok(
+    Array.isArray(sample.notion.sources),
+    "Declare the current Source rows explicitly, including an empty native-only table",
+  )
   assert.ok(isAbsolute(ledgerPath), "The owned request ledger must be absolute")
+  const port = options.port ?? 0
+  assert.ok(Number.isInteger(port) && port >= 0 && port <= 65535, "Invalid loopback fixture port")
+  assert.ok(
+    options.allowCurrentWrites === undefined || typeof options.allowCurrentWrites === "boolean",
+  )
+  assert.ok(
+    options.forbidProjectionWrites === undefined ||
+      typeof options.forbidProjectionWrites === "boolean",
+  )
+  assert.ok(
+    options.emptyFirstRecordsPage === undefined ||
+      typeof options.emptyFirstRecordsPage === "boolean",
+  )
+  const allowCurrentWrites = options.allowCurrentWrites === true
   const eventsPath = ledgerPath.endsWith(".jsonl")
     ? ledgerPath.slice(0, -6) + ".events.jsonl"
     : ledgerPath + ".events.jsonl"
@@ -27,6 +548,173 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
     fs.writeFileSync(path, "", { flag: "wx", mode: 0o600 })
 
   const notion = structuredClone(sample.notion)
+  assert.equal(
+    notion.library.version,
+    2,
+    "The controlled service requires the current Library descriptor",
+  )
+  assert.equal(notion.root?.object, "page", "Declare the actual root page independently")
+  assert.ok(Array.isArray(notion.root_children), "Declare the actual root children independently")
+  assert.ok(
+    Array.isArray(notion.databases),
+    "Declare actual databases independently of the descriptor",
+  )
+  assert.ok(
+    Array.isArray(notion.data_sources),
+    "Declare actual data sources independently of the descriptor",
+  )
+  const skillsDataSource = () =>
+    notion.data_sources.find((source) => source.id === notion.library.skills.data_source_id)
+  notion.blocks ??= {}
+  let nextPage = 900000,
+    edit = 0
+  const nextId = () => "00000000-0000-4000-8000-" + (nextPage++).toString(16).padStart(12, "0")
+  const currentPages = () => [
+    ...notion.skills,
+    ...notion.files,
+    ...notion.records,
+    ...notion.sources,
+  ]
+  const rowsFor = (dataSource) => {
+    const { library } = notion
+    if (dataSource === library.skills.data_source_id) return notion.skills
+    if (dataSource === library.files.data_source_id) return notion.files
+    if (dataSource === library.records.data_source_id) return notion.records
+    if (dataSource === library.sources.data_source_id) return notion.sources
+    throw new Error("The current writer selected an undeclared table")
+  }
+  const touch = (row) => {
+    row.last_edited_time = new Date(Date.now() + edit++).toISOString()
+  }
+  const normalizedProperties = (input) =>
+    Object.fromEntries(
+      Object.entries(input).map(([id, raw]) => {
+        const type = ["title", "rich_text", "select", "relation", "files", "checkbox"].find((key) =>
+          Object.hasOwn(raw, key),
+        )
+        assert.ok(type, "A current write has an unsupported property")
+        if (type === "files")
+          assert.deepEqual(raw.files, [], "This bounded import gate uses inline originals")
+        return [
+          id,
+          {
+            ...structuredClone(raw),
+            id,
+            type,
+            ...(["rich_text", "relation", "files"].includes(type) ? { has_more: false } : {}),
+          },
+        ]
+      }),
+    )
+  const mutateCurrent = (method, path, body, call) => {
+    if (!allowCurrentWrites) return undefined
+    if (method === "POST" && path === "/v1/pages") {
+      assert.equal(body.parent.type, "data_source_id")
+      const rows = rowsFor(body.parent.data_source_id)
+      const table = [
+        notion.library.skills,
+        notion.library.files,
+        notion.library.records,
+        notion.library.sources,
+      ].find((item) => item.data_source_id === body.parent.data_source_id)
+      const defaults = {}
+      if (rows === notion.skills && skillsDataSource() !== undefined)
+        for (const field of Object.values(skillsDataSource().properties))
+          if (field.type === "relation") {
+            assert.equal(typeof field.id, "string")
+            assert.ok(field.id.length > 0)
+            defaults[field.id] = { relation: [] }
+          }
+      const row = {
+        object: "page",
+        id: nextId(),
+        parent: { ...structuredClone(body.parent), database_id: table.database_id },
+        properties: normalizedProperties({ ...defaults, ...body.properties }),
+        in_trash: false,
+        archived: false,
+      }
+      touch(row)
+      rows.push(row)
+      notion.blocks[row.id] = []
+      notion.bodies[row.id] = ""
+      if (rows === notion.skills && !notion.main) notion.main = row
+      call.semantic_write = true
+      return { status: 200, value: row }
+    }
+    const selected = /^\/v1\/pages\/([^/]+)(\/markdown)?$/u.exec(path)
+    if (selected && method === "PATCH") {
+      const row = currentPages().find((item) => item.id === selected[1])
+      assert.ok(row, "A current write selected an undeclared page")
+      if (selected[2]) {
+        call.projection_write = true
+        assert.notEqual(options.forbidProjectionWrites, true, "Reading projection is forbidden")
+        assert.equal(body.markdown_version, "v2")
+        assert.equal(body.type, "replace_content")
+        assert.equal(typeof body.replace_content.new_str, "string")
+        notion.bodies[row.id] = body.replace_content.new_str
+        notion.blocks[row.id] = []
+      } else {
+        if (body.properties)
+          for (const [id, field] of Object.entries(normalizedProperties(body.properties))) {
+            const key =
+              Object.keys(row.properties).find(
+                (name) => name === id || row.properties[name].id === id,
+              ) ?? id
+            row.properties[key] = field
+          }
+        if (Object.hasOwn(body, "in_trash")) {
+          assert.equal(typeof body.in_trash, "boolean")
+          row.in_trash = body.in_trash
+        }
+      }
+      touch(row)
+      if (notion.main?.id === row.id) notion.main = row
+      call.semantic_write = true
+      return {
+        status: 200,
+        value: selected[2]
+          ? {
+              object: "page_markdown",
+              id: row.id,
+              markdown: notion.bodies[row.id],
+              truncated: false,
+              unknown_block_ids: [],
+            }
+          : row,
+      }
+    }
+    const children = /^\/v1\/blocks\/([^/]+)\/children$/u.exec(path)
+    if (children && method === "PATCH") {
+      call.projection_write = true
+      assert.notEqual(options.forbidProjectionWrites, true, "Reading projection is forbidden")
+      const row = currentPages().find((item) => item.id === children[1])
+      assert.ok(row, "A projection selected an undeclared page")
+      assert.ok(
+        Array.isArray(body.children) && body.children.length > 0 && body.children.length <= 100,
+      )
+      assert.ok(Buffer.byteLength(JSON.stringify(body)) <= 500000)
+      const added = body.children.map((block) => ({
+        ...structuredClone(block),
+        object: "block",
+        id: nextId(),
+        parent: { type: "page_id", page_id: row.id },
+        has_children: false,
+        in_trash: false,
+        archived: false,
+      }))
+      notion.blocks[row.id].push(...added)
+      notion.bodies[row.id] = notion.blocks[row.id]
+        .map((block) => richText(block[block.type]?.rich_text))
+        .join("\n")
+      touch(row)
+      call.semantic_write = true
+      return {
+        status: 200,
+        value: { object: "list", results: added, has_more: false, next_cursor: null },
+      }
+    }
+    return undefined
+  }
   const requests = [],
     unexpected = [],
     active = new Set()
@@ -34,8 +722,7 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
     denyCurrent = false,
     denyAuthentication = false
   let viewObservation,
-    incompleteViewInventory = false,
-    historyObservation = false
+    incompleteViewInventory = false
   let pendingControl, closing
   const event = (call, name, fields = {}) => {
     fs.appendFileSync(
@@ -58,13 +745,25 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
     if (!filter) return true
     if (Array.isArray(filter.and)) return filter.and.every((item) => matches(row, item))
     if (Array.isArray(filter.or)) return filter.or.some((item) => matches(row, item))
-    const field = row.properties[filter.property]
+    const field =
+      row.properties[filter.property] ??
+      Object.values(row.properties).find((value) => value.id === filter.property)
     if (!field) return false
     if (filter.relation?.is_empty === true) return field.relation?.length === 0
-    if (filter.relation)
+    if (filter.relation) {
+      // Notion hides a relation to a trashed target even while this row remains live.
+      const target = currentPages().find((item) => item.id === filter.relation.contains)
+      if (target?.in_trash === true || target?.archived === true || target?.is_archived === true)
+        return false
       return field.relation?.some((item) => item.id === filter.relation.contains) ?? false
+    }
     if (filter.select) return field.select?.name === filter.select.equals
-    if (filter.rich_text) return richText(field.rich_text) === filter.rich_text.equals
+    if (filter.rich_text) {
+      const value = richText(field.rich_text)
+      if (typeof filter.rich_text.contains === "string")
+        return value.includes(filter.rich_text.contains)
+      return value === filter.rich_text.equals
+    }
     if (filter.checkbox) return field.checkbox === filter.checkbox.equals
     throw new Error("Unsupported controlled inventory filter")
   }
@@ -94,6 +793,8 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
   }
 
   const packet = (request, url, body, call) => {
+    const mutation = mutateCurrent(request.method, url.pathname, body, call)
+    if (mutation !== undefined) return mutation
     let value,
       status = 200
     const fields = url.searchParams.getAll("filter_properties")
@@ -109,8 +810,8 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
     } else if (
       denyCurrent &&
       request.method === "GET" &&
-      (url.pathname === `/v1/pages/${notion.main.id}` ||
-        url.pathname === `/v1/pages/${notion.main.id}/markdown`)
+      (url.pathname === `/v1/pages/${notion.main?.id}` ||
+        url.pathname === `/v1/pages/${notion.main?.id}/markdown`)
     ) {
       status = 403
       value = {
@@ -121,12 +822,56 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
       }
     } else if (request.method === "GET" && url.pathname === "/v1/users/me")
       value = { object: "user", id: "00000000-0000-4000-8000-000000000099" }
+    else if (request.method === "GET" && url.pathname === "/v1/pages/" + notion.root.id)
+      value = notion.root
     else if (
       request.method === "GET" &&
-      url.pathname === `/v1/databases/${library.skills.database_id}`
+      url.pathname === "/v1/blocks/" + notion.root.id + "/children"
     )
-      value = notion.database
-    else if (viewObservation && request.method === "GET" && url.pathname === "/v1/views") {
+      value = page(notion.root_children, {
+        page_size: 100,
+        ...(url.searchParams.has("start_cursor")
+          ? { start_cursor: url.searchParams.get("start_cursor") }
+          : {}),
+      })
+    else if (
+      request.method === "GET" &&
+      notion.databases.some((row) => url.pathname === "/v1/databases/" + row.id)
+    )
+      value = notion.databases.find((row) => url.pathname === "/v1/databases/" + row.id)
+    else if (
+      request.method === "GET" &&
+      notion.data_sources.some((row) => url.pathname === "/v1/data_sources/" + row.id)
+    )
+      value = notion.data_sources.find((row) => url.pathname === "/v1/data_sources/" + row.id)
+    else if (
+      allowCurrentWrites &&
+      request.method === "GET" &&
+      /^\/v1\/blocks\/[^/]+\/children$/u.test(url.pathname)
+    ) {
+      const id = url.pathname.split("/")[3]
+      assert.ok(currentPages().some((row) => row.id === id))
+      value = page(notion.blocks[id] ?? [], {
+        page_size: 100,
+        ...(url.searchParams.has("start_cursor")
+          ? { start_cursor: url.searchParams.get("start_cursor") }
+          : {}),
+      })
+    } else if (
+      allowCurrentWrites &&
+      request.method === "GET" &&
+      /^\/v1\/pages\/[^/]+$/u.test(url.pathname)
+    ) {
+      value = currentPages().find((row) => url.pathname === `/v1/pages/${row.id}`)
+      assert.ok(value, "An undeclared current page was requested")
+    } else if (
+      sample.empty_view_inventory === true &&
+      request.method === "GET" &&
+      url.pathname === "/v1/views"
+    ) {
+      assert.equal(url.searchParams.get("database_id"), library.skills.database_id)
+      value = { object: "list", results: [], has_more: false, next_cursor: null }
+    } else if (viewObservation && request.method === "GET" && url.pathname === "/v1/views") {
       assert.equal(url.searchParams.get("database_id"), library.skills.database_id)
       value = {
         object: "list",
@@ -163,18 +908,23 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
         view_member_page_ids: viewObservation.member_page_ids,
       })
     } else if (
-      historyObservation &&
       request.method === "GET" &&
+      url.pathname !== `/v1/pages/${notion.main?.id}` &&
       notion.skills.some((row) => url.pathname === `/v1/pages/${row.id}`)
     )
       value = notion.skills.find((row) => url.pathname === `/v1/pages/${row.id}`)
-    else if (request.method === "GET" && url.pathname === `/v1/pages/${notion.main.id}`)
+    else if (request.method === "GET" && url.pathname === `/v1/pages/${notion.main?.id}`)
       value = notion.main
     else if (
       request.method === "GET" &&
       notion.files.some((file) => url.pathname === `/v1/pages/${file.id}`)
     )
       value = notion.files.find((file) => url.pathname === `/v1/pages/${file.id}`)
+    else if (
+      request.method === "GET" &&
+      notion.sources.some((source) => url.pathname === `/v1/pages/${source.id}`)
+    )
+      value = notion.sources.find((source) => url.pathname === `/v1/pages/${source.id}`)
     else if (request.method === "GET" && /^\/v1\/pages\/[^/]+\/markdown$/u.test(url.pathname)) {
       const id = url.pathname.split("/")[3]
       assert.equal(typeof notion.bodies[id], "string", "An unselected target body was requested")
@@ -187,15 +937,24 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
             ? notion.files
             : url.pathname === `/v1/data_sources/${library.records.data_source_id}/query`
               ? notion.records
-              : undefined
+              : url.pathname === `/v1/data_sources/${library.sources.data_source_id}/query`
+                ? notion.sources
+                : undefined
       assert.ok(rows, "An unexpected data source was queried")
-      value = page(
-        project(
-          rows.filter((row) => matches(row, body?.filter)),
-          fields,
-        ),
-        body,
-      )
+      // A short query page may still carry a continuation. This opt-in boundary
+      // requires the reader to finish enumeration before publishing unique bytes.
+      value =
+        options.emptyFirstRecordsPage === true &&
+        url.pathname === `/v1/data_sources/${library.records.data_source_id}/query` &&
+        body?.start_cursor === undefined
+          ? { object: "list", results: [], has_more: true, next_cursor: "offset-0" }
+          : page(
+              project(
+                rows.filter((row) => row.in_trash !== true && matches(row, body?.filter)),
+                fields,
+              ),
+              body,
+            )
       if (
         incompleteViewInventory &&
         url.pathname === `/v1/data_sources/${library.skills.data_source_id}/query`
@@ -213,20 +972,6 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
         ].sort(),
         has_more: value.has_more,
         next_cursor: value.next_cursor,
-        ...(historyObservation &&
-        url.pathname === `/v1/data_sources/${library.records.data_source_id}/query`
-          ? {
-              records: value.results.map((row) => ({
-                page_id: row.id,
-                owner: row.properties.skill?.relation?.map((owner) => owner.id) ?? [],
-                record_id: richText(row.properties.record?.rich_text),
-                entity_id: richText(row.properties.entity?.rich_text),
-                kind: row.properties.kind?.select?.name,
-                hash: richText(row.properties.hash?.rich_text),
-                payload_included: Object.hasOwn(row.properties, "payload"),
-              })),
-            }
-          : {}),
       })
     } else throw new Error("Unexpected controlled inventory request")
 
@@ -234,20 +979,40 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
   }
   const knownRoute = (method, path) => {
     const { library } = notion
+    if (
+      allowCurrentWrites &&
+      ((method === "POST" && path === "/v1/pages") ||
+        (method === "PATCH" &&
+          /^\/v1\/(?:pages\/[^/]+(?:\/markdown)?|blocks\/[^/]+\/children)$/u.test(path)))
+    )
+      return true
+    if (
+      allowCurrentWrites &&
+      method === "GET" &&
+      currentPages().some(
+        (row) => path === `/v1/pages/${row.id}` || path === `/v1/blocks/${row.id}/children`,
+      )
+    )
+      return true
     if (method === "GET")
       return (
         path === "/v1/users/me" ||
-        path === "/v1/databases/" + library.skills.database_id ||
-        path === "/v1/pages/" + notion.main.id ||
+        path === "/v1/pages/" + notion.root.id ||
+        path === "/v1/blocks/" + notion.root.id + "/children" ||
+        notion.databases.some((row) => path === "/v1/databases/" + row.id) ||
+        notion.data_sources.some((row) => path === "/v1/data_sources/" + row.id) ||
+        path === "/v1/pages/" + notion.main?.id ||
         notion.files.some((file) => path === "/v1/pages/" + file.id) ||
-        (historyObservation && notion.skills.some((row) => path === "/v1/pages/" + row.id)) ||
+        notion.skills.some((row) => path === "/v1/pages/" + row.id) ||
+        notion.sources.some((row) => path === "/v1/pages/" + row.id) ||
         Object.keys(notion.bodies).some((id) => path === "/v1/pages/" + id + "/markdown") ||
+        (sample.empty_view_inventory === true && path === "/v1/views") ||
         (viewObservation &&
           (path === "/v1/views" || path === "/v1/views/" + sample.view_dynamics.view.id))
       )
     return (
       method === "POST" &&
-      ([library.skills, library.files, library.records].some(
+      ([library.skills, library.files, library.records, library.sources].some(
         (table) => path === "/v1/data_sources/" + table.data_source_id + "/query",
       ) ||
         (viewObservation && path === "/v1/views/" + sample.view_dynamics.view.id + "/queries"))
@@ -271,7 +1036,7 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
         multi_select: names.map((name) => ({ id: name, name, color: "default" })),
       }
       row.properties.tags = tags
-      if (id === notion.main.id) notion.main.properties.tags = structuredClone(tags)
+      if (id === notion.main?.id) notion.main.properties.tags = structuredClone(tags)
     }
   }
   const setPhase = (label, options = {}) => {
@@ -283,7 +1048,6 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
       "denyAuthentication",
       "denyCurrent",
       "incompleteViewInventory",
-      "historyObservation",
     ]
     assert.ok(Object.keys(options).every((key) => keys.includes(key)))
     if (Object.hasOwn(options, "current")) {
@@ -304,20 +1068,13 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
         "Unknown fixture View observation",
       )
     }
-    for (const key of [
-      "denyAuthentication",
-      "denyCurrent",
-      "incompleteViewInventory",
-      "historyObservation",
-    ])
+    for (const key of ["denyAuthentication", "denyCurrent", "incompleteViewInventory"])
       if (Object.hasOwn(options, key)) assert.equal(typeof options[key], "boolean")
     if (Object.hasOwn(options, "denyAuthentication"))
       denyAuthentication = options.denyAuthentication
     if (Object.hasOwn(options, "denyCurrent")) denyCurrent = options.denyCurrent
     if (Object.hasOwn(options, "incompleteViewInventory"))
       incompleteViewInventory = options.incompleteViewInventory
-    if (Object.hasOwn(options, "historyObservation"))
-      historyObservation = options.historyObservation
     applyView()
     discardPending()
     phase = label
@@ -326,14 +1083,38 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
     assert.ok(!closing && !pendingControl, "Only one next HTTP control may be armed")
     const allowed =
       kind === "hold"
-        ? ["method", "path", "afterHeaders"]
+        ? ["method", "path", "afterHeaders", "applyAfterDisconnect", "matchBody"]
         : kind === "reject"
           ? ["method", "path", "status", "retryAfterSeconds"]
           : ["method", "path"]
     assert.ok(options && Object.keys(options).every((key) => allowed.includes(key)))
     assert.ok(knownRoute(options.method, options.path), "Controls require one exact declared route")
+    if (Object.hasOwn(options, "matchBody")) {
+      const match = options.matchBody
+      assert.ok(match && typeof match === "object" && !Array.isArray(match))
+      assert.ok(Object.keys(match).every((key) => ["path", "exists", "value"].includes(key)))
+      assert.ok(Array.isArray(match.path) && match.path.length > 0 && match.path.length <= 8)
+      assert.ok(
+        match.path.every(
+          (part) => typeof part === "string" && part.length > 0 && part.length <= 200,
+        ),
+      )
+      assert.notEqual(Object.hasOwn(match, "exists"), Object.hasOwn(match, "value"))
+      if (Object.hasOwn(match, "exists")) assert.equal(match.exists, true)
+    }
     if (kind === "hold" && Object.hasOwn(options, "afterHeaders"))
       assert.equal(typeof options.afterHeaders, "boolean")
+    if (kind === "hold" && Object.hasOwn(options, "applyAfterDisconnect")) {
+      assert.equal(typeof options.applyAfterDisconnect, "boolean")
+      assert.ok(
+        !options.applyAfterDisconnect ||
+          (allowCurrentWrites &&
+            !options.afterHeaders &&
+            ["POST", "PATCH"].includes(options.method) &&
+            !options.path.endsWith("/query")),
+        "A delayed accepted mutation must be one declared write before response headers",
+      )
+    }
     if (kind === "reject") {
       assert.equal(options.status ?? 429, 429)
       assert.ok(
@@ -354,6 +1135,17 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
       closed: next.closed.promise,
       release: () => next.release.resolve(),
     }
+  }
+
+  const matchesBody = (match, body) => {
+    if (match === undefined) return true
+    let selected = body
+    for (const part of match.path) {
+      if (selected === null || typeof selected !== "object" || !Object.hasOwn(selected, part))
+        return false
+      selected = selected[part]
+    }
+    return match.exists === true || canonicalJson(selected) === canonicalJson(match.value)
   }
 
   const server = createServer(async (request, response) => {
@@ -416,7 +1208,7 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
     response.once("close", () => {
       call.closed_monotonic_ns = monotonic()
       event(call, "close", { response_finished: response.writableFinished })
-      next?.release.resolve()
+      if (!next?.applyAfterDisconnect) next?.release.resolve()
       finalize()
     })
     response.once("error", (error) => {
@@ -450,7 +1242,11 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
       call.request_sha256 = hash(bytes)
       const body = bytes.length === 0 ? undefined : JSON.parse(bytes.toString("utf8"))
       call.body = body ?? null
-      if (pendingControl?.method === request.method && pendingControl.path === url.pathname) {
+      if (
+        pendingControl?.method === request.method &&
+        pendingControl.path === url.pathname &&
+        matchesBody(pendingControl.matchBody, body)
+      ) {
         next = pendingControl
         pendingControl = undefined
         record.next = next
@@ -464,7 +1260,7 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
       if (next?.kind === "hold" && !next.afterHeaders) {
         next.reached.resolve(structuredClone(call))
         await next.release.promise
-        if (response.destroyed) return
+        if (response.destroyed && !next.applyAfterDisconnect) return
       }
       const result =
         next?.kind === "reject"
@@ -478,6 +1274,12 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
               },
             }
           : packet(request, url, body, call)
+      if (response.destroyed) {
+        assert.equal(next?.applyAfterDisconnect, true)
+        assert.equal(call.semantic_write, true)
+        event(call, "late-application", { semantic_write: true })
+        return
+      }
       const output = Buffer.from(JSON.stringify(result.value))
       headers(
         result.status,
@@ -521,7 +1323,7 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
       finalize()
     }
   })
-  server.listen(0, "127.0.0.1")
+  server.listen(port, "127.0.0.1")
   await once(server, "listening")
   const origin = "http://127.0.0.1:" + server.address().port
   if (sample.view_dynamics?.observations[0])
@@ -532,7 +1334,7 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
     eventsPath,
     requests,
     unexpected,
-    // The existing scalar/history smoke owns these same mutable fixture facts.
+    // The controlled source owns these mutable current fixture facts.
     // They are not consumer state and are never copied into the consumer cache.
     notion,
     setPhase,
@@ -544,6 +1346,7 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
       discardPending()
       closing = (async () => {
         const settled = [...active].map((record) => record.complete.promise)
+        for (const record of active) record.next?.release.resolve()
         const stopped = new Promise((resolve, reject) =>
           server.close((error) => (error ? reject(error) : resolve())),
         )
@@ -554,134 +1357,5 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
       })()
       return closing
     },
-  }
-}
-
-/** Reuse the original source fixture for built and independently installed SDK callers. */
-export async function verifyCatalogDirectorySdk({ sdk, sample, env, root }) {
-  assert.ok(isAbsolute(root))
-  fs.mkdirSync(root, { mode: 0o700 })
-  const input = sample.view_dynamics
-  assert.equal(sdk.CATALOG_DIRECTORY_CONTRACT_VERSION, 1)
-  assert.equal(input.inventory_pages, Math.ceil(sample.row_count / 100))
-  const source = await startSdkSourceFixture(sample, join(root, "requests.jsonl"))
-  const evidence = { version: 1, status: "running", transport: "owned loopback Notion", phases: [] }
-  try {
-    for (const mode of ["separate", "combined"]) {
-      const cwd = join(root, mode)
-      fs.cpSync(sample.seed, cwd, { recursive: true, errorOnExist: true, force: false })
-      source.setPhase(mode, { current: "initial", viewObservationId: input.observations[0].id })
-      const reports = []
-      const options = {
-        cwd,
-        env: {
-          ...env,
-          NOTION_API_BASE_URL: source.origin,
-          NTN_SKILLS_REQUEST_TRACE_LIMIT: "10000",
-        },
-        database: sample.notion.library.skills.database_id,
-        metrics: true,
-        onRequestMetrics: (value) => reports.push(value),
-      }
-      const started = performance.now()
-      const result =
-        mode === "combined"
-          ? await sdk.listCatalog({ ...options, directory: {} })
-          : {
-              version: 1,
-              catalog: { ok: true, value: await sdk.listCatalog(options) },
-              directory: {
-                ok: true,
-                value: await sdk.listCatalog({ ...options, defaultView: true }),
-              },
-            }
-      const calls = source.requests.filter((call) => call.phase === mode)
-      const inventory = calls.filter(
-        (call) =>
-          call.path ===
-          "/v1/data_sources/" + sample.notion.library.skills.data_source_id + "/query",
-      )
-      const observed = {
-        mode,
-        elapsed_ms: performance.now() - started,
-        result,
-        request_metrics: [...reports],
-        requests: calls,
-        inventory_requests: inventory.length,
-        inventory_response_bytes: inventory.reduce(
-          (sum, call) => sum + call.decoded_response_bytes,
-          0,
-        ),
-      }
-      evidence.phases.push(observed)
-      assert.equal(result.version, 1)
-      assert.equal(result.catalog.ok, true)
-      assert.equal(result.directory.ok, true)
-      assert.deepEqual(
-        result.catalog.value.records.map((record) => record.id).sort(),
-        [...input.ordinary_record_ids].sort(),
-      )
-      assert.deepEqual(
-        result.directory.value.records.map((record) => record.id),
-        input.observations[0].member_record_ids,
-      )
-      assert.equal(result.directory.value.view.id, input.view.id)
-      assert.equal(result.directory.value.capability_directory, true)
-      assert.equal(result.catalog.value.scope, result.directory.value.scope)
-      assert.equal(result.catalog.value.coverage.exhaustive, true)
-      assert.equal(result.directory.value.coverage.exhaustive, true)
-      assert.equal(inventory.length, input.inventory_pages * (mode === "combined" ? 1 : 2))
-      assert.equal(reports.length, mode === "combined" ? 1 : 2)
-      assert.equal(
-        reports.reduce((sum, report) => sum + report.total_requests, 0),
-        calls.length,
-      )
-      assert.equal(
-        reports.reduce((sum, report) => sum + report.response_bytes, 0),
-        calls.reduce((sum, call) => sum + call.decoded_response_bytes, 0),
-      )
-      for (const report of reports) {
-        assert.equal(report.trace_dropped, 0)
-        assert.equal(report.in_flight, 0)
-        assert.equal(report.unknown_response_bytes, 0)
-        assert.equal(report.requests.notion_body, 0)
-        assert.equal(report.requests.notion_write, 0)
-        assert.equal(report.requests.provider, 0)
-      }
-      for (const call of inventory) {
-        assert.deepEqual([...call.filter_properties].sort(), [...sample.projection].sort())
-        assert.deepEqual(call.returned_properties, [...sample.projection].sort())
-      }
-      assert.deepEqual(source.unexpected, [])
-      if (mode === "combined") {
-        source.setPhase("warm")
-        const warm = await sdk.listCatalog({ ...options, directory: {} })
-        assert.deepEqual(warm.catalog.value.records, result.catalog.value.records)
-        assert.deepEqual(warm.directory.value.records, result.directory.value.records)
-        assert.equal(source.requests.filter((call) => call.phase === "warm").length, 0)
-        assert.equal(reports.at(-1).total_requests, 0)
-        evidence.warm = { result: warm, request_metrics: reports.at(-1) }
-      }
-    }
-    assert.deepEqual(
-      evidence.phases[1].result.catalog.value.records,
-      evidence.phases[0].result.catalog.value.records,
-    )
-    assert.deepEqual(
-      evidence.phases[1].result.directory.value.records,
-      evidence.phases[0].result.directory.value.records,
-    )
-    evidence.status = "passed"
-    return evidence
-  } catch (error) {
-    evidence.status = "failed"
-    evidence.error = String(error)
-    throw error
-  } finally {
-    await source.close()
-    fs.writeFileSync(join(root, "report.json"), JSON.stringify(evidence, null, 2) + "\n", {
-      flag: "wx",
-      mode: 0o600,
-    })
   }
 }

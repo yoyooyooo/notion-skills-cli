@@ -19,7 +19,6 @@ import {
   type SourcePlanResource,
 } from "../src/shared-source-plan.ts"
 import { Store } from "../src/store.ts"
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 
 const encode = (value: string) => new TextEncoder().encode(value)
 const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
@@ -97,13 +96,9 @@ function fixture(bodies: ReadonlyMap<string, Uint8Array> = new Map(), delay = fa
     root: "/controlled",
     configRoot: "/controlled/config",
     cacheRoot: "/controlled/cache",
-    upstream: upstreamRepositoryFixture(),
-    integrity: integrityRepositoryFixture(),
     reserveCacheGeneration: unexpected,
     listKeys: unexpected,
     retireKeys: unexpected,
-    registerBindingWithBase: unexpected,
-    advanceBaseAndReceipt: unexpected,
     backup: unexpected,
     output: unexpected,
     readJson: (key, schema) =>

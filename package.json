@@ -11,14 +11,16 @@
     "build": "bun run packages/cli/build.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun scripts/test.ts",
-    "test:unit": "bun test ./packages/*/test --timeout 30000 --path-ignore-patterns='**/*.node.test.ts'",
+    "test:unit": "bun run build && bun test ./packages/*/test ./.cursor/skills/verify-ntn-skills/scripts/empty-library.test.ts ./.cursor/skills/verify-ntn-skills/scripts/members-live.test.ts --timeout 30000 --path-ignore-patterns='**/*.node.test.ts'",
     "test:node": "node node_modules/vitest/vitest.mjs run --config vitest.config.ts && node --test ./.cursor/skills/verify-ntn-skills/scripts/shared-migration-inventory.test.ts",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check": "bun run typecheck && bun run format:check && bun run test && bun run build",
     "package:check": "bun scripts/package-check.ts",
     "release": "bun scripts/release.ts",
-    "release:precheck": "bun scripts/release.ts --precheck"
+    "release:precheck": "bun scripts/release.ts --precheck",
+    "verify:formal": "node scripts/verify-formal.mjs",
+    "test:formal-contract": "node --test scripts/formal-result-contract.test.mjs scripts/formal-runner-contract.test.mjs verification/run-receipt.test.mjs"
   },
   "devDependencies": {
     "@types/bun": "1.4.3",

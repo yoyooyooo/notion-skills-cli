@@ -5,7 +5,6 @@
   "type": "module",
   "dependencies": {
     "@effect/platform-node": "4.0.5",
-    "@effect/sql-sqlite-node": "4.0.5",
     "effect": "4.0.5",
     "fflate": "0.8.3"
   },

@@ -1,15 +1,7 @@
+import { currentLibrary } from "../../core/test/shared-current-fixture.ts"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { createHttpProbe } from "./http-probe.ts"
-import {
-  access,
-  chmod,
-  mkdir,
-  mkdtemp,
-  readlink,
-  realpath,
-  symlink,
-  writeFile,
-} from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -28,7 +20,7 @@ beforeAll(async () => {
     build.exited,
   ])
   if (exit !== 0) throw new Error(`Fresh production CLI build failed: ${stdout}\n${stderr}`)
-})
+}, 120_000)
 const node = (() => {
   const executable = Bun.which("node")
   if (!executable) throw new Error("Node.js is required for the production CLI consumer tests.")
@@ -42,7 +34,7 @@ const node = (() => {
   return resolved.stdout.toString().trim()
 })()
 const snapshot = `s_${"0".repeat(64)}`
-const pinned = `skill://sample/SKILL.md?snapshot=${snapshot}`
+const pinned = `skill://sample/SKILL.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e&snapshot=${snapshot}`
 interface InvocationResult {
   stdout: string
   stderr: string
@@ -62,17 +54,19 @@ async function invoke(
   const root = options.root ?? (await mkdtemp(join(tmpdir(), "ntn-skills-cli-test-")))
   const requestsBefore = http.calls()
   const selectedRoot = options.inaccessible ? "/nonexistent/ntn-skills-cli-help" : root
+  const environment = { ...process.env }
+  // These tests exercise this freshly built package, not a caller's development checkout.
+  delete environment.NTN_SKILLS_DEV_ROOT
   const child = Bun.spawn([options.runtime ?? node, options.entrypoint ?? main, ...args], {
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",
     env: {
-      ...process.env,
+      ...environment,
       NOTION_API_TOKEN: options.traceOnline ? "controlled-offline-probe-token" : "",
       NOTION_WORKSPACE_ID: "",
       NOTION_API_BASE_URL: http.origin,
       HOME: join(root, "home"),
-      NTN_SKILLS_DATA_HOME: "",
       XDG_DATA_HOME: join(root, "xdg-data"),
       NTN_SKILLS_HOME: join(selectedRoot, "state"),
       NTN_SKILLS_CONFIG_HOME: join(selectedRoot, "config"),
@@ -121,12 +115,61 @@ test("retired root commands and name-based replacement are rejected offline", as
     ["ctl", "sync", "reconcile", "binding"],
     ["replace", "missing.md"],
     ["replace", "missing.md", "--target", "Sample Skill"],
+    ["create", "missing.md"],
+    ["apply", "sample", "--input", "missing"],
+    ["adopt", "sample"],
+    ["ctl", "builtin", "publish", "notion/ntn-skills-maintain"],
+    ["ctl", "config", "set", "builtin_database", "retired"],
+    ["ctl", "config", "unset", "builtin_database"],
+    ["ctl", "library", "source", "list"],
+    ["ctl", "library", "file", "takeover", "sample"],
+    ["ctl", "repair", "plan"],
+    ["ctl", "operation", "reconcile", "old-operation"],
+    ["read", "sample", "--read-only"],
+    ["read", "sample", "--authoring"],
   ])
     await invalid(args)
 }, 60000)
 
+test("library initialization exposes explicit continuation and rejects incomplete selectors offline", async () => {
+  const schema = await invoke(["schema", "ctl", "library", "init"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
+  expect(schema.exit).toBe(0)
+  expect(schema.onlineCalled).toBe(false)
+  expect(JSON.parse(schema.stdout).schema.parameters).toContainEqual(
+    expect.objectContaining({ name: "resume", type: "boolean", default: false }),
+  )
+  const help = await invoke(["ctl", "library", "init", "--help"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
+  expect(help.exit).toBe(0)
+  expect(help.onlineCalled).toBe(false)
+  expect(help.stdout).toContain("structure is ready")
+  expect(help.stdout).toContain("library.library_id")
+  expect(help.stdout.replace(/\s+/g, " ")).toContain("next.argv is a read-only list")
+  expect(help.stdout.replace(/\s+/g, " ")).toContain(
+    "does not create Skill content or copy builtins",
+  )
+  expect(help.stdout).toContain("read-only reconciliation")
+  expect(help.stdout).toContain("--resume")
+  const parent = "11111111-1111-4111-8111-111111111111"
+  for (const flags of [
+    ["--parent", parent, "--resume"],
+    ["--operation", "library-test", "--resume"],
+    ["--library", parent, "--resume"],
+    ["--library", parent, "--operation", "library-test"],
+  ])
+    await invalid(["ctl", "library", "init", ...flags])
+}, 30_000)
+
 test("read schema exposes official parameter types and requiredness offline", async () => {
-  const result = await invoke(["schema", "read"], { inaccessible: true, traceOnline: true })
+  const result = await invoke(["schema", "read"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
   expect(result.exit).toBe(0)
   expect(result.stderr).toBe("")
   expect(result.onlineCalled).toBe(false)
@@ -159,324 +202,170 @@ test("read schema exposes official parameter types and requiredness offline", as
     }),
   )
   expect(output.schema.args).toBeUndefined()
-  expect(output.schema.parameters).toContainEqual(
-    expect.objectContaining({
-      name: "authoring",
-      kind: "flag",
-      type: "boolean",
-      required: false,
-      max_occurrences: 1,
-      default: false,
-    }),
-  )
+  for (const retired of ["authoring", "read-only"])
+    expect(
+      output.schema.parameters.some((parameter: { name: string }) => parameter.name === retired),
+    ).toBe(false)
   expect(output.schema.flags).toBeUndefined()
   expect(Array.isArray(output.schema.commands)).toBe(true)
 }, 15000)
 
-test("native draft adoption and enable schemas stay explicit and offline", async () => {
-  const adoption = await invoke(["schema", "adopt"], { inaccessible: true, traceOnline: true })
-  expect(adoption.exit).toBe(0)
-  expect(adoption.onlineCalled).toBe(false)
-  const schema = JSON.parse(adoption.stdout).schema
-  expect(schema.parameters).toContainEqual(
-    expect.objectContaining({ name: "page", kind: "argument", required: true }),
-  )
-  for (const name of ["dry-run", "reconcile"])
-    expect(schema.parameters).toContainEqual(
-      expect.objectContaining({ name, kind: "flag", type: "boolean", default: false }),
-    )
-  const update = await invoke(["schema", "update"], { inaccessible: true, traceOnline: true })
-  expect(update.exit).toBe(0)
-  expect(update.onlineCalled).toBe(false)
-  expect(JSON.parse(update.stdout).schema.parameters).toContainEqual(
-    expect.objectContaining({ name: "enabled", kind: "flag", type: "string", required: false }),
-  )
-  for (const args of [
-    ["adopt", "11111111-1111-4111-8111-111111111111", "--dry-run", "--reconcile"],
-    ["read", "11111111-1111-4111-8111-111111111111", "--authoring", "--offline"],
-    ["read", "11111111-1111-4111-8111-111111111111", "--authoring", "--max-age", "5m"],
-    ["update", "11111111-1111-4111-8111-111111111111", "--enabled", "sometimes"],
-  ])
-    await invalid(args)
-}, 20000)
-
-test("database init schema exposes exact table attachment and durable resume offline", async () => {
-  const result = await invoke(["schema", "ctl", "database", "init"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(result.exit).toBe(0)
-  expect(result.onlineCalled).toBe(false)
-  const output = JSON.parse(result.stdout)
-  expect(output.command).toEqual(["ctl", "database", "init"])
-  for (const name of [
-    "parent",
-    "content-database",
-    "upstream-database",
-    "operation",
-    "set-default",
-  ])
-    expect(output.schema.parameters).toContainEqual(
-      expect.objectContaining({ name, kind: "flag", required: false }),
-    )
-})
-
-test("operation resume schema exposes explicit new artifact opt-in offline", async () => {
-  const result = await invoke(["schema", "ctl", "operation", "resume"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(result.exit).toBe(0)
-  expect(result.onlineCalled).toBe(false)
-  expect(JSON.parse(result.stdout).schema.parameters).toContainEqual(
-    expect.objectContaining({
-      name: "new-artifact",
-      kind: "flag",
-      type: "boolean",
-      required: false,
-      min_occurrences: 0,
-      max_occurrences: 1,
-      default: false,
-    }),
-  )
-})
-
-test("upstream schema projects its official parameters and exclusive selection offline", async () => {
-  for (const [leaf, required] of [
-    ["add", ["input", "operation"]],
-    ["update", ["subscription-id", "input", "if-version"]],
-    ["remove", ["subscription-id", "if-version"]],
-  ] as const) {
-    const result = await invoke(["schema", "ctl", "sync", "upstream", leaf], {
+test("current management and export schemas contain no historical compatibility routes", async () => {
+  for (const [path, names] of [
+    [["ctl"], ["api", "cache", "config", "doctor", "library", "prepare", "resolve", "views"]],
+    [
+      ["ctl", "library"],
+      [
+        "files",
+        "import",
+        "import-batch",
+        "init",
+        "inspect",
+        "members-plan",
+        "operation",
+        "profile",
+        "projection",
+        "skill",
+        "source",
+      ],
+    ],
+    [
+      ["ctl", "library", "skill"],
+      ["create", "register", "remove", "update"],
+    ],
+    [
+      ["ctl", "library", "source"],
+      [
+        "apply",
+        "check",
+        "disable",
+        "enable",
+        "manager",
+        "materialize",
+        "members",
+        "refresh",
+        "remove",
+        "restore-follow",
+        "sync",
+        "takeover",
+      ],
+    ],
+    [["skills"], ["get", "list", "path"]],
+  ] satisfies Array<[string[], string[]]>) {
+    const result = await invoke(["schema", ...path], {
       inaccessible: true,
       traceOnline: true,
     })
     expect(result.exit).toBe(0)
     expect(result.onlineCalled).toBe(false)
-    const parameters = JSON.parse(result.stdout).schema.parameters
-    for (const name of required)
-      expect(parameters).toContainEqual(
-        expect.objectContaining({ name, required: true, min_occurrences: 1, max_occurrences: 1 }),
-      )
+    expect(
+      JSON.parse(result.stdout)
+        .schema.commands.map((command: { name: string }) => command.name)
+        .sort(),
+    ).toEqual(names)
   }
-  const result = await invoke(["schema", "ctl", "sync", "upstream", "run"], {
+  const exported = await invoke(["schema", "export"], {
     inaccessible: true,
     traceOnline: true,
   })
-  expect(result.exit).toBe(0)
-  expect(result.onlineCalled).toBe(false)
-  const schema = JSON.parse(result.stdout).schema
-  expect(schema.parameters).toContainEqual(
-    expect.objectContaining({
-      name: "target",
-      kind: "flag",
-      min_occurrences: 0,
-      max_occurrences: null,
-    }),
-  )
-  expect(schema.parameters).toContainEqual(
-    expect.objectContaining({
-      name: "all",
-      kind: "flag",
-      min_occurrences: 0,
-      max_occurrences: 1,
-      default: false,
-    }),
-  )
-  expect(schema.constraints).toContainEqual({ kind: "exactly_one", flags: ["target", "all"] })
-  for (const args of [
-    ["ctl", "sync", "upstream", "run"],
-    ["ctl", "sync", "upstream", "run", "--target", "11111111-1111-4111-8111-111111111111", "--all"],
-    ["ctl", "sync", "upstream", "run", "--all", "--all"],
-    ["ctl", "sync", "upstream", "add", "--input", "missing.json"],
-    [
-      "ctl",
-      "sync",
-      "upstream",
-      "update",
-      "11111111-1111-4111-8111-111111111111",
-      "--input",
-      "missing.json",
-    ],
-  ])
-    await invalid(args)
-}, 60000)
-
-test("sync exposes local and upstream paths without a root upstream alias", async () => {
-  for (const path of [
-    ["ctl", "sync", "local"],
-    ["ctl", "sync", "upstream"],
-  ]) {
-    const result = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
-    expect(result.exit).toBe(0)
-    expect(result.onlineCalled).toBe(false)
-    expect(JSON.parse(result.stdout).command).toEqual(path)
-  }
-  for (const args of [
-    ["schema", "upstream"],
-    ["upstream", "run", "--all"],
-  ]) {
-    const result = await invoke(args, { inaccessible: true, traceOnline: true })
-    expect(result.exit).not.toBe(0)
-    expect(result.onlineCalled).toBe(false)
-  }
-}, 30000)
-
-test("export projection schema defaults to source and rejects unsupported or repeated values offline", async () => {
-  const result = await invoke(["schema", "export"], { inaccessible: true, traceOnline: true })
-  expect(result.exit).toBe(0)
-  expect(result.onlineCalled).toBe(false)
-  const schema = JSON.parse(result.stdout).schema
-  expect(schema.parameters).toContainEqual(
-    expect.objectContaining({
-      name: "projection",
-      kind: "flag",
-      type: "string",
-      required: false,
-      min_occurrences: 0,
-      max_occurrences: 1,
-      default: "source",
-    }),
-  )
-  expect(schema.constraints).toContainEqual({
-    kind: "allowed_values",
-    flag: "projection",
-    values: ["source", "snapshot"],
+  expect(exported.exit).toBe(0)
+  expect(exported.onlineCalled).toBe(false)
+  expect(
+    JSON.parse(exported.stdout).schema.parameters.some(
+      (parameter: { name: string }) => parameter.name === "projection",
+    ),
+  ).toBe(false)
+  await invalid(["export", "sample", "--output", "out", "--projection", "source"])
+  const imported = await invoke(["schema", "ctl", "library", "import"], {
+    inaccessible: true,
+    traceOnline: true,
   })
-  await invalid(["export", "sample", "--output", "out", "--projection", "other"])
-  await invalid([
-    "export",
-    "sample",
-    "--output",
-    "out",
-    "--projection",
-    "source",
-    "--projection",
-    "snapshot",
+  expect(imported.exit).toBe(0)
+  expect(imported.onlineCalled).toBe(false)
+  const parameters = JSON.parse(imported.stdout).schema.parameters
+  for (const name of ["input", "library", "skill-id"])
+    expect(
+      parameters.find((parameter: { name: string }) => parameter.name === name)?.required,
+    ).toBe(true)
+  for (const flags of [
+    ["--resume"],
+    ["--resume", "--operation", "pending", "--dry-run"],
+    ["--supersede", "pending"],
+    ["--supersede", "pending", "--operation", "pending"],
+    ["--supersede", "pending", "--operation", "replacement", "--resume"],
+    ["--storage", "markdown_files"],
   ])
+    await invalid([
+      "ctl",
+      "library",
+      "import",
+      "missing.md",
+      "--library",
+      "11111111-1111-4111-8111-111111111111",
+      "--skill-id",
+      "sample",
+      ...flags,
+    ])
+  for (const path of [
+    ["create"],
+    ["ctl", "library", "source", "list"],
+    ["ctl", "operation"],
+    ["ctl", "repair"],
+  ])
+    await invalid(["schema", ...path])
 }, 30000)
 
-test("Router member flags expose repeatable exact selection and exclusive clearing offline", async () => {
-  const target = "11111111-1111-4111-8111-111111111111"
-  for (const command of ["create", "replace", "update"]) {
-    const result = await invoke(["schema", command], { inaccessible: true, traceOnline: true })
-    expect(result.exit).toBe(0)
-    expect(result.onlineCalled).toBe(false)
-    const schema = JSON.parse(result.stdout).schema
-    expect(schema.parameters).toContainEqual(
+test("members-plan schema and help describe read-only discovery offline", async () => {
+  const command = ["ctl", "library", "members-plan"]
+  const schema = await invoke(["schema", ...command], {
+    inaccessible: true,
+    traceOnline: true,
+  })
+  expect(schema.exit).toBe(0)
+  expect(schema.onlineCalled).toBe(false)
+  const result = JSON.parse(schema.stdout)
+  expect(result.command).toEqual(command)
+  const parameters = result.schema.parameters
+  for (const [name, kind] of [
+    ["input", "argument"],
+    ["library", "flag"],
+    ["skill-id", "flag"],
+  ])
+    expect(parameters).toContainEqual(
       expect.objectContaining({
-        name: "description",
-        description: expect.stringContaining("2000 Unicode characters"),
+        name,
+        kind,
+        type: "string",
+        required: true,
+        min_occurrences: 1,
+        max_occurrences: 1,
       }),
     )
-    expect(schema.parameters).toContainEqual(
+  for (const name of ["bindings", "output"])
+    expect(parameters).toContainEqual(
       expect.objectContaining({
-        name: "member",
+        name,
         kind: "flag",
         type: "string",
         required: false,
         min_occurrences: 0,
-        max_occurrences: null,
-        default: [],
-      }),
-    )
-    expect(schema.parameters).toContainEqual(
-      expect.objectContaining({
-        name: "clear-members",
-        kind: "flag",
-        type: "boolean",
-        required: false,
-        min_occurrences: 0,
         max_occurrences: 1,
-        default: false,
       }),
     )
-    expect(schema.constraints).toContainEqual({
-      kind: "mutually_exclusive",
-      flags: ["member", "clear-members"],
-    })
-    const args =
-      command === "replace"
-        ? [command, "missing.md", "--target", target]
-        : [command, command === "create" ? "missing.md" : target]
-    await invalid([...args, "--member", target, "--clear-members"])
-    await invalid([...args, "--clear-members", "--clear-members"])
-  }
-}, 60000)
-
-test("native Requires flags and explicit relation schema commands are discoverable offline", async () => {
-  const target = "00000000-0000-4000-8000-000000000001"
-  for (const command of ["create", "update"]) {
-    const result = await invoke(["schema", command], { inaccessible: true, traceOnline: true })
-    expect(result.exit).toBe(0)
-    expect(result.onlineCalled).toBe(false)
-    const schema = JSON.parse(result.stdout).schema
-    expect(schema.parameters).toContainEqual(
-      expect.objectContaining({ name: "require", type: "string", max_occurrences: null }),
-    )
-    expect(schema.parameters).toContainEqual(
-      expect.objectContaining({ name: "clear-requires", type: "boolean", max_occurrences: 1 }),
-    )
-    expect(schema.constraints).toContainEqual({
-      kind: "mutually_exclusive",
-      flags: ["require", "clear-requires"],
-    })
-    await invalid([
-      command,
-      command === "create" ? "missing.md" : target,
-      "--require",
-      target,
-      "--clear-requires",
-    ])
-  }
-  for (const command of ["plan", "apply", "reconcile"]) {
-    const result = await invoke(["schema", "ctl", "library", "relations", command], {
-      inaccessible: true,
-      traceOnline: true,
-    })
-    expect(result.exit).toBe(0)
-    expect(result.onlineCalled).toBe(false)
-    expect(JSON.parse(result.stdout).schema.parameters).toContainEqual(
-      expect.objectContaining({ name: command === "plan" ? "entry" : "input", required: true }),
-    )
-  }
-}, 60000)
-
-test("machine constraints and handler rejection share the command contract", async () => {
-  for (const [path, expected] of [
-    [["read"], { kind: "mutually_exclusive", flags: ["raw", "output"] }],
-    [["ctl", "sync", "local", "plan"], { kind: "exactly_one", flags: ["binding", "all"] }],
-    [["ctl", "cache", "clear"], { kind: "requires_absent", flag: "all", absent: ["database"] }],
-  ] as const) {
-    const result = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
-    expect(result.exit).toBe(0)
-    expect(result.onlineCalled).toBe(false)
-    expect(JSON.parse(result.stdout).schema.constraints).toContainEqual(expected)
-  }
-  for (const args of [
-    ["read", "sample", "--raw", "--output", "out.md"],
-    ["read", "sample", "--lines", "1-2", "--output", "out.md"],
-    ["ctl", "sync", "local", "plan"],
-    ["ctl", "sync", "local", "plan", "binding", "--all"],
-    ["ctl", "sync", "local", "plan", "--all", "--from", "local"],
-    ["ctl", "cache", "clear", "--all", "--database", "db"],
-  ])
-    await invalid(args)
-}, 60000)
-
-test("update Default Context accepts explicit true and false and rejects repetition", async () => {
-  const target = "11111111-1111-4111-8111-111111111111"
-  for (const flags of [
-    ["--default-context"],
-    ["--default-context=true"],
-    ["--default-context=false"],
-  ]) {
-    const result = await invoke(["update", target, ...flags, "--dry-run"])
-    jsonFailure(result, "AUTH_REQUIRED", 1)
-  }
-  await invalid(["update", target, "--default-context", "--default-context"])
-  await invalid(["update", target, "--default-context=true", "--default-context=false"])
-}, 30000)
+  for (const name of ["operation", "resume", "supersede"])
+    expect(parameters.some((parameter: { name: string }) => parameter.name === name)).toBe(false)
+  const help = await invoke([...command, "--help"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
+  expect(help.exit).toBe(0)
+  expect(help.onlineCalled).toBe(false)
+  const prose = help.stdout.replace(/\s+/gu, " ")
+  expect(prose).toContain("without changing Notion")
+  expect(prose).toContain("Requires is retained and never inferred")
+  expect(prose).toContain("--bindings")
+  expect(prose).toContain("--output")
+}, 15000)
 
 test("unknown flags, obsolete selectors and conflicting paths fail before online handlers", async () => {
   for (const args of [
@@ -502,12 +391,17 @@ test("unknown flags, obsolete selectors and conflicting paths fail before online
     await invalid(args)
 }, 60000)
 
-test("name reads, refresh policies and valid duration overrides reach online validation", async () => {
+test("explicit identity reads and valid freshness policies reach online validation", async () => {
   for (const command of [
-    ["list"],
-    ["read", "Sample Skill"],
-    ["files", "Sample Skill"],
-    ["export", "Sample Skill", "--output", "output.zip"],
+    ["list", "--library", "cc029b5c-680e-576d-a381-a069d3f9f26e"],
+    ["read", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
+    ["files", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
+    [
+      "export",
+      "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e",
+      "--output",
+      "output.zip",
+    ],
   ]) {
     for (const flags of [
       [],
@@ -522,12 +416,19 @@ test("name reads, refresh policies and valid duration overrides reach online val
 
 test("offline policy fails explicitly without a safe cached identity", async () => {
   for (const command of [
-    ["list"],
-    ["read", "sample"],
-    ["files", "sample"],
-    ["export", "sample", "--output", "output.zip"],
+    ["list", "--library", "cc029b5c-680e-576d-a381-a069d3f9f26e"],
+    ["read", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
+    ["files", "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e"],
+    [
+      "export",
+      "skill://sample?library=cc029b5c-680e-576d-a381-a069d3f9f26e",
+      "--output",
+      "output.zip",
+    ],
   ]) {
-    const result = await invoke([...command, "--offline"], { traceOnline: true })
+    const result = await invoke([...command, "--offline"], {
+      traceOnline: true,
+    })
     jsonFailure(result, "CACHE_SCOPE_UNAVAILABLE", 1)
     expect(result.onlineCalled).toBe(false)
   }
@@ -535,7 +436,7 @@ test("offline policy fails explicitly without a safe cached identity", async () 
 
 test("read policies reject combinations and invalid durations before online work", async () => {
   for (const command of [
-    ["list"],
+    ["list", "--library", "cc029b5c-680e-576d-a381-a069d3f9f26e"],
     ["read", "sample"],
     ["files", "sample"],
     ["export", "sample", "--output", "output.zip"],
@@ -564,370 +465,37 @@ test("pinned and relative pinned reads allow offline but reject refresh and age 
   ]) {
     for (const policy of [["--refresh"], ["--max-age", "0"], ["--max-age", "1m"]])
       await invalid([...command, ...policy])
-    const result = await invoke([...command, "--offline"], { traceOnline: true })
+    const result = await invoke([...command, "--offline"], {
+      traceOnline: true,
+    })
     jsonFailure(result, "SNAPSHOT_MISSING", 1)
     expect(result.onlineCalled).toBe(false)
   }
 }, 60000)
 
-test("sync and cache require unambiguous selections before online work", async () => {
-  for (const args of [
-    ["ctl", "sync", "local", "bind", "sample"],
-    ["ctl", "sync", "local", "bind", pinned, "--path", "local"],
-    ["ctl", "sync", "local", "plan"],
-    ["ctl", "sync", "local", "plan", "binding", "--all"],
-    ["ctl", "sync", "local", "plan", "--all", "--from", "local"],
-    ["ctl", "sync", "local", "plan", "--all", "--from", "notion"],
-    ["ctl", "sync", "local", "plan", "binding", "--from", "remote"],
-    ["ctl", "sync", "local", "plan", "binding", "--dry-run"],
-    ["ctl", "sync", "local", "apply"],
-    ["ctl", "sync", "local", "apply", "--plan", "p_invalid", "--all"],
-    ["ctl", "sync", "local", "apply", "--plan", "p_invalid", "--from", "local"],
-    ["ctl", "operation", "reconcile", "operation-id", "--force"],
-    ["ctl", "sync", "local", "status", "--offline"],
-    ["ctl", "sync", "local", "unbind"],
-    ["ctl", "cache", "clear"],
-    ["ctl", "cache", "clear", "sample", "--all"],
-    ["ctl", "cache", "clear", "--all", "--database", "sample"],
-    ["ctl", "cache", "clear", pinned],
-    ["ctl", "config", "set-cache-policy"],
-  ])
-    await invalid(args)
-}, 60000)
-
-test("valid sync selections and explicit replacement targets reach their actual operational prerequisites", async () => {
-  for (const args of [
-    [
-      "ctl",
-      "sync",
-      "local",
-      "bind",
-      "sample",
-      "--path",
-      "local",
-      "--as",
-      "local-copy",
-      "--dry-run",
-    ],
-    [
-      "ctl",
-      "sync",
-      "local",
-      "connect",
-      "11111111-1111-4111-8111-111111111111",
-      "--path",
-      "local",
-      "--dry-run",
-    ],
-    [
-      "ctl",
-      "sync",
-      "upstream",
-      "connect",
-      "https://example.com/skills.git",
-      "--database",
-      "11111111-1111-4111-8111-111111111111",
-    ],
-    ["replace", "missing.md", "--target", "11111111-1111-4111-8111-111111111111", "--dry-run"],
-  ])
-    jsonFailure(await invoke(args), "AUTH_REQUIRED", 1)
-  for (const source of ["local", "notion"]) {
-    const result = await invoke(
-      [
-        "ctl",
-        "sync",
-        "local",
-        "plan",
-        "missing-binding",
-        "--from",
-        source,
-        "--output",
-        "plan.json",
-      ],
-      { traceOnline: true },
-    )
-    jsonFailure(result, "SYNC_BINDING_MISSING", 1)
-    expect(result.onlineCalled).toBe(false)
-  }
-  const empty = await invoke(["ctl", "sync", "local", "status"])
-  expect(empty.exit).toBe(0)
-  expect(JSON.parse(empty.stdout)).toEqual({ ok: true, bindings: [] })
-}, 30000)
-
-const helpCommands = [
-  [],
-  ["apply"],
-  ["ctl", "sync", "local", "connect"],
-  ["ctl", "sync", "local", "run"],
-  ["ctl", "sync", "local", "check"],
-  ["ctl", "sync", "upstream"],
-  ["ctl", "sync", "upstream", "connect"],
-  ["ctl", "sync", "upstream", "run"],
-  ["ctl", "sync", "upstream", "list"],
-  ["list"],
-  ["ctl", "database"],
-  ["ctl", "database", "list"],
-  ["read"],
-  ["files"],
-  ["create"],
-  ["replace"],
-  ["update"],
-  ["schema"],
-  ["schema", "read"],
-  ["ctl"],
-  ["ctl", "status"],
-  ["ctl", "backup"],
-  ["ctl", "operation"],
-  ["ctl", "operation", "list"],
-  ["ctl", "operation", "show"],
-  ["ctl", "sync", "local"],
-  ["export"],
-  ["write"],
-  ["ctl", "config"],
-  ["ctl", "config", "show"],
-  ["ctl", "config", "set"],
-  ["ctl", "config", "unset"],
-  ["ctl", "config", "set-token"],
-  ["ctl", "config", "clear-token"],
-  ["ctl", "database"],
-  ["ctl", "database", "register"],
-  ["ctl", "database", "unregister"],
-  ["ctl", "sync"],
-  ["ctl", "sync", "local", "bind"],
-  ["ctl", "sync", "local", "status"],
-  ["ctl", "sync", "local", "plan"],
-  ["ctl", "sync", "local", "apply"],
-  ["ctl", "operation", "reconcile"],
-  ["ctl", "sync", "local", "unbind"],
-  ["ctl", "cache"],
-  ["ctl", "cache", "status"],
-  ["ctl", "cache", "clear"],
-  ["ctl", "resolve"],
-  ["ctl", "doctor"],
-  ["ctl", "operation", "resume"],
-]
-for (const command of helpCommands) {
-  test(`${command.join(" ") || "root"} help requires no provider or accessible application roots`, async () => {
-    const result = await invoke([...command, "--help"], { inaccessible: true, traceOnline: true })
-    expect(result.exit).toBe(0)
-    expect(result.stderr).toBe("")
-    expect(result.stdout.trim().length).toBeGreaterThan(0)
-    expect(result.onlineCalled).toBe(false)
-  })
-}
-test("daily recovery guidance names executable command paths offline", async () => {
-  for (const [path, instruction] of [
-    [["create"], "operation resume OPERATION_ID"],
-    [["ctl", "sync", "local", "bind"], "sync local run BINDING --from local|notion"],
-    [["ctl", "operation"], "operation"],
-  ] as const) {
-    const help = await invoke([...path, "--help"], { inaccessible: true, traceOnline: true })
-    expect(help.exit).toBe(0)
-    expect(help.onlineCalled).toBe(false)
-    expect(help.stdout.replace(/\s+/g, " ")).toContain(instruction)
-    const schema = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
-    expect(schema.exit).toBe(0)
-    expect(schema.onlineCalled).toBe(false)
-    expect(JSON.stringify(JSON.parse(schema.stdout).schema)).toContain(instruction)
-  }
-}, 30000)
-
 test("parser errors return the relevant offline help command", async () => {
   for (const [args, next] of [
     [["read"], ["ntn-skills", "read", "--help"]],
     [
-      ["ctl", "sync", "local", "plan", "--unknown-option"],
-      ["ntn-skills", "ctl", "sync", "local", "plan", "--help"],
+      ["ctl", "library", "inspect", "--unknown-option"],
+      ["ntn-skills", "ctl", "library", "inspect", "--help"],
     ],
     [["unknown-command"], ["ntn-skills", "--help"]],
   ] satisfies Array<[string[], string[]]>) {
-    const failed = await invoke(args, { inaccessible: true, traceOnline: true })
+    const failed = await invoke(args, {
+      inaccessible: true,
+      traceOnline: true,
+    })
     jsonFailure(failed, "INVALID_ARGUMENT")
     expect(failed.onlineCalled).toBe(false)
     expect(JSON.parse(failed.stdout).next.argv).toEqual(next)
-    const help = await invoke(next.slice(1), { inaccessible: true, traceOnline: true })
+    const help = await invoke(next.slice(1), {
+      inaccessible: true,
+      traceOnline: true,
+    })
     expect(help.exit).toBe(0)
     expect(help.onlineCalled).toBe(false)
   }
-}, 30000)
-
-test("apply exposes sparse changes and enforces metadata selection before access", async () => {
-  const schema = await invoke(["schema", "apply"], { inaccessible: true, traceOnline: true })
-  expect(schema.exit).toBe(0)
-  expect(schema.onlineCalled).toBe(false)
-  const output = JSON.parse(schema.stdout)
-  expect(output.schema.parameters).toContainEqual(
-    expect.objectContaining({ name: "target", kind: "argument", required: true }),
-  )
-  expect(output.schema.parameters).toContainEqual(
-    expect.objectContaining({ name: "input", kind: "flag", required: false, max_occurrences: 1 }),
-  )
-  expect(output.schema.parameters).toContainEqual(
-    expect.objectContaining({
-      name: "remove",
-      kind: "flag",
-      min_occurrences: 0,
-      max_occurrences: null,
-    }),
-  )
-  const help = await invoke(["apply", "--help"], { inaccessible: true, traceOnline: true })
-  expect(help.exit).toBe(0)
-  expect(help.onlineCalled).toBe(false)
-  expect(help.stdout.replace(/\s+/g, " ")).toContain("operation resume OPERATION_ID")
-  const page = "11111111-1111-4111-8111-111111111111"
-  for (const command of ["apply", "update"])
-    await invalid([command, pinned, "--member", page, "--clear-members"])
-}, 30000)
-
-test("upstream connect exposes Git source and member directory selection offline", async () => {
-  const result = await invoke(["schema", "ctl", "sync", "upstream", "connect"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(result.exit).toBe(0)
-  expect(result.onlineCalled).toBe(false)
-  const parameters = JSON.parse(result.stdout).schema.parameters
-  expect(parameters).toContainEqual(
-    expect.objectContaining({
-      name: "source",
-      kind: "argument",
-      required: true,
-      max_occurrences: 1,
-    }),
-  )
-  for (const name of ["root", "include", "exclude"])
-    expect(parameters).toContainEqual(
-      expect.objectContaining({ name, kind: "flag", min_occurrences: 0, max_occurrences: null }),
-    )
-  expect(parameters.some((parameter: { name: string }) => parameter.name === "input")).toBe(false)
-  const help = await invoke(["ctl", "sync", "upstream", "connect", "--help"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(help.exit).toBe(0)
-  expect(help.onlineCalled).toBe(false)
-  expect(help.stdout).toContain("HEAD")
-  expect(help.stdout.replace(/\s+/g, " ")).toContain("member directory")
-  await invalid(["ctl", "sync", "upstream", "connect"])
-  await invalid([
-    "ctl",
-    "sync",
-    "upstream",
-    "connect",
-    "https://example.com/skills.git",
-    "--ref",
-    "main",
-    "--ref",
-    "main",
-  ])
-})
-
-test("local connect exposes one initial direction and validates it before access", async () => {
-  const schema = await invoke(["schema", "ctl", "sync", "local", "connect"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(schema.exit).toBe(0)
-  expect(schema.onlineCalled).toBe(false)
-  const contract = JSON.parse(schema.stdout).schema
-  expect(
-    contract.parameters.find((parameter: { name: string }) => parameter.name === "path"),
-  ).toMatchObject({
-    required: true,
-    min_occurrences: 1,
-    max_occurrences: 1,
-  })
-  expect(contract.constraints).toContainEqual({
-    kind: "allowed_values",
-    flag: "from",
-    values: ["local", "notion"],
-  })
-  const help = await invoke(["ctl", "sync", "local", "connect", "--help"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(help.exit).toBe(0)
-  expect(help.onlineCalled).toBe(false)
-  expect(help.stdout.replace(/\s+/g, " ")).toContain("missing directory")
-  await invalid([
-    "ctl",
-    "sync",
-    "local",
-    "connect",
-    "11111111-1111-4111-8111-111111111111",
-    "--path",
-    "missing-local",
-    "--from",
-    "unknown",
-  ])
-  await invalid(["ctl", "sync", "local", "connect", "11111111-1111-4111-8111-111111111111"])
-})
-
-test("daily management schema excludes historical operator commands offline", async () => {
-  const upstream = await invoke(["schema", "ctl", "sync", "upstream"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(upstream.exit).toBe(0)
-  expect(upstream.onlineCalled).toBe(false)
-  const upstreamCommands = JSON.parse(upstream.stdout).schema.commands.map(
-    (command: { name: string }) => command.name,
-  )
-  for (const name of [
-    "connect",
-    "list",
-    "add",
-    "update",
-    "remove",
-    "status",
-    "check",
-    "plan",
-    "apply",
-    "run",
-    "fork",
-    "track",
-  ])
-    expect(upstreamCommands).toContain(name)
-  for (const name of [
-    "publish-files",
-    "content-adopt-plan",
-    "content-adopt-apply",
-    "source-rich-text-repair-plan",
-    "source-rich-text-repair-apply",
-    "source-rich-text-repair-reconcile",
-    "source-rich-text-repair-show",
-    "source-root-fidelity-plan",
-    "source-root-fidelity-apply",
-    "source-root-fidelity-reconcile",
-    "source-root-fidelity-show",
-    "source-root-completion-plan",
-    "source-root-completion-apply",
-    "source-root-completion-reconcile",
-    "source-root-completion-show",
-    "map-checkpoint-adopt-plan",
-    "map-checkpoint-adopt-apply",
-    "adopt-plan",
-    "adopt-apply",
-    "prepare-plan",
-    "prepare-apply",
-    "rebuild",
-    "restore-deleted",
-  ])
-    expect(upstreamCommands).not.toContain(name)
-  const operation = await invoke(["schema", "ctl", "operation"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(operation.exit).toBe(0)
-  expect(operation.onlineCalled).toBe(false)
-  expect(
-    JSON.parse(operation.stdout)
-      .schema.commands.map((command: { name: string }) => command.name)
-      .sort(),
-  ).toEqual(["list", "reconcile", "resume", "show"])
-  await invalid(["ctl", "sync", "upstream", "content-adopt-plan", "--input", "missing.json"])
-  await invalid(["ctl", "sync", "upstream", "adopt-plan", "--evidence", "missing.json"])
-  await invalid(["ctl", "operation", "body-completion-plan", "p_fixture"])
 }, 30000)
 
 test("implicit root help works offline", async () => {
@@ -937,82 +505,36 @@ test("implicit root help works offline", async () => {
   expect(result.onlineCalled).toBe(false)
 })
 
-test("SC25 C3 daily help/schema stay small while ctl and historical exact paths share one parser", async () => {
-  const root = await invoke(["schema"], { inaccessible: true, traceOnline: true })
+test("current help and schema expose the same small command tree", async () => {
+  const root = await invoke(["schema"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
   expect(root.exit).toBe(0)
   expect(root.onlineCalled).toBe(false)
   const tree = JSON.parse(root.stdout).schema
   expect(tree.commands.map((command: { name: string }) => command.name).sort()).toEqual([
+    "auth",
     "ctl",
     "export",
     "files",
     "list",
     "read",
     "schema",
+    "skills",
     "use",
   ])
   const ctl = tree.commands.find((command: { name: string }) => command.name === "ctl")
   expect(ctl.commands).toEqual([])
   expect(ctl.has_subcommands).toBe(true)
-  const help = await invoke(["--help"], { inaccessible: true, traceOnline: true })
+  const help = await invoke(["--help"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
   expect(help.exit).toBe(0)
   expect(help.onlineCalled).toBe(false)
   expect(help.stdout).not.toContain("--session-bindings")
-  for (const path of [
-    ["views"],
-    ["prepare"],
-    ["resolve"],
-    ["operation", "resume"],
-    ["sync", "local", "run"],
-    ["sync", "upstream", "run"],
-  ]) {
-    const canonical = await invoke(["schema", "ctl", ...path], {
-      inaccessible: true,
-      traceOnline: true,
-    })
-    const historical = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
-    expect(canonical.exit).toBe(0)
-    expect(historical.exit).toBe(0)
-    expect(canonical.onlineCalled || historical.onlineCalled).toBe(false)
-    expect(JSON.parse(canonical.stdout).schema).toEqual(JSON.parse(historical.stdout).schema)
-    const commandHelp = await invoke(["ctl", ...path, "--help"], {
-      inaccessible: true,
-      traceOnline: true,
-    })
-    expect(commandHelp.exit).toBe(0)
-    expect(commandHelp.onlineCalled).toBe(false)
-  }
-  for (const author of ["create", "adopt", "write", "update", "apply", "replace"]) {
-    const schema = await invoke(["schema", author], { inaccessible: true, traceOnline: true })
-    expect(schema.exit).toBe(0)
-    expect(JSON.parse(schema.stdout).schema.name).toBe(author)
-  }
 }, 30000)
-
-for (const command of [
-  ["list"],
-  ["ctl", "database", "list"],
-  ["read", "sample"],
-  ["files", "sample"],
-  ["files", "sample"],
-  ["create", "missing.md"],
-  ["replace", "missing.md", "--target", "11111111-1111-4111-8111-111111111111"],
-  ["export", "sample", "--output", "output.zip"],
-  ["write", "sample", "--input", "missing.md"],
-  ["ctl", "database", "register", "personal"],
-  ["ctl", "sync", "local", "bind", "sample", "--path", "local"],
-  ["ctl", "cache", "status", "sample"],
-  ["ctl", "cache", "clear", "sample"],
-]) {
-  test(`${command.join(" ")} rejects repeated database values before its handler`, async () => {
-    for (const flags of [
-      ["--database", "frontend", "--database", "ops"],
-      ["--database=frontend", "--database=ops"],
-      ["--database", "frontend", "--database=frontend"],
-    ])
-      await invalid([...command, ...flags])
-  }, 15000)
-}
 
 test("new and existing singleton strings and Booleans reject repetition", async () => {
   for (const args of [
@@ -1083,7 +605,7 @@ test("cache duration configuration persists across processes and preserves other
   await mkdir(join(root, "config"))
   const original = {
     token: "offline-fixture-token",
-    default_database: "11111111-1111-4111-8111-111111111111",
+    default_library: "11111111-1111-4111-8111-111111111111",
     sources: [],
   }
   await writeFile(join(root, "config", "config.json"), JSON.stringify(original))
@@ -1100,7 +622,7 @@ test("cache duration configuration persists across processes and preserves other
     )
     const show = JSON.parse((await invoke(["ctl", "config", "show"], { root })).stdout)
     expect(show.config.effective_cache_policy.read_max_age_ms).toBe(milliseconds)
-    expect(show.config.default_database).toBe(original.default_database)
+    expect(show.config.default_library).toBe(original.default_library)
     expect(show.config.token_configured).toBe(true)
     expect(show.config.token).toBeUndefined()
   }
@@ -1112,10 +634,10 @@ test("cache duration configuration persists across processes and preserves other
   expect(clear.exit).toBe(0)
   const show = JSON.parse((await invoke(["ctl", "config", "show"], { root })).stdout)
   expect(show.config.effective_cache_policy).toEqual({
-    read_max_age_ms: 300000,
+    read_max_age_ms: 3600000,
     catalog_max_age_ms: 60000,
   })
-  expect(show.config.default_database).toBe(original.default_database)
+  expect(show.config.default_library).toBe(original.default_library)
   expect(show.config.token_configured).toBe(true)
 }, 60000)
 
@@ -1124,13 +646,19 @@ test("consumer catalog identity follows remote scope without local configuration
   await mkdir(join(root, "config"))
   const database = "11111111-1111-4111-8111-111111111111"
   const otherDatabase = "22222222-2222-4222-8222-222222222222"
-  const source = { alias: "shared", database_id: database, title: "Shared", data_source_ids: [] }
+  const source = {
+    alias: "shared",
+    database_id: currentLibrary.skills.database_id,
+    title: "Shared",
+    data_source_ids: [currentLibrary.skills.data_source_id],
+    shared_library: { ...currentLibrary, library_id: database },
+  }
   const original = { token: "offline-fixture-token", sources: [source] }
   const save = (value: unknown) =>
     writeFile(join(root, "config", "config.json"), JSON.stringify(value))
   const identity = async (selector?: string) => {
     const result = await invoke(
-      ["ctl", "cache", "identity", ...(selector ? ["--database", selector] : [])],
+      ["ctl", "cache", "identity", ...(selector ? ["--library", selector] : [])],
       { root, traceOnline: true },
     )
     expect(result.exit).toBe(0)
@@ -1142,11 +670,14 @@ test("consumer catalog identity follows remote scope without local configuration
   const first = await identity(database)
   expect((await identity("shared")).identity).toBe(first.identity)
   expect((await identity(database.replaceAll("-", "").toUpperCase())).identity).toBe(first.identity)
-  expect((await identity()).identity).not.toBe(first.identity)
+  jsonFailure(
+    await invoke(["ctl", "cache", "identity"], { root, traceOnline: true }),
+    "LIBRARY_CONTEXT_REQUIRED",
+    1,
+  )
   const localPreferences = {
     ...original,
-    default_database: otherDatabase,
-    builtin_database: otherDatabase,
+    default_library: otherDatabase,
     cache_policy: { read_max_age_ms: 1000, catalog_max_age_ms: 120000 },
   }
   await save(localPreferences)
@@ -1154,32 +685,51 @@ test("consumer catalog identity follows remote scope without local configuration
   expect(changedPolicy.identity).toBe(first.identity)
   expect(changedPolicy.catalog_max_age_ms).toBe(120000)
   expect((await identity(otherDatabase)).identity).not.toBe(first.identity)
+  expect((await identity()).identity).toBe((await identity(otherDatabase)).identity)
   await save({ ...original, upstream_database: otherDatabase })
-  expect((await identity(database)).identity).not.toBe(first.identity)
+  const retired = await invoke(["ctl", "cache", "identity", "--library", database], {
+    root,
+    traceOnline: true,
+  })
+  jsonFailure(retired, "STATE_CUTOVER_REQUIRED", 1)
+  expect(retired.onlineCalled).toBe(false)
+  expect(retired.stdout).not.toContain(original.token)
   await save({ ...original, token: "another-offline-credential" })
   expect((await identity(database)).identity).not.toBe(first.identity)
 }, 30000)
 
-test("relative resolution preserves snapshot without consulting Notion", async () => {
+test("current relative resolution preserves owner without consulting Notion", async () => {
   const result = await invoke(
     [
       "ctl",
       "resolve",
       "../assets/guide.md",
       "--from",
-      `skill://sample/references/page.md?snapshot=${snapshot}`,
+      "skill://sample/references/page.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e",
     ],
     { traceOnline: true },
   )
   expect(result.exit).toBe(0)
   expect(JSON.parse(result.stdout)).toEqual({
     ok: true,
-    ref: `skill://sample/assets/guide.md?snapshot=${snapshot}`,
+    ref: "skill://sample/assets/guide.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e",
   })
   expect(result.onlineCalled).toBe(false)
+  const fixed = await invoke(
+    [
+      "ctl",
+      "resolve",
+      "../assets/guide.md",
+      "--from",
+      `skill://sample/references/page.md?library=cc029b5c-680e-576d-a381-a069d3f9f26e&snapshot=${snapshot}`,
+    ],
+    { traceOnline: true },
+  )
+  jsonFailure(fixed, "SNAPSHOT_MISSING", 1)
+  expect(fixed.onlineCalled).toBe(false)
 })
 test("explicit help takes precedence over repeated singleton values", async () => {
-  const result = await invoke(["list", "--database", "frontend", "--database", "ops", "--help"], {
+  const result = await invoke(["list", "--library", "frontend", "--library", "ops", "--help"], {
     inaccessible: true,
     traceOnline: true,
   })
@@ -1187,147 +737,133 @@ test("explicit help takes precedence over repeated singleton values", async () =
   expect(result.onlineCalled).toBe(false)
 })
 
-test("built-ins are explicit offline package identities and cannot capture remote name lookup", async () => {
-  const ids = ["notion/ntn-skills", "notion/ntn-skills-maintain", "notion/ntn-skills-sync"]
-  const listed = await invoke(["ctl", "builtin", "list"], { traceOnline: true })
+test("bundled skills are discoverable offline without installing or creating application state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ntn-skills-bundled-"))
+  const options = { root, inaccessible: true, traceOnline: true }
+  const listed = await invoke(["skills", "list", "--json"], options)
   expect(listed.exit).toBe(0)
   expect(listed.onlineCalled).toBe(false)
-  for (const id of ids) {
-    const name = id.slice("notion/".length)
-    const item = JSON.parse(listed.stdout).skills.find((skill: { id: string }) => skill.id === id)
-    expect(item).toMatchObject({ origin: "builtin", publisher: "ntn-skills", name })
-    jsonFailure(await invoke(["ctl", "builtin", "read", name]), "BUILTIN_NOT_FOUND", 1)
-    jsonFailure(
-      await invoke(["ctl", "builtin", "read", id, "--path", "../private"]),
-      "INVALID_PATH",
-      1,
-    )
-    jsonFailure(await invoke(["read", name]), "AUTH_REQUIRED", 1)
+  const skills = JSON.parse(listed.stdout).skills
+  expect(skills.map((skill: { name: string }) => skill.name)).toEqual([
+    "ntn-skills",
+    "ntn-skills-maintain",
+    "ntn-skills-sync",
+  ])
+  for (const skill of skills) {
+    expect(skill).toMatchObject({ origin: "builtin", publisher: "ntn-skills" })
+    expect(skill.installation).toBeUndefined()
   }
-  await invalid(["ctl", "builtin", "publish", ids[1]!, "--target", "Ntn Skills Maintain"])
-  await invalid(["ctl", "builtin", "publish", ids[1]!, "--database", "a", "--database", "b"])
+  for (const args of [["skills"], ["skills", "list"], ["skills", "--json"]]) {
+    const result = await invoke(args, options)
+    expect(result.exit).toBe(0)
+    expect(result.onlineCalled).toBe(false)
+    for (const skill of skills) expect(result.stdout).toContain(skill.name)
+  }
+  expect(await readdir(root)).toEqual([])
 }, 30000)
 
-test("built-in management defaults to central storage and persists repeated agent targets under Node", async () => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "ntn-skills-cli-builtin-")))
-  const bundle = await Bun.build({
-    entrypoints: [main],
-    outdir: join(root, "bundle"),
-    naming: "ntn-skills.mjs",
-    target: "node",
-    format: "esm",
-    external: [
-      "effect",
-      "effect/*",
-      "@effect/platform-node",
-      "@effect/platform-node/*",
-      "@effect/sql-sqlite-node",
-      "@effect/sql-sqlite-node/*",
-    ],
-  })
-  if (!bundle.success) throw new AggregateError(bundle.logs, "CLI regression bundle failed")
-  const entrypoint = join(root, "bundle", "ntn-skills.mjs")
-  await symlink(
-    new URL("../node_modules", import.meta.url).pathname,
-    join(root, "bundle", "node_modules"),
-    "dir",
-  )
-  const id = "notion/ntn-skills-maintain"
-  const name = "ntn-skills-maintain"
-  const dataDir = join(root, "xdg-data", "ntn-skills")
-  const canonical = join(dataDir, "skills", name)
-  const agents = [join(root, "home", ".agents"), join(root, "agent-one"), join(root, "agent two")]
-  const targets = agents.slice(1).flatMap((directory) => ["--agent-dir", directory])
-  const call = async (args: string[]) => {
-    const result = await invoke(["ctl", "builtin", ...args], {
-      root,
-      traceOnline: true,
-      runtime: node,
-      entrypoint,
+test("bundled get returns exact Markdown, complete supporting files and real package paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ntn-skills-bundled-read-"))
+  const options = { root, inaccessible: true, traceOnline: true }
+  for (const name of ["ntn-skills", "ntn-skills-maintain", "ntn-skills-sync"]) {
+    const pathResult = await invoke(["skills", "path", name], options)
+    expect(pathResult.exit).toBe(0)
+    expect(pathResult.onlineCalled).toBe(false)
+    const directory = pathResult.stdout.trim()
+    const expected = await readFile(join(directory, "SKILL.md"), "utf8")
+    const read = await invoke(["skills", "get", name], options)
+    expect(read.exit).toBe(0)
+    expect(read.onlineCalled).toBe(false)
+    expect(read.stdout).toBe(expected)
+    const json = await invoke(["skills", "get", name, "--json"], options)
+    expect(JSON.parse(json.stdout)).toMatchObject({
+      source: "builtin",
+      path: "SKILL.md",
+      content: expected,
     })
-    if (result.exit !== 0)
-      throw new Error(
-        `Builtin Node ${JSON.stringify(args)} exited ${result.exit}: ${result.stderr || result.stdout}`,
-      )
-    expect(result.exit).toBe(0)
-    expect(result.stderr).toBe("")
-    expect(result.onlineCalled).toBe(false)
-    return JSON.parse(result.stdout)
+    const full = await invoke(["skills", "get", name, "--full", "--json"], options)
+    expect(full.exit).toBe(0)
+    expect(full.onlineCalled).toBe(false)
+    const files = JSON.parse(full.stdout).files
+    expect(files.length).toBeGreaterThan(1)
+    for (const file of files) {
+      expect(file.content).toBe(await readFile(join(directory, file.path), "utf8"))
+      expect(file.bytes).toBe(Buffer.byteLength(file.content))
+    }
+    const reference = files.find((file: { path: string }) => file.path !== "SKILL.md")
+    const selected = await invoke(["skills", "get", name, "--path", reference.path], options)
+    expect(selected.exit).toBe(0)
+    expect(selected.stdout).toBe(reference.content)
+    const rendered = await invoke(["skills", "get", name, "--full"], options)
+    expect(rendered.exit).toBe(0)
+    for (const file of files) {
+      expect(rendered.stdout).toContain(`## ${file.path}`)
+      expect(rendered.stdout).toContain(file.content)
+    }
   }
-
-  const listed = await call(["list"])
-  expect(listed.data_dir).toBe(dataDir)
-  expect(listed.skills.find((skill: { id: string }) => skill.id === id).installation).toMatchObject(
-    {
-      state: "not_installed",
-      data_dir: dataDir,
-      path: canonical,
-      distributions: [
-        { agent_dir: agents[0], path: join(agents[0]!, "skills", name), state: "missing" },
-      ],
-    },
+  const all = await invoke(["skills", "get", "--all", "--json"], options)
+  expect(all.exit).toBe(0)
+  expect(JSON.parse(all.stdout).count).toBe(3)
+  const multiple = await invoke(
+    ["skills", "get", "ntn-skills", "ntn-skills-sync", "--json"],
+    options,
   )
-  const absent = await call(["status", id, ...targets])
-  expect(absent.skills[0].installation.distributions).toHaveLength(3)
-  for (const path of [dataDir, ...agents])
-    expect(
-      await access(path).then(
-        () => true,
-        () => false,
-      ),
-    ).toBe(false)
+  expect(multiple.exit).toBe(0)
+  expect(
+    JSON.parse(multiple.stdout).skills.map(
+      (result: { builtin: { name: string } }) => result.builtin.name,
+    ),
+  ).toEqual(["ntn-skills", "ntn-skills-sync"])
+  const packageDirectory = await invoke(["skills", "path", "--json"], options)
+  expect(packageDirectory.exit).toBe(0)
+  expect(JSON.parse(packageDirectory.stdout).path).toContain("skills")
+  expect(await readdir(root)).toEqual([])
+}, 60000)
+
+test("bundled selection rejects invalid requests before output and keeps Notion discovery separate", async () => {
+  for (const args of [
+    ["get"],
+    ["get", "ntn-skills", "--all"],
+    ["get", "ntn-skills", "--full", "--path", "SKILL.md"],
+    ["get", "ntn-skills", "--json", "--json"],
+    ["get", "ntn-skills", "--full", "--full"],
+    ["get", "ntn-skills", "--path", "SKILL.md", "--path", "SKILL.md"],
+    ["list", "--agent-dir", "somewhere"],
+    ["install", "ntn-skills"],
+    ["update", "ntn-skills"],
+    ["status"],
+    ["export", "ntn-skills"],
+  ])
+    await invalid(["skills", ...args])
+  for (const name of ["missing", "notion/ntn-skills", "../ntn-skills"]) {
+    const result = await invoke(["skills", "get", "ntn-skills", name], { traceOnline: true })
+    jsonFailure(result, "BUILTIN_NOT_FOUND", 1)
+    expect(result.onlineCalled).toBe(false)
+    jsonFailure(await invoke(["skills", "path", name]), "BUILTIN_NOT_FOUND", 1)
+  }
   jsonFailure(
-    await invoke(["ctl", "builtin", "update", id], { root, runtime: node, entrypoint }),
-    "BUILTIN_NOT_INSTALLED",
+    await invoke(["skills", "get", "ntn-skills", "--path", "../private"]),
+    "INVALID_PATH",
     1,
   )
-
-  const installed = await call(["install", id])
-  expect(installed.reused).toBe(false)
-  expect(installed.installation).toMatchObject({
-    state: "current",
-    data_dir: dataDir,
-    path: canonical,
-  })
-  expect(await readlink(join(agents[0]!, "skills", name))).toBe(canonical)
-  const distributed = await call(["install", id, ...targets])
-  expect(distributed.reused).toBe(true)
-  expect(distributed.installation.path).toBe(canonical)
-  for (const agent of agents) {
-    const path = join(agent, "skills", name)
-    expect(distributed.installation.distributions).toContainEqual({
-      agent_dir: agent,
-      path,
-      state: "linked",
-    })
-    expect(await readlink(path)).toBe(canonical)
-    expect(await realpath(path)).toBe(canonical)
-  }
-  for (const command of [
-    ["list", ...targets],
-    ["list"],
-    ["status", id, ...targets],
-    ["status", id],
-  ]) {
-    const status = await call(command)
-    const installation = status.skills.find((skill: { id: string }) => skill.id === id).installation
-    expect(installation.state).toBe("current")
-    expect(installation.distributions).toHaveLength(3)
-    expect(
-      installation.distributions.every((target: { state: string }) => target.state === "linked"),
-    ).toBe(true)
-  }
-  for (const flags of [targets, []]) {
-    const updated = await call(["update", id, ...flags])
-    expect(updated.reused).toBe(true)
-    expect(updated.installation.distributions).toHaveLength(3)
+  jsonFailure(
+    await invoke(["skills", "get", "ntn-skills", "--path", "missing.md"]),
+    "FILE_NOT_FOUND",
+    1,
+  )
+  jsonFailure(await invoke(["read", "ntn-skills"]), "LIBRARY_CONTEXT_REQUIRED", 1)
+  for (const command of ["list", "read", "status", "install", "update", "export"]) {
+    await invalid(["ctl", "builtin", command])
   }
 }, 60000)
 
 test("ctl configuration accepts only supported keys and preserves independent settings", async () => {
   const root = await mkdtemp(join(tmpdir(), "ntn-skills-config-contract-"))
   const call = async (args: string[]) => {
-    const result = await invoke(["ctl", "config", ...args], { root, traceOnline: true })
+    const result = await invoke(["ctl", "config", ...args], {
+      root,
+      traceOnline: true,
+    })
     expect(result.exit).toBe(0)
     expect(result.onlineCalled).toBe(false)
     return JSON.parse(result.stdout).config
@@ -1340,11 +876,11 @@ test("ctl configuration accepts only supported keys and preserves independent se
     (await call(["set", "cache_policy.catalog_max_age_ms", "5678"])).effective_cache_policy,
   ).toEqual({ read_max_age_ms: 1234, catalog_max_age_ms: 5678 })
   expect((await call(["unset", "cache_policy.read_max_age_ms"])).effective_cache_policy).toEqual({
-    read_max_age_ms: 300000,
+    read_max_age_ms: 3600000,
     catalog_max_age_ms: 5678,
   })
   expect((await call(["unset", "cache_policy.catalog_max_age_ms"])).effective_cache_policy).toEqual(
-    { read_max_age_ms: 300000, catalog_max_age_ms: 60000 },
+    { read_max_age_ms: 3600000, catalog_max_age_ms: 60000 },
   )
   for (const args of [
     ["set", "token", "secret"],
@@ -1362,38 +898,3 @@ test("ctl configuration accepts only supported keys and preserves independent se
   ])
     await invalid(["ctl", "config", ...args])
 }, 60000)
-
-test("ctl database unregister removes only an exact local registration", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ntn-skills-database-contract-"))
-  await mkdir(join(root, "config"), { recursive: true })
-  const source = {
-    alias: "ops",
-    database_id: "11111111-1111-4111-8111-111111111111",
-    title: "Operations",
-    data_source_ids: [],
-  }
-  await writeFile(
-    join(root, "config", "config.json"),
-    JSON.stringify({ sources: [source], default_database: source.database_id }),
-  )
-  const missing = await invoke(["ctl", "database", "unregister", "OPS"], {
-    root,
-    traceOnline: true,
-  })
-  jsonFailure(missing, "DATABASE_NOT_FOUND", 1)
-  expect(missing.onlineCalled).toBe(false)
-  const removed = await invoke(["ctl", "database", "unregister", "ops"], {
-    root,
-    traceOnline: true,
-  })
-  expect(removed.exit).toBe(0)
-  expect(removed.onlineCalled).toBe(false)
-  expect(JSON.parse(removed.stdout)).toMatchObject({ unregistered: [source], sources: [] })
-  const shown = await invoke(["ctl", "config", "show"], { root })
-  expect(JSON.parse(shown.stdout).config).toMatchObject({
-    sources: [],
-    default_database: source.database_id,
-  })
-  for (const args of [["add", "ops", "--database", source.database_id], ["registered"]])
-    await invalid(["ctl", "database", ...args])
-}, 30000)

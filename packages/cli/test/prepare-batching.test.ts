@@ -5,8 +5,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { prepareGraph } from "../../core/src/graph-prepare.ts"
 import { Notion } from "../../core/src/notion.ts"
-import { nativeGraphFixture } from "../../core/test/graph-prepare-live-fixture.ts"
-import { digest, id, library } from "../../core/test/shared-snapshot-fixture.ts"
+import { property } from "../../core/src/model.ts"
+import {
+  graphLibrary as library,
+  nativeGraphFixture,
+} from "../../core/test/graph-prepare-live-fixture.ts"
+import { currentId as id } from "../../core/test/shared-current-fixture.ts"
+import { trashPath } from "../../core/src/local-locks.ts"
 
 const root = new URL("../../../", import.meta.url).pathname
 const main = new URL("../dist/ntn-skills.js", import.meta.url).pathname
@@ -20,8 +25,8 @@ beforeAll(async () => {
   if (exit) throw new Error(stdout + stderr)
 }, 120_000)
 
-test("public Node prepare batches real HTTPS metadata, persists derived directories, and reports distinct readiness phases", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ng16-prepare-cli-"))
+test("public Node use batches current HTTPS metadata, persists derived directories, and reports distinct readiness phases", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ntn-current-use-cli-"))
   const cert = join(directory, "cert.pem"),
     key = join(directory, "key.pem"),
     config = join(directory, "cert.cnf")
@@ -56,7 +61,7 @@ test("public Node prepare batches real HTTPS metadata, persists derived director
   await f.run(
     prepareGraph(
       { roots: [f.pageIds[0]!, f.pageIds[2]!], purpose: "use" },
-      { database: library.skills.database_id },
+      { library: library.library_id },
     ),
   )
   const calls: {
@@ -109,23 +114,17 @@ test("public Node prepare batches real HTTPS metadata, persists derived director
       "#!/bin/sh\nprintf called > '" + poisonLog + "'\nexit 91\n",
       { mode: 0o755 },
     )
-    const reports: unknown[] = []
-    let processCount = 0
     const invoke = async (condition: string, extra: readonly string[] = []) => {
-      const start = performance.now(),
-        offset = calls.length
+      const offset = calls.length
       const child = Bun.spawn(
         [
           Bun.which("node")!,
           main,
-          "ctl",
-          "prepare",
-          f.pageIds[0]!,
-          f.pageIds[2]!,
-          "--database",
-          library.skills.database_id,
-          "--purpose",
           "use",
+          f.pageIds[0]!,
+          "--library",
+          library.library_id,
+          "--json",
           "--metrics",
           ...extra,
         ],
@@ -138,25 +137,26 @@ test("public Node prepare batches real HTTPS metadata, persists derived director
             ...process.env,
             PATH: poisonDir + ":" + process.env.PATH,
             NODE_EXTRA_CA_CERTS: cert,
-            NOTION_API_TOKEN: "controlled-ng16-token",
+            NOTION_API_TOKEN: "controlled-current-use-token",
             NOTION_API_BASE_URL: server.url.origin,
             NOTION_WORKSPACE_ID: "",
             NTN_SKILLS_REQUEST_TRACE_LIMIT: condition === "cold" ? "0" : "128",
             NTN_SKILLS_HOME: join(directory, "state"),
             NTN_SKILLS_CONFIG_HOME: join(directory, "config"),
             NTN_SKILLS_CACHE_HOME: join(directory, "cache"),
-            NTN_SKILLS_DATA_HOME: join(directory, "data"),
           },
         },
       )
-      processCount++
       const [stdout, stderr, exit] = await Promise.all([
         new Response(child.stdout).text(),
         new Response(child.stderr).text(),
         child.exited,
       ])
       expect(exit, stderr + stdout).toBe(0)
-      const result = JSON.parse(stdout),
+      const consumed = JSON.parse(stdout)
+      expect(consumed.status).toBe("ready")
+      expect(consumed.effects.remote_writes).toBe("none")
+      const result = { ...consumed.preparation, request_metrics: consumed.request_metrics },
         actual = calls.slice(offset)
       expect(result.status).toBe("ready")
       expect(result.usage.prepared_nodes).toBe(4)
@@ -191,28 +191,32 @@ test("public Node prepare batches real HTTPS metadata, persists derived director
         (call) =>
           call.path.split("?", 1)[0] === `v1/data_sources/${library.skills.data_source_id}/query`,
       )
-      expect(metadata.length).toBeLessThanOrEqual(1)
-      reports.push({
-        condition,
-        process_count: 1,
-        elapsed_with_process_ms: performance.now() - start,
-        result,
-        actual_http: actual,
-      })
+      expect(metadata).toHaveLength(condition === "warm" ? 0 : 4)
+      expect(
+        metadata.map((call) => {
+          const filter = property(property(call.body).filter)
+          const parts = Array.isArray(filter.or) ? filter.or : [filter]
+          return parts.map((raw) => {
+            expect(property(raw).property).toBe(library.skills.property_ids["Skill ID"])
+            return property(property(raw).rich_text).equals
+          })
+        }),
+      ).toEqual(condition === "warm" ? [] : [["a"], ["optional"], ["b", "c"], ["d"]])
       return { result, actual }
     }
     const cold = await invoke("cold")
     expect(cold.result.preparation_metrics.derived_cache_misses).toBe(4)
+    // Two batched reads discover Files; each of the four owners then checks its final fence.
     expect(
       cold.actual.filter(
         (call) =>
           call.path.split("?", 1)[0] === `v1/data_sources/${library.files.data_source_id}/query`,
       ),
-    ).toHaveLength(2)
+    ).toHaveLength(6)
     const warm = await invoke("warm")
     expect(warm.result.graph_lock).toEqual(cold.result.graph_lock)
     expect(warm.result.preparation_metrics.derived_cache_hits).toBe(4)
-    expect(warm.actual.map((call) => call.path)).toEqual(["v1/users/me"])
+    expect(warm.actual).toEqual([])
     await Bun.sleep(1_100)
     const revalidated = await invoke("metadata_revalidate", ["--max-age", "1s"])
     expect(revalidated.result.graph_lock).toEqual(cold.result.graph_lock)
@@ -221,26 +225,8 @@ test("public Node prepare batches real HTTPS metadata, persists derived director
       revalidated.actual.filter((call) => call.path.split("?", 1)[0]!.endsWith("/markdown")),
     ).toEqual([])
     await expect(access(poisonLog)).rejects.toBeDefined()
-    const evidence = {
-      version: 1,
-      evidence_kind: "public_node_cli_https_controlled",
-      cli_sha256: digest(await readFile(main)),
-      process_count: processCount,
-      writes: 0,
-      source_body_requests: 0,
-      official_ntn_invocations: 0,
-      percentile_claim: null,
-      reports,
-    }
-    await writeFile(join(directory, "evidence.json"), JSON.stringify(evidence, null, 2) + "\n")
-    if (process.env.NTN_NG16_EVIDENCE_DIR) {
-      await mkdir(process.env.NTN_NG16_EVIDENCE_DIR, { recursive: true })
-      await writeFile(
-        join(process.env.NTN_NG16_EVIDENCE_DIR, "public-cli-evidence.json"),
-        JSON.stringify({ ...evidence, original: directory }, null, 2) + "\n",
-      )
-    }
   } finally {
     server.stop(true)
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
   }
 }, 120_000)

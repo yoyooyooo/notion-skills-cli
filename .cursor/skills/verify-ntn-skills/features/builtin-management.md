@@ -1,74 +1,54 @@
-# Built-in Skill installation and updates
+# Bundled Skill discovery and reading
 
-This recipe covers explicit local copies. Broker exposes the three bundled Skills through ordinary `$ntn-skills@builtin`, `$ntn-skills-maintain@builtin` and `$ntn-skills-sync@builtin` selection on Pi/OMP/Tern without central installation or a Notion source. The Broker artifact verifier consumes the packaged bodies and references offline; the installation lifecycle below is relevant when changing explicit install/update behavior.
+主要验证入口：[verify-ntn-skills](../../verify-ntn-skills/SKILL.md)。本页验证一级 `skills` 命令与实际随包主文、支持文件和目录。产品指引随 CLI 版本交付，没有独立安装状态、分发登记或 Notion 投影。
 
-## Sub-features
+## 当前行为
 
-- Offline `ctl builtin list/read/status/install/update` use exact package IDs `notion/ntn-skills`, `notion/ntn-skills-maintain` and `notion/ntn-skills-sync`. Each Skill installs once under the XDG data root and links into the default shared directory.
-- A central version-2 `.ntn-builtin-install.json` records the complete exported baseline; separate distribution records own each link. Foreign same-name directories and incidental links are never adopted.
-- Changed, added or removed files, including hidden files, block replacement. A clean old tree can update in place so every registered link reads the same body/resource additions and removals.
-- Central locks and journals fence concurrent writes and expose interruptions. Receipt-v1 destinations remain conflicts in ordinary install/update; old migration registry fields require the separate migration artifact.
-- The npm consumer path uses the installed Node.js CLI without `ntn` or authentication. Ordinary host `$` discovery/loading uses separate broker verification recipes.
+- `skills` 默认列出目录，`skills list --json` 返回名称、描述和包内身份。目录不包含安装状态。
+- `skills get NAME` 默认输出原始 Markdown。`--path` 读取一个精确相对文件，`--full` 包含所有支持文件；两者互斥。多个名称或 `--all` 可读取多份指引。
+- `skills path NAME` 返回该 Skill 的实际目录；省略名称返回随包目录。独立 CLI 与 Broker 内嵌 CLI 都必须指向自己的文件。
+- 每个动作支持 `--json`。错误保留实际错误码和非零退出；未知名称和越界路径不回退到 Notion。
+- 命令无需 Notion 凭据、Library、本地配置或缓存，不创建应用目录、Skill 副本或链接。CLI 升级时指引一起更新。
 
-## How to get to it (user POV)
+## 用户入口
 
-Use an isolated HOME and `NTN_SKILLS_DATA_HOME`/`XDG_DATA_HOME` owned by this run. Additional roots are optional destinations, not canonical storage locations. Replace `PROFILE` and `OTHER_PROFILE` with run-owned paths.
-
-```bash
-ntn-skills ctl builtin list
-ntn-skills ctl builtin status
-ntn-skills ctl builtin install notion/ntn-skills
-ntn-skills ctl builtin install notion/ntn-skills-sync
-ntn-skills ctl builtin install notion/ntn-skills-maintain --agent-dir PROFILE --agent-dir OTHER_PROFILE
-ntn-skills ctl builtin read notion/ntn-skills-maintain --path references/operations.md
-ntn-skills ctl builtin update notion/ntn-skills-maintain
-```
-
-Local installation ownership is independent of remote `Source Type`/`Builtin ID`; editable properties cannot authorize install/update or establish trusted package identity. Remote classification follows the [publication recipe](import-create-recovery-dry-run.md): explicit schema upgrade, exact trusted package ID/target, raw property readback, metadata-only update and mutation-free complete repeat. Local management success proves no remote acceptance result.
-
-`update` changes the installed Skill to this CLI package's content. Upgrading the CLI itself and publishing a copy to Notion remain separate actions. Installation refreshes filesystem bytes; a running host must reload its native Skill catalog. OMP uses `/restart`.
-
-## Driving it with control-ntn-skills
-
-Follow the parent [Skill](../SKILL.md) to initialize an isolated run and build the CLI. Offline package proof uses `cli -- --version` as doctor, then `package`; it does not require live Notion doctor.
+从选定的实际安装包执行：
 
 ```bash
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- --version
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts package --run "$RUN"
+ntn-skills skills
+ntn-skills skills list --json
+ntn-skills skills get ntn-skills
+ntn-skills skills get ntn-skills-maintain --full
+ntn-skills skills get ntn-skills-sync --path references/synchronization.md
+ntn-skills skills path ntn-skills-maintain
 ```
 
-For changes to explicit installation/update behavior, run the existing two-artifact lifecycle separately:
+三个公开名称是 `ntn-skills`、`ntn-skills-maintain`、`ntn-skills-sync`。
+产品指导默认来自同一执行包。普通业务 Skill 仍在 Notion 发现；明确选择的 Notion／团队工作流保持精确 source/ref 和 Requires，不因失败或同名内容切换来源。
+
+## 安装包验证
+
+复用父 [Skill](../SKILL.md) 的隔离环境和现有 package checker：
 
 ```bash
-bun .cursor/skills/verify-ntn-skills/scripts/builtin-lifecycle.ts doctor
-bun .cursor/skills/verify-ntn-skills/scripts/builtin-lifecycle.ts
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- skills list --json
+NTN_SMOKE_EVIDENCE_ROOT="$RUN/scratch/installed-package" bun run package:check > "$RUN/evidence/package.json"
 ```
 
-The runner builds two real Node.js CLI artifacts from the production command entrypoint with controlled A/B package catalogs. They share a package version and differ in body and resources. It drives public CLI commands, checks content IDs and the complete installed/exported tree, preserves local changes and retains evidence outside its trashed scratch. It proves local upgrade semantics, not release-registry availability.
+检查实际 npm 安装后的 Node.js CLI，逐个比较主文与支持文件的全部字节、目录路径、名称和描述。核对默认 Markdown、`--json`、`--full` 与单个 reference；`path` 指向的文件须与同包 `get` 返回的内容一致。离开源码 checkout 执行，清除开发 override，使用无凭据和不可用应用目录的环境验证离线读取。
 
-The consumer smoke drives the actual npm-installed CLI. Inspect its `builtins` catalog and `additional_skills` observations for all three IDs, complete main/reference/export/installed bytes, separate receipts and idempotent install/update. After a modified maintenance Skill refuses replacement, the entrypoint and sync installations must remain current. A manually copied entrypoint without a receipt must remain unmanaged with unchanged bytes. Core behavior regressions separately exercise two distinct built-in contents and interruption boundaries. A real A-to-B package upgrade requires two built CLI artifacts with different content IDs; changing a version label alone does not prove an update.
+检查空名称、未知名称、越界路径和冲突参数。旧命令必须失败，不保留别名；读取不能产生安装登记、状态、缓存或分发链接。源码回归由 `packages/cli/test/cli.test.ts` 和 `builtin-guidance.test.ts` 覆盖，实际安装由 `scripts/package-smoke.ts` 覆盖。
 
-The lifecycle runner checks the owned old-tree inode and bytes in `~/.Trash` after the other local cases. macOS may deny that observation even when `/usr/bin/trash` succeeds. It then retains a blocked `trash-retention.json` and exits nonzero; report the earlier completed cases separately and do not claim complete production retention proof.
+这些结果证明随包读取，不证明公开 registry 发布、真实 Notion 管理或 Agent 已按指引完成业务任务。保留真实命令、包身份和完整输出，按本次范围报告。
 
-For a focused source drive, pass these commands through `control.ts cli --run "$RUN" -- ...` with isolated HOME/data roots. Record the central inventory/receipt, distribution registry and every link before and after. Assert `status` creates nothing; repeated install reuses central bytes; added roots persist; all links observe an update. Modify/add/remove owned central files in fresh cases and require rejection without byte loss. Foreign directories, foreign links, retargeted registered links and all receipt-v1 directories must refuse replacement. A registry containing `retained_path` or `legacy_proof` must expose `distribution_error.code=BUILTIN_MIGRATION_REQUIRED` and block both mutations without changing the registry, central receipt or links. Exercise interrupted v2 publication/readback and real fiber interruption, preserving expected failure output and retained trees.
+## Broker 交接
 
-Receipt-v1 conversion has a separate executable artifact supplied by the release or integration owner; the regular package never imports its frozen legacy writer. Bind `BUILTIN_MIGRATION` to that supplied artifact and every directory below to an owned fixture. Stop old writers before conversion. For a profile with an interrupted v1 journal, run guarded recovery first and retain its result; then run the conversion explicitly:
+Broker 的 `.agents/skills/verify-notion-skills-integration/features/builtin-management.md` 拥有普通 Pi 选择与其实际包检查。通过它的现有 `scripts/verify-artifacts.mjs` 验证内嵌 CLI 的同一组命令、全部正文和支持文件，以及实际 `path` 位置。
 
-```bash
-node "$BUILTIN_MIGRATION" notion/ntn-skills --agent-dir "$OLD_PROFILE" --data-dir "$CENTRAL_DATA" --home-dir "$OWNED_HOME" --old-writers-stopped --recover-only
-node "$BUILTIN_MIGRATION" notion/ntn-skills --agent-dir "$OLD_PROFILE" --data-dir "$CENTRAL_DATA" --home-dir "$OWNED_HOME" --old-writers-stopped
-```
+启用 Notion source 时，Pi 可以选择 `$ntn-skills@builtin`、`$ntn-skills-maintain@builtin` 和 `$ntn-skills-sync@builtin`。没有启用 source 时，不注入 Notion 目录、工具或系统指引；显式 setup 仍可读取 shell CLI 的随包指南。OMP/Tern 宿主验收仍延期。
 
-Use the artifact's exact builtin ID for each fixture. The recovery-only invocation applies to interrupted legacy transactions; a clean fixture can proceed directly to conversion. Retain the complete old tree/receipt and journal before either command, then capture the resulting v2 receipt, registered links and retained prior bytes. Keep this artifact's evidence separate from ordinary install/update rejection evidence. An artifact unavailable to the run leaves conversion unproven.
+实际模型投递和自然任务沿现有工作流验证入口单独判断。不要用安装包成功替代 Pi 成功，也不为验证建立中央 Skill 安装或 Notion 副本。
 
-The source map for builtin behavior is `packages/core/src/builtin-install.ts` for distribution ownership and public operations, `builtin-install-tree.ts` for Effect data-root resolution, complete-tree inspection and scoped no-follow handles, and `builtin-install-transaction.ts` for atomic journal records and guarded recovery. `packages/core/test/builtin-install.test.ts` owns boundary, alias-process lock, legacy preservation/fence and deterministic fiber interruption/handle-closure regressions. The lifecycle runner and installed-consumer smoke own actual Node.js CLI proof; the external migration artifact owns receipt-v1 conversion.
+## 清理
 
-The broker repository's `.agents/skills/verify-notion-skills-integration/features/builtin-management.md` owns ordinary Pi/OMP/Tern builtin selection. Its existing `scripts/verify-artifacts.mjs` checks installed package discovery, full-body loading and offline main/reference reads through each bundled CLI with no central installation. Native UI recipes cover candidates and exact-token insertion. When explicitly installed local copies are changed, additionally check native reload, registered links and single physical-entry exposure for overlapping roots. Dedicated `/ntn-skills` save/management palettes are retired; they are not acceptance targets.
-
-## Gotchas
-
-- `builtin list` includes local installation state by default; catalog presence or package version alone does not prove an installed current tree or healthy distribution links.
-- A receipt is a local baseline, not a signature or remote ownership claim. Modified registered Skills remain user-editable; update refuses to overwrite them.
-- Staging, old directories and journals live outside `skills`, so native scans cannot discover backup copies.
-- All retention uses the verified system Trash capability or reports retained paths. Never remove unknown files or reset a user profile to make a check pass.
-- Preserve command output, hashes, journals and cleanup receipts under evidence before retiring scratch. Cleanup success does not establish feature success.
+只保留本次必要结果。临时验证目录按 [系统 Trash 清理](../references/harness.md#cleanup) 处理，不修改用户会话、配置或其他任务目录。历史本地 Skill 副本和用户业务内容不是本命令的管理对象。

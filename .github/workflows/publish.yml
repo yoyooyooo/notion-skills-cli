@@ -30,21 +30,21 @@ jobs:
       NPM_CONFIG_PROVENANCE: ${{ github.event.repository.private && 'false' || 'true' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ inputs.tag || github.ref }}
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.3
       - name: Set up Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24.20.0
+          node-version: 26.13.1
           package-manager-cache: false
       - name: Install supported npm
-        run: npm install --global npm@11.15.0 --registry https://registry.npmjs.org
+        run: npm install --global npm@12.2.3 --registry https://registry.npmjs.org
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Validate release metadata
@@ -413,17 +413,14 @@ jobs:
           NODE
       - name: Verify registry consumer and registry signatures
         run: |
-          migration_package="$RUNNER_TEMP/ntn-skills-state-migration"
-          bun scripts/build-migration.ts "$migration_package"
-          npm pack "$migration_package" --ignore-scripts --json --pack-destination "$RUNNER_TEMP"
-          bun scripts/package-smoke.ts --registry "${PACKAGE_NAME}@${PACKAGE_VERSION}" --migration-archive "$RUNNER_TEMP/ntn-skills-state-migration-1.0.0.tgz"
+          bun scripts/package-smoke.ts --registry "${PACKAGE_NAME}@${PACKAGE_VERSION}"
           consumer="$RUNNER_TEMP/signature-consumer"
           mkdir -p "$consumer"
           cd "$consumer"
           npm init -y
           npm install --ignore-scripts --registry https://registry.npmjs.org "${PACKAGE_NAME}@${PACKAGE_VERSION}"
           npm audit signatures --registry https://registry.npmjs.org
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-notes
           path: release-notes.md
@@ -435,7 +432,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-notes
       - name: Create or repair GitHub Release after registry verification

@@ -1,4 +1,4 @@
-import { Context, Crypto, Effect, Option, Schema } from "effect"
+import { Context, Effect, Option, Schema } from "effect"
 import {
   decode,
   fail,
@@ -10,39 +10,48 @@ import {
 } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
-import { sharedRecordFromPage } from "./shared-content.ts"
+import { sharedRecordFromPage, skillIdentity } from "./shared-content.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
-import {
-  querySharedOperationIndexes,
-  type SharedOperationHeader,
-} from "./shared-operation-index.ts"
-import {
-  canonicalSharedJson,
-  querySharedFileFactsForSkills,
-  type SharedRecord,
-} from "./shared-records.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
 import type { SharedSkillRelationTarget } from "./shared-router-members.ts"
-import { querySkillFilesForSkills, type FileRecord } from "./skill-file-index.ts"
-import { Store } from "./store.ts"
+import { queryCurrentFilesForSkills } from "./shared-current-index.ts"
+import type { CurrentFileBinding } from "./shared-current-index.ts"
+import {
+  querySelectedSkillMetadata,
+  querySelectedSkillIdentity,
+  selectedSkillsFromInventory,
+  type SelectedSharedSkillMetadata,
+} from "./shared-skill-targets.ts"
 
 export type CompleteSharedSkillInventory = {
   readonly data_source_id: string
   readonly complete: true
   readonly pages: readonly unknown[]
 }
-type Work<A> = Effect.Effect<A, SkillsError, Notion | Store | Crypto.Crypto>
+type Work<A> = Effect.Effect<A, SkillsError, Notion>
 type SelectedMetadata = {
-  readonly files: readonly FileRecord[]
-  readonly facts: readonly SharedRecord[]
-  readonly operations: readonly SharedOperationHeader[]
+  readonly files: readonly CurrentFileBinding[]
 }
 type SharedTarget = { readonly library: SharedLibrary; readonly rawPage: unknown }
 
-/** A single preparation's complete metadata observations; never a global freshness authority. */
+/** Request-scoped exact targets and explicitly complete inventories; never global freshness authority. */
 class SharedGraphReads extends Context.Service<
   SharedGraphReads,
   {
     readonly inventory: (library: SharedLibrary) => Work<CompleteSharedSkillInventory>
+    readonly identity: (
+      library: SharedLibrary,
+      skillId: string,
+    ) => Work<SelectedSharedSkillMetadata>
+    readonly observe: (
+      library: SharedLibrary,
+      raw: unknown,
+      inventory?: CompleteSharedSkillInventory,
+    ) => Work<CompleteSharedSkillInventory | undefined>
+    readonly targets: (
+      library: SharedLibrary,
+      ids: readonly string[],
+    ) => Work<ReadonlyMap<string, SelectedSharedSkillMetadata>>
     readonly target: (selector: string, database?: string) => Work<SharedTarget | undefined>
     readonly metadata: (
       library: SharedLibrary,
@@ -93,9 +102,10 @@ function queryInventory(library: SharedLibrary) {
       "Default Context",
       "Skill ID",
       "Main File ID",
-      "Projection",
-      "References",
-      "Source",
+      "Content",
+      "Current State",
+      "Operation",
+      "Origin",
       "Members",
       "Requires",
     ]
@@ -191,57 +201,108 @@ export function withSharedGraphReads<A, E, R>(
         invalid: Map<string, SkillsError>
       }
     >()
+    const selectedTargets = new Map<
+      string,
+      { library: SharedLibrary; pages: Map<string, SelectedSharedSkillMetadata> }
+    >()
     const selectedMetadata = new Map<string, SelectedMetadata>()
+    const checkLibrary = (library: SharedLibrary) => {
+      const previous =
+        observations.get(library.library_id)?.library ??
+        selectedTargets.get(library.library_id)?.library
+      if (previous !== undefined && canonicalSharedJson(previous) !== canonicalSharedJson(library))
+        throw fail(
+          "SHARED_LIBRARY_ID_CONFLICT",
+          "The preparation observed conflicting descriptors for one library.",
+        )
+    }
+    const rememberInventory = (library: SharedLibrary, value: CompleteSharedSkillInventory) => {
+      checkLibrary(library)
+      const pages = new Map<string, unknown>(),
+        records = new Map<string, SharedSkillRecord>(),
+        claims = new Map<string, Set<string>>(),
+        invalid = new Map<string, SkillsError>()
+      for (const raw of value.pages) {
+        const id = String(property(raw).id)
+        pages.set(id, raw)
+        try {
+          const record = sharedRecordFromPage(
+            raw,
+            sourceFor(library),
+            library.skills.data_source_id,
+          )
+          records.set(id, record)
+          const owners = claims.get(record.id) ?? new Set<string>()
+          owners.add(id)
+          claims.set(record.id, owners)
+        } catch (error) {
+          if (!(error instanceof SkillsError)) throw error
+          invalid.set(id, error)
+        }
+      }
+      completed.set(library.library_id, {
+        library,
+        inventory: value,
+        pages,
+        records,
+        claims,
+        invalid,
+      })
+    }
+    const targets = (
+      library: SharedLibrary,
+      ids: readonly string[],
+      seeds: readonly unknown[] = [],
+    ): Work<ReadonlyMap<string, SelectedSharedSkillMetadata>> =>
+      Effect.gen(function* () {
+        yield* checked(() => checkLibrary(library))
+        const known = selectedTargets.get(library.library_id) ?? {
+          library,
+          pages: new Map<string, SelectedSharedSkillMetadata>(),
+        }
+        selectedTargets.set(library.library_id, known)
+        const complete = completed.get(library.library_id)?.inventory
+        if (complete !== undefined) {
+          const loaded = yield* checked(() => selectedSkillsFromInventory(library, ids, complete))
+          for (const [id, value] of loaded) known.pages.set(id, value)
+        } else {
+          const missing = ids.filter((id) => !known.pages.has(id))
+          if (missing.length) {
+            const loaded = yield* querySelectedSkillMetadata(
+              library,
+              missing,
+              seeds.filter((raw) => missing.includes(String(property(raw).id))),
+            )
+            for (const [id, value] of loaded) known.pages.set(id, value)
+          }
+        }
+        yield* checked(() => {
+          for (const raw of seeds) {
+            const selected = sharedRecordFromPage(
+              raw,
+              sourceFor(library),
+              library.skills.data_source_id,
+            )
+            if (known.pages.get(selected.locator.page_id)?.record.id !== selected.id)
+              throw fail(
+                "SHARED_SKILL_ID_CONFLICT",
+                "The selected Skill changed identity during metadata observation.",
+              )
+          }
+        })
+        return new Map(ids.map((id) => [id, known.pages.get(id)!]))
+      })
     const admitted = new Set<string>()
     const inventory = (library: SharedLibrary): Work<CompleteSharedSkillInventory> =>
       Effect.gen(function* () {
+        yield* checked(() => checkLibrary(library))
         const previous = observations.get(library.library_id)
-        if (previous !== undefined) {
-          if (canonicalSharedJson(previous.library) !== canonicalSharedJson(library))
-            return yield* Effect.fail(
-              fail(
-                "SHARED_LIBRARY_ID_CONFLICT",
-                "The preparation observed conflicting descriptors for one library.",
-              ),
-            )
-          return yield* previous.inventory
-        }
+        if (previous !== undefined) return yield* previous.inventory
+        const supplied = completed.get(library.library_id)?.inventory
+        if (supplied !== undefined) return supplied
         const load = yield* Effect.cached(
           queryInventory(library).pipe(
-            Effect.tap((value) =>
-              checked(() => {
-                const pages = new Map<string, unknown>(),
-                  records = new Map<string, SharedSkillRecord>(),
-                  claims = new Map<string, Set<string>>(),
-                  invalid = new Map<string, SkillsError>()
-                for (const raw of value.pages) {
-                  const id = String(property(raw).id)
-                  pages.set(id, raw)
-                  try {
-                    const record = sharedRecordFromPage(
-                      raw,
-                      sourceFor(library),
-                      library.skills.data_source_id,
-                    )
-                    records.set(id, record)
-                    const owners = claims.get(record.id) ?? new Set<string>()
-                    owners.add(id)
-                    claims.set(record.id, owners)
-                  } catch (error) {
-                    if (!(error instanceof SkillsError)) throw error
-                    invalid.set(id, error)
-                  }
-                }
-                completed.set(library.library_id, {
-                  library,
-                  inventory: value,
-                  pages,
-                  records,
-                  claims,
-                  invalid,
-                })
-              }),
-            ),
+            Effect.tap((value) => checked(() => rememberInventory(library, value))),
           ),
         )
         observations.set(library.library_id, { library, inventory: load })
@@ -264,6 +325,14 @@ export function withSharedGraphReads<A, E, R>(
         const selectedPage = exact ?? [...claims][0]!
         return { library: value.library, rawPage: value.pages.get(selectedPage)! }
       }
+      for (const value of selectedTargets.values()) {
+        if (database !== undefined && database !== value.library.skills.database_id) continue
+        const target =
+          exact === undefined
+            ? [...value.pages.values()].find((target) => target.record.id === selector)
+            : value.pages.get(exact)
+        if (target !== undefined) return { library: value.library, rawPage: target.rawPage }
+      }
       return undefined
     }
     const metadata: SharedGraphReads["Service"]["metadata"] = (
@@ -281,7 +350,6 @@ export function withSharedGraphReads<A, E, R>(
               "Shared graph metadata belongs to another authorization scope.",
             ),
           )
-        yield* inventory(library)
         const key = (owner: string) => canonicalSharedJson([library.library_id, owner])
         const existing = selectedMetadata.get(key(selected.locator.page_id))
         if (existing !== undefined) return existing
@@ -290,7 +358,7 @@ export function withSharedGraphReads<A, E, R>(
           if (current === undefined || property(current.rawPage).id !== selected.locator.page_id)
             throw fail(
               "SHARED_SKILL_ID_CONFLICT",
-              "The selected Skill changed identity during the shared inventory observation.",
+              "The selected Skill changed identity during the shared metadata observation.",
             )
           const roots = input.currentRoots.flatMap((root) => {
             const target = find(root, library.skills.database_id)
@@ -321,24 +389,60 @@ export function withSharedGraphReads<A, E, R>(
               "Preparation metadata exceeded the selected-node budget.",
             ),
           )
-        const files = yield* querySkillFilesForSkills({
+        const files = yield* queryCurrentFilesForSkills({
           dataSourceId: library.files.data_source_id,
           propertyIds: library.files.property_ids,
           skillPageIds: owners,
         })
-        const facts = yield* querySharedFileFactsForSkills(library, owners, scope)
-        const operations = yield* querySharedOperationIndexes(library, owners)
         for (const owner of owners)
           selectedMetadata.set(key(owner), {
             files: files.get(owner) ?? [],
-            facts: facts.get(owner) ?? [],
-            operations: operations.get(owner) ?? [],
           })
         return selectedMetadata.get(key(selected.locator.page_id))!
       })
     return yield* effect.pipe(
       Effect.provideService(SharedGraphReads, {
         inventory,
+        targets,
+        identity: (library, skillId) =>
+          Effect.gen(function* () {
+            yield* checked(() => checkLibrary(library))
+            const id = yield* checked(() => skillIdentity(library.library_id, skillId))
+            const found = yield* checked(() => find(id, library.skills.database_id))
+            if (found !== undefined)
+              return {
+                rawPage: found.rawPage,
+                record: yield* checked(() =>
+                  sharedRecordFromPage(
+                    found.rawPage,
+                    sourceFor(library),
+                    library.skills.data_source_id,
+                  ),
+                ),
+              }
+            if (completed.has(library.library_id))
+              return yield* Effect.fail(
+                fail(
+                  "SKILL_NOT_FOUND",
+                  "No current Skill has the selected stable identity in this library.",
+                  { id },
+                ),
+              )
+            const selected = yield* querySelectedSkillIdentity(library, skillId)
+            const known = selectedTargets.get(library.library_id) ?? {
+              library,
+              pages: new Map<string, SelectedSharedSkillMetadata>(),
+            }
+            known.pages.set(selected.record.locator.page_id, selected)
+            selectedTargets.set(library.library_id, known)
+            return selected
+          }),
+        observe: (library, raw, supplied) =>
+          Effect.gen(function* () {
+            if (supplied !== undefined) yield* checked(() => rememberInventory(library, supplied))
+            yield* targets(library, [String(property(raw).id)], [raw])
+            return completed.get(library.library_id)?.inventory
+          }),
         target: (selector, database) => checked(() => find(selector, database)),
         metadata,
       }),
@@ -376,5 +480,43 @@ export function sharedGraphMetadata(
           Option.isSome(node) ? node.value.depth : 0,
         )
       : undefined
+  })
+}
+
+/** Observe the selected current page without requiring discovery of the whole library. */
+export function observeSharedGraphTarget(
+  library: SharedLibrary,
+  raw: unknown,
+  inventory?: CompleteSharedSkillInventory,
+) {
+  return Effect.gen(function* () {
+    const context = yield* Effect.serviceOption(SharedGraphReads)
+    return Option.isSome(context)
+      ? yield* context.value.observe(library, raw, inventory)
+      : inventory
+  })
+}
+
+export function sharedGraphSkillTargets(
+  library: SharedLibrary,
+  ids: readonly string[],
+  inventory?: CompleteSharedSkillInventory,
+) {
+  return Effect.gen(function* () {
+    if (inventory !== undefined)
+      return yield* checked(() => selectedSkillsFromInventory(library, ids, inventory))
+    const context = yield* Effect.serviceOption(SharedGraphReads)
+    return Option.isSome(context)
+      ? yield* context.value.targets(library, ids)
+      : yield* querySelectedSkillMetadata(library, ids)
+  })
+}
+
+export function sharedGraphSkillIdentity(library: SharedLibrary, skillId: string) {
+  return Effect.gen(function* () {
+    const context = yield* Effect.serviceOption(SharedGraphReads)
+    return Option.isSome(context)
+      ? yield* context.value.identity(library, skillId)
+      : yield* querySelectedSkillIdentity(library, skillId)
   })
 }
