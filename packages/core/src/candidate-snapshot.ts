@@ -1,6 +1,7 @@
 import { skillIdentity } from "./shared-content.ts"
 import {
   SourceMemberCacheSchema,
+  SOURCE_MEMBER_CACHE_VERSION,
   sourceMemberCacheKey,
 } from "./shared-source-materialization-state.ts"
 import type { SourceMemberCandidate } from "./shared-source-materialization-model.ts"
@@ -233,6 +234,10 @@ export function readCandidateSnapshot(options: { readonly library?: string } = {
     const now = yield* Clock.currentTimeMillis
     const age = now - verifiedAt
     const maxAge = (yield* effectiveCachePolicy).catalog_max_age_ms
+    const members = yield* store.readJson(
+      sourceMemberCacheKey(scope, libraryId),
+      SourceMemberCacheSchema,
+    )
     return {
       kind: "snapshot",
       libraryId,
@@ -247,19 +252,18 @@ export function readCandidateSnapshot(options: { readonly library?: string } = {
         age >= maxAge,
       coverage: complete ? "complete" : "partial",
       records,
-      source_members:
-        (yield* store.readJson(
-          sourceMemberCacheKey(scope, libraryId),
-          SourceMemberCacheSchema,
-        ))?.candidates.filter(
-          (candidate) =>
-            candidate.enabled &&
-            !denied.has(skillIdentity(libraryId, candidate.expected_skill_id)) &&
-            (candidate.record === undefined ||
-              (!denied.has(candidate.record.id) &&
-                candidate.record.locator.type === "shared_skill" &&
-                !denied.has(candidate.record.locator.page_id))),
-        ) ?? [],
+      source_members: (members?.version === SOURCE_MEMBER_CACHE_VERSION
+        ? members.candidates
+        : []
+      ).filter(
+        (candidate) =>
+          candidate.enabled &&
+          !denied.has(skillIdentity(libraryId, candidate.expected_skill_id)) &&
+          (candidate.record === undefined ||
+            (!denied.has(candidate.record.id) &&
+              candidate.record.locator.type === "shared_skill" &&
+              !denied.has(candidate.record.locator.page_id))),
+      ),
       denials,
       generation,
       ...(observation.last_failure === undefined ? {} : { lastFailure: observation.last_failure }),

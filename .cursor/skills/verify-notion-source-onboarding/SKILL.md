@@ -54,6 +54,14 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
     多余字段、不完整 publisher/accepted commit 及实际获取失败继续 partial/拒绝，
     逐 Source 失败保留其已验证身份。受控单 Source 成功不证明真实多 Source 目录完整。
 
+    写能力还须精确到 member。已声明 patch、目录已知的链接物化或非固定 Git 表示
+    返回 blocked/CURRENT_SOURCE_WRITE_UNSUPPORTED，同 Source 未转换的 sibling 仍可准备。
+    已 ready 的精确物理行不新增 acquisition 解析要求。stable ID 快路径尚未观察到的
+    tree 表示仍由 manager 以完整原件独立复核，不能把目录标签当 writer 授权。
+    私有候选 v2 使用 `<library>.v2.json`；v1 原槽保留，新快照与新发现不得暴露或合并
+    其旧 materializable 声明。真实 SQLite 核地址/version/scope 绑定与两槽共存；
+    旧包实际 catalog/snapshot/consume 另留包身份与原件，不以槽位测试代替。
+
     名字发现使用独立 `SourceDirectory`，枚举每个固定 Git tree 中完整 configured roster，
     只读取 Skill 元数据及其实际依赖的 pinned link。共用 portable schema、mapping、
     frontmatter 与元数据 patch 语义；自定义 main 先核 tree 中存在，不为查名字读取它的资源字节。

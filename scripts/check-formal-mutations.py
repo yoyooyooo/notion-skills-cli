@@ -162,6 +162,17 @@ source_pending_bypass = [
      'false && parent !== undefined &&\n      (own?.phase !== "content" ||'),
 ]
 lifecycle_cases = [
+    ("source-member-capability", "packages/core/src/shared-current-source-input.ts",
+     [('    input.patch !== undefined ||\n'
+       '    input.member_patches?.[memberKey] !== undefined ||\n'
+       '    (representation !== undefined && representation !== "regular_git")',
+       '    false')],
+     "packages/core/test/shared-source-directory.test.ts",
+     "registered member capability retains a legacy", "UnsupportedIsBlocked"),
+    ("source-member-cache-version-address", "packages/core/src/shared-source-materialization-state.ts",
+     [('${version === SOURCE_MEMBER_CACHE_VERSION ? ".v2" : ""}', '${""}')],
+     "packages/core/test/candidate-snapshot.node.test.ts",
+     "versioned candidate slots preserve legacy readers", "OldCacheSlotPreserved"),
     ("current-files-complete-pagination", "packages/core/src/shared-current-index.ts",
      [("if (!page.has_more) break", "if (true) break")],
      "packages/core/test/shared-current-evidence.node.test.ts",

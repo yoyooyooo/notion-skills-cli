@@ -20,7 +20,13 @@ import { validateFixedGithubMaterializationSource } from "./shared-source-materi
 import type { SharedSourcePlan } from "./shared-source-plan.ts"
 import { SourceDefinitionInputSchema, type SourceDefinitionInput } from "./shared-sources-model.ts"
 import { sha256 } from "./store.ts"
-import { discoverSource, selectMembers, SourceSnapshotSchema } from "./upstream-source.ts"
+import {
+  discoverSource,
+  selectMembers,
+  SourceSnapshotSchema,
+  type DiscoverSourceInput,
+  type SourceMemberGitRepresentation,
+} from "./upstream-source.ts"
 import { sourceExternalResourceTargets } from "./upstream-member-links.ts"
 
 export const CurrentSourceContributionSchema = Schema.Struct({
@@ -207,6 +213,23 @@ function exactCommit(input: CurrentSourceDeclaration, override?: string): string
   return override ?? configured
 }
 
+/** A declaration can disqualify an exact member before acquisition. A directory
+ * may additionally disqualify its observed tree layout; neither grants write
+ * authority or replaces the full preparation's immutable blob checks. */
+export function currentSourceMemberWriteReason(
+  input: Pick<DiscoverSourceInput, "patch" | "member_patches">,
+  memberKey: string,
+  representation?: SourceMemberGitRepresentation,
+): "CURRENT_SOURCE_WRITE_UNSUPPORTED" | undefined {
+  if (
+    input.patch !== undefined ||
+    input.member_patches?.[memberKey] !== undefined ||
+    (representation !== undefined && representation !== "regular_git")
+  )
+    return "CURRENT_SOURCE_WRITE_UNSUPPORTED"
+  return undefined
+}
+
 /** Prepare a real adapter observation without Notion writes or authority conversion.
  * Every fixed blob is checked before any target files are returned. */
 export function prepareCurrentSourceFromDiscovery(
@@ -259,6 +282,7 @@ export function prepareCurrentSourceFromDiscovery(
     const sourceFiles: FixedGithubFile[] = []
     const verified = new Map<string, { bytes: Uint8Array; mode: "100644" | "100755" }>()
     const members = new Map(snapshot.members.map((member) => [member.member_key, member]))
+    const discoveryInput = yield* checked(() => sourceDiscoveryInput(declaration.definition))
     let tree: string | undefined = snapshot.provenance.tree_hash
     for (const member of snapshot.members) {
       const manifest = yield* checked(() => {
@@ -266,8 +290,13 @@ export function prepareCurrentSourceFromDiscovery(
         const selected = member.git_manifest
         if (
           selected === undefined ||
-          member.git_materialization !== undefined ||
-          member.patch_hash !== undefined
+          currentSourceMemberWriteReason(
+            discoveryInput,
+            member.member_key,
+            member.git_materialization !== undefined || member.patch_hash !== undefined
+              ? "transformed_git"
+              : "regular_git",
+          ) !== undefined
         )
           throw unsupported(
             "Only unchanged regular Git files have a current fixed-source representation.",
